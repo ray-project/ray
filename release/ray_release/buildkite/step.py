@@ -15,12 +15,16 @@ from ray_release.config import (
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
-from ray_release.util import python_version_str
+from ray_release.util import python_version_str, DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
-QUEUE_DEFAULT = "runner_queue_tiny_branch"
-QUEUE_CLIENT = "runner_queue_small_branch"
+RELEASE_QUEUE_DEFAULT = DeferredEnvVar(
+    "RELEASE_QUEUE_DEFAULT", "runner_queue_tiny_branch"
+)
+RELEASE_QUEUE_CLIENT = DeferredEnvVar(
+    "RELEASE_QUEUE_CLIENT", "runner_queue_small_branch"
+)
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
@@ -32,7 +36,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
         "RELEASE_AWS_DB_TABLE": "release_test_result",
         "AWS_REGION": "us-west-2",
     },
-    "agents": {"queue": QUEUE_DEFAULT},
+    "agents": {"queue": str(RELEASE_QUEUE_DEFAULT)},
     "plugins": [
         {
             "docker#v5.2.0": {
@@ -118,7 +122,7 @@ def get_step(
     # Set queue to QUEUE_CLIENT for client tests
     # (otherwise keep default QUEUE_DEFAULT)
     if test.get("run", {}).get("type") == "client":
-        step["agents"]["queue"] = QUEUE_CLIENT
+        step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
