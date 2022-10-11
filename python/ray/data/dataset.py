@@ -356,9 +356,9 @@ class Dataset(Generic[T]):
             more convenient.
 
         .. tip:
-            If you have a small number of big blocks, it may limit parallelism. You may consider
-            increase the number of blocks via ``.repartition()`` before applying the
-            ``.map_batches()``.
+            If you have a small number of big blocks, it may limit parallelism. You may
+            consider increase the number of blocks via ``.repartition()`` before
+            applying the ``.map_batches()``.
 
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
