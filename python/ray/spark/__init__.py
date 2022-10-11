@@ -367,8 +367,8 @@ def init_cluster(
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
 
-        ray_worker_node_manager_port = get_safe_port(ray_head_hostname)
-        ray_worker_object_manager_port = get_safe_port(ray_head_hostname)
+        ray_worker_node_manager_port = get_safe_port(worker_hostname)
+        ray_worker_object_manager_port = get_safe_port(worker_hostname)
 
         ray_worker_cmd = [
             ray_exec_path,
