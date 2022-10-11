@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from pprint import pformat
+import traceback
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
@@ -123,9 +124,9 @@ if __name__ == "__main__":
             print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
             for test in impacted.keys():
                 print("    ", test, file=sys.stderr)
-        except Exception as e:
+        except Exception:
             print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
-            print(e, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
         # End of dry run.
 
         skip_prefix_list = [
