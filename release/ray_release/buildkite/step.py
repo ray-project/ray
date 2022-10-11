@@ -19,6 +19,9 @@ from ray_release.util import python_version_str
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
+DEFAULT_QUEUE = "runner_queue_tiny_branch"
+CLIENT_QUEUE = "runner_queue_small_branch"
+
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
@@ -29,7 +32,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
         "RELEASE_AWS_DB_TABLE": "release_test_result",
         "AWS_REGION": "us-west-2",
     },
-    "agents": {"queue": "runner_queue_branch"},
+    "agents": {"queue": DEFAULT_QUEUE},
     "plugins": [
         {
             "docker#v5.2.0": {
@@ -111,6 +114,11 @@ def get_step(
     step["concurrency"] = concurrency_limit
 
     step["priority"] = priority_val
+
+    # Set queue to CLIENT_QUEUE for client tests
+    # (otherwise keep default DEFAULT_QUEUE)
+    if test.get("run", {}).get("type") == "client":
+        step["agents"]["queue"] = CLIENT_QUEUE
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
