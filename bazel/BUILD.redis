@@ -55,7 +55,7 @@ genrule_cmd = select({
         chmod +x $(location redis-cli-mac)
         rm -r -f -- "$${tmpdir}"
     """,
-    "@bazel_tools//src/conditions:default": """
+    "//conditions:default": """
         cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
         cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
     """
@@ -63,7 +63,7 @@ genrule_cmd = select({
 
 genrule_srcs = select({
     "@bazel_tools//src/conditions:darwin": glob(["**"]),
-    "@bazel_tools//src/conditions:default": [":redis"],
+    "//conditions:default": [":redis"],
 })
 
 
