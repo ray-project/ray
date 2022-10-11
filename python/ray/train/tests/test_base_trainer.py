@@ -5,6 +5,7 @@ import time
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
+import pandas as pd
 import numpy as np
 import pytest
 
@@ -396,7 +397,7 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
     """Tests if DatasetContext is propagated to preprocessors."""
 
     def training_loop(self):
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
         session.report(dict(my_metric=1))
 
     target_max_block_size = 100
@@ -408,7 +409,7 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
 
     preprocessor = BatchMapper(map_fn)
 
-    datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
+    datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}
     trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
     result = trainer.fit()
     assert result.metrics["my_metric"] == 1
