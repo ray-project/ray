@@ -1,4 +1,5 @@
 - label: ":book: LinkCheck"
+  instance_size: small
   commands:
     - export LINT=1
     - ./ci/env/install-dependencies.sh
@@ -8,6 +9,7 @@
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # no TUNE_TESTING=1 on purpose
@@ -20,6 +22,7 @@
     [
         "RAY_CI_PYTHON_AFFECTED",
     ]
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip install -U pydot
