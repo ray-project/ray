@@ -15,6 +15,7 @@ from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
+from ray.data.datasource import ImageFolderDatasource
 from ray.air.config import ScalingConfig
 
 
@@ -85,7 +86,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
-    dataset = ray.data.read_images(data_url, size=(256, 256))
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=data_url, size=(256, 256)
+    )
 
     preprocessor = BatchMapper(preprocess_image_with_label)
 
