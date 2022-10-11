@@ -69,12 +69,12 @@ genrule_srcs = select({
 
 genrule(
     name = "bin",
-    srcs = genrule_srcs
+    srcs = genrule_srcs,
     outs = [
         "redis-server",
         "redis-cli",
     ],
-    cmd = genrule_cmd
+    cmd = genrule_cmd,
     visibility = ["//visibility:public"],
     tags = ["local"],
 )
