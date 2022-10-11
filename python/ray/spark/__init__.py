@@ -62,6 +62,7 @@ class RayClusterOnSpark:
         self.spark_job_group_id = spark_job_group_id
         self.ray_temp_dir = ray_temp_dir
         self.ray_context = None
+        self.is_shutdown = False
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
@@ -76,7 +77,11 @@ class RayClusterOnSpark:
 
     def disconnect(self):
         if self.ray_context is not None:
-            self.ray_context.disconnect()
+            try:
+                self.ray_context.disconnect()
+            except Exception as e:
+                # swallow exception.
+                _logger.warning(f"Error happens during disconnecting: {repr(e)}")
             self.ray_context = None
         else:
             _logger.warning("Already disconnected from this ray cluster.")
@@ -85,10 +90,27 @@ class RayClusterOnSpark:
         """
         Shutdown the ray cluster created by `init_cluster` API.
         """
-        self.disconnect()
-        self._cancel_background_spark_job()
-        self.head_proc.kill()
-        shutil.rmtree(self.ray_temp_dir, ignore_errors=True)
+        if not self.is_shutdown:
+            if self.ray_context is not None:
+                self.disconnect()
+            try:
+                self._cancel_background_spark_job()
+            except Exception as e:
+                # swallow exception.
+                _logger.warning(
+                    f"Error happens during cancelling ray cluster background spark job: {repr(e)}"
+                )
+            try:
+                self.head_proc.kill()
+            except Exception as e:
+                # swallow exception.
+                _logger.warning(
+                    f"Error happens during killing ray head node: {repr(e)}"
+                )
+            shutil.rmtree(self.ray_temp_dir, ignore_errors=True)
+            self.is_shutdown = True
+        else:
+            _logger.warning("The cluster has been shut down.")
 
     def __enter__(self):
         self.connect()
@@ -250,6 +272,13 @@ def init_cluster(
 
     _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_log_dir}")
 
+    # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/logs",
+    #  We should update "ray start" scirpt to add a new option "ray_log_dir", and output logs
+    #  to a different directory specified by "ray_log_dir", instead of using "{ray_temp_dir}/logs",
+    #  The reason is, for ray on spark, user is hard to access log files on spark worker machines,
+    #  (especially on databricks runtime), so we'd better set the log output dir to be a
+    #  path mounted with NFS shared by all spark cluster nodes, so that the user can access
+    #  these remote log files from spark drive side easily.
     ray_temp_dir = os.path.join(ray_temp_dir, f"ray-{ray_head_port}")
     os.makedirs(ray_temp_dir, exist_ok=True)
 
@@ -292,6 +321,27 @@ def init_cluster(
     )
 
     _logger.info("Ray head node started.")
+
+    # NB:
+    # In order to start ray worker nodes on spark cluster worker machines,
+    # We launch a background spark job:
+    #  1. it is a barrier mode spark job, i.e. all spark tasks in the job runs concurrently.
+    #     if the spark cluster resources are not sufficient to launch all these tasks concurrently,
+    #     the spark job will hang and retry, if exceeding maximum retries, it will fail.
+    #  2. Each spark task launches one ray worker node. This design ensures all ray worker nodes
+    #     has the same shape (same cpus / gpus / memory configuration). If ray worker nodes have
+    #     different shape, the Ray cluster setup will be nondeterministic, and you could get very
+    #     strange results with bad luck on the node sizing.
+    #  3. It starts ray worker node via `ray start` CLI. In each spark task, it creates a
+    #     child process and run `ray start ...` command in blocking mode.
+    #  4. When shut down ray cluster, killing these ray worker nodes is implemented by:
+    #     First, it installs a PR_SET_PDEATHSIG signal for the `ray start ...` child processes
+    #     so that when parent process (pyspark task) dead, the child processes
+    #     (`ray start ...` processes) will receive SIGTERM signal.
+    #     When we need to shut down the ray cluster, call `sparkContext.cancelJobGroup`
+    #     to cancel the background spark job, and it sends SIGKILL signal to all spark tasks,
+    #     so this make spark task processes dead and triggers sending SIGTERM to `ray start ...`
+    #     child processes.
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
@@ -355,7 +405,7 @@ def init_cluster(
                 This is a no-op on macOS because prctl is not supported.
 
                 Note:
-                When a pyspark job canceled, the UDF python process are killed by signal "SIGKILL",
+                When a pyspark job cancelled, the UDF python process are killed by signal "SIGKILL",
                 This case neither "atexit" nor signal handler can capture SIGKILL signal.
                 prctl is the only way to capture SIGKILL signal.
                 """
@@ -392,19 +442,39 @@ def init_cluster(
         # NB: Not reachable.
         yield 0
 
-    def backgroud_job_thread_fn():
-        spark.sparkContext.setJobGroup(
-            spark_job_group_id,
-            "This job group is for spark job which runs the Ray cluster with ray head node "
-            f"{ray_head_hostname}:{ray_head_port}"
-        )
-        spark.sparkContext.parallelize(
-            list(range(num_spark_tasks)), num_spark_tasks
-        ).barrier().mapPartitions(
-            ray_cluster_job_mapper
-        ).collect()
-
     spark_job_group_id = f"ray-cluster-job-head-{ray_head_hostname}-port-{ray_head_port}"
+
+    ray_cluster_handler = RayClusterOnSpark(
+        address=f"{ray_head_hostname}:{ray_head_port}",
+        head_proc=ray_head_proc,
+        spark_job_group_id=spark_job_group_id,
+        ray_temp_dir=ray_temp_dir,
+    )
+
+    def backgroud_job_thread_fn():
+        try:
+            spark.sparkContext.setJobGroup(
+                spark_job_group_id,
+                "This job group is for spark job which runs the Ray cluster with ray head node "
+                f"{ray_head_hostname}:{ray_head_port}"
+            )
+            spark.sparkContext.parallelize(
+                list(range(num_spark_tasks)), num_spark_tasks
+            ).barrier().mapPartitions(
+                ray_cluster_job_mapper
+            ).collect()
+        finally:
+            # NB:
+            # The background spark job is designed to running forever until it is killed,
+            # So this `finally` block is reachable only when:
+            #  1. The background job raises unexpected exception (i.e. ray worker nodes failed unexpectedly)
+            #  2. User explicitly orders shutting down the ray cluster.
+            #  3. On databricks runtime, when notebook detached, it triggers python REPL onCancel event and
+            #     it cancelled the background running spark job
+            #  For case 1 and 3, only ray workers are killed, but driver side ray head might be still
+            #  running, and ray context might be in connected status, we need to disconnect and kill ray
+            #  head node, so call `ray_cluster_handler.shutdown()` here.
+            ray_cluster_handler.shutdown()
 
     threading.Thread(
         target=inheritable_thread_target(backgroud_job_thread_fn),
@@ -424,14 +494,10 @@ def init_cluster(
                     "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
                     "python REPL."
                 )
-        return RayClusterOnSpark(
-            address=f"{ray_head_hostname}:{ray_head_port}",
-            head_proc=ray_head_proc,
-            spark_job_group_id=spark_job_group_id,
-            ray_temp_dir=ray_temp_dir,
-        )
+        return ray_cluster_handler
     except Exception:
-        # If init ray cluster raise exception, kill the ray head proc and the background spark job.
-        ray_head_proc.kill()
-        spark.sparkContext.cancelJobGroup(spark_job_group_id)
+        # If driver side setup ray-cluster routine raises exception, it might result in part of ray
+        # processes has been launched (e.g. ray head or some ray workers have been launched),
+        # calling `ray_cluster_handler.shutdown()` to kill them and clean status.
+        ray_cluster_handler.shutdown()
         raise
