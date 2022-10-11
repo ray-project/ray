@@ -43,7 +43,9 @@ tabulate
 tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
-starlette==0.18.0
+# Newer of version of starlette unfortunately segfault the tests in Windows CI environment
+starlette==0.18.0; sys_platform == 'win32'
+starlette; sys_platform != 'win32'
 aiorwlock
 gradio; platform_system != "Windows"
 
