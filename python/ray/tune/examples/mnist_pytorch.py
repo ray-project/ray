@@ -11,7 +11,8 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import air, tune
-from ray.air import Checkpoint, session
+from ray.air import session
+from ray.train.torch import TorchCheckpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -106,7 +107,7 @@ def train_mnist(config):
         acc = test(model, test_loader, device)
         checkpoint = None
         if should_checkpoint:
-            checkpoint = Checkpoint.from_dict({"model_state_dict": model.state_dict()})
+            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         # Report metrics (and possibly a checkpoint) to Tune
         session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
