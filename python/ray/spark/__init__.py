@@ -371,7 +371,7 @@ def init_cluster(
         #  probably race conditions issues in ray implementation.
         #  as a workaround, I add a sleep here to make different local tasks runs starting from
         #  different time.
-        time.sleep(task_local_rank * 2.0)
+        time.sleep(task_local_rank * 10.0)
 
         # TODO: remove worker side ray temp dir when ray worker exits.
         # Ray worker might run on a machine different with the head node, so create the
