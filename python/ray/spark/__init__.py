@@ -270,7 +270,7 @@ def init_cluster(
     ray_head_node_manager_port = get_random_safe_port(ray_head_hostname)
     ray_head_object_manager_port = get_random_safe_port(ray_head_hostname)
 
-    _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
+    _logger.info(f"Ray head hostname {ray_head_hostname}, port {ray_head_port}")
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
