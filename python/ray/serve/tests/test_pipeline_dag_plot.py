@@ -12,7 +12,7 @@ from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
 
-from ray.serve.deployment_graph_build import transform_ray_dag_to_serve_dag
+from ray.serve._private.deployment_graph_build import transform_ray_dag_to_serve_dag
 
 NESTED_HANDLE_KEY = "nested_handle"
 
@@ -108,7 +108,7 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await self.dag.remote()
+        return await (await self.dag.remote())
 
 
 async def json_resolver(request: starlette.requests.Request):

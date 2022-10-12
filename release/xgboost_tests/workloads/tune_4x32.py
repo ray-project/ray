@@ -19,7 +19,7 @@ from ray import tune
 
 from xgboost_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from release_test_util import train_ray
 
 
 def train_wrapper(config, ray_params):
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         "max_depth": tune.randint(1, 9),
     }
 
-    ray.init(address="auto")
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
 
     ray_params = RayParams(
         elastic_training=False,

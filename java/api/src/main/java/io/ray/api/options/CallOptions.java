@@ -26,7 +26,8 @@ public class CallOptions extends BaseTaskOptions {
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroupName = concurrencyGroupName;
-    this.serializedRuntimeEnvInfo = runtimeEnv == null ? "" : runtimeEnv.toJsonBytes();
+    this.serializedRuntimeEnvInfo =
+        runtimeEnv == null ? "" : runtimeEnv.serializeToRuntimeEnvInfo();
   }
 
   /** This inner class for building CallOptions. */

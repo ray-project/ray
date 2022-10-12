@@ -19,7 +19,6 @@ from ray.rllib.policy.tf_mixins import (
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
@@ -50,7 +49,7 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -64,7 +63,7 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
@@ -186,12 +185,3 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
 A3CTF1Policy = get_a3c_tf_policy("A3CTF1Policy", DynamicTFPolicyV2)
 A3CTF2Policy = get_a3c_tf_policy("A3CTF2Policy", EagerTFPolicyV2)
-
-
-@Deprecated(
-    old="rllib.algorithms.a3c.a3c_tf_policy.postprocess_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def postprocess_advantages(*args, **kwargs):
-    pass

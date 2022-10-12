@@ -50,6 +50,14 @@ py_test(
 )
 
 py_test(
+    name = "test_deployment_class",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_healthcheck",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -155,7 +163,7 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -354,6 +362,14 @@ py_test(
 )
 
 py_test(
+    name = "test_air_integrations_gpu",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "gpu"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_adapters",
     size = "small",
     srcs = serve_tests_srcs,
@@ -379,14 +395,6 @@ py_test(
 
 py_test(
     name = "test_deployment_graph_autoscaling",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_deployment_graph_classmethod",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -454,30 +462,6 @@ py_test(
 )
 
 py_test(
-    name = "tutorial_tensorflow",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_pytorch",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_sklearn",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
     name = "tutorial_rllib",
     size = "small",
     srcs = serve_tests_srcs,
@@ -529,6 +513,30 @@ py_test(
 
 py_test(
     name = "test_json_serde",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_gradio",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "py37"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_gradio_visualization",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "py37"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_grpc",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

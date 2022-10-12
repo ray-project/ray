@@ -1,9 +1,10 @@
-from collections import Counter
 import gym
 from gym.spaces import Box, Discrete
+import json
 import numpy as np
 import os
 import random
+import tempfile
 import time
 import unittest
 
@@ -22,7 +23,9 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.policy.policy import Policy
+from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
+from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
@@ -195,32 +198,6 @@ class TestRolloutWorker(unittest.TestCase):
                 ),
             )
 
-    def test_callbacks(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            counts = Counter()
-            pg = PG(
-                env="CartPole-v0",
-                config={
-                    "num_workers": 0,
-                    "rollout_fragment_length": 50,
-                    "train_batch_size": 50,
-                    "callbacks": {
-                        "on_episode_start": lambda x: counts.update({"start": 1}),
-                        "on_episode_step": lambda x: counts.update({"step": 1}),
-                        "on_episode_end": lambda x: counts.update({"end": 1}),
-                        "on_sample_end": lambda x: counts.update({"sample": 1}),
-                    },
-                    "framework": fw,
-                },
-            )
-            pg.train()
-            pg.train()
-            self.assertGreater(counts["sample"], 0)
-            self.assertGreater(counts["start"], 0)
-            self.assertGreater(counts["end"], 0)
-            self.assertGreater(counts["step"], 0)
-            pg.stop()
-
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -357,6 +334,80 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertGreater(np.max(sample["actions"]), action_space.high[0])
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
         ev.stop()
+
+    def test_action_normalization_offline_dataset(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # create environment
+            env = gym.make("Pendulum-v1")
+
+            # create temp data with actions at min and max
+            data = {
+                "type": "SampleBatch",
+                "actions": [[2.0], [-2.0]],
+                "dones": [0.0, 0.0],
+                "rewards": [0.0, 0.0],
+                "obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                "new_obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            }
+
+            data_file = os.path.join(tmp_dir, "data.json")
+
+            with open(data_file, "w") as f:
+                json.dump(data, f)
+
+            # create input reader functions
+            def dataset_reader_creator(ioctx):
+                config = {
+                    "input": "dataset",
+                    "input_config": {"format": "json", "paths": data_file},
+                }
+                _, shards = get_dataset_and_shards(config, num_workers=0)
+                return DatasetReader(shards[0], ioctx)
+
+            def json_reader_creator(ioctx):
+                return JsonReader(data_file, ioctx)
+
+            input_creators = [dataset_reader_creator, json_reader_creator]
+
+            # actions_in_input_normalized, normalize_actions
+            parameters = [
+                (True, True),
+                (True, False),
+                (False, True),
+                (False, False),
+            ]
+
+            # check that samples from dataset will be normalized if and only if
+            # actions_in_input_normalized == False and
+            # normalize_actions == True
+            for input_creator in input_creators:
+                for actions_in_input_normalized, normalize_actions in parameters:
+                    ev = RolloutWorker(
+                        env_creator=lambda _: env,
+                        policy_spec=MockPolicy,
+                        policy_config=dict(
+                            actions_in_input_normalized=actions_in_input_normalized,
+                            normalize_actions=normalize_actions,
+                            clip_actions=False,
+                            offline_sampling=True,
+                            train_batch_size=1,
+                        ),
+                        rollout_fragment_length=1,
+                        input_creator=input_creator,
+                    )
+
+                    sample = ev.sample()
+
+                    if normalize_actions and not actions_in_input_normalized:
+                        # check if the samples from dataset are normalized properly
+                        self.assertLessEqual(np.max(sample["actions"]), 1.0)
+                        self.assertGreaterEqual(np.min(sample["actions"]), -1.0)
+                    else:
+                        # check if the samples from dataset are not normalized
+                        self.assertGreater(np.max(sample["actions"]), 1.5)
+                        self.assertLess(np.min(sample["actions"]), -1.5)
+
+                    ev.stop()
 
     def test_action_immutability(self):
         from ray.rllib.examples.env.random_env import RandomEnv
@@ -723,13 +774,13 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         ev.stop()
 
@@ -738,7 +789,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         self.sample_and_flush(ev)
         filters = ev.get_filters(flush_after=False)
@@ -746,7 +797,7 @@ class TestRolloutWorker(unittest.TestCase):
         filters2 = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
         obs_f2 = filters2[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
+        self.assertGreaterEqual(obs_f2.running_stats.n, obs_f.running_stats.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
         ev.stop()
 
@@ -755,7 +806,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         obs_f = self.sample_and_flush(ev)
 
@@ -766,11 +817,11 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
-        new_obsf.rs._n = 100
+        new_obsf.running_stats.num_pushes = 100
         ev.sync_filters({DEFAULT_POLICY_ID: new_obsf})
         filters = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f.rs.n, 100)
+        self.assertGreaterEqual(obs_f.running_stats.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
         ev.stop()
 
@@ -813,6 +864,41 @@ class TestRolloutWorker(unittest.TestCase):
         seeds = ev.foreach_env(lambda env: env.rng_seed)
         self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
+
+    def test_determine_spaces_for_multi_agent_dict(self):
+        class MockMultiAgentEnv(MultiAgentEnv):
+            """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
+
+            def __init__(self):
+                # Intentinoally don't call super().__init__(),
+                # so this env doesn't have _spaces_in_preferred_format
+                # attribute.
+                self.observation_space = gym.spaces.Discrete(2)
+                self.action_space = gym.spaces.Discrete(2)
+
+            def reset(self):
+                pass
+
+            def step(self, action_dict):
+                obs = {1: [0, 0], 2: [1, 1]}
+                rewards = {1: 0, 2: 0}
+                dones = {1: False, 2: False, "__all__": False}
+                infos = {1: {}, 2: {}}
+                return obs, rewards, dones, infos
+
+        ev = RolloutWorker(
+            env_creator=lambda _: MockMultiAgentEnv(),
+            num_envs=3,
+            policy_spec={
+                "policy_1": PolicySpec(policy_class=MockPolicy),
+                "policy_2": PolicySpec(policy_class=MockPolicy),
+            },
+            seed=1,
+        )
+        # The fact that this RolloutWorker can be created without throwing
+        # exceptions means _determine_spaces_for_multi_agent_dict() is
+        # handling multiagent user environments properly.
+        self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):
         ev = RolloutWorker(
@@ -871,7 +957,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
 

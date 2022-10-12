@@ -42,9 +42,11 @@ def _get_basic_autoscaling_config() -> dict:
     return {
         "cluster_name": "raycluster-complete",
         "provider": {
-            "disable_launch_config_check": True,
             "disable_node_updaters": True,
+            "disable_launch_config_check": True,
             "foreground_node_launch": True,
+            "worker_liveness_check": False,
+            "worker_rpc_drain": True,
             "namespace": "default",
             "type": "kuberay",
         },
@@ -89,16 +91,14 @@ def _get_basic_autoscaling_config() -> dict:
         "cluster_synced_files": [],
         "file_mounts": {},
         "file_mounts_sync_continuously": False,
-        "head_node": {},
         "head_node_type": "head-group",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
-        "idle_timeout_minutes": 5,
+        "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
         "max_workers": 600,
         "setup_commands": [],
-        "upscaling_speed": 1,
-        "worker_nodes": {},
+        "upscaling_speed": 1000,
         "worker_setup_commands": [],
         "worker_start_ray_commands": [],
     }
@@ -170,16 +170,16 @@ def _get_gpu_complaint() -> str:
 def _get_ray_cr_with_autoscaler_options() -> dict:
     cr = _get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
-        "upscalingMode": "Aggressive",
-        "idleTimeoutSeconds": 60,
+        "upscalingMode": "Conservative",
+        "idleTimeoutSeconds": 300,
     }
     return cr
 
 
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
-    config["upscaling_speed"] = 1000
-    config["idle_timeout_minutes"] = 1.0
+    config["upscaling_speed"] = 1
+    config["idle_timeout_minutes"] = 5.0
     return config
 
 

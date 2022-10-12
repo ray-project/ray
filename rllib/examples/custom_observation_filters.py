@@ -8,7 +8,7 @@ import argparse
 
 import numpy as np
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
 
@@ -38,7 +38,7 @@ class SimpleRollingStat:
 
     def update(self, other):
         n1 = self._n
-        n2 = other._n
+        n2 = other.num_pushes
         n = n1 + n2
         if n == 0:
             return
@@ -135,8 +135,10 @@ if __name__ == "__main__":
         "num_workers": 0,
     }
 
-    results = tune.run(
-        args.run, config=config, stop={"training_iteration": args.stop_iters}
+    tuner = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop={"training_iteration": args.stop_iters}),
     )
-
+    tuner.fit()
     ray.shutdown()

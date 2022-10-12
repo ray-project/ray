@@ -19,11 +19,7 @@ from ray._private import ray_constants
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
-from ray.experimental.internal_kv import (
-    _internal_kv_get,
-    _internal_kv_initialized,
-    _internal_kv_list,
-)
+
 from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
 
@@ -31,6 +27,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
+
+SNAPSHOT_API_TIMEOUT_SECONDS = 30
 
 
 class RayActivityStatus(str, enum.Enum):
@@ -62,6 +60,14 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
             "This is in the format of seconds since unix epoch."
         ),
     )
+    last_activity_at: Optional[float] = Field(
+        None,
+        description=(
+            "Timestamp when last actvity of this Ray component finished in format of "
+            "seconds since unix epoch. This field does not need to be populated "
+            "for Ray components where it is not meaningful."
+        ),
+    )
 
     @validator("reason", always=True)
     def reason_required(cls, v, values, **kwargs):
@@ -79,8 +85,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
-        assert _internal_kv_initialized()
-        self._job_info_client = JobInfoStorageClient()
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
+        self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
@@ -100,7 +106,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         request.actor_id = bytes.fromhex(actor_id)
         request.force_kill = force_kill
         request.no_restart = no_restart
-        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=5)
+        await self._gcs_actor_info_stub.KillActorViaGcs(
+            request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS
+        )
 
         message = (
             f"Force killed actor with id {actor_id}"
@@ -113,6 +121,13 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
+        timeout = req.query.get("timeout", None)
+        if timeout and timeout.isdigit():
+            timeout = int(timeout)
+        else:
+            timeout = SNAPSHOT_API_TIMEOUT_SECONDS
+
+        actor_limit = int(req.query.get("actor_limit", "1000"))
         (
             job_info,
             job_submission_data,
@@ -120,11 +135,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             serve_data,
             session_name,
         ) = await asyncio.gather(
-            self.get_job_info(),
-            self.get_job_submission_info(),
-            self.get_actor_info(),
-            self.get_serve_info(),
-            self.get_session_name(),
+            self.get_job_info(timeout),
+            self.get_job_submission_info(timeout),
+            self.get_actor_info(actor_limit, timeout),
+            self.get_serve_info(timeout),
+            self.get_session_name(timeout),
         )
         snapshot = {
             "jobs": job_info,
@@ -145,7 +160,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         if timeout and timeout.isdigit():
             timeout = int(timeout)
         else:
-            timeout = 5
+            timeout = SNAPSHOT_API_TIMEOUT_SECONDS
 
         # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
@@ -212,13 +227,30 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
             num_active_drivers = 0
+            latest_job_end_time = 0
             for job_table_entry in reply.job_info_list:
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
                 )
+                latest_job_end_time = (
+                    max(latest_job_end_time, job_table_entry.end_time)
+                    if job_table_entry.end_time
+                    else latest_job_end_time
+                )
                 if not is_dead and not in_internal_namespace:
                     num_active_drivers += 1
+
+            current_timestamp = datetime.now().timestamp()
+            # Latest job end time must be before or equal to the current timestamp.
+            # Job end times may be provided in epoch milliseconds. Check if this
+            # is true, and convert to seconds
+            if latest_job_end_time > current_timestamp:
+                latest_job_end_time = latest_job_end_time / 1000
+                assert current_timestamp >= latest_job_end_time, (
+                    f"Most recent job end time {latest_job_end_time} must be "
+                    f"before or equal to the current timestamp {current_timestamp}"
+                )
 
             is_active = (
                 RayActivityStatus.ACTIVE
@@ -230,7 +262,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 reason=f"Number of active drivers: {num_active_drivers}"
                 if num_active_drivers
                 else None,
-                timestamp=datetime.now().timestamp(),
+                timestamp=current_timestamp,
+                # If latest_job_end_time == 0, no jobs have finished yet so don't
+                # populate last_activity_at
+                last_activity_at=latest_job_end_time if latest_job_end_time else None,
             )
         except Exception as e:
             logger.exception("Failed to get activity status of Ray drivers.")
@@ -240,16 +275,16 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 timestamp=datetime.now().timestamp(),
             )
 
-    def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
+    async def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-        return self._job_info_client.get_info(job_submission_id)
+        return await self._job_info_client.get_info(job_submission_id)
 
-    async def get_job_info(self):
+    async def get_job_info(self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS):
         """Return info for each job.  Here a job is a Ray driver."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=timeout)
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
@@ -262,7 +297,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
-            info = self._get_job_info(metadata)
+            info = await self._get_job_info(metadata)
             entry = {
                 "status": None if info is None else info.status,
                 "status_message": None if info is None else info.message,
@@ -275,12 +310,17 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         return jobs
 
-    async def get_job_submission_info(self):
+    async def get_job_submission_info(
+        self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS
+    ):
         """Info for Ray job submission.  Here a job can have 0 or many drivers."""
 
         jobs = {}
-
-        for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
+        fetched_jobs = await self._job_info_client.get_all_jobs(timeout)
+        for (
+            job_submission_id,
+            job_info,
+        ) in fetched_jobs.items():
             if job_info is not None:
                 entry = {
                     "job_submission_id": job_submission_id,
@@ -296,11 +336,16 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 jobs[job_submission_id] = entry
         return jobs
 
-    async def get_actor_info(self):
+    async def get_actor_info(
+        self, limit: int = 1000, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS
+    ):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
         request.show_dead_jobs = True
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
+        request.limit = limit
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+            request, timeout=timeout
+        )
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
@@ -337,11 +382,13 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                         actors[replica_actor_id]["metadata"]["serve"] = serve_metadata
         return actors
 
-    async def get_serve_info(self) -> Dict[str, Any]:
+    async def get_serve_info(
+        self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS
+    ) -> Dict[str, Any]:
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
-            from ray.serve.constants import SERVE_CONTROLLER_NAME
+            from ray.serve._private.constants import SERVE_CONTROLLER_NAME
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
         except Exception:
             return {}
@@ -349,47 +396,47 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
-        # TODO: Convert to async GRPC, if CPU usage is not a concern.
-        def get_deployments():
-            serve_keys = _internal_kv_list(
-                SERVE_CONTROLLER_NAME, namespace=ray_constants.KV_NAMESPACE_SERVE
-            )
-            serve_snapshot_keys = filter(
-                lambda k: SERVE_SNAPSHOT_KEY in str(k), serve_keys
-            )
-
-            deployments_per_controller: List[Dict[str, Any]] = []
-            for key in serve_snapshot_keys:
-                val_bytes = _internal_kv_get(
-                    key, namespace=ray_constants.KV_NAMESPACE_SERVE
-                ) or "{}".encode("utf-8")
-                deployments_per_controller.append(json.loads(val_bytes.decode("utf-8")))
-            # Merge the deployments dicts of all controllers.
-            deployments: Dict[str, Any] = {
-                k: v for d in deployments_per_controller for k, v in d.items()
-            }
-            # Replace the keys (deployment names) with their hashes to prevent
-            # collisions caused by the automatic conversion to camelcase by the
-            # dashboard agent.
-            return {
-                hashlib.sha1(name.encode()).hexdigest(): info
-                for name, info in deployments.items()
-            }
-
-        return await asyncio.get_event_loop().run_in_executor(
-            executor=self._thread_pool, func=get_deployments
+        serve_keys = await self._gcs_aio_client.internal_kv_keys(
+            SERVE_CONTROLLER_NAME.encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE,
+            timeout=timeout,
         )
 
-    async def get_session_name(self):
-        # TODO(yic): Convert to async GRPC.
-        def get_session():
-            return ray.experimental.internal_kv._internal_kv_get(
-                "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION
-            ).decode()
+        tasks = [
+            self._gcs_aio_client.internal_kv_get(
+                key,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=timeout,
+            )
+            for key in serve_keys
+            if SERVE_SNAPSHOT_KEY in key.decode()
+        ]
 
-        return await asyncio.get_event_loop().run_in_executor(
-            executor=self._thread_pool, func=get_session
+        serve_snapshot_vals = await asyncio.gather(*tasks)
+
+        deployments_per_controller: List[Dict[str, Any]] = [
+            json.loads(val.decode()) for val in serve_snapshot_vals
+        ]
+
+        # Merge the deployments dicts of all controllers.
+        deployments: Dict[str, Any] = {
+            k: v for d in deployments_per_controller for k, v in d.items()
+        }
+        # Replace the keys (deployment names) with their hashes to prevent
+        # collisions caused by the automatic conversion to camelcase by the
+        # dashboard agent.
+        return {
+            hashlib.sha1(name.encode()).hexdigest(): info
+            for name, info in deployments.items()
+        }
+
+    async def get_session_name(self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS):
+        session_name = await self._gcs_aio_client.internal_kv_get(
+            b"session_name",
+            namespace=ray_constants.KV_NAMESPACE_SESSION,
+            timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
+        return session_name.decode()
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
@@ -398,6 +445,12 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )
+        # Lazily constructed because dashboard_head's gcs_aio_client
+        # is lazily constructed
+        if not self._job_info_client:
+            self._job_info_client = JobInfoStorageClient(
+                self._dashboard_head.gcs_aio_client
+            )
 
     @staticmethod
     def is_minimal_module():

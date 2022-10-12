@@ -227,7 +227,9 @@ class SyncSampler(SamplerInput):
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.extra_batches = queue.Queue()
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema_coef=worker.policy_config.get("sampler_perf_stats_ema_coef"),
+        )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
         self.sample_collector = sample_collector_class(
@@ -241,7 +243,9 @@ class SyncSampler(SamplerInput):
         self.render = render
 
         if worker.policy_config.get("enable_connectors", False):
-            self._env_runner = EnvRunnerV2(
+            # Keep a reference to the underlying EnvRunnerV2 instance for
+            # unit testing purpose.
+            self._env_runner_obj = EnvRunnerV2(
                 worker=worker,
                 base_env=self.base_env,
                 horizon=self.horizon,
@@ -253,7 +257,8 @@ class SyncSampler(SamplerInput):
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
                 render=self.render,
-            ).run()
+            )
+            self._env_runner = self._env_runner_obj.run()
         else:
             # Create the rollout generator to use for calls to `get_data()`.
             self._env_runner = _env_runner(
@@ -419,7 +424,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema_coef=worker.policy_config.get("sampler_perf_stats_ema_coef"),
+        )
         self.shutdown = False
         self.observation_fn = observation_fn
         self.render = render
@@ -623,7 +630,7 @@ def _env_runner(
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
 
-    def new_episode(env_id):
+    def _new_episode(env_id):
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
@@ -635,38 +642,23 @@ def _env_runner(
             env_id=env_id,
             worker=worker,
         )
-        # Call each policy's Exploration.on_episode_start method.
-        # Note: This may break the exploration (e.g. ParameterNoise) of
-        # policies in the `policy_map` that have not been recently used
-        # (and are therefore stashed to disk). However, we certainly do not
-        # want to loop through all (even stashed) policies here as that
-        # would counter the purpose of the LRU policy caching.
-        for p in worker.policy_map.cache.values():
-            if getattr(p, "exploration", None) is not None:
-                p.exploration.on_episode_start(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=p.get_session(),
-                )
-        callbacks.on_episode_start(
-            worker=worker,
-            base_env=base_env,
-            policies=worker.policy_map,
-            episode=episode,
-            env_index=env_id,
-        )
         return episode
 
-    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
+    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(_new_episode)
+
+    # Before the very first poll (this will reset all vector sub-environments):
+    # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+    for env_id, sub_env in base_env.get_sub_environments(as_dict=True).items():
+        _create_episode(active_episodes, env_id, callbacks, worker, base_env)
 
     while True:
-        perf_stats.iters += 1
+        perf_stats.incr("iters", 1)
+
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        env_poll_time = time.time() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(summarize(unfiltered_obs)))
@@ -692,7 +684,7 @@ def _env_runner(
             observation_fn=observation_fn,
             sample_collector=sample_collector,
         )
-        perf_stats.raw_obs_processing_time += time.time() - t1
+        perf_stats.incr("raw_obs_processing_time", time.time() - t1)
         for o in outputs:
             yield o
 
@@ -705,7 +697,7 @@ def _env_runner(
             sample_collector=sample_collector,
             active_episodes=active_episodes,
         )
-        perf_stats.inference_time += time.time() - t2
+        perf_stats.incr("inference_time", time.time() - t2)
 
         # Process results and update episode state.
         t3 = time.time()
@@ -721,13 +713,13 @@ def _env_runner(
             normalize_actions=normalize_actions,
             clip_actions=clip_actions,
         )
-        perf_stats.action_processing_time += time.time() - t3
+        perf_stats.incr("action_processing_time", time.time() - t3)
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
 
         # Try to render the env, if required.
         if render:
@@ -758,7 +750,7 @@ def _env_runner(
                     "uint8/w x h x 3 (RGB) image or handle rendering in a "
                     "window and then return `True`."
                 )
-            perf_stats.env_render_time += time.time() - t5
+            perf_stats.incr("env_render_time", time.time() - t5)
 
 
 def _process_observations(
@@ -826,7 +818,6 @@ def _process_observations(
     # For each (vectorized) sub-environment.
     # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
-        is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
 
         # Check for env_id having returned an error instead of a multi-agent obs dict.
@@ -842,7 +833,10 @@ def _process_observations(
             # This will be filled with dummy observations below.
             all_agents_obs = {}
 
-        if not is_new_episode:
+        # If this episode is brand-new, call the episode start callback(s).
+        if episode.started is False:
+            _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
+        else:
             sample_collector.episode_step(episode)
             episode._add_agent_rewards(rewards[env_id])
 
@@ -872,6 +866,9 @@ def _process_observations(
                             episode.media,
                         )
                     )
+            else:
+                # Add metrics about a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -1063,6 +1060,7 @@ def _process_observations(
                     episode=episode,
                     env_index=env_id,
                 )
+
             # Horizon hit and we have a soft horizon (no hard env reset).
             if not episode.is_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
@@ -1070,7 +1068,16 @@ def _process_observations(
                     env_id: all_agents_obs
                 }
             else:
+                # Clean up old finished episode.
                 del active_episodes[env_id]
+
+                # Create a new episode and call `on_episode_created` callback(s).
+                episode = _create_episode(
+                    active_episodes, env_id, callbacks, worker, base_env
+                )
+
+                # TODO(jungong) : This will allow a single faulty env to
+                # take out the entire RolloutWorker indefinitely. Revisit.
                 while True:
                     resetted_obs: Optional[
                         Dict[EnvID, Dict[AgentID, EnvObsType]]
@@ -1079,6 +1086,10 @@ def _process_observations(
                         resetted_obs[env_id], Exception
                     ):
                         break
+                    else:
+                        # Failed to reset, add metrics about a faulty episode.
+                        outputs.append(RolloutMetrics(episode_faulty=True))
+
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -1091,6 +1102,8 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                _call_on_episode_start(new_episode, env_id, callbacks, worker, base_env)
+
                 _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
                 if observation_fn:
@@ -1297,6 +1310,49 @@ def _process_policy_eval_results(
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send
+
+
+def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
+    # Make sure we are really creating a new episode here.
+    assert env_id not in active_episodes
+
+    # Create a new episode under the given `env_id` and call the
+    # `on_episode_created` callbacks.
+    new_episode = active_episodes[env_id]
+    # Call `on_episode_created()` callback.
+    callbacks.on_episode_created(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        env_index=env_id,
+        episode=new_episode,
+    )
+    return new_episode
+
+
+def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
+    # Call each policy's Exploration.on_episode_start method.
+    # Note: This may break the exploration (e.g. ParameterNoise) of
+    # policies in the `policy_map` that have not been recently used
+    # (and are therefore stashed to disk). However, we certainly do not
+    # want to loop through all (even stashed) policies here as that
+    # would counter the purpose of the LRU policy caching.
+    for p in worker.policy_map.cache.values():
+        if getattr(p, "exploration", None) is not None:
+            p.exploration.on_episode_start(
+                policy=p,
+                environment=base_env,
+                episode=episode,
+                tf_sess=p.get_session(),
+            )
+    callbacks.on_episode_start(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        episode=episode,
+        env_index=env_id,
+    )
+    episode.started = True
 
 
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:

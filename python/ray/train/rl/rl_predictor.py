@@ -5,6 +5,7 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
@@ -33,6 +34,12 @@ class RLPredictor(Predictor):
         self.policy = policy
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(policy={self.policy!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -60,11 +67,17 @@ class RLPredictor(Predictor):
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:
             obs = data[TENSOR_COLUMN_NAME].to_numpy()
+            obs = _unwrap_ndarray_object_type_if_needed(obs)
         else:
             obs = data.to_numpy()
 
         actions, _outs, _info = self.policy.compute_actions_from_input_dict(
             input_dict={"obs": obs}
         )
+        actions_arr = np.array(actions)
+        if len(actions_arr.shape) > 1:
+            columns = [f"action{i}" for i in range(actions_arr.shape[1])]
+        else:
+            columns = ["action"]
 
-        return pd.DataFrame(np.array(actions))
+        return pd.DataFrame(actions_arr, columns=columns)

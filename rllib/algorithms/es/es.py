@@ -66,11 +66,12 @@ class ESConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "ES",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=ray.air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
+
     """
 
     def __init__(self):
@@ -510,7 +511,7 @@ class ES(Algorithm):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="compute_single_action", error=True)
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 
@@ -575,7 +576,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.es.es.ESConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

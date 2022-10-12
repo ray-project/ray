@@ -4,6 +4,7 @@ import subprocess
 from collections import Counter
 import multiprocessing
 import os
+
 import pytest
 import shutil
 import tempfile
@@ -46,7 +47,7 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "checkpoint-1")[0]
+        self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
@@ -558,7 +559,7 @@ class ResourceExhaustedTest(unittest.TestCase):
         from sklearn.datasets import fetch_olivetti_faces
 
         a_large_array = []
-        for i in range(25):
+        for i in range(50):
             a_large_array.append(fetch_olivetti_faces())
 
         def training_func(config):

@@ -151,11 +151,11 @@ class VectorEnv:
         """
         pass
 
-    @Deprecated(new="vectorize_gym_envs", error=False)
+    @Deprecated(new="vectorize_gym_envs", error=True)
     def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
         return self.vectorize_gym_envs(*args, **kwargs)
 
-    @Deprecated(new="get_sub_environments", error=False)
+    @Deprecated(new="get_sub_environments", error=True)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
@@ -248,7 +248,16 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(self):
-        return [e.reset() for e in self.envs]
+        # Use reset_at(index) to restart and retry until
+        # we successfully create a new env.
+        resetted_obs = []
+        for i in range(len(self.envs)):
+            while True:
+                obs = self.reset_at(i)
+                if not isinstance(obs, Exception):
+                    break
+            resetted_obs.append(obs)
+        return resetted_obs
 
     @override(VectorEnv)
     def reset_at(self, index: Optional[int] = None) -> EnvObsType:

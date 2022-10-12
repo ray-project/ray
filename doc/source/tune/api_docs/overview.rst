@@ -21,6 +21,7 @@ on `Github`_.
     stoppers.rst
     result_grid.rst
     reporters.rst
+    syncing.rst
     logging.rst
     env.rst
     sklearn.rst

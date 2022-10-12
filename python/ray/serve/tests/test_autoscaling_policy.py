@@ -7,20 +7,22 @@ from unittest import mock
 from typing import List, Iterable
 
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.autoscaling_policy import (
+from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
-from ray.serve.common import DeploymentInfo
-from ray.serve.deployment_state import ReplicaState
+from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 
 import ray
 from ray import serve
 from ray.serve.generated.serve_pb2 import DeploymentRouteList
+
+import numpy as np
 
 
 class TestCalculateDesiredNumReplicas:
@@ -509,10 +511,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # Check that as long as the average number of ongoing requests equals
     # the target_num_ongoing_requests_per_replica, the number of replicas
     # stays the same
-    if (
-        sum(ongoing_requests) / len(ongoing_requests)
-        == config.target_num_ongoing_requests_per_replica
-    ):
+    if np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica:
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
@@ -522,10 +521,7 @@ def test_imbalanced_replicas(ongoing_requests):
 
     # Check downscaling behavior when average number of requests
     # is lower than target_num_ongoing_requests_per_replica
-    elif (
-        sum(ongoing_requests) / len(ongoing_requests)
-        < config.target_num_ongoing_requests_per_replica
-    ):
+    elif np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica:
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
@@ -533,8 +529,7 @@ def test_imbalanced_replicas(ongoing_requests):
         )
 
         if (
-            config.target_num_ongoing_requests_per_replica
-            - sum(ongoing_requests) / len(ongoing_requests)
+            config.target_num_ongoing_requests_per_replica - np.mean(ongoing_requests)
             <= 1
         ):
             # Autoscaling uses a ceiling operator, which means a slightly low

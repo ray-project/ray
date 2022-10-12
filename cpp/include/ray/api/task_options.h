@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <ray/api/ray_exception.h>
+
 #include <cmath>
 
 namespace ray {
@@ -95,6 +97,7 @@ struct CallOptions {
   std::unordered_map<std::string, double> resources;
   PlacementGroup group;
   int bundle_index;
+  std::string serialized_runtime_env_info;
 };
 
 struct ActorCreationOptions {
@@ -105,6 +108,7 @@ struct ActorCreationOptions {
   int max_concurrency = 1;
   PlacementGroup group;
   int bundle_index;
+  std::string serialized_runtime_env_info;
 };
 }  // namespace internal
 

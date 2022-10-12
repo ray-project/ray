@@ -12,10 +12,10 @@ def test_reference_table():
 
     def uris_parser(runtime_env) -> Tuple[str, UriType]:
         result = list()
-        result.append((runtime_env.working_dir(), UriType.WORKING_DIR))
+        result.append((runtime_env.working_dir(), "working_dir"))
         py_module_uris = runtime_env.py_modules()
         for uri in py_module_uris:
-            result.append((uri, UriType.PY_MODULES))
+            result.append((uri, "py_modules"))
         return result
 
     def unused_uris_processor(unused_uris: List[Tuple[str, UriType]]) -> None:
@@ -57,8 +57,8 @@ def test_reference_table():
     )
 
     # Remove runtime env 1
-    expected_unused_uris.append(("s3://working_dir_1.zip", UriType.WORKING_DIR))
-    expected_unused_uris.append(("s3://py_module_B.zip", UriType.PY_MODULES))
+    expected_unused_uris.append(("s3://working_dir_1.zip", "working_dir"))
+    expected_unused_uris.append(("s3://py_module_B.zip", "py_modules"))
     expected_unused_runtime_env = runtime_env_1.serialize()
     reference_table.decrease_reference(
         runtime_env_1, runtime_env_1.serialize(), "raylet"
@@ -67,9 +67,9 @@ def test_reference_table():
     assert not expected_unused_runtime_env
 
     # Remove runtime env 2
-    expected_unused_uris.append(("s3://working_dir_2.zip", UriType.WORKING_DIR))
-    expected_unused_uris.append(("s3://py_module_A.zip", UriType.PY_MODULES))
-    expected_unused_uris.append(("s3://py_module_C.zip", UriType.PY_MODULES))
+    expected_unused_uris.append(("s3://working_dir_2.zip", "working_dir"))
+    expected_unused_uris.append(("s3://py_module_A.zip", "py_modules"))
+    expected_unused_uris.append(("s3://py_module_C.zip", "py_modules"))
     expected_unused_runtime_env = runtime_env_2.serialize()
     reference_table.decrease_reference(
         runtime_env_2, runtime_env_2.serialize(), "raylet"

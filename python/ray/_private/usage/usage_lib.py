@@ -185,7 +185,7 @@ class LibUsageRecorder:
         self._lib_usage_dir = Path(temp_dir_path)
         self._lib_usage_prefix = "_ray_lib_usage-"
         self._lib_usage_filename_match = re.compile(
-            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
         )
 
     def put_lib_usage(self, lib_name: str):
@@ -223,9 +223,9 @@ def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
-            "",
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}".encode(),
+            b"",
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
@@ -244,6 +244,23 @@ def _put_library_usage(library_usage: str):
 class TagKey(Enum):
     _TEST1 = auto()
     _TEST2 = auto()
+
+    # RLlib
+    # The deep learning framework ("tf", "torch", etc.).
+    RLLIB_FRAMEWORK = auto()
+    # The algorithm name (only built-in algorithms).
+    RLLIB_ALGORITHM = auto()
+    # The number of workers as a string.
+    RLLIB_NUM_WORKERS = auto()
+
+    # Serve
+    # The public Python API version ("v1", "v2").
+    SERVE_API_VERSION = auto()
+    # The total number of running serve deployments as a string.
+    SERVE_NUM_DEPLOYMENTS = auto()
+
+    # The GCS storage type, which could be memory or redis.
+    GCS_STORAGE = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -272,9 +289,9 @@ def _put_extra_usage_tag(key: str, value: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}",
-            value,
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode(),
+            value.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
@@ -296,12 +313,13 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report lib usage for driver / workers. Otherwise,
+    # Only report lib usage for driver / ray client / workers. Otherwise,
     # it can be reported if the library is imported from
     # e.g., API server.
     if (
         ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
         or ray._private.worker.global_worker.mode == ray.WORKER_MODE
+        or ray.util.client.ray.is_connected()
     ):
         _put_library_usage(library_usage)
 
@@ -311,8 +329,12 @@ def _put_pre_init_library_usages():
     # NOTE: When the lib is imported from a worker, ray should
     # always be initialized, so there's no need to register the
     # pre init hook.
-    if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
+    if not (
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.util.client.ray.is_connected()
+    ):
         return
+
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
@@ -323,8 +345,12 @@ def _put_pre_init_extra_usage_tags():
         _put_extra_usage_tag(k, v)
 
 
-ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
-ray._private.worker._post_init_hooks.append(_put_pre_init_extra_usage_tags)
+def put_pre_init_usage_stats():
+    _put_pre_init_library_usages()
+    _put_pre_init_extra_usage_tags()
+
+
+ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
 def _usage_stats_report_url():
@@ -731,8 +757,17 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            result.cloud_provider = "kubernetes"
+        # Check if we're on Kubernetes
+        if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
+            # Check if we're using KubeRay >= 0.4.0.
+            if usage_constant.KUBERAY_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERAY
+            # Check if we're using the legacy Ray Operator with Ray >= 2.1.0.
+            elif usage_constant.LEGACY_RAY_OPERATOR_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_LEGACY_RAY_OPERATOR
+            # Else, we're on Kubernetes but not in either of the above categories.
+            else:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
@@ -829,7 +864,7 @@ def generate_write_data(
 
     Params:
         usage_stats: The usage stats that were reported.
-        error(str): The error message of failed reports.
+        error: The error message of failed reports.
 
     Returns:
         UsageStatsToWrite

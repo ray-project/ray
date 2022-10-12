@@ -20,6 +20,7 @@ WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+HTTP_EVENT_PROVIDER_NAME = "WorkflowHttpEventProvider"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 WORKFLOW_OPTIONS = "workflow.io/options"
 
@@ -51,16 +52,16 @@ class WorkflowRef:
     """This class represents a reference of a workflow output.
 
     A reference means the workflow has already been executed,
-    and we have both the workflow step ID and the object ref to it
+    and we have both the workflow task ID and the object ref to it
     living outputs.
 
     This could be used when you want to return a running workflow
-    from a workflow step. For example, the remaining workflows
+    from a workflow task. For example, the remaining workflows
     returned by 'workflow.wait' contains a static ref to these
     pending workflows.
     """
 
-    # The ID of the step that produces the output of the workflow.
+    # The ID of the task that produces the output of the workflow.
     task_id: TaskID
     # The ObjectRef of the output. If it is "None", then the output has been
     # saved in the storage, and we need to check the workflow management actor
@@ -106,8 +107,8 @@ class WorkflowStatus(str, Enum):
 
 
 @unique
-class StepType(str, Enum):
-    """All step types."""
+class TaskType(str, Enum):
+    """All task types."""
 
     FUNCTION = "FUNCTION"
     WAIT = "WAIT"
@@ -120,9 +121,9 @@ CheckpointModeType = bool
 class CheckpointMode(Enum):
     """All checkpoint modes."""
 
-    # Keep the checkpoint of the workflow step.
+    # Keep the checkpoint of the workflow task.
     SYNC = True
-    # Skip the checkpoint of the workflow step.
+    # Skip the checkpoint of the workflow task.
     SKIP = False
 
 
@@ -137,9 +138,9 @@ def _hash(obj: Any) -> bytes:
 def calculate_identifier(obj: Any) -> str:
     """Calculate a url-safe identifier for an object."""
 
-    # Step 1: Serialize the object.
-    # Step 2: Calculate its sha256 hash.
-    # Step 3: Get the url safe, base64 representation of it.
+    # Task 1: Serialize the object.
+    # Task 2: Calculate its sha256 hash.
+    # Task 3: Get the url safe, base64 representation of it.
 
     # TODO (Alex): Ideally we should use the existing ObjectRef serializer to
     # avoid duplicate serialization passes and support nested object refs.
@@ -151,11 +152,11 @@ def calculate_identifier(obj: Any) -> str:
 
 
 @dataclass
-class WorkflowStepRuntimeOptions:
-    """Options that will affect a workflow step at runtime."""
+class WorkflowTaskRuntimeOptions:
+    """Options that will affect a workflow task at runtime."""
 
-    # Type of the step.
-    step_type: "StepType"
+    # Type of the task.
+    task_type: "TaskType"
     # Whether the user want to handle the exception manually.
     catch_exceptions: bool
     # Whether application-level errors should be retried.
@@ -169,7 +170,7 @@ class WorkflowStepRuntimeOptions:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "step_type": self.step_type,
+            "task_type": self.task_type,
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "retry_exceptions": self.retry_exceptions,
@@ -180,7 +181,7 @@ class WorkflowStepRuntimeOptions:
     @classmethod
     def from_dict(cls, value: Dict[str, Any]):
         return cls(
-            step_type=StepType[value["step_type"]],
+            task_type=TaskType[value["task_type"]],
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
             retry_exceptions=value["retry_exceptions"],

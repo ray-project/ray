@@ -17,8 +17,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
-from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -26,6 +25,7 @@ from ray.serve.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -133,20 +133,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -158,7 +145,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
@@ -169,6 +155,7 @@ def start(
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
+        "Existing deployments with no code changes will not be redeployed.\n\n"
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
@@ -202,7 +189,10 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app from the specified import path or YAML config.\n"
+        "Runs the Serve app from the specified import path (e.g. "
+        "my_script:my_bound_deployment) or YAML config.\n\n"
+        "If using a YAML config, existing deployments with no code changes "
+        "will not be redeployed.\n\n"
         "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
@@ -277,6 +267,11 @@ def deploy(config_file_name: str, address: str):
         "will loop and log status until Ctrl-C'd, then clean up the app."
     ),
 )
+@click.option(
+    "--gradio",
+    is_flag=True,
+    help=("Whether to enable gradio visualization of deployment graph."),
+)
 def run(
     config_or_import_path: str,
     runtime_env: str,
@@ -287,6 +282,7 @@ def run(
     host: str,
     port: int,
     blocking: bool,
+    gradio: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -311,19 +307,41 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+
+    if is_config:
+        client = _private_api.serve_start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
+        )
+    else:
+        client = _private_api.serve_start(
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
+        )
 
     try:
         if is_config:
-            client.deploy_app(config)
+            client.deploy_app(config, _blocking=gradio)
+            if gradio:
+                handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            serve.run(node, host=host, port=port)
+            handle = serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+        if gradio:
+            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+
+            visualizer = GraphVisualizer()
+            visualizer.visualize_with_gradio(handle)
+        else:
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -427,6 +445,12 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
+    "--kubernetes_format",
+    "-k",
+    is_flag=True,
+    help="Print Serve config in Kubernetes format.",
+)
+@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -436,7 +460,9 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def build(import_path: str, app_dir: str, output_path: Optional[str]):
+def build(
+    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -447,11 +473,18 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         )
 
     app = build_app(node)
+    schema = ServeApplicationSchema(
+        import_path=import_path,
+        runtime_env={},
+        host="0.0.0.0",
+        port=8000,
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
+    )
 
-    config = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-    ).dict()
-    config["import_path"] = import_path
+    if kubernetes_format:
+        config = schema.kubernetes_dict(exclude_unset=True)
+    else:
+        config = schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -460,6 +493,9 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
+
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)

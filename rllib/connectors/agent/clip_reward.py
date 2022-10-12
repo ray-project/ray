@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 
@@ -39,14 +39,14 @@ class ClipRewardAgentConnector(AgentConnector):
             )
         return ac_data
 
-    def to_config(self):
+    def to_state(self):
         return ClipRewardAgentConnector.__name__, {
             "sign": self.sign,
             "limit": self.limit,
         }
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ClipRewardAgentConnector(ctx, **params)
 
 

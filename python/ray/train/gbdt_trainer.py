@@ -11,7 +11,7 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import flatten_dict
+from ray._private.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray
@@ -26,18 +26,41 @@ def _convert_scaling_config_to_ray_params(
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
-    default_ray_params = default_ray_params or {}
-    resources_per_worker = scaling_config.additional_resources_per_worker
-    num_workers = scaling_config.num_workers
-    cpus_per_worker = scaling_config.num_cpus_per_worker
-    gpus_per_worker = scaling_config.num_gpus_per_worker
+    """Scaling config parameters have precedence over default ray params.
 
+    Default ray params are defined in the trainers (xgboost/lightgbm),
+    but if the user requests something else, that should be respected.
+    """
+    resources = (scaling_config.resources_per_worker or {}).copy()
+
+    cpus_per_actor = resources.pop("CPU", 0)
+    if not cpus_per_actor:
+        cpus_per_actor = default_ray_params.get("cpus_per_actor", 0)
+
+    gpus_per_actor = resources.pop("GPU", int(scaling_config.use_gpu))
+    if not gpus_per_actor:
+        gpus_per_actor = default_ray_params.get("gpus_per_actor", 0)
+
+    resources_per_actor = resources
+    if not resources_per_actor:
+        resources_per_actor = default_ray_params.get("resources_per_actor", None)
+
+    num_actors = scaling_config.num_workers
+    if not num_actors:
+        num_actors = default_ray_params.get("num_actors", 0)
+
+    ray_params_kwargs = default_ray_params.copy() or {}
+
+    ray_params_kwargs.update(
+        {
+            "cpus_per_actor": int(cpus_per_actor),
+            "gpus_per_actor": int(gpus_per_actor),
+            "resources_per_actor": resources_per_actor,
+            "num_actors": int(num_actors),
+        }
+    )
     ray_params = ray_params_cls(
-        num_actors=int(num_workers),
-        cpus_per_actor=int(cpus_per_worker),
-        gpus_per_actor=int(gpus_per_worker),
-        resources_per_actor=resources_per_worker,
-        **default_ray_params,
+        **ray_params_kwargs,
     )
 
     return ray_params
@@ -45,9 +68,9 @@ def _convert_scaling_config_to_ray_params(
 
 @DeveloperAPI
 class GBDTTrainer(BaseTrainer):
-    """Common logic for gradient-boosting decision tree (GBDT) frameworks
-    like XGBoost-Ray and LightGBM-Ray.
+    """Abstract class for scaling gradient-boosting decision tree (GBDT) frameworks.
 
+    Inherited by XGBoostTrainer and LightGBMTrainer.
 
     Args:
         datasets: Ray Datasets to use for training and validation. Must include a
@@ -183,6 +206,17 @@ class GBDTTrainer(BaseTrainer):
                     self._ray_params.num_actors
                 )
 
+    def _checkpoint_at_end(self, model, evals_result: dict) -> None:
+        # We need to call session.report to save checkpoints, so we report
+        # the last received metrics (possibly again).
+        result_dict = flatten_dict(evals_result, delimiter="-")
+        for k in list(result_dict):
+            result_dict[k] = result_dict[k][-1]
+
+        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+        tune.report(**result_dict)
+
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
 
@@ -234,18 +268,10 @@ class GBDTTrainer(BaseTrainer):
             checkpoint_at_end = True
 
         if checkpoint_at_end:
-            # We need to call tune.report to save checkpoints, so we report
-            # the last received metrics (possibly again).
-            result_dict = flatten_dict(evals_result, delimiter="-")
-            for k in list(result_dict):
-                result_dict[k] = result_dict[k][-1]
+            self._checkpoint_at_end(model, evals_result)
 
-            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-                tune.report(**result_dict)
-
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        trainable_cls = super()._generate_trainable_cls()
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
         ray_params_cls = self._ray_params_cls

@@ -16,7 +16,7 @@ import {
   WorkerFeatureRenderFn,
 } from "./types";
 
-const GPU_COL_WIDTH = 120;
+export const GPU_COL_WIDTH = 120;
 
 const clusterGPUUtilization = (nodes: Array<Node>): number => {
   const utils = nodes
@@ -83,18 +83,18 @@ const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
   );
 };
 
-type NodeGPUEntryProps = {
+export type NodeGPUEntryProps = {
   slot: number;
   gpu: GPUStats;
 };
 
-const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
+export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
   return (
     <Box display="flex" style={{ minWidth: GPU_COL_WIDTH }}>
       <Tooltip title={gpu.name}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
-      {gpu.utilizationGpu ? (
+      {gpu.utilizationGpu !== undefined ? (
         <UsageBar
           percent={gpu.utilizationGpu}
           text={`${gpu.utilizationGpu.toFixed(1)}%`}
@@ -112,7 +112,9 @@ type WorkerGPUEntryProps = {
   resourceSlot: ResourceSlot;
 };
 
-const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
+export const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({
+  resourceSlot,
+}) => {
   const { allocation, slot } = resourceSlot;
   // This is a bit of  a dirty hack . For some reason, the slot GPU slot
   // 0 as assigned always shows up as undefined in the API response.

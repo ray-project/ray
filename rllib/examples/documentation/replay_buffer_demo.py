@@ -4,13 +4,13 @@ from typing import Optional
 import random
 import numpy as np
 
-from ray import tune
+from ray import air, tune
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
@@ -80,11 +80,13 @@ config = (
     .environment(env="CartPole-v0")
 )
 
-tune.run(
+tune.Tuner(
     "DQN",
-    config=config.to_dict(),
-    stop={"training_iteration": 1},
-)
+    param_space=config.to_dict(),
+    run_config=air.RunConfig(
+        stop={"training_iteration": 1},
+    ),
+).fit()
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
@@ -105,7 +107,7 @@ while not done:
     one_step_batch = SampleBatch(
         {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
     )
-    batch = SampleBatch.concat_samples([batch, one_step_batch])
+    batch = concat_samples([batch, one_step_batch])
     t += 1
 
 less_sampled_buffer.add(batch)
@@ -130,7 +132,11 @@ config = {
     },
 }
 
-tune.run(
-    "DQN", config=config, stop={"episode_reward_mean": 50, "training_iteration": 10}
-)
+tune.Tuner(
+    "DQN",
+    param_space=config,
+    run_config=air.RunConfig(
+        stop={"episode_reward_mean": 50, "training_iteration": 10}
+    ),
+).fit()
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

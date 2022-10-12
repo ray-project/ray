@@ -8,6 +8,7 @@ from ray.tune.search.variant_generator import grid_search
 from ray.tune.search.search_generator import SearchGenerator
 
 from ray._private.utils import get_function_args
+from ray.util import PublicAPI
 
 
 def _import_variant_generator():
@@ -111,6 +112,7 @@ SEARCH_ALG_IMPORT = {
 }
 
 
+@PublicAPI(stability="beta")
 def create_searcher(
     search_alg,
     **kwargs,
@@ -131,8 +133,8 @@ def create_searcher(
     Returns:
         ray.tune.search.Searcher: The search algorithm.
     Example:
-        >>> from ray import tune
-        >>> search_alg = tune.create_searcher('ax')
+        >>> from ray import tune # doctest: +SKIP
+        >>> search_alg = tune.create_searcher('ax') # doctest: +SKIP
     """
 
     search_alg = search_alg.lower()

@@ -3,7 +3,7 @@ from gym.spaces import Dict, Tuple, Box, Discrete
 import os
 
 import ray
-import ray.tune as tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
@@ -78,7 +78,9 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

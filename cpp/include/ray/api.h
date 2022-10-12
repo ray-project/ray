@@ -17,12 +17,14 @@
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
 #include <ray/api/actor_task_caller.h>
+#include <ray/api/function_manager.h>
 #include <ray/api/logging.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
+#include <ray/api/runtime_env.h>
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 
@@ -269,7 +271,8 @@ inline ray::internal::TaskCaller<F> Task(F func) {
   static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
   static_assert(!std::is_member_function_pointer_v<F>,
                 "Incompatible type: member function cannot be called with ray::Task.");
-  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func));
+  auto func_name = internal::FunctionManager::Instance().GetFunctionName(func);
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func_name));
   return ray::internal::TaskCaller<F>(ray::internal::GetRayRuntime().get(),
                                       std::move(remote_func_holder));
 }
@@ -277,7 +280,8 @@ inline ray::internal::TaskCaller<F> Task(F func) {
 /// Creating an actor.
 template <typename F>
 inline ray::internal::ActorCreator<F> Actor(F create_func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(create_func));
+  auto func_name = internal::FunctionManager::Instance().GetFunctionName(create_func);
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func_name));
   return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
                                         std::move(remote_func_holder));
 }

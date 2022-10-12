@@ -25,7 +25,7 @@ import psutil
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClientOptions, Config
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -117,7 +117,7 @@ def propagate_jemalloc_env_var(
     Params:
         jemalloc_path: The path to the jemalloc shared library.
         jemalloc_conf: `,` separated string of jemalloc config.
-        jemalloc_comps List(str): The list of Ray components
+        jemalloc_comps: The list of Ray components
             that we will profile.
         process_type: The process type that needs jemalloc
             env var for memory profiling. If it doesn't match one of
@@ -1058,6 +1058,7 @@ def _start_redis_instance(
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
 ):
     """Start a single Redis server.
 
@@ -1089,6 +1090,7 @@ def _start_redis_instance(
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -1107,11 +1109,38 @@ def _start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-    command += ["--port", str(port), "--loglevel", "warning"]
+
+    if enable_tls:
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("", 0))
+            free_port = s.getsockname()[1]
+        command += [
+            "--tls-port",
+            str(port),
+            "--loglevel",
+            "warning",
+            "--port",
+            str(free_port),
+        ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
+
     if listen_to_localhost_only:
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
+    if enable_tls:
+        if Config.REDIS_CA_CERT():
+            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
+        if Config.REDIS_CLIENT_CERT():
+            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
+        if Config.REDIS_CLIENT_KEY():
+            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
+        command += ["--tls-replication", "yes"]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -1185,8 +1214,9 @@ def start_log_monitor(
     return process_info
 
 
-def start_dashboard(
-    require_dashboard: bool,
+def start_api_server(
+    include_dashboard: bool,
+    raise_on_failure: bool,
     host: str,
     gcs_address: str,
     temp_dir: str,
@@ -1198,12 +1228,15 @@ def start_dashboard(
     backup_count: int = 0,
     redirect_logging: bool = True,
 ):
-    """Start a dashboard process.
+    """Start a API server process.
 
     Args:
-        require_dashboard: If true, this will raise an exception if we
-            fail to start the dashboard. Otherwise it will print a warning if
-            we fail to start the dashboard.
+        include_dashboard: If true, this will load all dashboard-related modules
+            when starting the API server. Otherwise, it will only
+            start the modules that are not relevant to the dashboard.
+        raise_on_failure: If true, this will raise an exception
+            if we fail to start the API server. Otherwise it will print
+            a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1293,6 +1326,13 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
+        if not include_dashboard:
+            # If dashboard is not included, load modules
+            # that are irrelevant to the dashboard.
+            # TODO(sang): Modules like job or state APIs should be
+            # loaded although dashboard is disabled. Fix it.
+            command.append("--modules-to-load=UsageStatsHead")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1326,6 +1366,7 @@ def start_dashboard(
                 if dashboard_returncode is not None
                 else ""
             )
+            # TODO(sang): Change it to the API server.
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1357,9 +1398,10 @@ def start_dashboard(
             dashboard_url = ""
         return dashboard_url, process_info
     except Exception as e:
-        if require_dashboard:
+        if raise_on_failure:
             raise e from e
         else:
+            # TODO(sang): Change it to the API server.
             logger.error(f"Failed to start the dashboard: {e}")
             logger.exception(e)
             return None, None
@@ -1390,7 +1432,7 @@ def start_gcs_server(
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
-        metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
 
     Returns:
@@ -1407,10 +1449,21 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_address:
-        redis_ip_address, redis_port = redis_address.rsplit(":")
+        parts = redis_address.split("://", 1)
+        enable_redis_ssl = "false"
+        if len(parts) == 1:
+            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+        else:
+            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+                raise ValueError(f"Invalid redis address {redis_address}")
+            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+            if parts[0] == "rediss":
+                enable_redis_ssl = "true"
+
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
+            f"--redis_enable_ssl={enable_redis_ssl}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
@@ -1470,7 +1523,7 @@ def start_raylet(
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
         node_ip_address: The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. If it's
+        node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
@@ -1482,7 +1535,7 @@ def start_raylet(
         storage: The persistent storage URI.
         temp_dir: The path of the temporary directory Ray will use.
         session_dir: The path of this session.
-        resource_dir(str): The path of resource of this session .
+        resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
@@ -1571,6 +1624,7 @@ def start_raylet(
             session_dir,
             log_dir,
             node_ip_address,
+            setup_worker_path,
         )
     else:
         cpp_worker_command = []
@@ -1785,6 +1839,7 @@ def build_cpp_worker_command(
     session_dir: str,
     log_dir: str,
     node_ip_address: str,
+    setup_worker_path: str,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1797,11 +1852,15 @@ def build_cpp_worker_command(
         session_dir: The path of this session.
         log_dir: The path of logs.
         node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
+            the environment for the worker process.
     Returns:
         The command string for starting CPP worker.
     """
 
     command = [
+        sys.executable,
+        setup_worker_path,
         DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
@@ -1967,7 +2026,7 @@ def start_monitor(
     Args:
         redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
-        logs_dir(str): The path to the log directory.
+        logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If

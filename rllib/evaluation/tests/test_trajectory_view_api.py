@@ -1,4 +1,3 @@
-import copy
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
@@ -53,14 +52,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_normal_case(self):
         """Tests, whether Model and Policy return the correct ViewRequirements."""
-        config = dqn.DEFAULT_CONFIG.copy()
-        config["num_envs_per_worker"] = 10
-        config["rollout_fragment_length"] = 4
+        config = (
+            dqn.DQNConfig()
+            .rollouts(num_envs_per_worker=10, rollout_fragment_length=4)
+            .environment("ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+        )
 
         for _ in framework_iterator(config):
-            algo = dqn.DQN(
-                config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
-            )
+            algo = config.build()
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -86,9 +85,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
-            expected_count = (
-                config["num_envs_per_worker"] * config["rollout_fragment_length"]
-            )
+            expected_count = config.num_envs_per_worker * config.rollout_fragment_length
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
                 assert len(v) == expected_count
@@ -102,6 +99,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
+        config["create_env_on_driver"] = True
 
         for _ in framework_iterator(config):
             algo = ppo.PPO(config, env="CartPole-v0")
@@ -142,6 +140,24 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
+
+            rollout_worker = algo.workers.local_worker()
+            sample_batch = rollout_worker.sample()
+
+            self.assertEqual(sample_batch.count, 200, "ppo rollout count != 200")
+            self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
+            self.assertEqual(
+                len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
+            )
+
+            # check if non-zero state_ins are pointing to the correct state_outs
+            seq_counters = np.cumsum(sample_batch["seq_lens"])
+            for i in range(sample_batch["state_in_0"].shape[0]):
+                state_in = sample_batch["state_in_0"][i]
+                if np.any(state_in != 0):
+                    # non-zero state-in should be one of th state_outs.
+                    state_out_ind = seq_counters[i - 1] - 1
+                    check(sample_batch["state_out_0"][state_out_ind], state_in)
             algo.stop()
 
     def test_traj_view_attention_net(self):
@@ -321,26 +337,22 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         batch = rollout_worker_w_api.sample()  # noqa: F841
 
     def test_counting_by_agent_steps(self):
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-
         num_agents = 3
 
-        config["num_workers"] = 2
-        config["num_sgd_iter"] = 2
-        config["framework"] = "torch"
-        config["rollout_fragment_length"] = 21
-        config["train_batch_size"] = 147
-        config["multiagent"] = {
-            "policies": {f"p{i}" for i in range(num_agents)},
-            "policy_mapping_fn": lambda aid, **kwargs: "p{}".format(aid),
-            "count_steps_by": "agent_steps",
-        }
+        config = ppo.PPOConfig()
         # Env setup.
-        config["env"] = MultiAgentPendulum
-        config["env_config"] = {"num_agents": num_agents}
+        config.environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
+        config.rollouts(num_rollout_workers=2, rollout_fragment_length=21)
+        config.training(num_sgd_iter=2, train_batch_size=147)
+        config.framework("torch")
+        config.multi_agent(
+            policies={f"p{i}" for i in range(num_agents)},
+            policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid),
+            count_steps_by="agent_steps",
+        )
 
         num_iterations = 2
-        algo = ppo.PPO(config=config)
+        algo = config.build()
         results = None
         for i in range(num_iterations):
             results = algo.train()
@@ -351,11 +363,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         )
         self.assertGreaterEqual(
             results["agent_timesteps_total"],
-            num_iterations * config["train_batch_size"],
+            num_iterations * config.train_batch_size,
         )
         self.assertLessEqual(
             results["agent_timesteps_total"],
-            (num_iterations + 1) * config["train_batch_size"],
+            (num_iterations + 1) * config.train_batch_size,
         )
         algo.stop()
 

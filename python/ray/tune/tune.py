@@ -9,14 +9,16 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air import CheckpointConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.progress_reporter import (
     ProgressReporter,
     RemoteReporterMixin,
-    detect_reporter,
+    _detect_reporter,
+    _detect_progress_metrics,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -30,7 +32,7 @@ from ray.tune.schedulers import (
     TrialScheduler,
 )
 from ray.tune.schedulers.util import (
-    set_search_properties_backwards_compatible as scheduler_set_search_props,
+    _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
 from ray.tune.stopper import Stopper
 from ray.tune.search import (
@@ -42,39 +44,49 @@ from ray.tune.search import (
     create_searcher,
 )
 from ray.tune.search.util import (
-    set_search_properties_backwards_compatible as searcher_set_search_props,
+    _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
-from ray.tune.search.variant_generator import has_unresolved_values
+from ray.tune.search.variant_generator import _has_unresolved_values
 from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
 
-def _check_default_resources_override(
+def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
-) -> bool:
+) -> Optional[Type[Trainable]]:
     if isinstance(run_identifier, Experiment):
         run_identifier = run_identifier.run_identifier
 
     if isinstance(run_identifier, type):
         if not issubclass(run_identifier, Trainable):
             # If obscure dtype, assume it is overridden.
-            return True
+            return None
         trainable_cls = run_identifier
     elif callable(run_identifier):
         trainable_cls = run_identifier
     elif isinstance(run_identifier, str):
         trainable_cls = get_trainable_cls(run_identifier)
     else:
+        return None
+
+    return trainable_cls
+
+
+def _check_default_resources_override(
+    run_identifier: Union[Experiment, str, Type, Callable]
+) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
         # Default to True
         return True
 
@@ -366,10 +378,10 @@ def run(
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         set_verbosity(verbose)
-        progress_reporter = progress_reporter or detect_reporter()
+        progress_reporter = progress_reporter or _detect_reporter()
 
         # JupyterNotebooks don't work with remote tune runs out of the box
         # (e.g. via Ray client) as they don't have access to the main
@@ -377,7 +389,7 @@ def run(
         # strings, which will then be displayed on the driver side.
         if isinstance(progress_reporter, RemoteReporterMixin):
             string_queue = Queue(
-                actor_options={"num_cpus": 0, **force_on_current_node(None)}
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
             )
             progress_reporter.output_queue = string_queue
 
@@ -417,6 +429,8 @@ def run(
 
     del remote_run_kwargs
 
+    ray._private.usage.usage_lib.record_library_usage("tune")
+
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
@@ -430,6 +444,21 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     _validate_upload_dir(sync_config)
+
+    checkpoint_score_attr = checkpoint_score_attr or ""
+    if checkpoint_score_attr.startswith("min-"):
+        checkpoint_score_attr = checkpoint_score_attr[4:]
+        checkpoint_score_order = "min"
+    else:
+        checkpoint_score_order = "max"
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=keep_checkpoints_num,
+        checkpoint_score_attribute=checkpoint_score_attr,
+        checkpoint_score_order=checkpoint_score_order,
+        checkpoint_frequency=checkpoint_freq,
+        checkpoint_at_end=checkpoint_at_end,
+    )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -517,13 +546,10 @@ def run(
                 local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
+                checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
-                checkpoint_freq=checkpoint_freq,
-                checkpoint_at_end=checkpoint_at_end,
-                keep_checkpoints_num=keep_checkpoints_num,
-                checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
                 restore=restore,
@@ -591,7 +617,7 @@ def run(
         config,
         **experiments[0].public_spec,
     ):
-        if has_unresolved_values(config):
+        if _has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
                 "unresolved parameters, but the search algorithm was already "
@@ -610,8 +636,12 @@ def run(
             "from your scheduler or from your call to `tune.run()`"
         )
 
+    progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
+
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = _create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -658,9 +688,11 @@ def run(
         else:
             logger.warning(
                 "Tune detects GPUs, but no trials are using GPUs. "
-                "To enable trials to use GPUs, set "
-                "tune.run(resources_per_trial={'gpu': 1}...) "
+                "To enable trials to use GPUs, wrap `train_func` with "
+                "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
+                "For Ray AIR Trainers, you can specify GPU resources "
+                "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
                 "Trainable API."
@@ -695,7 +727,7 @@ def run(
         if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
-    progress_reporter = progress_reporter or detect_reporter()
+    progress_reporter = progress_reporter or _detect_reporter()
 
     tune_start = time.time()
 
@@ -807,7 +839,7 @@ def run_experiments(
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         return ray.get(
             remote_run.remote(
@@ -829,7 +861,7 @@ def run_experiments(
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
+    experiments = _convert_to_experiment_list(experiments)
 
     if concurrent:
         return run(

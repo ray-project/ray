@@ -13,15 +13,18 @@ import time
 import ray
 from lightgbm_ray import RayParams
 
-from ray.util.lightgbm.release_test_util import train_ray
+from release_test_util import train_ray
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_small")
+
+    runtime_env = {"working_dir": os.path.dirname(__file__)}
+
     if addr.startswith("anyscale://"):
-        ray.init(address=addr, job_name=job_name)
+        ray.init(address=addr, job_name=job_name, runtime_env=runtime_env)
     else:
-        ray.init(address="auto")
+        ray.init(address="auto", runtime_env=runtime_env)
 
     output = os.environ["TEST_OUTPUT_JSON"]
     ray_params = RayParams(

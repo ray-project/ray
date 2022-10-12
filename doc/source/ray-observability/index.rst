@@ -1,11 +1,14 @@
+.. _observability:
+
 Observability
-===============
+=============
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 2
     :caption: Observability, Debugging, and Profiling
 
     ../ray-core/ray-dashboard.rst
+    state/state-api.rst
     ray-debugging.rst
     ray-logging.rst
     ray-metrics.rst

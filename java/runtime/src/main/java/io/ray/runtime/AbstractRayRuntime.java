@@ -1,5 +1,8 @@
 package io.ray.runtime;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
@@ -9,6 +12,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
+import io.ray.api.exception.RuntimeEnvException;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.CppFunction;
@@ -50,7 +54,6 @@ import io.ray.runtime.util.ConcurrencyGroupUtils;
 import io.ray.runtime.utils.parallelactor.ParallelActorContextImpl;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -71,6 +74,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected WorkerContext workerContext;
 
   private static ParallelActorContextImpl parallelActorContextImpl = new ParallelActorContextImpl();
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -306,8 +311,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars, List<String> jars) {
-    return new RuntimeEnvImpl(envVars, jars);
+  public RuntimeEnv createRuntimeEnv() {
+    return new RuntimeEnvImpl();
+  }
+
+  @Override
+  public RuntimeEnv deserializeRuntimeEnv(String serializedRuntimeEnv) throws RuntimeEnvException {
+    RuntimeEnvImpl runtimeEnv = new RuntimeEnvImpl();
+    try {
+      runtimeEnv.runtimeEnvs = (ObjectNode) MAPPER.readTree(serializedRuntimeEnv);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException(e);
+    }
+    return runtimeEnv;
   }
 
   private ObjectRef callNormalFunction(

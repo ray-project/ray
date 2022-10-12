@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
@@ -121,7 +121,10 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    tuner = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
