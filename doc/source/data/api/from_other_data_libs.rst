@@ -31,8 +31,6 @@ For Pandas Users
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
    * - len(df) or df.shape[0]
      - :meth:`ds.count() <ray.data.Dataset.count>`
-   * - pandas.DataFrame.take()
-     - :meth:`ds.take() <ray.data.Dataset.take>`
    * - pandas.DataFrame.truncate()
      - :meth:`ds.limit() <ray.data.Dataset.limit>`
    * - pandas.DataFrame.iterrows()
