@@ -82,7 +82,7 @@ class DataDownloader:
                 "NVIDIA/DeepLearningExamples:torchhub",
                 "nvidia_convnets_processing_utils",
             )
-            with open("/home/ray/.cache/torch/success", "w") as fp:
+            with open("/home/ray/.cache/torch/success", "w") as _:
                 pass
 
         else:
