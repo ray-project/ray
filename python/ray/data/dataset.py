@@ -536,8 +536,9 @@ class Dataset(Generic[T]):
             # Fetch next available input blocks for the batch.
             # Only fetch required number of blocks but not all blocks.
             # This avoids over-buffering in current node's memory.
+            blocks_iter = iter(blocks)
             def _fetch_next_blocks(batcher: Batcher, batch_size: Optional[int]):
-                for block in blocks:
+                for block in blocks_iter:
                     batcher.add(block)
                     if batch_size is None or batcher.buffer_size() >= batch_size:
                         break
