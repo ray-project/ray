@@ -185,29 +185,3 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
             .config("spark.task.maxFailures", "1") \
             .config("spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path) \
             .getOrCreate()
-
-
-class TestLargeCoresCluster(RayOnSparkGPUClusterTestBase):
-
-    @classmethod
-    def setup_class(cls):
-        cls.num_total_cpus = 8
-        cls.num_total_gpus = 8
-        cls.num_cpus_per_spark_task = 1
-        cls.num_gpus_per_spark_task = 1
-        cls.max_spark_tasks = 8
-        gpu_discovery_script_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "discover_8_gpu.sh"
-        )
-        os.environ["SPARK_WORKER_CORES"] = "8"
-        cls.spark = SparkSession.builder \
-            .master("local-cluster[1, 8, 8192]") \
-            .config("spark.task.cpus", "1") \
-            .config("spark.task.resource.gpu.amount", "1") \
-            .config("spark.executor.cores", "8") \
-            .config("spark.worker.resource.gpu.amount", "8") \
-            .config("spark.executor.resource.gpu.amount", "8") \
-            .config("spark.task.maxFailures", "1") \
-            .config("spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path) \
-            .getOrCreate()
