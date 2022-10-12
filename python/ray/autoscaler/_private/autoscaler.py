@@ -429,7 +429,6 @@ class StandardAutoscaler:
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
-            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
         self._report_pending_infeasible(unfulfilled)
 
