@@ -855,7 +855,7 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, **ray_remote_args)
+            RandomShuffleStage(seed, num_blocks, ray_remote_args)
         )
         return Dataset(plan, self._epoch, self._lazy)
 
