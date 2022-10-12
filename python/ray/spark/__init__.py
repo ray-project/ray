@@ -92,7 +92,7 @@ class RayClusterOnSpark:
                 if cur_alive_worker_count > last_alive_worker_count:
                     last_alive_worker_count = cur_alive_worker_count
                     last_progress_move_time = time.time()
-                    _logger.info(
+                    _logger.warning(
                         "Ray worker nodes are starting, progress: "
                         f"({cur_alive_worker_count} / {self.num_ray_workers})"
                     )

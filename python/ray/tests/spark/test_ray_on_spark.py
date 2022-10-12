@@ -64,7 +64,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             with patch.object(ray_spark.RayClusterOnSpark, "shutdown", fake_shutdown):
                 cluster._cancel_background_spark_job()
-                time.sleep(5)
+                time.sleep(20)
 
             assert len(self.get_ray_worker_resources_list()) == 0
 
