@@ -1,4 +1,4 @@
-package io.ray.serve.util;
+package io.ray.serve.deployment;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
