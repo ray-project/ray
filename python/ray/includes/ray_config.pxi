@@ -118,10 +118,6 @@ cdef class Config:
         return RayConfig.instance().use_ray_syncer()
 
     @staticmethod
-    def REDIS_ENABLE_SSL():
-        return RayConfig.instance().REDIS_ENABLE_SSL()
-
-    @staticmethod
     def REDIS_CA_CERT():
         return RayConfig.instance().REDIS_CA_CERT()
 
