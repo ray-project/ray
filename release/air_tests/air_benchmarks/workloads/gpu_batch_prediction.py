@@ -39,7 +39,7 @@ def main(data_size_gb: int):
 
     model = resnet18(pretrained=True)
 
-    preprocessor = BatchMapper(preprocess)
+    preprocessor = BatchMapper(preprocess, batch_format="numpy")
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
