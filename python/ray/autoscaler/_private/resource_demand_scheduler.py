@@ -54,7 +54,7 @@ NodeResources = ResourceDict
 ResourceDemands = List[ResourceDict]
 
 
-class UtilizationScore("Protocol"):
+class UtilizationScore:
     """This fancy class just defines the `UtilizationScore` protocol to be
     some type that is a "totally ordered set" (i.e. things that can be sorted).
 
