@@ -149,9 +149,6 @@ class PolicySpec:
         else:
             raise AttributeError(f"Unknown policy class spec {spec['policy_class']}")
 
-        print("obs: ", spec["observation_space"])
-        print("action: ", spec["action_space"])
-
         return cls(
             policy_class=policy_class,
             observation_space=space_from_dict(spec["observation_space"]),
@@ -291,7 +288,6 @@ class Policy(metaclass=ABCMeta):
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
 
         # Create the new policy.
-        print(pol_spec.policy_class)
         new_policy = pol_spec.policy_class(
             # Note(jungong) : we are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
