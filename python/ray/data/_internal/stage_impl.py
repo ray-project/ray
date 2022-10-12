@@ -88,7 +88,9 @@ class RandomizeBlocksStage(AllToAllStage):
 class RandomShuffleStage(AllToAllStage):
     """Implementation of `Dataset.random_shuffle()`."""
 
-    def __init__(self, seed: Optional[int], output_num_blocks: Optional[int]):
+    def __init__(
+        self, seed: Optional[int], output_num_blocks: Optional[int], **ray_remote_args
+    ):
         def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
@@ -119,7 +121,11 @@ class RandomShuffleStage(AllToAllStage):
             )
 
         super().__init__(
-            "random_shuffle", output_num_blocks, do_shuffle, supports_block_udf=True
+            "random_shuffle",
+            output_num_blocks,
+            do_shuffle,
+            supports_block_udf=True,
+            remote_args=ray_remote_args,
         )
 
 
