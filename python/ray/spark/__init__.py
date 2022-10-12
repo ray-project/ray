@@ -1,11 +1,11 @@
 import os
-import shutil
 import subprocess
 import sys
 import time
 import threading
 import logging
 import math
+import uuid
 from packaging.version import Version
 
 from .utils import (
@@ -57,13 +57,13 @@ class RayClusterOnSpark:
     shut down the cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, ray_temp_dir):
+    def __init__(self, address, head_proc, spark_job_group_id, num_ray_workers):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
-        self.ray_temp_dir = ray_temp_dir
         self.ray_context = None
         self.is_shutdown = False
+        self.num_ray_workers = num_ray_workers
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
@@ -77,6 +77,33 @@ class RayClusterOnSpark:
         if self.ray_context is None:
             # connect to the ray cluster.
             self.ray_context = ray.init(address=self.address)
+
+            last_alive_worker_count = 0
+            last_progress_move_time = time.time()
+            while True:
+                time.sleep(10)
+                cur_alive_worker_count = len([
+                    node for node in ray.nodes()
+                    if node['Alive'] and node['Resources'].get('CPU', 0) > 0]
+                )
+                if cur_alive_worker_count == self.num_ray_workers:
+                    return
+
+                if cur_alive_worker_count > last_alive_worker_count:
+                    last_alive_worker_count = cur_alive_worker_count
+                    last_progress_move_time = time.time()
+                    _logger.info(
+                        "Ray worker nodes are starting, progress: "
+                        f"({cur_alive_worker_count} / {self.num_ray_workers})"
+                    )
+                else:
+                    if time.time() - last_progress_move_time > 120:
+                        _logger.warning(
+                            "Waiting all ray workers starting timeout, progress: "
+                            f"({cur_alive_worker_count} / {self.num_ray_workers}), "
+                            "Please check ray logs to see why some ray workers haven't start."
+                        )
+                        return
         else:
             _logger.warning("Already connected to this ray cluster.")
 
@@ -136,8 +163,8 @@ def init_cluster(
     total_object_store_memory_bytes=None,
     head_options=None,
     worker_options=None,
-    ray_temp_dir="/tmp/ray/temp",
-    ray_log_dir="/tmp/ray/logs"
+    ray_temp_root_dir="/tmp",
+    ray_log_root_dir="/tmp"
 ):
     """
     Initialize a ray cluster on the spark cluster, via starting a ray head node
@@ -164,10 +191,11 @@ def init_cluster(
             the ray cluster requests.
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
-        ray_temp_dir: A local disk path to store the ray temporary data.
-        ray_log_dir: A local disk path to store "ray start" script logs.
+        ray_temp_root_dir: A local disk path to store the ray temporary data. The created cluster create
+                          a subdirectory "ray-temp-{head_port}_{random_suffix}" under it.
+        ray_log_root_dir: A local disk path to store "ray start" script logs. The created cluster create
+                          a subdirectory "ray-logs-{head_port}_{random_suffix}" under it.
     """
-    import ray
     from pyspark.util import inheritable_thread_target
 
     head_options = head_options or {}
@@ -274,7 +302,8 @@ def init_cluster(
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_log_dir = os.path.join(ray_log_dir, f"ray-{ray_head_port}")
+    temp_dir_unique_suffix = uuid.uuid4().hex[:4]
+    ray_log_dir = os.path.join(ray_log_root_dir, f"ray-logs-{ray_head_port}-{temp_dir_unique_suffix}")
     os.makedirs(ray_log_dir, exist_ok=True)
 
     # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/session_latest/logs",
@@ -285,7 +314,7 @@ def init_cluster(
     #  (especially on databricks runtime), so we'd better set the log output dir to be a
     #  path mounted with NFS shared by all spark cluster nodes, so that the user can access
     #  these remote log files from spark drive side easily.
-    ray_temp_dir = os.path.join(ray_temp_dir, f"ray-{ray_head_port}")
+    ray_temp_dir = os.path.join(ray_temp_root_dir, f"ray-temp-{ray_head_port}-{temp_dir_unique_suffix}")
     os.makedirs(ray_temp_dir, exist_ok=True)
 
     _logger.warning(
@@ -475,7 +504,7 @@ def init_cluster(
         address=f"{ray_head_hostname}:{ray_head_port}",
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
-        ray_temp_dir=ray_temp_dir,
+        num_ray_workers=num_spark_tasks
     )
 
     def backgroud_job_thread_fn():
@@ -509,9 +538,6 @@ def init_cluster(
     ).start()
 
     try:
-        # Waiting all ray workers spin up.
-        time.sleep(10)
-
         if is_in_databricks_runtime():
             try:
                 get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
