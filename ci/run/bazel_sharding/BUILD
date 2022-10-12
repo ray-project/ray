@@ -3,7 +3,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_bazel_sharding.py"],
     data = ["tests/mock_BUILD", "bazel_sharding.py"],
-    tags = [],
+    tags = ["team:ml"],
     deps = [":bazel_sharding"]
 )
 
