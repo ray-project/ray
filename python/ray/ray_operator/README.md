@@ -6,12 +6,21 @@ Using the [KubeRay operator](https://ray-project.github.io/kuberay/components/op
 is the preferred way to deploy Ray on Kubernetes. Refer to the latest [Ray documentation](https://docs.ray.io/en/latest/)
 for up-to-date guides on Ray's Kubernetes support.
 
-As of Ray 2.0.0, the legacy Ray Operator is in maintenance mode.
-This operator will be deprecated and removed in a future Ray release.
 For documentation on the legacy Ray Operator,
 refer to the [Ray 1.13.0 documentation](https://docs.ray.io/en/releases-1.13.0/cluster/kubernetes.html#deploying-on-kubernetes).
 
-The rest of this page
+## Deprecation timeline
+
+This section outlines the deprecation timeline for the legacy Ray Operator.
+
+- As of Ray 2.0.0, the legacy Ray Operator is in maintenance mode.
+- The operator will still be compatible with Ray 2.1.0.
+- **The legacy Ray Operator will be removed in Ray 2.2.0.**
+
+_In other words, it will not be possible to use the legacy Ray Operator with Ray versions
+2.2.0 or greater._
+
+The rest of this document
 - Compares the KubeRay operator to the legacy Ray Operator hosted in the Ray repo.
 - Provides migration notes for users switching to the KubeRay operator.
 
