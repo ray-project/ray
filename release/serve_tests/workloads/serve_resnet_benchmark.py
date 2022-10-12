@@ -14,6 +14,7 @@ In the benchmarking, the image download and tensor conversion is done across dif
 replicas on CPUs.
 """
 
+import os
 import ray
 from ray import serve
 from torchvision import models
@@ -72,9 +73,34 @@ class ImageObjectioner:
 @serve.deployment(num_replicas=5)
 class DataDownloader:
     def __init__(self):
-        self.utils = torch.hub.load(
-            "NVIDIA/DeepLearningExamples:torchhub", "nvidia_convnets_processing_utils"
-        )
+
+        # For mutiple process scheduled in same node, torch.hub.load doesn't
+        # handle the multi process to dowloand module well. So this is to make sure
+        # there is only one replica to download the package
+        if os.path.exists("/home/ray/.cache/torch/") is False:
+            self.utils = torch.hub.load(
+                "NVIDIA/DeepLearningExamples:torchhub",
+                "nvidia_convnets_processing_utils",
+            )
+            with open("/home/ray/.cache/torch/success", "w") as fp:
+                pass
+
+        else:
+            counter = 3
+            while counter:
+                print("waiting for torch hub NVIDIA package download...")
+                time.sleep(20)
+                if os.path.exists("/home/ray/.cache/torch/success"):
+                    self.utils = torch.hub.load(
+                        "NVIDIA/DeepLearningExamples:torchhub",
+                        "nvidia_convnets_processing_utils",
+                    )
+                    break
+                counter -= 1
+            if counter == 0:
+                raise Exception(
+                    "Failed to load module nvidia_convnets_processing_utils"
+                )
 
     def __call__(self, uris: List[str]):
         return [self.utils.prepare_input_from_uri(uri) for uri in uris]
