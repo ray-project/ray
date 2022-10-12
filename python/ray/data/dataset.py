@@ -611,8 +611,7 @@ class Dataset(Generic[T]):
     ) -> "Dataset[T]":
         """Select one or more columns from the dataset.
 
-        Columns passed in will be de-duped since ArrowBlock and PandasBlock
-        `select` does not explicitly handle duplicated columns.
+        Note that all input columns need to be in the schema of the dataset.
 
         Examples:
             >>> import ray
@@ -628,17 +627,39 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            columns: Names of the columns to select. Columns not included in this
-                will be filtered out.
+            columns: Names of the columns to select. Columns that are not
+                included in this list will be filtered out.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        # dedup the input columns used for selection
-        unique_columns = list(set(columns))
+
+        import pyarrow as pa
+
+        schema = self.schema()
+        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
+
+        # check to make sure all input columns are in the dataset schema
+        if isinstance(schema, PandasBlockSchema):
+            dataset_cols = schema.names
+        elif isinstance(schema, pa.Schema):
+            dataset_cols = [field.name for field in schema]
+        else:
+            raise ValueError(
+                "We currently only support select by column names. "
+                "Datasets with `simple` schema are not supported."
+            )
+
+        extra_cols = [col for col in columns if col not in dataset_cols]
+        if extra_cols:
+            raise ValueError(
+                "The `columns` passed in have to be in the schema of the dataset. "
+                f"Please remove {extra_cols} from your input `columns`."
+            )
+
         return self.map_batches(
-            lambda batch: BlockAccessor.for_block(batch).select(columns=unique_columns),
+            lambda batch: BlockAccessor.for_block(batch).select(columns=columns),
             compute=compute,
             **ray_remote_args,
         )
