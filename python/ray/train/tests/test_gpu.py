@@ -4,7 +4,6 @@ from collections import Counter
 
 from unittest.mock import patch
 import pytest
-from ray.air.constants import MODEL_KEY
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
@@ -404,61 +403,6 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
 
     worker_group.execute(assert_env_var_set)
-
-
-@patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": ""})
-def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
-    """Tests if GPU tensors are auto converted to CPU on driver."""
-    num_workers = 2
-    assert os.environ["CUDA_VISIBLE_DEVICES"] == ""
-
-    def train_func():
-        model = torch.nn.Linear(1, 1)
-
-        # Move to GPU device.
-        model = ray.train.torch.prepare_model(model)
-
-        assert next(model.parameters()).is_cuda
-
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
-
-    trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
-    )
-    results = trainer.fit()
-
-    model_checkpoint = results.checkpoint.get_model()
-    assert not next(model_checkpoint.parameters()).is_cuda
-
-    # Test the same thing for state dict.
-
-    def train_func():
-        model = torch.nn.Linear(1, 1)
-
-        # Move to GPU device.
-        model = ray.train.torch.prepare_model(model)
-
-        assert next(model.parameters()).is_cuda
-
-        state_dict = model.state_dict()
-
-        for tensor in state_dict.values():
-            assert tensor.is_cuda
-
-        session.report(
-            {},
-            checkpoint=TorchCheckpoint.from_state_dict(state_dict),
-        )
-
-    trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
-    )
-    results = trainer.fit()
-
-    state_dict_checkpoint = results.checkpoint.to_dict()[MODEL_KEY]
-
-    for tensor in state_dict_checkpoint.values():
-        assert not tensor.is_cuda
 
 
 if __name__ == "__main__":
