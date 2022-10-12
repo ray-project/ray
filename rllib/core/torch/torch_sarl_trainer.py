@@ -27,7 +27,8 @@ class TorchSARLTrainer(SARLTrainer):
         inside of the init function since DDP has not been set up yet.
         """
         module = self.make_module(self.config["module_config"])
-        self.module = self._prepare_module(module)
+        self._module = self._prepare_module(module)
+        self._optimizer = self.make_optimizer(self.config["module_config"])
 
     def _prepare_module(self, module):
         class DDPWrapper(DDP):
@@ -49,3 +50,8 @@ class TorchSARLTrainer(SARLTrainer):
 
     def _prepare_sample_batch(self, batch):
         return convert_to_torch_tensor(batch, device=self.gpu_id)
+
+    @property
+    def unwrapped_module(self):
+        # return the unwrapped module from the ddp wrapper
+        return self._module.module
