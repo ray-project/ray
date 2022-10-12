@@ -514,6 +514,7 @@ def init_cluster(
                 "This job group is for spark job which runs the Ray cluster with ray head node "
                 f"{ray_head_hostname}:{ray_head_port}"
             )
+            time.sleep(1)
             spark.sparkContext.parallelize(
                 list(range(num_spark_tasks)), num_spark_tasks
             ).barrier().mapPartitions(
@@ -532,12 +533,14 @@ def init_cluster(
             #  head node, so call `ray_cluster_handler.shutdown()` here.
             ray_cluster_handler.shutdown()
 
-    threading.Thread(
-        target=inheritable_thread_target(backgroud_job_thread_fn),
-        args=()
-    ).start()
-
     try:
+        threading.Thread(
+            target=inheritable_thread_target(backgroud_job_thread_fn),
+            args=()
+        ).start()
+
+        time.sleep(5)  # wait background spark task starting.
+
         if is_in_databricks_runtime():
             try:
                 get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
