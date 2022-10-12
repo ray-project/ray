@@ -120,10 +120,11 @@ def main(test_collection_file: Optional[str] = None):
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule
+    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch
     report = (
         bool(int(os.environ.get("REPORT", "0")))
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
+        or branch.startswith("releases")
     )
 
     steps = []
