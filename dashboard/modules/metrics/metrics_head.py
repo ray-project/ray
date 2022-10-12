@@ -44,6 +44,7 @@ class TaskProgress(BaseModel):
     num_submitted_to_worker: int = 0
     num_running: int = 0
     num_pending_node_assignment: int = 0
+    num_failed: int = 0
     num_unknown: int = 0
 
 
@@ -57,6 +58,7 @@ prometheus_metric_map = {
     "PENDING_NODE_ASSIGNMENT": "num_pending_node_assignment",
     "PENDING_ARGS_FETCH": "num_pending_node_assignment",
     "PENDING_OBJ_STORE_MEM_AVAIL": "num_pending_node_assignment",
+    "FAILED": "num_failed",
 }
 
 
@@ -136,7 +138,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         job_id = req.query.get("job_id")
         job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
-        query = f"sum(ray_tasks{job_id_query}) by (State)"
+        # Fetches the max_over_time over last 14 days
+        query = f"sum(max_over_time(ray_tasks{job_id_query}[14d])) by (State)"
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
         ) as resp:
