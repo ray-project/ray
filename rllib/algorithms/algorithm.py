@@ -683,17 +683,13 @@ class Algorithm(Trainable):
                 method_type = getattr(mod, obj)
 
             if isinstance(method_type, type) and issubclass(
-                method_type, OffPolicyEstimator
-            ):
-                policy = self.get_policy()
-                gamma = self.config["gamma"]
-                self.reward_estimators[name] = method_type(
-                    policy, gamma, **method_config
-                )
-            elif isinstance(method_type, type) and issubclass(
                 method_type, OfflineEvaluator
             ):
+                # TODO(kourosh) : Add an integration test for all these
+                # offline evaluators.
                 policy = self.get_policy()
+                if issubclass(method_type, OffPolicyEstimator):
+                    method_config["gamma"] = self.config["gamma"]
                 self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
