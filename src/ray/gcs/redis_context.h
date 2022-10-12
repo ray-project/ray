@@ -30,6 +30,7 @@
 
 struct redisContext;
 struct redisAsyncContext;
+struct redisSSLContext;
 
 namespace ray {
 
@@ -171,8 +172,7 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext(instrumented_io_context &io_service)
-      : io_service_(io_service), context_(nullptr) {}
+  RedisContext(instrumented_io_context &io_service);
 
   ~RedisContext();
 
@@ -186,7 +186,8 @@ class RedisContext {
   Status Connect(const std::string &address,
                  int port,
                  bool sharding,
-                 const std::string &password);
+                 const std::string &password,
+                 bool enable_ssl = false);
 
   /// Run an arbitrary Redis command synchronously.
   ///
@@ -284,6 +285,7 @@ class RedisContext {
 
   instrumented_io_context &io_service_;
   redisContext *context_;
+  redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
