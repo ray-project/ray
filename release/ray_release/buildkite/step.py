@@ -19,12 +19,8 @@ from ray_release.util import python_version_str, DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
-RELEASE_QUEUE_DEFAULT = DeferredEnvVar(
-    "RELEASE_QUEUE_DEFAULT", "release_queue_small"
-)
-RELEASE_QUEUE_CLIENT = DeferredEnvVar(
-    "RELEASE_QUEUE_CLIENT", "release_queue_small"
-)
+RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
+RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
