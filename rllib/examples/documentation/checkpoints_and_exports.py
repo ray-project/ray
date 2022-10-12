@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __create-algo-checkpoint-begin__
 
 # Create a PPO algorithm object using a config object ..
@@ -23,7 +25,7 @@ my_ppo.stop()
 
 
 # __restore-from-algo-checkpoint-begin__
-from ray.rllib.algorithms.algorithm import Algorithm  # noqa
+from ray.rllib.algorithms.algorithm import Algorithm
 
 # Use the Algorithm's `from_checkpoint` utility to get a new algo instance
 # that has the exact same state as the old one, from which the checkpoint was
@@ -54,10 +56,10 @@ my_new_ppo.stop()
 
 # __multi-agent-checkpoints-begin__
 
-import os  # noqa
+import os
 
 # Use our example multi-agent CartPole environment to train in.
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole  # noqa
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 # Set up a multi-agent Algorithm, training two policies independently.
 my_ma_config = PPOConfig().multi_agent(
@@ -93,7 +95,38 @@ print(
     f"'{os.path.join(ma_checkpoint_dir, 'policies')}'."
 )
 
+# Create a new Algorithm instance from the above checkpoint, just as you would for
+# a single-agent setup:
+my_ma_algo_clone = Algorithm.from_checkpoint(ma_checkpoint_dir)
+
 # __multi-agent-checkpoints-end__
+
+my_ma_algo_clone.stop()
+
+# __multi-agent-checkpoints-restore-policy-sub-set-begin__
+
+# Here, we use the same (multi-agent Algorithm) checkpoint as above, but only restore
+# it with the first Policy ("pol1").
+
+my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
+    ma_checkpoint_dir,
+    # Tell the `from_checkpoint` util to create a new Algo, but only with "pol1" in it.
+    policy_ids=["pol1"],
+    # Make sure to update the mapping function (we must not map to "pol2" anymore
+    # to avoid a runtime error). Now both agents ("agent0" and "agent1") map to
+    # the same policy.
+    policy_mapping_fn=lambda agent_id, worker, episode, **kw: "pol1",
+)
+
+# Make sure, pol2 is NOT in this Algorithm anymore.
+assert my_ma_algo_only_pol1.get_policy("pol2") is None
+
+# Continue training (only with pol1).
+my_ma_algo_only_pol1.train()
+
+# __multi-agent-checkpoints-restore-policy-sub-set-end__
+
+my_ma_algo_only_pol1.stop()
 
 # __create-policy-checkpoint-begin__
 
@@ -109,9 +142,9 @@ policy1.export_checkpoint("/tmp/my_policy_checkpoint")
 
 # __restore-policy-begin__
 
-import numpy as np  # noqa
+import numpy as np
 
-from ray.rllib.policy.policy import Policy  # noqa
+from ray.rllib.policy.policy import Policy
 
 # Use the `from_checkpoint` utility of the Policy class:
 my_restored_policy = Policy.from_checkpoint("/tmp/my_policy_checkpoint")
@@ -127,8 +160,8 @@ print(f"Computed action {action} from given CartPole observation.")
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
 
-from ray.rllib.algorithms.ppo import PPOConfig  # noqa
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole  # noqa
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 # Set up an Algorithm with 5 Policies.
 algo_w_5_policies = (
@@ -186,14 +219,14 @@ algo_w_2_policies.stop()
 
 # __export-models-begin__
 
-from ray.rllib.algorithms.ppo import PPOConfig  # noqa
+from ray.rllib.algorithms.ppo import PPOConfig
 
 # Create a new Algorithm (which contains a Policy, which contains a NN Model).
 # Switch on for native models to be included in the Policy checkpoints.
 ppo_config = (
     PPOConfig()
     .environment("Pendulum-v1")
-    .checkpointing(checkpoints_contain_native_model_files=True)
+    .checkpointing(export_native_model_files=True)
 )
 
 # The default framework is TensorFlow, but if you would like to do this example with
@@ -207,10 +240,15 @@ ppo.train()
 # Get the underlying PPOTF1Policy (or PPOTorchPolicy) object.
 ppo_policy = ppo.get_policy()
 
+# __export-models-end__
+
 # Export the Keras NN model (that our PPOTF1Policy inside the PPO Algorithm uses)
 # to disk ...
 
 # 1) .. using the Policy object:
+
+# __export-models-1-begin__
+
 ppo_policy.export_model("/tmp/my_nn_model")
 # .. check /tmp/my_nn_model/ for the keras model files. You should be able to recover
 # the keras model via:
@@ -230,6 +268,10 @@ ppo_policy.export_model("/tmp/my_nn_model")
 #     seq_lens=torch.tensor(0),  # dummy value
 # )
 
+# __export-models-1-end__
+
+# __export-models-2-begin__
+
 # 2) .. via the Policy's checkpointing method:
 checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 # .. check /tmp/ppo_policy/model/ for the keras model files.
@@ -239,6 +281,11 @@ checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 # results = keras_model(tf.convert_to_tensor(
 #     np.array([[0.0, 0.1, 0.2]]), dtype=np.float32)
 # )
+
+# __export-models-2-end__
+
+
+# __export-models-3-begin__
 
 # 3) .. via the Algorithm (Policy) checkpoint:
 checkpoint_dir = ppo.save()
@@ -250,7 +297,7 @@ checkpoint_dir = ppo.save()
 #     np.array([[0.0, 0.1, 0.2]]), dtype=np.float32)
 # )
 
-# __export-models-end__
+# __export-models-3-end__
 
 
 # __export-models-as-onnx-begin__

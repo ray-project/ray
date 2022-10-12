@@ -4,17 +4,19 @@
 
 .. _checkpoints-and-exports-docs:
 
-#################
-Using Checkpoints
-#################
+##################################################
+Saving and loading your RL Algorithms and Policies
+##################################################
+
+
+You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
+and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
+within these structures.
 
 
 What's a checkpoint?
 ====================
-
-You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
-and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-and the neural networks (weights) within.
 
 A checkpoint is a set of information, located inside a directory (which may contain
 further subdirectories) and used to restore either an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
@@ -26,11 +28,8 @@ RLlib uses the new Ray AIR :py:class:`~ray.air.checkpoint.Checkpoint` class to c
 restore objects from them.
 
 
-Algorithm- vs Policy checkpoints vs Model exports
-=================================================
-
 Algorithm checkpoints
----------------------
+=====================
 
 An Algorithm checkpoint contains all of the Algorithm's state, including its configuration,
 its actual Algorithm subclass, all of its Policies' weights, its current counters, etc..
@@ -40,7 +39,7 @@ working with that new Algorithm exactly like you would have continued working wi
 old Algorithm (from which the checkpoint as taken).
 
 How do I create an Algorithm checkpoint?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method creates a new checkpoint
 (directory with files in it) and returns the path to that directory.
@@ -131,7 +130,7 @@ algorithm checkpoint version.
 
 
 How do I restore an Algorithm from a checkpoint?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------------------------
 
 Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
@@ -158,7 +157,7 @@ have to keep your original config stored somewhere.
 
 
 Which Algorithm checkpoint versions can I use?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------------
 
 RLlib uses simple checkpoint versions (for example v0.1 or v1.0) to figure
 out how to restore an Algorithm (or a :py:class:`~ray.rllib.policy.policy.Policy`;
@@ -176,7 +175,7 @@ handle any checkpoints created by RLlib 2.0 or any version up to 2.x.
 
 
 Multi-agent Algorithm checkpoints
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------
 
 In case you are working with a multi-agent setup and have more than one
 :py:class:`~ray.rllib.policy.policy.Policy` to train inside your
@@ -194,9 +193,19 @@ For example:
     :end-before: __multi-agent-checkpoints-end__
 
 
-Assuming
-TODO: Restoring a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`,
-but only with some subset of the original policies
+Assuming you would like to restore all policies within the checkpoint, you would
+do so just as described above in the single-agent case
+(via ``algo = Algorithm.from_checkpoint([path to your multi-agent checkpoint])``).
+
+However, there may be a situation where you have so many policies in your algorithm
+(e.g. you are doing league-based training) and would like to restore a new Algorithm
+instance from your checkpoint, but only include some of the original policies in this
+new Algorithm object. In this case, you can also do:
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
+    :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
 
 
 Policy checkpoints
