@@ -428,13 +428,7 @@ Status RedisContext::Connect(const std::string &address,
     RAY_CHECK(redisInitiateSSLWithContext(context_, ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
-
   RAY_CHECK_OK(AuthenticateRedis(context_, password));
-
-  redisReply *reply = reinterpret_cast<redisReply *>(
-      redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
-  REDIS_CHECK_ERROR(context_, reply);
-  freeReplyObject(reply);
 
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
