@@ -446,6 +446,10 @@ if __name__ == "__main__":
         )
         setup_component_logger(**logging_params)
 
+        # Initialize event loop, see Dashboard init code for caveat
+        # w.r.t grpc server init in the DashboardAgent initializer.
+        loop = ray._private.utils.get_or_create_event_loop()
+
         agent = DashboardAgent(
             args.node_ip_address,
             args.dashboard_agent_port,
@@ -465,7 +469,6 @@ if __name__ == "__main__":
             agent_id=args.agent_id,
         )
 
-        loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")

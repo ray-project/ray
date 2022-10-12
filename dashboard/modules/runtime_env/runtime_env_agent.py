@@ -23,6 +23,7 @@ from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
     create_for_plugin_if_needed,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
@@ -234,7 +235,7 @@ class RuntimeEnvAgent(
 
         if unused_runtime_env in self._env_cache:
             if not self._env_cache[unused_runtime_env].success:
-                loop = asyncio.get_event_loop()
+                loop = get_or_create_event_loop()
                 # Cache the bad runtime env result by ttl seconds.
                 loop.call_later(
                     dashboard_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,

@@ -205,7 +205,7 @@ def submit(
             cli_logger.print(
                 "Tailing logs until the job exits " "(disable with --no-wait):"
             )
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            asyncio.run(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
@@ -319,7 +319,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     # sdk version 0 did not have log streaming
     if follow:
         if int(sdk_version) > 0:
-            asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+            asyncio.run(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 
 from ray._private.signature import extract_signature, flatten_args, recover_args
+from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
 from ray.util.annotations import PublicAPI
 
@@ -73,7 +74,7 @@ class _BatchQueue:
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
-            self._handle_batch_task = asyncio.get_event_loop().create_task(
+            self._handle_batch_task = get_or_create_event_loop().create_task(
                 self._handle_batches(handle_batch_func)
             )
 
@@ -158,7 +159,10 @@ class _BatchQueue:
                     future.set_exception(e)
 
     def __del__(self):
-        if self._handle_batch_task is None or not asyncio.get_event_loop().is_running():
+        if (
+            self._handle_batch_task is None
+            or not get_or_create_event_loop().is_running()
+        ):
             return
 
         # TODO(edoakes): although we try to gracefully shutdown here, it still
@@ -292,7 +296,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
             else:
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
 
-            future = asyncio.get_event_loop().create_future()
+            future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
 
             # This will raise if the underlying call raised an exception.

@@ -401,8 +401,7 @@ def test_disconnects_during_large_async_get():
         async def get_large_result():
             return await large_result.remote()
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(get_large_result())
+        result = asyncio.run(get_large_result())
         assert result.shape == (1024, 1024, 128)
 
 

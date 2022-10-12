@@ -89,8 +89,8 @@ class RemoteFunction:
         if inspect.iscoroutinefunction(function):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
-                "async function with `asyncio.get_event_loop.run_until(f())`. "
-                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
+                "async function with `asyncio.run(f())`. See more at:"
+                "https://docs.ray.io/en/latest/ray-core/actors/async_api.html "
             )
         self._default_options = task_options
 
