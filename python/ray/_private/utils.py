@@ -1568,8 +1568,9 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     - For python version >= 3.10: it uses the same python implementation
         of _get_event_loop() at asyncio/events.py.
 
-    Ideally, one should use high level APIs like asyncio.run(), if not
-    possible, one should create and manage the event loops explicitly.
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
     """
     loop = None
     try:

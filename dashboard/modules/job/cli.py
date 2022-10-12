@@ -1,4 +1,3 @@
-import asyncio
 import os
 import pprint
 import time
@@ -9,6 +8,7 @@ import click
 
 import ray._private.ray_constants as ray_constants
 from ray._private.storage import _load_class
+from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -205,7 +205,7 @@ def submit(
             cli_logger.print(
                 "Tailing logs until the job exits " "(disable with --no-wait):"
             )
-            asyncio.run(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
@@ -319,7 +319,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     # sdk version 0 did not have log streaming
     if follow:
         if int(sdk_version) > 0:
-            asyncio.run(_tail_logs(client, job_id))
+            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "

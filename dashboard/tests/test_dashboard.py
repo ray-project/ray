@@ -419,7 +419,7 @@ def test_class_method_route_table(enable_test_module):
             break
     assert post_handler is not None
 
-    r = asyncio.run(post_handler())
+    r = get_or_create_event_loop().run_until_complete(post_handler())
     assert r.status == 200
     resp = json.loads(r.body)
     assert resp["result"] is False
