@@ -45,7 +45,7 @@ class OffPolicyEstimator(OfflineEvaluator):
             policy.
             # TODO (kourosh): convert the input parameters to a config dict.
         """
-        self.policy = policy
+        super().__init__(policy)
         self.gamma = gamma
         self.epsilon_greedy = epsilon_greedy
 
