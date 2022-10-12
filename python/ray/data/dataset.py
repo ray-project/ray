@@ -532,13 +532,23 @@ class Dataset(Generic[T]):
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
+
+            # Fetch next available input blocks for the batch.
+            # Only fetch required number of blocks but not all blocks.
+            # This avoids over-buffering in current node's memory.
+            def _fetch_next_blocks(batcher: Batcher, batch_size: Optional[int]):
+                for block in blocks:
+                    batcher.add(block)
+                    if batch_size is None or batcher.buffer_size() >= batch_size:
+                        break
+
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
-            for block in blocks:
-                batcher.add(block)
-            batcher.done_adding()
+
+            # Fetch blocks for the first batch.
+            _fetch_next_blocks(batcher, batch_size)
             while batcher.has_any():
                 batch = batcher.next_batch()
                 # Convert to batch format.
@@ -565,6 +575,10 @@ class Dataset(Generic[T]):
                 output_buffer.add_batch(batch)
                 if output_buffer.has_next():
                     yield output_buffer.next()
+
+                # Fetch blocks for the next batch if needed.
+                if batch_size is None or batcher.buffer_size() < batch_size:
+                    _fetch_next_blocks(batcher, batch_size)
 
             output_buffer.finalize()
             if output_buffer.has_next():
