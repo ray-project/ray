@@ -147,21 +147,21 @@ class Predictor(abc.ABC):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
-
-        preprocessed_data = self._preprocessor.transform_batch(data)
+        if self._preprocessor:
+            data = self._preprocessor.transform_batch(data)
         try:
-            batch_format = TYPE_TO_ENUM[type(preprocessed_data)]
+            batch_format = TYPE_TO_ENUM[type(data)]
         except KeyError:
             raise RuntimeError(
-                f"Invalid input data type of {type(preprocessed_data)}, supported "
+                f"Invalid input data type of {type(data)}, supported "
                 f"types: {list(TYPE_TO_ENUM.keys())}"
             )
 
         if batch_format == BatchFormat.PANDAS:
-            predictions = self._predict_pandas(preprocessed_data, **kwargs)
+            predictions = self._predict_pandas(data, **kwargs)
             return convert_pandas_to_batch_type(predictions, TYPE_TO_ENUM[type(data)])
         elif batch_format == BatchFormat.NUMPY:
-            return self._predict_numpy(preprocessed_data, **kwargs)
+            return self._predict_numpy(data, **kwargs)
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
