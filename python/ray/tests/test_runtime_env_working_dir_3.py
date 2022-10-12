@@ -74,18 +74,21 @@ def check_internal_kv_gced():
 
 
 def get_local_file_whitelist(cluster, option):
-    # On Windows the runtime directory itself is not deleted due to it being in use
-    # therefore whitelist it for the tests.
+    # On Windows the runtime directory itself is sometimes not deleted due
+    # to it being in use therefore whitelist it for the tests.
     if sys.platform == "win32" and option != "py_modules":
         runtime_dir = (
             Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
             / "working_dir_files"
         )
-        return {list(Path(runtime_dir).iterdir())[0].name}
+        pkg_dirs = list(Path(runtime_dir).iterdir())
+        if pkg_dirs:
+            return {pkg_dirs[0].name}
     return {}
 
 
 class TestGC:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
