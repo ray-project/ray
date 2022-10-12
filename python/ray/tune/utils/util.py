@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime
 from numbers import Number
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any, Optional
+from typing import Dict, List, Union, Type, Callable, Any, Optional, Sequence
 
 import numpy as np
 import psutil
@@ -125,7 +125,7 @@ class UtilMonitor(Thread):
 @DeveloperAPI
 def retry_fn(
     fn: Callable[[], Any],
-    exception_type: Type[Exception] = Exception,
+    exception_type: Union[Type[Exception], Sequence[Type[Exception]]] = Exception,
     num_retries: int = 3,
     sleep_time: int = 1,
     timeout: Optional[Number] = None,
