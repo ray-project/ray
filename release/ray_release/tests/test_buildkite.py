@@ -22,7 +22,11 @@ from ray_release.buildkite.settings import (
     Priority,
     get_test_attr_regex_filters,
 )
-from ray_release.buildkite.step import get_step
+from ray_release.buildkite.step import (
+    get_step,
+    RELEASE_QUEUE_DEFAULT,
+    RELEASE_QUEUE_CLIENT,
+)
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.tests.test_glue import MockReturn
@@ -646,6 +650,28 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
             step = get_step(test, smoke_test=True)
             self.assertEquals(step["concurrency_group"], "small")
+
+    def testStepQueueClient(self):
+        test_regular = Test(
+            {
+                "name": "test",
+                "frequency": "nightly",
+                "run": {"script": "test_script.py"},
+            }
+        )
+        test_client = Test(
+            {
+                "name": "test",
+                "frequency": "nightly",
+                "run": {"script": "test_script.py", "type": "client"},
+            }
+        )
+
+        step = get_step(test_regular)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_DEFAULT))
+
+        step = get_step(test_client)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_CLIENT))
 
 
 if __name__ == "__main__":
