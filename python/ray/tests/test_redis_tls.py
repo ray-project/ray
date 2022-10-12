@@ -39,9 +39,7 @@ openssl dhparam -out {str(tmp_path)}/tls/redis.dh 2048
     ca.crt  ca.key  ca.txt  redis.crt  redis.dh  redis.key
     """
 
-    monkeypatch.setenv("RAY_REDIS_ENABLE_SSL", "true")
     monkeypatch.setenv("RAY_REDIS_CA_CERT", f"{str(tmp_path)}/tls/ca.crt")
-
     monkeypatch.setenv("RAY_REDIS_CLIENT_CERT", f"{str(tmp_path)}/tls/redis.crt")
     monkeypatch.setenv("RAY_REDIS_CLIENT_KEY", f"{str(tmp_path)}/tls/redis.key")
     ray._raylet.Config.initialize("")

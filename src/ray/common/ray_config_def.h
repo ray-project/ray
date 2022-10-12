@@ -682,7 +682,6 @@ RAY_CONFIG(std::string, TLS_CA_CERT, "")
 
 /// Location of Redis TLS credentials
 /// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
-RAY_CONFIG(bool, REDIS_ENABLE_SSL, false)
 RAY_CONFIG(std::string, REDIS_CA_CERT, "")
 RAY_CONFIG(std::string, REDIS_CA_PATH, "")
 

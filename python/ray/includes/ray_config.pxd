@@ -71,8 +71,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool use_ray_syncer() const
 
-        c_bool REDIS_ENABLE_SSL() const
-
         c_string REDIS_CA_CERT() const
 
         c_string REDIS_CA_PATH() const
