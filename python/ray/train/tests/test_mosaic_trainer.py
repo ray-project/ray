@@ -6,12 +6,6 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-import ray
-from ray.air.config import ScalingConfig
-import ray.train as train
-from ray.air import session
-from ray.train.mosaic import MosaicTrainer
-
 from torchmetrics.classification.accuracy import Accuracy
 from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
@@ -19,34 +13,38 @@ import composer.optim
 from composer.loggers import InMemoryLogger
 from composer.algorithms import LabelSmoothing
 
+import ray
+from ray.air.config import ScalingConfig
+import ray.train as train
+from ray.air import session
+from ray.train.mosaic import MosaicTrainer
+
 
 mean = (0.507, 0.487, 0.441)
 std = (0.267, 0.256, 0.276)
 cifar10_transforms = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize(mean, std)]
 )
-# data_directory = "./data" ## TODO : remove the following line
-data_directory = "~/Desktop/workspace/data"
-train_dataset = datasets.CIFAR10(
-    data_directory, train=True, download=True, transform=cifar10_transforms
+
+data_directory = "s3://air-example-data/cifar-10-python.tar.gz"
+train_dataset = torch.utils.data.Subset(
+    datasets.CIFAR10(
+        data_directory, train=True, download=True, transform=cifar10_transforms
+    ),
+    list(range(64)),
 )
-test_dataset = datasets.CIFAR10(
-    data_directory, train=False, download=True, transform=cifar10_transforms
+test_dataset = torch.utils.data.Subset(
+    datasets.CIFAR10(
+        data_directory, train=False, download=True, transform=cifar10_transforms
+    ),
+    list(range(64)),
 )
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
-@pytest.fixture(autouse=True, scope="session")
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 def trainer_init_per_worker(**config):
-    BATCH_SIZE = 1024
+    BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
     model = config.pop("model", torchvision.models.resnet18(num_classes=10))
@@ -90,12 +88,12 @@ def trainer_init_per_worker(**config):
 # trainer_init_per_worker.__test__ = False
 
 
-def test_mosaic_e2e():
+def test_mosaic_e2e(ray_start_4_cpus):
     """Tests if the basic MosaicTrainer with minimum configuration runs and reports correct
     Checkpoint dictionary.
     """
     trainer_init_config = {
-        "max_duration": "1ba",
+        "max_duration": "1ep",
         "train_dataset": train_dataset,
         "test_dataset": test_dataset,
         "loggers": [InMemoryLogger()],
@@ -111,7 +109,7 @@ def test_mosaic_e2e():
     trainer.fit()
 
 
-def test_init_errors():
+def test_init_errors(ray_start_4_cpus):
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
     be due to bad `trainer_init_per_worker` function or missing requirements in the
     `trainer_init_config` argument.
