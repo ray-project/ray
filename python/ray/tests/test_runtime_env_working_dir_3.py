@@ -88,6 +88,7 @@ def get_local_file_whitelist(cluster, option):
 
 
 class TestGC:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
