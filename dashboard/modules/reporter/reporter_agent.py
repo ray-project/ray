@@ -15,6 +15,7 @@ import ray
 import ray._private.services
 import ray._private.utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
@@ -239,6 +240,7 @@ class ReporterAgent(
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
+        self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
         self._workers = set()
@@ -299,6 +301,23 @@ class ReporterAgent(
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr
         )
+
+    async def GetTraceback(self, request, context):
+        pid = request.pid
+        password = request.password
+        p = CpuProfilingManager(self._log_dir)
+        output = await p.trace_dump(pid, password)
+        return reporter_pb2.GetTracebackReply(output=output)
+
+    async def CpuProfiling(self, request, context):
+        pid = request.pid
+        password = request.password
+        duration = request.duration
+        format = request.format
+        p = CpuProfilingManager(self._log_dir)
+        # output = await p.trace_dump(pid, password)
+        output = await p.cpu_profile(pid, format=format, duration=duration, password=password)
+        return reporter_pb2.GetTracebackReply(output=output)
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.

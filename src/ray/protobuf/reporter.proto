@@ -37,6 +37,27 @@ message GetProfilingStatsReply {
   string std_err = 3;
 }
 
+message GetTracebackRequest {
+  // PID of the worker process.
+  uint32 pid = 1;
+  string password = 2;
+}
+
+message GetTracebackReply {
+  string output = 1;
+}
+
+message CpuProfilingRequest {
+  uint32 pid = 1;
+  optional string password = 2;
+  optional string format = 3;
+  optional uint32 duration = 4;
+}
+
+message CpuProfilingReply {
+  string filename = 1;
+}
+
 message ReportMetricsRequest {
   repeated MetricPoint metrics_points = 1;
 }
@@ -69,6 +90,8 @@ service ReporterService {
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
+  rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
+  rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
 }
 
 message StreamLogRequest {

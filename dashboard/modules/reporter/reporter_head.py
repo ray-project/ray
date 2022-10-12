@@ -154,6 +154,38 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             cluster_status=formatted_status if formatted_status else None,
         )
 
+
+    @routes.get("/api/v0/traceback")
+    async def get_traceback(self, req) -> aiohttp.web.Response:
+        # ip = req.query["ip"]
+        pid = int(req.query["pid"])
+        password = req.query.get("password", "")
+        reporter_stub = list(self._stubs.values())[0]
+        reply = await reporter_stub.GetTraceback(
+            reporter_pb2.GetTracebackRequest(pid=pid, password=password)
+        )
+        logger.info(reply)
+        return dashboard_optional_utils.rest_response(
+            success=True, output=reply.output, message="",
+        )
+
+    @routes.get("/api/v0/cpu_profile")
+    async def launch_profiling(self, req) -> aiohttp.web.Response:
+        # ip = req.query["ip"]
+        pid = int(req.query["pid"])
+        duration = int(req.get("duration", 5))
+        format = req.query.get("format", "flamegraph")
+        password = req.query.get("password", "")
+        reporter_stub = list(self._stubs.values())[0]
+        reply = await reporter_stub.CpuProfiling(
+            reporter_pb2.CpuProfilingRequest(pid=pid, password=password, duration=duration, format=format)
+        )
+        logger.info(reply)
+        filename = reply.filename
+        return dashboard_optional_utils.rest_response(
+            success=True, output=reply.filename, message="",
+        )
+
     async def run(self, server):
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True

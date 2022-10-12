@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+from multiprocessing.sharedctypes import Value
 import os
 import signal
 import subprocess
@@ -2537,6 +2538,68 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@cli.command()
+@click.option(
+    "--pid",
+    required=False,
+    type=str,
+    default=None,
+)
+@click.option(
+    "--password",
+    "-p",
+    required=False,
+    type=str,
+    default=None,
+)
+def py_stack(pid, password):
+    print("Run profiler")
+    import requests
+    result = requests.get(f"http://localhost:8265/api/v0/traceback?pid={pid}&password={password}").json()
+    if not result["result"]:
+        print(f"Failed {result['msg']}")
+    else:
+        print(result["data"]["output"])
+
+
+@cli.command()
+@click.option(
+    "--pid",
+    required=False,
+    type=str,
+    default=None,
+)
+@click.option(
+    "--password",
+    "-p",
+    required=False,
+    type=str,
+    default=None,
+)
+@click.option(
+    "--duration",
+    "-d",
+    required=False,
+    type=int,
+    default=5,
+)
+@click.option(
+    "--format",
+    "-f",
+    required=False,
+    type=str,
+    default="flamegraph",
+)
+def cpu_profile(pid, password, duration, format):
+    print("Run profiler")
+    import requests
+    result = requests.get(f"http://localhost:8265/api/v0/cpu_profile?pid={pid}&password={password}&duration={duration}&format={format}").json()
+    if not result["result"]:
+        print(f"Failed {result['msg']}")
+    else:
+        print(result["data"]["output"])
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2574,6 +2637,8 @@ cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(ray_list, name="list")
 cli.add_command(ray_get, name="get")
+cli.add_command(py_stack)
+cli.add_command(cpu_profile)
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
 
 try:
