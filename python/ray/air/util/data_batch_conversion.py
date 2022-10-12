@@ -93,7 +93,7 @@ def convert_pandas_to_batch_type(
     elif type == DataType.NUMPY:
         if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
-            return data.iloc[:, 0].to_numpy()
+            return data[data.columns[0]].to_numpy()
         else:
             # Else return as a dict of numpy arrays.
             output_dict = {}
@@ -218,7 +218,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
         for col_name, col in df.items():
             if column_needs_tensor_extension(col):
                 try:
-                    df.loc[:, col_name] = TensorArray(col)
+                    df[col_name] = TensorArray(col)
                 except Exception as e:
                     raise ValueError(
                         f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -238,5 +238,5 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
         # Try to convert any tensor extension columns to ndarray columns.
         for col_name, col in df.items():
             if isinstance(col.dtype, TensorDtype):
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                df[col_name] = pd.Series(list(col.to_numpy()))
         return df
