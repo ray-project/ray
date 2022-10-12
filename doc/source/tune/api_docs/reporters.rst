@@ -53,7 +53,7 @@ Extending ``CLIReporter`` lets you control reporting frequency. For example:
     tuner = tune.Tuner(my_trainable, run_config=air.RunConfig(progress_reporter=ExperimentTerminationReporter()))
     results = tuner.fit()
     
-    from ray.tune.trial import Trial
+    from ray.tune.experiment.trial import Trial
     class TrialTerminationReporter(CLIReporter):
         def __init__(self):
             super(TrialTerminationReporter, self).__init__()
