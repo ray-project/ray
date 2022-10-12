@@ -1,24 +1,22 @@
 import inspect
 import os
+from typing import TYPE_CHECKING, Callable, Dict, Optional
+
+from composer.trainer import Trainer
 
 from ray.air import session
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
-
-from typing import TYPE_CHECKING, Callable, Dict, Optional
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
-
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
-
-import composer.trainer
 
 
 @PublicAPI(stability="alpha")
@@ -34,6 +32,55 @@ class MosaicTrainer(TorchTrainer):
     specified ``trainer_init_per_worker`` function to obtain an instantiated
     ``composer.Trainer`` object. The ``trainer_init_per_worker`` function
     will have access to preprocessed train and evaluation datasets.
+
+    Example:
+        .. code-block:: python
+
+    >>> def trainer_init_per_worker(**config):
+    ...     # prepare the model for distributed training and wrap with
+    ...     # ComposerClassifier for Composer Trainer compatibility
+    ...     model = torchvision.models.resnet18(num_classes=10)
+    ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
+    ...
+    ...     # prepare train dataloader
+    ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    ...     train_dataloader = torch.utils.data.DataLoader(
+    ...         config.pop("train_dataset"),
+    ...         batch_size=batch_size_per_worker
+    ...     )
+    ...     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
+    ...
+    ...     # prepare optimizer
+    ...     optimizer = composer.optim.DecoupledSGDW(
+    ...         model.parameters(),
+    ...         lr=0.05,
+    ...         momentum=0.9,
+    ...         weight_decay=2.0e-3,
+    ...     )
+    ...
+    ...     return composer.trainer.Trainer(
+    ...         model=model,
+    ...         train_dataloader=train_dataloader,
+    ...         optimizers=optimizer,
+    ...         **config
+    ...     )
+    ...
+    >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+    >>> trainer_init_config = {
+    ...     "max_duration": "1ba",
+    ...     "train_dataset": train_dataset,
+    ...     "loggers": [InMemoryLogger()],
+    ...     "algorithms": [LabelSmoothing()],
+    ... }
+    ...
+    >>> trainer = MosaicTrainer(
+    ...     trainer_init_per_worker=trainer_init_per_worker,
+    ...     trainer_init_config=trainer_init_config,
+    ...     scaling_config=scaling_config,
+    ... )
+    ...
+    >>> trainer.fit()
+
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
@@ -55,7 +102,7 @@ class MosaicTrainer(TorchTrainer):
 
     def __init__(
         self,
-        trainer_init_per_worker: Callable[[Optional[Dict]], composer.trainer.Trainer],
+        trainer_init_per_worker: Callable[[Optional[Dict]], Trainer],
         *,
         datasets: Optional[Dict[str, GenDataset]] = None,
         trainer_init_config: Optional[Dict] = None,
@@ -109,17 +156,13 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
-    # Arbitrary values set for these as they are needed for some composer functions
-    os.environ["LOCAL_WORLD_SIZE"] = os.environ["WORLD_SIZE"]
-    os.environ["NODE_RANK"] = "0"
-
     # get dataset shard -- For now we don't support using ray dataset shards.
     # the dataloader should be prepared inside the ``trainer_init_per_worker`` function
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     # initialize Composer trainer
-    trainer: composer.trainer.Trainer = trainer_init_per_worker(**config)
+    trainer: Trainer = trainer_init_per_worker(**config)
 
     # call the trainer
     trainer.fit()

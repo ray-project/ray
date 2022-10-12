@@ -1,23 +1,17 @@
 import pytest
 
-# torch libraries
 import torch
 import torch.utils.data
 
-# torchvision libraries
 import torchvision
 from torchvision import transforms, datasets
 
-# Import Ray libraries
 import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-
-# import ray-mosaic integration libraries
 from ray.train.mosaic import MosaicTrainer
 
-# import composer training libraries
 from torchmetrics.classification.accuracy import Accuracy
 from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
@@ -93,7 +87,7 @@ def trainer_init_per_worker(**config):
     )
 
 
-trainer_init_per_worker.__test__ = False
+# trainer_init_per_worker.__test__ = False
 
 
 def test_mosaic_e2e():
