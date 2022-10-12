@@ -16,6 +16,7 @@ from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+from typing_extensions import Protocol
 
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
