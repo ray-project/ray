@@ -17,7 +17,7 @@ if the cluster was started previously.
 
 **Example**: If you have a file ``baz.py`` in the directory you are running Ray in, and you run the following command:
 
-.. literalinclude:: ../doc_code/gotchas.py
+.. literalinclude:: ../../ray-core/doc_code/gotchas.py
   :language: python
   :start-after: __env_var_start__
   :end-before: __env_var_end__
@@ -29,7 +29,7 @@ If you call ``ray.init(runtime_env=...)``,
 then the workers will have the environment variable set.
 
 
-.. literalinclude:: ../doc_code/gotchas.py
+.. literalinclude:: ../../ray-core/doc_code/gotchas.py
   :language: python
   :start-after: __env_var_fix_start__
   :end-before: __env_var_fix_end__

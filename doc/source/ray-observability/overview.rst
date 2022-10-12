@@ -1,5 +1,5 @@
-Troubleshooting Tools and Features
-==================================
+Overview
+========
 
 This section covers a list of available monitoring and debugging tools and features in Ray.
 
@@ -9,7 +9,7 @@ Application Logging
 -------------------
 By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
 
-.. literalinclude:: ../doc_code/app_logging.py
+.. literalinclude:: doc_code/app_logging.py
   :language: python
 
 All stdout emitted from the ``print`` method is printed to the driver with a ``(the task or actor repr, the process ID, IP address)`` prefix.

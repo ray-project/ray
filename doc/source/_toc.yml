@@ -313,6 +313,12 @@ parts:
       - file: cluster/running-applications/index
         title: Applications Guide
 
+  - caption: Monitoring and Debugging
+    chapters:
+      - file: ray-observability/monitoring-debugging/monitoring-debugging
+        title: User Guides
+      - file: ray-observability/index
+        title: Tools
 
   - caption: References
     chapters:
@@ -329,6 +335,5 @@ parts:
           - file: ray-contribute/fake-autoscaler
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
-      - file: ray-observability/index
       - file: ray-contribute/whitepaper
       - file: ray-use-cases/overview
