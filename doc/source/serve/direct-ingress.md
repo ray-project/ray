@@ -39,6 +39,8 @@ To implement the Serve, your class needs to inherit `ray.serve.drivers.DefaultgR
 ```
 
 Client:
+You can use Serve's built-in gRPC client to send query to the model.
+
 ```{literalinclude} ../serve/doc_code/direct_ingress.py
 :start-after: __begin_client__
 :end-before: __end_client__
@@ -54,8 +56,9 @@ Client:
 * There is no difference of scaling config for your business code in gRPC case, you can set the config scaling/autoscaling config inside the `serve.deployment` decorator.
 :::
 
-### Client Schema code generation
-There are lots of ways to generate client schema code. Here is a simple step to generate the code.
+### Client schema code generation
+You can use the client either by importing it from the `ray` Python package. Alternatively, you can just copy [Serve's protobuf file](https://github.com/ray-project/ray/blob/e16f49b327bbc1c18e8fc5d0ac4fa8c2f1144412/src/ray/protobuf/serve.proto#L214-L225) to generate the gRPC client.
+
 * Install the gRPC code generation tools
 ```
 pip install grpcio-tools
@@ -65,7 +68,7 @@ pip install grpcio-tools
 ```
 python -m grpc_tools.protoc --proto_path=src/ray/protobuf/ --python_out=. --grpc_python_out=. src/ray/protobuf/serve.proto
 ```
-After the two steps above, you should have `serve_pb2.py` and `serve_pb2_grpc.py` files generated.(The steps shown above work for generation for any schema file, including "bring your own schema" described below.)
+After the two steps above, you should have `serve_pb2.py` and `serve_pb2_grpc.py` files generated.
 
 (bring-your-own-schema)=
 
