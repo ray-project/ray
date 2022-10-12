@@ -152,6 +152,7 @@ def _setup_redis(request):
     else:
         del param["external_redis_ports"]
     processes = []
+    enable_tls = "RAY_REDIS_CA_CERT" in os.environ
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
         port, proc = _start_redis_instance(
@@ -159,10 +160,13 @@ def _setup_redis(request):
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
+            enable_tls=enable_tls,
         )
         processes.append(proc)
-    address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    import os
+    scheme = "rediss://" if enable_tls else ""
+    address_str = ",".join(
+        map(lambda x: f"{scheme}127.0.0.1:{x}", external_redis_ports)
+    )
 
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str
