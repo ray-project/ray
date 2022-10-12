@@ -262,7 +262,7 @@
     - ./ci/env/env_info.sh
     - >-
       set -x;
-      python ./ci/run/bazel_sharding.py
+      python ./ci/run/bazel-sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       --tag_filters=-post_wheel_build,-py37,-gpu
