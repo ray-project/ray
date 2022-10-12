@@ -2090,7 +2090,7 @@
   team: serve
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
     timeout: 86400

@@ -1,14 +1,11 @@
-package io.ray.serve;
+package io.ray.serve.deployment;
 
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
-import io.ray.serve.deployment.Deployment;
-import io.ray.serve.deployment.DeploymentRoute;
-import io.ray.serve.util.ExampleEchoDeployment;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -22,45 +19,8 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class DeploymentTest extends BaseServeTest {
 
-  public static class Counter {
-
-    private AtomicInteger count;
-
-    public Counter(Integer value) {
-      this.count = new AtomicInteger(value);
-    }
-
-    public Integer call(Integer delta) {
-      return this.count.addAndGet(delta);
-    }
-  }
-
-  public static void main(String[] args) {
-    // Deploy deployment.
-    String deploymentName = "counter";
-
-    Deployment deployment =
-        Serve.deployment()
-            .setName(deploymentName)
-            .setDeploymentDef(Counter.class.getName())
-            .setNumReplicas(2)
-            .setInitArgs(new Object[] {10})
-            .create();
-
-    deployment.deploy(true);
-
-    Deployment result = Serve.getDeployment(deploymentName);
-    DeploymentRoute deploymentInfo = client.getDeploymentInfo(deploymentName);
-
-    // Call deployment by handle.
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote(6)), 16);
-    // TODO Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f",
-    // "signature").remote(6)));
-    Assert.assertEquals(Ray.get(client.getHandle(deploymentName, false).remote(10)), 26);
-  }
-
   @Test
-  public void createDepolymentTest() {
+  public void deployTest() {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
 
