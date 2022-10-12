@@ -428,9 +428,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     results = trainer.fit()
 
     model_checkpoint = results.checkpoint.get_model()
-    model_report = results.metrics["model"]
     assert not next(model_checkpoint.parameters()).is_cuda
-    assert not next(model_report.parameters()).is_cuda
 
     # Test the same thing for state dict.
 
