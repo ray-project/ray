@@ -11,7 +11,8 @@ import ray.air
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
-from ray import tune
+from ray import air, tune
+from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -341,9 +342,10 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
         )
         # Make sure we can access the data from the original working dir
         assert os.path.exists("./read.txt") and open("./read.txt", "r").read() == "data"
+
         # Write operations should happen in each trial's independent logdir to
         # prevent write conflicts
-        trial_dir = Path(os.environ["TUNE_TRIAL_DIR"])
+        trial_dir = Path(session.get_log_dir())
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
         # Make sure we didn't write to the working dir
@@ -387,7 +389,7 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
         data_path = orig_working_dir / "read.txt"
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
-        trial_dir = Path(os.environ["TUNE_TRIAL_DIR"])
+        trial_dir = Path(session.get_log_dir())
         # Tune should have changed the working directory to the trial directory
         assert str(trial_dir) == os.getcwd()
 

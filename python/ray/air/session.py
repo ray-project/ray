@@ -126,6 +126,13 @@ def get_trial_resources() -> "PlacementGroupFactory":
     return _get_session().trial_resources
 
 
+def get_log_dir() -> str:
+    """Log directory corresponding to the trial directory for a Tune session, and the
+    training worker directory (within the trial directory) for a Train session.
+    """
+    return _get_session().log_dir
+
+
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 

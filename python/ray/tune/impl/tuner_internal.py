@@ -22,6 +22,7 @@ from ray.tune.tune_config import TuneConfig
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
 
+
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"

@@ -74,6 +74,13 @@ class Session(abc.ABC):
         """Trial resources for the corresponding trial."""
         raise NotImplementedError
 
+    @property
+    def log_dir(self) -> str:
+        """Log directory corresponding to the session where data such as checkpoints
+        can be written.
+        """
+        raise NotImplementedError
+
 
 def _get_session() -> Optional[Session]:
     from ray.train._internal.session import _session_v2 as train_session
