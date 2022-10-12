@@ -514,7 +514,6 @@ def init_cluster(
                 "This job group is for spark job which runs the Ray cluster with ray head node "
                 f"{ray_head_hostname}:{ray_head_port}"
             )
-            time.sleep(1)
             spark.sparkContext.parallelize(
                 list(range(num_spark_tasks)), num_spark_tasks
             ).barrier().mapPartitions(
