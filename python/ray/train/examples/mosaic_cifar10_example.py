@@ -1,5 +1,4 @@
-import pytest
-
+import argparse
 import torch
 import torch.utils.data
 
@@ -18,10 +17,6 @@ from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
 from ray.train.mosaic import MosaicTrainer
-
-
-scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
-
 
 def trainer_init_per_worker(**config):
     BATCH_SIZE = 32
@@ -82,13 +77,7 @@ def trainer_init_per_worker(**config):
     )
 
 
-trainer_init_per_worker.__test__ = False
-
-
-def test_mosaic_e2e(ray_start_4_cpus):
-    """Tests if the basic MosaicTrainer with minimum configuration runs and reports correct
-    Checkpoint dictionary.
-    """
+def train_mosaic_cifar10(num_workers=2, use_gpu=False):
     trainer_init_config = {
         "max_duration": "1ep",
         "loggers": [InMemoryLogger()],
@@ -98,79 +87,31 @@ def test_mosaic_e2e(ray_start_4_cpus):
     trainer = MosaicTrainer(
         trainer_init_per_worker=trainer_init_per_worker,
         trainer_init_config=trainer_init_config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
-
-    trainer.fit()
-
-
-def test_fit_config(ray_start_4_cpus):
-    trainer_init_config = {
-        "max_duration": "2ba",
-        "loggers": [InMemoryLogger()],
-        "algorithms": [LabelSmoothing()],
-        "fit_config": {"duration": "1ba"},
-    }
-
-    trainer = MosaicTrainer(
-        trainer_init_per_worker=trainer_init_per_worker,
-        trainer_init_config=trainer_init_config,
-        scaling_config=scaling_config,
-    )
-
-    trainer.fit()
-
-    # TODO : check the training duration once reporting/checkpoint has been integrated
-
-
-def test_init_errors(ray_start_4_cpus):
-    """Tests errors that may be raised when constructing MosaicTrainer. The error may
-    be due to bad `trainer_init_per_worker` function or missing requirements in the
-    `trainer_init_config` argument.
-    """
-    # invalid trainer init function -- no argument
-    def bad_trainer_init_per_worker_1():
-        pass
-
-    trainer_init_config = {
-        "max_duration": "1ba",
-    }
-
-    with pytest.raises(ValueError):
-        _ = MosaicTrainer(
-            trainer_init_per_worker=bad_trainer_init_per_worker_1,
-            trainer_init_config=trainer_init_config,
-            scaling_config=scaling_config,
-        )
-
-    # invalid trainer init function -- more than one argument
-    def bad_trainer_init_per_worker_1(a, b):
-        pass
-
-    with pytest.raises(ValueError):
-        _ = MosaicTrainer(
-            trainer_init_per_worker=bad_trainer_init_per_worker_1,
-            trainer_init_config=trainer_init_config,
-            scaling_config=scaling_config,
-        )
-
-    # datasets is not supported
-    with pytest.raises(ValueError) as e:
-        _ = MosaicTrainer(
-            trainer_init_per_worker=bad_trainer_init_per_worker_1,
-            trainer_init_config=trainer_init_config,
-            scaling_config=scaling_config,
-            datasets={"train": [1]},
-        )
-
-        error_msg = "MosaicTrainer does not support providing dataset shards to \
-                    `trainer_init_per_worker`. Instead of passing in the dataset into \
-                    MosaicTrainer, define a dataloader and use `prepare_dataloader` \
-                    inside the `trainer_init_per_worker`."
-        assert e == error_msg
+    result = trainer.fit()
+    print(f"Results: {result.metrics}")
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
+    parser.add_argument(
+        "--num-workers",
+        "-n",
+        type=int,
+        default=2,
+        help="Sets number of workers for training.",
+    )
+    parser.add_argument(
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
 
-    sys.exit(pytest.main(["-v", "-x", __file__]))
+    args, _ = parser.parse_known_args()
+
+    import ray
+
+    ray.init(address=args.address)
+    train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
