@@ -546,8 +546,8 @@ cc_library(
         ":scheduler",
         ":worker_rpc",
         "@boost//:bimap",
-        "@com_google_absl//absl/container:btree",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
