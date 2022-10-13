@@ -30,7 +30,7 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
-    >>> def trainer_init_per_worker(**config):
+    >>> def trainer_init_per_worker(config):
     ...     # prepare the model for distributed training and wrap with
     ...     # ComposerClassifier for Composer Trainer compatibility
     ...     model = torchvision.models.resnet18(num_classes=10)
@@ -169,7 +169,7 @@ def _mosaic_train_loop_per_worker(config):
 
     # initialize Composer trainer
     config["progress_bar"] = False
-    trainer: Trainer = trainer_init_per_worker(**config)
+    trainer: Trainer = trainer_init_per_worker(config)
 
     # call the trainer
     trainer.fit(**fit_config)

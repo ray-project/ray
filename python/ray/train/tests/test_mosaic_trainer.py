@@ -23,7 +23,7 @@ from ray.train.mosaic import MosaicTrainer
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
-def trainer_init_per_worker(**config):
+def trainer_init_per_worker(config):
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
@@ -155,19 +155,13 @@ def test_init_errors(ray_start_4_cpus):
         )
 
     # datasets is not supported
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(ValueError, match=r".*dataset shards.*`prepare_dataloader`.*"):
         _ = MosaicTrainer(
-            trainer_init_per_worker=bad_trainer_init_per_worker_1,
+            trainer_init_per_worker=trainer_init_per_worker,
             trainer_init_config=trainer_init_config,
             scaling_config=scaling_config,
             datasets={"train": [1]},
         )
-
-        error_msg = "MosaicTrainer does not support providing dataset shards to \
-                    `trainer_init_per_worker`. Instead of passing in the dataset into \
-                    MosaicTrainer, define a dataloader and use `prepare_dataloader` \
-                    inside the `trainer_init_per_worker`."
-        assert e == error_msg
 
 
 if __name__ == "__main__":

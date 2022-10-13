@@ -19,7 +19,7 @@ from ray.air import session
 from ray.train.mosaic import MosaicTrainer
 
 
-def trainer_init_per_worker(**config):
+def trainer_init_per_worker(config):
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
