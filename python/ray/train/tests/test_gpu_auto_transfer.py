@@ -1,30 +1,15 @@
-from unittest.mock import patch
 import os
+from unittest.mock import patch
 import pytest
+
 import torch
 
 import ray
-import ray.train.torch.train_loop_utils
-from ray.air.constants import MODEL_KEY
 from ray.air import session
+from ray.air.constants import MODEL_KEY
 from ray.air.config import ScalingConfig
-from ray.train.torch.torch_trainer import TorchTrainer
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
-
-
-@pytest.fixture
-def ray_start_1_cpu_1_gpu():
-    address_info = ray.init(num_cpus=1, num_gpus=1)
-    yield address_info
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from ray.train.torch import TorchTrainer, TorchCheckpoint
+import ray.train.torch.train_loop_utils
 
 
 @pytest.mark.parametrize(
