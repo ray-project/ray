@@ -1,3 +1,4 @@
+from typing import List
 import pytest
 import os
 import shutil
@@ -46,6 +47,70 @@ workspace(name = "fake_workspace")
     yield
     os.chdir(cwd)
     shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_actual_timeouts(mock_build_dir):
+    """Test that size and timeout attrs are mapped to seconds correctly.
+
+    Assert that each of the fake rules is mapped correctly.
+    """
+    query = bazel_sharding.get_target_expansion_query(
+        ["..."], tests_only=False, exclude_manual=False
+    )
+    xml_output = bazel_sharding.run_bazel_query(query, debug=False)
+    rules = set(bazel_sharding.extract_rules_from_xml(xml_output))
+    expected_timeouts = {
+        "test_default": 60 * 5,
+        "test_small": 60,
+        "test_medium": 60 * 5,
+        "test_large": 60 * 15,
+        "test_enormous": 60 * 60,
+        "test_short": 60,
+        "test_moderate": 60 * 5,
+        "test_long": 60 * 15,
+        "test_eternal": 60 * 60,
+        "test_both_size_and_timeout": 60 * 15,
+    }
+    assert len(rules) == len(expected_timeouts)
+    assert (rule.actual_timeout_s == expected_timeouts[rule.name] for rule in rules)
+
+
+def test_add_rule_to_best_shard():
+    """Test that the best shard in optimal strategy is chosen correctly."""
+
+    # If we start with an empty list, then add to first shard
+    shards: List[List[bazel_sharding.BazelRule]] = [list() for _ in range(4)]
+    optimum = 600
+
+    rule = bazel_sharding.BazelRule("mock", "medium")
+    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
+    assert shards[0][0] == rule
+    assert all(not shard for shard in shards[1:])
+
+    # Add to first shard below optimum
+    old_rule = bazel_sharding.BazelRule("mock", "medium")
+    shards: List[List[bazel_sharding.BazelRule]] = [list((old_rule,)) for _ in range(4)]
+    shards[3] = []
+    optimum = old_rule.actual_timeout_s
+
+    rule = bazel_sharding.BazelRule("mock", "small")
+    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
+    assert shards[3][0] == rule
+    assert all(shard[-1] == old_rule for shard in shards[0:3])
+
+    # If all shards are above or equal optimum, add to the one with the smallest
+    # difference
+    old_rule = bazel_sharding.BazelRule("mock", "large")
+    shards: List[List[bazel_sharding.BazelRule]] = [list((old_rule,)) for _ in range(4)]
+    optimum = old_rule.actual_timeout_s
+    old_rule_medium = bazel_sharding.BazelRule("mock", "medium")
+    shards[3][0] = old_rule_medium
+
+    rule = bazel_sharding.BazelRule("mock", "small")
+    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
+    assert shards[3][0] == old_rule_medium
+    assert shards[3][-1] == rule
+    assert all(shard[-1] == old_rule for shard in shards[0:3])
 
 
 def test_bazel_sharding_end_to_end(mock_build_dir):

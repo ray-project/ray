@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Set, Tuple
 import argparse
 import os
+import re
+import shlex
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -93,42 +95,35 @@ class BazelRule:
         return cls(name=name, size=size, timeout=timeout)
 
 
+def quote_targets(targets: Iterable[str]) -> str:
+    """Quote each target in a list so that it can be passed used in subprocess."""
+    return (" ".join(shlex.quote(t) for t in targets)) if targets else ""
+
+
 def partition_targets(targets: Iterable[str]) -> Tuple[List[str], List[str]]:
     """
     Given a list of string targets, partition them into included and excluded
     lists depending on whether they start with a - (exclude) or not (include).
     """
-    included_targets, excluded_targets = [], []
+    included_targets, excluded_targets = set(), set()
     for target in targets:
-        if target.startswith("-"):
-            excluded_targets.append(target[1:])
+        if target[0] == "-":
+            assert not target[1] == "-", f"Double negation is not allowed: {target}"
+            excluded_targets.add(target[1:])
         else:
-            included_targets.append(target)
+            included_targets.add(target)
     return included_targets, excluded_targets
-
-
-def quote_targets(targets: Iterable[str]) -> str:
-    """Quote each target in a list so that it can be passed used in subprocess."""
-    return (" ".join("'{}'".format(t) for t in targets)) if targets else ""
 
 
 def split_tag_filters(tag_str: str) -> Tuple[Set[str], Set[str]]:
     """Split tag_filters string into include & exclude tags."""
     split_tags = tag_str.split(",") if tag_str else []
-    include_tags = set()
-    exclude_tags = set()
-    for tag in split_tags:
-        if tag[0] == "-":
-            assert not tag[1] == "-", f"Double negation is not allowed {tag}"
-            exclude_tags.add(tag[1:])
-        else:
-            include_tags.add(tag)
-    return include_tags, exclude_tags
+    return partition_targets(split_tags)
 
 
 def generate_regex_from_tags(tags: Iterable[str]) -> str:
     """Turn tag filters into a regex used in bazel query."""
-    return "|".join([f"(\\b{tag}\\b)" for tag in tags])
+    return "|".join([f"(\\b{re.escape(tag)}\\b)" for tag in tags])
 
 
 def get_target_expansion_query(
@@ -159,16 +154,12 @@ def get_target_expansion_query(
     if excluded_targets:
         # Exclude the targets we do not want
         excluded_set = f"set({excluded_targets})"
-        if tests_only:
-            excluded_set = f"tests({excluded_set})"
         query = f"{query} except {excluded_set}"
 
     if exclude_manual:
         # Exclude targets with 'manual' tag
-        query = (
-            f'{query} except tests(attr("tags", "\\bmanual\\b", '
-            f"set({included_targets})))"
-        )
+        exclude_tags = exclude_tags or set()
+        exclude_tags.add("manual")
 
     if exclude_tags:
         # Exclude targets which have at least one exclude_tag
@@ -231,6 +222,44 @@ def get_rules_for_shard_naive(
     return [rule.name for rule in shard]
 
 
+def add_rule_to_best_shard(
+    rule_to_add: BazelRule, shards: List[List[BazelRule]], optimum: float
+):
+    """Adds a rule to the best shard.
+
+    The best shard is determined in the following fashion:
+    1. Pick first shard which is below optimum,
+    2. If no shard is below optimum, pick the shard closest
+        to optimum.
+    """
+    first_shard_index_below_optimum = None
+    shard_index_right_above_optimum = None
+    shard_index_right_above_optimum_time = None
+    for i, shard in enumerate(shards):
+        # Total time the shard needs to run so far
+        shard_time = sum(rule.actual_timeout_s for rule in shard)
+        # Total time the shard would need to run with the rule_to_add
+        shard_time_with_item = shard_time + rule_to_add.actual_timeout_s
+
+        if shard_time_with_item < optimum:
+            # If there's a shard below optimum, just use that
+            first_shard_index_below_optimum = i
+            break
+        elif (
+            shard_index_right_above_optimum is None
+            or shard_index_right_above_optimum_time > shard_time_with_item
+        ):
+            # Otherwise, pick the shard closest to optimum
+            shard_index_right_above_optimum = i
+            shard_index_right_above_optimum_time = shard_time_with_item
+    if first_shard_index_below_optimum is not None:
+        best_shard_index = first_shard_index_below_optimum
+    else:
+        best_shard_index = shard_index_right_above_optimum
+
+    shards[best_shard_index].append(rule_to_add)
+
+
 def get_rules_for_shard_optimal(
     rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
@@ -245,7 +274,7 @@ def get_rules_for_shard_optimal(
     This works very well for our usecase and is fully deterministic.
 
     ``rules_grouped_by_time`` is expected to be a list of tuples of
-    (timeout in seconds, list of rules).
+    (timeout in seconds, list of rules) sorted by timeout descending.
     """
     # For sanity checks later.
     all_rules = []
@@ -271,48 +300,12 @@ def get_rules_for_shard_optimal(
         item = None
         for _, items in rules_grouped_by_time:
             if items:
-                item = items.pop()
-                break
+                return items.pop()
         return item
-
-    def add_rule_to_best_shard(rule_to_add: BazelRule):
-        """Adds a rule to the best shard.
-
-        The best shard is determined in the following fashion:
-        1. Pick first shard which is below optimum,
-        2. If no shard is below optimum, pick the shard closest
-           to optimum.
-        """
-        first_shard_index_below_optimum = None
-        shard_index_right_above_optimum = None
-        shard_index_right_above_optimum_time = None
-        for i, shard in enumerate(shards):
-            # Total time the shard needs to run so far
-            shard_time = sum(rule.actual_timeout_s for rule in shard)
-            # Total time the shard would need to run with the rule_to_add
-            shard_time_with_item = shard_time + rule_to_add.actual_timeout_s
-
-            if shard_time_with_item < optimum:
-                # If there's a shard below optimum, just use that
-                first_shard_index_below_optimum = i
-                break
-            elif (
-                shard_index_right_above_optimum is None
-                or shard_index_right_above_optimum_time > shard_time_with_item
-            ):
-                # Otherwise, pick the shard closest to optimum
-                shard_index_right_above_optimum = i
-                shard_index_right_above_optimum_time = shard_time_with_item
-        if first_shard_index_below_optimum is not None:
-            best_shard_index = first_shard_index_below_optimum
-        else:
-            best_shard_index = shard_index_right_above_optimum
-
-        shards[best_shard_index].append(rule_to_add)
 
     rule_to_add = get_next_longest_rule()
     while rule_to_add:
-        add_rule_to_best_shard(rule_to_add)
+        add_rule_to_best_shard(rule_to_add, shards, optimum)
         rule_to_add = get_next_longest_rule()
 
     # Sanity checks.
