@@ -63,10 +63,6 @@ def test_scalar_tensor_array_roundtrip():
 
 
 def test_arrow_variable_shaped_tensor_array_validation():
-    # Test homogeneous-typed tensor raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(np.ones((3, 2, 2)))
-
     # Test arbitrary object raises ValueError.
     with pytest.raises(ValueError):
         ArrowVariableShapedTensorArray.from_numpy(object())
