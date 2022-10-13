@@ -26,7 +26,7 @@ cifar10_transforms = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize(mean, std)]
 )
 
-data_directory = "s3://air-example-data/cifar-10-python.tar.gz"
+data_directory = "./data"
 train_dataset = torch.utils.data.Subset(
     datasets.CIFAR10(
         data_directory, train=True, download=True, transform=cifar10_transforms
