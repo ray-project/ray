@@ -63,7 +63,10 @@ boto3
 cryptography>=3.0.0
 cython >= 0.29.26
 dataclasses; python_version < '3.7'
-fastapi
+# 0.85.0 of fastapi is breaking the ci because
+# requires newer starlette -> newer version typing-extensions
+# conflicting with tensorflow 2.6
+fastapi <= 0.84.0
 feather-format
 google-api-python-client
 google-cloud-storage
