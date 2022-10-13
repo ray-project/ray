@@ -103,7 +103,7 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
-    preprocessor = BatchMapper(preprocess_image_with_label)
+    preprocessor = BatchMapper(preprocess_image_with_label, batch_format="numpy")
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
