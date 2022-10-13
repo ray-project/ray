@@ -5,6 +5,9 @@ import os
 from pydantic import BaseModel
 import shutil
 from urllib.parse import quote
+from ray.dashboard.modules.job.common import JobStatus
+from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.utils import find_job_by_ids
 
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -18,7 +21,6 @@ logger.setLevel(logging.INFO)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
-
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -79,6 +81,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
         )
         self._session = aiohttp.ClientSession()
+        self._job_manager = None
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -137,9 +140,23 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         then we will fetch the progress across all jobs.
         """
         job_id = req.query.get("job_id")
+
+        job = await find_job_by_ids(
+            self._dashboard_head.gcs_aio_client, self._job_manager, job_id
+        )
         job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
-        # Fetches the max_over_time over last 14 days
-        query = f"sum(max_over_time(ray_tasks{job_id_query}[14d])) by (State)"
+
+        if job and job.status in [
+            JobStatus.STOPPED,
+            JobStatus.SUCCEEDED,
+            JobStatus.FAILED,
+        ]:
+            # Because ray does not keep metrics after a job dies,
+            # we fetch the max_over_time over last 14 days
+            query = f"sum(max_over_time(ray_tasks{job_id_query}[14d])) by (State)"
+        else:
+            query = f"sum(ray_tasks{job_id_query}) by (State)"
+
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
         ) as resp:
@@ -221,6 +238,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
     async def run(self, server):
+        if not self._job_manager:
+            self._job_manager = JobManager(
+                self._dashboard_head.gcs_aio_client, self._dashboard_head.log_dir
+            )
+
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 
