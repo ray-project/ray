@@ -409,6 +409,9 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
 
     preprocessor = BatchMapper(map_fn)
 
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
     datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}
     trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
     result = trainer.fit()
