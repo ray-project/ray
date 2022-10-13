@@ -12,7 +12,7 @@ Note:
 
 - This is meant to map APIs that perform comparable but not necessarily identical operations.
   Please check the API reference for exact semantics and usage.
-- This list may not be exhaustive: Ray Datasets is not a traditional ETL data processing library, so not all APIs can map to Datasets.
+- This list may not be exhaustive: Ray Datasets is not a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
   In addition, we try to focus on common APIs or APIs that are less obvious to see a connection.
 
 .. _api-guide-for-pandas-users:
@@ -20,10 +20,10 @@ Note:
 For Pandas Users
 ----------------
 
-.. list-table:: Pandas vs. Datasets APIs
+.. list-table:: Pandas DataFrame vs. Ray Datasets APIs
    :header-rows: 1
 
-   * - Pandas API
+   * - Pandas DataFrame API
      - Ray Datasets API
    * - pandas.DataFrame.head()
      - :meth:`ds.show() <ray.data.Dataset.show>` or :meth:`ds.take() <ray.data.Dataset.take>`
@@ -61,3 +61,28 @@ For Pandas Users
      - :meth:`ds.mean() <ray.data.Dataset.mean>`
    * - pandas.DataFrame.std()
      - :meth:`ds.std() <ray.data.Dataset.std>`
+
+.. _api-guide-for-pyarrow-users:
+
+For PyArrow Users
+-----------------
+
+.. list-table:: PyArrow Table vs. Ray Datasets APIs
+   :header-rows: 1
+
+   * - PyArrow Table API
+     - Ray Datasets API
+   * - pyarrow.Table.schema
+     - :meth:`ds.schema() <ray.data.Dataset.schema>`
+   * - pyarrow.Table.num_rows
+     - :meth:`ds.count() <ray.data.Dataset.count>`
+   * - pyarrow.Table.filter()
+     - :meth:`ds.filter() <ray.data.Dataset.filter>`
+   * - pyarrow.Table.drop()
+     - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
+   * - pyarrow.Table.add_column()
+     - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
+   * - pyarrow.Table.groupby()
+     - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
+   * - pyarrow.Table.sort_by()
+     - :meth:`ds.sort() <ray.data.Dataset.sort>`
