@@ -45,7 +45,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
     RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
                   << computed_threshold_bytes_ << " bytes ("
                   << FormatFloat(computed_threshold_fraction_, 2)
-                  << " system memory)";
+                  << " system memory), total system memory bytes: " << total_memory_bytes;
     runner_.RunFnPeriodically(
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
