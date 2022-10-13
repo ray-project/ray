@@ -56,7 +56,7 @@ class TorchIndependentModulesTrainer(TorchSARLTrainer):
         module = DummyRLModule(module_config)
         module.apply(init_weights)
         return module
-    
+
     def make_optimizer(self, optimizer_config):
         optimizer_a = torch.optim.SGD(self.unwrapped_module.a.parameters(), lr=1e-3)
         optimizer_b = torch.optim.SGD(self.unwrapped_module.b.parameters(), lr=1e-3)
@@ -89,19 +89,19 @@ class TorchIndependentModulesTrainer(TorchSARLTrainer):
         b_grad_norm = model_grad_norm(self.unwrapped_module.b)
 
         return {
-            "compiled_results": 
-                {
-                 "a_norm": convert_to_numpy(a_norm),
-                 "b_norm": convert_to_numpy(b_norm),
-                 "a_grad_norm": convert_to_numpy(a_grad_norm),
-                 "b_grad_norm": convert_to_numpy(b_grad_norm),
-                },
-            "loss_out" : convert_to_numpy(loss_out),
-            "update_out" : convert_to_numpy(update_out),
+            "compiled_results": {
+                "a_norm": convert_to_numpy(a_norm),
+                "b_norm": convert_to_numpy(b_norm),
+                "a_grad_norm": convert_to_numpy(a_grad_norm),
+                "b_grad_norm": convert_to_numpy(b_grad_norm),
+            },
+            "loss_out": convert_to_numpy(loss_out),
+            "update_out": convert_to_numpy(update_out),
         }
 
     def module_str(self):
         return str(self.module)
+
 
 # ==================== TestModule that has model composition ==================== #
 
@@ -183,7 +183,9 @@ class TorchSharedEncoderTrainer(TorchIndependentModulesTrainer):
     def make_optimizer(self, optimizer_config):
         optimizer_a = torch.optim.SGD(self.unwrapped_module.a.parameters(), lr=1e-3)
         optimizer_b = torch.optim.SGD(self.unwrapped_module.b.parameters(), lr=1e-3)
-        optimizer_encoder = torch.optim.SGD(self.unwrapped_module.encoder.parameters(), lr=1e-3)
+        optimizer_encoder = torch.optim.SGD(
+            self.unwrapped_module.encoder.parameters(), lr=1e-3
+        )
         return [optimizer_a, optimizer_b, optimizer_encoder]
 
     def compile_results(self, batch, fwd_out, loss_out, update_out, **kwargs):
@@ -195,17 +197,16 @@ class TorchSharedEncoderTrainer(TorchIndependentModulesTrainer):
         encoder_grad_norm = model_grad_norm(self.unwrapped_module.encoder)
 
         return {
-            "compiled_results": 
-                {
-                 "a_norm": convert_to_numpy(a_norm),
-                 "b_norm": convert_to_numpy(b_norm),
-                 "encoder_norm": convert_to_numpy(encoder_norm),
-                 "encoder_grad_norm": convert_to_numpy(encoder_grad_norm),
-                 "a_grad_norm": convert_to_numpy(a_grad_norm),
-                 "b_grad_norm": convert_to_numpy(b_grad_norm),
-                },
-            "loss_out" : convert_to_numpy(loss_out),
-            "update_out" : convert_to_numpy(update_out),
+            "compiled_results": {
+                "a_norm": convert_to_numpy(a_norm),
+                "b_norm": convert_to_numpy(b_norm),
+                "encoder_norm": convert_to_numpy(encoder_norm),
+                "encoder_grad_norm": convert_to_numpy(encoder_grad_norm),
+                "a_grad_norm": convert_to_numpy(a_grad_norm),
+                "b_grad_norm": convert_to_numpy(b_grad_norm),
+            },
+            "loss_out": convert_to_numpy(loss_out),
+            "update_out": convert_to_numpy(update_out),
         }
 
 

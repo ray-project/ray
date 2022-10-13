@@ -7,7 +7,7 @@ import ray
 
 from ray.rllib import SampleBatch
 
-from ray.rllib.core.torch.torch_trainer_runner import TorchTrainerRunner
+from ray.rllib.core.trainer_runner import TrainerRunner
 from ray.rllib.utils.test_utils import check
 
 from ray.rllib.core.tests.torch.modules import (
@@ -54,7 +54,9 @@ def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn, networks):
     x, y = make_dataset()
     batch_size = 10
 
-    trainer = TorchTrainerRunner(trainer_class_fn, {"num_gpus": 2, "module_config": {}})
+    trainer = TrainerRunner(
+        trainer_class_fn, {"num_gpus": 2, "module_config": {}}, framework="torch"
+    )
 
     for i in range(2):
         batch = SampleBatch(
@@ -94,8 +96,10 @@ def test_gradients_params_same_on_all_configurations(trainer_class_fn, networks)
         ray.init()
         x, y = make_dataset()
         batch_size = 10
-        trainer = TorchTrainerRunner(
-            trainer_class_fn, {"num_gpus": num_gpus, "module_config": {}}
+        trainer = TrainerRunner(
+            trainer_class_fn,
+            {"num_gpus": num_gpus, "module_config": {}},
+            framework="torch",
         )
 
         for i in range(3):
