@@ -18,6 +18,7 @@ import ray.train as train
 from ray.air import session
 from ray.train.mosaic import MosaicTrainer
 
+
 def trainer_init_per_worker(**config):
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
@@ -110,8 +111,6 @@ if __name__ == "__main__":
     )
 
     args, _ = parser.parse_known_args()
-
-    import ray
 
     ray.init(address=args.address)
     train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
