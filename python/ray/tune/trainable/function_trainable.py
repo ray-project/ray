@@ -581,15 +581,6 @@ def wrap_function(
             "Found: {}".format(func_args)
         )
 
-    if use_config_single and not use_checkpoint:
-        if log_once("tune_function_checkpoint") and warn:
-            logger.warning(
-                "Function checkpointing is disabled. This may result in "
-                "unexpected behavior when using checkpointing features or "
-                "certain schedulers. To enable, set the train function "
-                "arguments to be `func(config, checkpoint_dir=None)`."
-            )
-
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
             with warnings.catch_warnings():
