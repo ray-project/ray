@@ -81,7 +81,6 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
         << "to detect memory usage above threshold.";
     return false;
   }
-
   bool is_usage_above_threshold = used_memory_bytes > threshold_bytes;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
