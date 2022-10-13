@@ -23,4 +23,4 @@ The reason is that Ray currently still misses some features for multi-tenancy in
 * Ray doesn't support access control: jobs have full access to a Ray cluster and all of the resources within it.
 
 .. note::
-    Ray :ref:`namespace <namespaces-guide>` is just a logical grouping of jobs and named actors. Unlike the k8s namespace, it doesn't provide any other multi-tenancy functions like resource quotas.
+    A Ray :ref:`namespace <namespaces-guide>` is just a logical grouping of jobs and named actors. Unlike a Kubernetes namespace, it doesn't provide any other multi-tenancy functions like resource quotas.
