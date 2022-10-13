@@ -175,12 +175,12 @@ def run_bazel_query(query: str, debug: bool) -> ET.Element:
     We need the XML to obtain rule metadata such as
     size, timeout, etc.
     """
-    args = ["bazel", "query", query]
+    args = ["bazel", "query", "--output=xml", query]
     if debug:
-        print("$ {}".format(" ".join(args)), file=sys.stderr)
+        print(f"$ {args}", file=sys.stderr)
         sys.stderr.flush()
     p = subprocess.run(
-        ["bazel", "query", "--output=xml", query],
+        args,
         check=True,
         stdout=subprocess.PIPE,
         errors="replace",
