@@ -68,44 +68,43 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
 
-    Example:
-        .. code-block: python
+    .. code-block:: python
 
-            ######## Using it in the *per worker* train loop (TrainSession) ######
-            from ray.air import session
-            from ray.air.checkpoint import Checkpoint
-            from ray.air.config import ScalingConfig
-            def train_func():
-                ckpt = session.get_checkpoint()
-                if ckpt:
-                    with ckpt.as_directory() as loaded_checkpoint_dir:
-                        import tensorflow as tf
+        ######## Using it in the *per worker* train loop (TrainSession) ######
+        from ray.air import session
+        from ray.air.checkpoint import Checkpoint
+        from ray.air.config import ScalingConfig
+        def train_func():
+            ckpt = session.get_checkpoint()
+            if ckpt:
+                with ckpt.as_directory() as loaded_checkpoint_dir:
+                    import tensorflow as tf
 
-                        model = tf.keras.models.load_model(loaded_checkpoint_dir)
-                else:
-                    model = build_model()
+                    model = tf.keras.models.load_model(loaded_checkpoint_dir)
+            else:
+                model = build_model()
 
-                model.save("my_model", overwrite=True)
-                session.report(
-                    metrics={"iter": 1},
-                    checkpoint=Checkpoint.from_directory("my_model")
-                )
-
-            scaling_config = ScalingConfig(num_workers=2)
-            trainer = TensorflowTrainer(
-                train_loop_per_worker=train_func, scaling_config=scaling_config
+            model.save("my_model", overwrite=True)
+            session.report(
+                metrics={"iter": 1},
+                checkpoint=Checkpoint.from_directory("my_model")
             )
-            result = trainer.fit()
 
-            # trainer2 will pick up from the checkpoint saved by trainer1.
-            trainer2 = TensorflowTrainer(
-                train_loop_per_worker=train_func,
-                scaling_config=scaling_config,
-                # this is ultimately what is accessed through
-                # ``Session.get_checkpoint()``
-                resume_from_checkpoint=result.checkpoint,
-            )
-            result2 = trainer2.fit()
+        scaling_config = ScalingConfig(num_workers=2)
+        trainer = TensorflowTrainer(
+            train_loop_per_worker=train_func, scaling_config=scaling_config
+        )
+        result = trainer.fit()
+
+        # trainer2 will pick up from the checkpoint saved by trainer1.
+        trainer2 = TensorflowTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=scaling_config,
+            # this is ultimately what is accessed through
+            # ``Session.get_checkpoint()``
+            resume_from_checkpoint=result.checkpoint,
+        )
+        result2 = trainer2.fit()
     """
 
     return _get_session().loaded_checkpoint
@@ -129,6 +128,33 @@ def get_trial_resources() -> "PlacementGroupFactory":
 def get_log_dir() -> str:
     """Log directory corresponding to the trial directory for a Tune session, and the
     training worker directory (within the trial directory) for a Train session.
+    This directory is unique to the worker and is the recommended directory to write
+    artifacts to, if needed.
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.air import session
+        from ray.train.tensorflow import TensorflowTrainer
+
+        # Using both Train and Tune, calling `session.get_log_dir()` inside the
+        # `train_loop_per_worker` gives a unique directory for each train worker
+        # in each Tune trial.
+        def train_func():
+            # >>> session.get_log_dir()
+            # ~/ray_results/<exp-name>/<trial-dir>/rank_<worker-world-rank>
+
+        trainer = TensorflowTrainer(train_loop_per_worker=train_func)
+        tuner = tune.Tuner(trainer)
+        tuner.fit()
+
+        # Using just Tune, this gives a unique directory per trial.
+        def train_func():
+            # >>> session.get_log_dir()
+            # ~/ray_results/<exp-name>/<trial-dir>
+
+        tuner = tune.Tuner(train_func)
+        tuner.fit()
     """
     return _get_session().log_dir
 

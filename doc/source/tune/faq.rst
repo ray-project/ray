@@ -757,12 +757,12 @@ we recommend you to **only perform read operations**. Writes should be performed
 in the independent trial directories. Here are two ways of accomplishing this:
 
 
-Option 1: Setting `chdir_to_trial_dir=False` in `tune.TuneConfig`
+Option 1: Setting `chdir_to_log_dir=False` in `air.RunConfig`
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The first option is to explicitly tell Tune to not change the working directory
-to the trial directory. In this case, the ``TUNE_TRIAL_DIR`` environment variable is
-exposed as a path that should be used for writes.
+to the trial directory. In this case, the :meth:`session.get_log_dir() <ray.air.session.get_log_dir>`
+API should be used to get the path for writes.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -785,3 +785,7 @@ working directory, since it's been changed to an independent trial directory.
     :language: python
     :start-after: __abspath_with_env_var_start__
     :end-before: __abspath_with_env_var_end__
+
+It's best not to rely on relative paths regardless, so consider converting
+to absolute paths for this option.
+Example: ``open(Path(session.get_log_dir()) / "write.txt", "w")``
