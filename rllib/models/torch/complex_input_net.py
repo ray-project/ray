@@ -99,9 +99,6 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             elif isinstance(component, (Discrete, MultiDiscrete)):
                 if isinstance(component, Discrete):
                     size = component.n
-                elif isinstance(component, MultiBinary):
-                    # Treat MultiBinary as Tuple
-                    size = np.product(component.n)
                 else:
                     size = np.sum(component.nvec)
                 config = {

@@ -1,3 +1,5 @@
+import time
+
 from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete, MultiBinary
 import numpy as np
 import unittest
@@ -30,10 +32,11 @@ ACTION_SPACES_TO_TEST = {
             "yet_another_nested_dict": Dict({"a": Tuple([Discrete(2), Discrete(3)])}),
         }
     ),
-    # TODO: Support "multi_binary": MultiBinary([...]),
+    # TODO: (Artur) Support "multi_binary": MultiBinary([...]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
+    "multi_binary": MultiBinary([3, 10, 10]),
     "discrete": Discrete(5),
     "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
@@ -46,7 +49,6 @@ OBSERVATION_SPACES_TO_TEST = {
             "position": Box(-1.0, 1.0, (5,), dtype=np.float32),
         }
     ),
-    "multi_binary": MultiBinary([3, 10, 10]),
 }
 
 
@@ -60,10 +62,11 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         action_space = ACTION_SPACES_TO_TEST[a_name]
         obs_space = OBSERVATION_SPACES_TO_TEST[o_name]
         print(
-            "=== Testing {} (fw={}) A={} S={} ===".format(
+            "=== Testing {} (fw={}) action_space={} obs_space={} ===".format(
                 alg, fw, action_space, obs_space
             )
         )
+        t0 = time.time()
         config.update(
             dict(
                 env_config=dict(
@@ -114,7 +117,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             if train:
                 a.train()
             a.stop()
-        print(stat)
+        print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
     frameworks = ("tf", "torch")
     if tfe:
