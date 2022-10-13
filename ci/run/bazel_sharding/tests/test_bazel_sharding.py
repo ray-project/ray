@@ -89,7 +89,7 @@ def test_add_rule_to_best_shard():
 
     # Add to first shard below optimum
     old_rule = bazel_sharding.BazelRule("mock", "medium")
-    shards: List[List[bazel_sharding.BazelRule]] = [list((old_rule,)) for _ in range(4)]
+    shards: List[List[bazel_sharding.BazelRule]] = [[old_rule] for _ in range(4)]
     shards[3] = []
     optimum = old_rule.actual_timeout_s
 
@@ -101,7 +101,7 @@ def test_add_rule_to_best_shard():
     # If all shards are above or equal optimum, add to the one with the smallest
     # difference
     old_rule = bazel_sharding.BazelRule("mock", "large")
-    shards: List[List[bazel_sharding.BazelRule]] = [list((old_rule,)) for _ in range(4)]
+    shards: List[List[bazel_sharding.BazelRule]] = [[old_rule] for _ in range(4)]
     optimum = old_rule.actual_timeout_s
     old_rule_medium = bazel_sharding.BazelRule("mock", "medium")
     shards[3][0] = old_rule_medium
