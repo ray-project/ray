@@ -90,7 +90,7 @@ class BazelRule:
             ),
             None,
         )
-        return BazelRule(name=name, size=size, timeout=timeout)
+        return cls(name=name, size=size, timeout=timeout)
 
 
 def partition_targets(targets: Iterable[str]) -> Tuple[List[str], List[str]]:
