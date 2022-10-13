@@ -26,6 +26,7 @@ from typing import (
     Type,
     Union,
 )
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 import tree
 
 import ray
@@ -680,14 +681,16 @@ class Algorithm(Trainable):
                 mod, obj = method_type.rsplit(".", 1)
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
+
             if isinstance(method_type, type) and issubclass(
-                method_type, OffPolicyEstimator
+                method_type, OfflineEvaluator
             ):
+                # TODO(kourosh) : Add an integration test for all these
+                # offline evaluators.
                 policy = self.get_policy()
-                gamma = self.config["gamma"]
-                self.reward_estimators[name] = method_type(
-                    policy, gamma, **method_config
-                )
+                if issubclass(method_type, OffPolicyEstimator):
+                    method_config["gamma"] = self.config["gamma"]
+                self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
