@@ -82,7 +82,7 @@ def trainer_init_per_worker(**config):
     )
 
 
-# trainer_init_per_worker.__test__ = False
+trainer_init_per_worker.__test__ = False
 
 
 def test_mosaic_e2e(ray_start_4_cpus):

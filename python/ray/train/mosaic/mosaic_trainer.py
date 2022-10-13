@@ -84,11 +84,16 @@ class MosaicTrainer(TorchTrainer):
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
-            ``composer.Trainer`` object and takes in an optional configuration
-            dictionary as an argument.
-        datasets: Any Ray Datasets to use for training.
+            ``composer.Trainer`` object and takes in configuration
+            dictionary (``**config``) as an argument. This dictionary is based on
+            ``trainer_init_config`` and is modified for Ray - Composer integration.
+        datasets: Any Ray Datasets to use for training. At the moment, we do not support
+            passing datasets to the trainer and using the dataset shards in the trainer
+            loop. Instead, configure and load the datasets inside
+            ``trainer_init_per_worker`` function
         trainer_init_config: Configurations to pass into ``trainer_init_per_worker`` as
-            kwargs.
+            kwargs. To define configurations for the composer trainer's ``fit`` call,
+            use ``"fit_config"`` key.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -141,9 +146,9 @@ class MosaicTrainer(TorchTrainer):
         self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
         num_params = len(inspect.signature(trainer_init_per_worker).parameters)
-        if num_params > 1:
+        if num_params != 1:
             raise ValueError(
-                f"{fn_name} should take in at most 1 argument, "
+                f"{fn_name} should take in at most 1 argument (`**config`), "
                 f"but it accepts {num_params} arguments instead."
             )
 
@@ -151,6 +156,7 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
+    fit_config = config.pop("fit_config", dict())
 
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
@@ -166,4 +172,4 @@ def _mosaic_train_loop_per_worker(config):
     trainer: Trainer = trainer_init_per_worker(**config)
 
     # call the trainer
-    trainer.fit()
+    trainer.fit(**fit_config)
