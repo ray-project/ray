@@ -535,18 +535,6 @@ def run(
             "well as implementing `reset_config` for Trainable."
         )
 
-    if not chdir_to_trial_dir:
-        logger.warning(
-            "You have chosen not to change the working directory of each worker to the "
-            "independent trial directories. Be sure to only perform READ operations on "
-            "paths relative to the original working directory as they are shared "
-            "between workers on the same node. "
-            "File writes should happen in the independent trial directory "
-            "(accessible via the `os.environ['TUNE_TRIAL_DIR']` environment "
-            "variable from within the worker process) to prevent conflicts where two "
-            "workers try writing to the same location."
-        )
-
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
         result_buffer_length=result_buffer_length,
