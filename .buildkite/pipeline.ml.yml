@@ -18,6 +18,7 @@
         "RAY_CI_ML_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
+  instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh

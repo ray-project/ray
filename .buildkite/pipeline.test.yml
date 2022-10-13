@@ -9,6 +9,7 @@
 
 - label: ":python: Release test package unit tests"
   conditions: ["ALWAYS"]
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip install -e release/
