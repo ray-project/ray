@@ -116,7 +116,7 @@ Scikit-Learn
     :exclude-members: SklearnTrainer
     :show-inheritance:
 
-HuggingFace
+Mosaic
 ~~~~~~~~~~~
 
 .. autoclass:: ray.train.mosaic.MosaicTrainer
