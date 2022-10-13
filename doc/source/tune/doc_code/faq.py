@@ -441,7 +441,7 @@ if not MOCK:
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
         print(open(orig_working_dir / "read.txt").read())
 
-        # Write to the Tune trial directory, which is the current `os.getcwd()`
+        # Write to the Tune trial directory, which is the current working directory
         with open("./write.txt", "w") as f:
             f.write("test write")
 

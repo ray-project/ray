@@ -741,32 +741,20 @@ How do I access relative filepaths in my Tune training function?
 
 Let's say you launch a Tune experiment from ``~/code/my_script.py``. By default, Tune
 changes the working directory of each worker from ``~/code`` to its corresponding trial
-directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This guarantees separate working
-directories for each worker process.
-
-There are two main reasons for this default:
-
-1. If trial writes artifacts, we want to avoid conflicts: if two trials on the same machine write to ``artifact.bin``, the second one would overwrite the artifact from the first.
-
-2. In distributed settings with more than one machine, we cannot guarantee that the working directory from the driver script exists on the other remote nodes. However, we can guarantee that the trial directory exists.
-
-If you need to access files from the original working directory
-(ex: you need to load a (relatively small) dataset or
-saved models from ``~/code/data/data.csv`` or ``~/code/models/model.h5``),
-we recommend you to **only perform read operations**. Writes should be performed
-in the independent trial directories. Here are two ways of accomplishing this:
-
+directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
+guarantees separate working directories for each worker process, avoiding conflicts when
+saving trial-specific outputs.
 
 Option 1: Setting `chdir_to_log_dir=False` in `air.RunConfig`
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The first option is to explicitly tell Tune to not change the working directory
 to the trial directory. In this case, the :meth:`session.get_log_dir() <ray.air.session.get_log_dir>`
-API should be used to get the path for writes.
+API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
-    :emphasize-lines: 9, 15
+    :emphasize-lines: 8, 14
     :language: python
     :start-after: __no_chdir_start__
     :end-before: __no_chdir_end__
@@ -776,8 +764,8 @@ Option 2: Manual control using environment variables
 
 The second option is to allow Tune to change the working directory and use the
 ``TUNE_ORIG_WORKING_DIR`` environment variable to convert relative paths to the
-correct absolute path in your training function. Writes can happen relative to the
-working directory, since it's been changed to an independent trial directory.
+correct absolute path in your training function. Saving trial-specific outputs can
+happen relative to the working directory, since it's been changed to an independent trial directory.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -785,7 +773,3 @@ working directory, since it's been changed to an independent trial directory.
     :language: python
     :start-after: __abspath_with_env_var_start__
     :end-before: __abspath_with_env_var_end__
-
-It's best not to rely on relative paths regardless, so consider converting
-to absolute paths for this option.
-Example: ``open(Path(session.get_log_dir()) / "write.txt", "w")``
