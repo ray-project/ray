@@ -181,5 +181,6 @@ More about Ray Objects
 
     objects/serialization.rst
     objects/memory-management.rst
+    objects/limiting-memory-usage.rst
     objects/object-spilling.rst
     objects/fault-tolerance.rst

@@ -234,6 +234,8 @@ In this example, we first create an object via ``ray.put()``, then capture its `
 
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
 
+.. _memory-aware-scheduling:
+
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
 
