@@ -92,7 +92,11 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 }
 
 void GcsHealthCheckManager::Initialize(const GcsInitData &gcs_init_data) {
-
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      AddNode(item.second);
+    }
+  }
 }
 
 void GcsHealthCheckManager::AddNode(const rpc::GcsNodeInfo &node_info) {
