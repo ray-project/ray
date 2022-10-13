@@ -33,7 +33,7 @@ export const TaskProgressBar = ({
         progress={[
           {
             label: "Finished",
-            value: total,
+            value: total - numFailed,
             color: theme.palette.success.main,
           },
           {
