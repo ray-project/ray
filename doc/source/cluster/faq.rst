@@ -19,3 +19,8 @@ The reason is that Ray currently still misses some features for multi-tenancy in
   This means simultaneous jobs can interfere with each other and makes them less reliable to run in production.
 
 * Ray doesn't support priorities: All jobs, tasks and actors have the same priority so there is no way to prioritize important jobs under load.
+
+* Ray doesn't support access control: jobs have full access to a Ray cluster and all of the resources within it.
+
+.. note::
+    Ray :ref:`namespace <namespaces-guide>` is just a logical grouping of jobs and named actors. Unlike the k8s namespace, it doesn't provide any other multi-tenancy functions like resource quotas.
