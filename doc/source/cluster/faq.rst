@@ -24,3 +24,9 @@ The reason is that Ray currently still misses some features for multi-tenancy in
 
 .. note::
     A Ray :ref:`namespace <namespaces-guide>` is just a logical grouping of jobs and named actors. Unlike a Kubernetes namespace, it doesn't provide any other multi-tenancy functions like resource quotas.
+
+
+I have multiple Ray users. What's the right way to deploy Ray for them?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It's recommended to start a Ray cluster for each user so that their workloads are isolated.
