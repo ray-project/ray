@@ -191,9 +191,9 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_with_amp",
+    name = "test_gpu_amp",
     size = "large",
-    srcs = ["tests/test_gpu_with_amp.py"],
+    srcs = ["tests/test_gpu_amp.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib"]
 )
