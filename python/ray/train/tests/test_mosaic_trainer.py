@@ -104,13 +104,32 @@ def test_mosaic_e2e(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_fit_config(ray_start_4_cpus):
+    trainer_init_config = {
+        "max_duration": "2ba",
+        "loggers": [InMemoryLogger()],
+        "algorithms": [LabelSmoothing()],
+        "fit_config": {"duration": "1ba"},
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    trainer.fit()
+
+    # TODO : check the training duration once reporting/checkpoint has been integrated
+
+
 def test_init_errors(ray_start_4_cpus):
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
     be due to bad `trainer_init_per_worker` function or missing requirements in the
     `trainer_init_config` argument.
     """
-    # invalid trainer init function
-    def bad_trainer_init_per_worker(a, b, c):
+    # invalid trainer init function -- no argument
+    def bad_trainer_init_per_worker_1():
         pass
 
     trainer_init_config = {
@@ -119,10 +138,36 @@ def test_init_errors(ray_start_4_cpus):
 
     with pytest.raises(ValueError):
         _ = MosaicTrainer(
-            trainer_init_per_worker=bad_trainer_init_per_worker,
+            trainer_init_per_worker=bad_trainer_init_per_worker_1,
             trainer_init_config=trainer_init_config,
             scaling_config=scaling_config,
         )
+
+    # invalid trainer init function -- more than one argument
+    def bad_trainer_init_per_worker_1(a, b):
+        pass
+
+    with pytest.raises(ValueError):
+        _ = MosaicTrainer(
+            trainer_init_per_worker=bad_trainer_init_per_worker_1,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+        )
+
+    # datasets is not supported
+    with pytest.raises(ValueError) as e:
+        _ = MosaicTrainer(
+            trainer_init_per_worker=bad_trainer_init_per_worker_1,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+            datasets={"train": [1]},
+        )
+
+        error_msg = "MosaicTrainer does not support providing dataset shards to \
+                    `trainer_init_per_worker`. Instead of passing in the dataset into \
+                    MosaicTrainer, define a dataloader and use `prepare_dataloader` \
+                    inside the `trainer_init_per_worker`."
+        assert e == error_msg
 
 
 if __name__ == "__main__":
