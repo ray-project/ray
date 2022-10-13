@@ -194,6 +194,7 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
               - file: serve/migration
+              - file: serve/direct-ingress
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -314,6 +315,12 @@ parts:
         title: Applications Guide
       - file: cluster/faq
 
+  - caption: Monitoring and Debugging
+    chapters:
+      - file: ray-observability/monitoring-debugging/monitoring-debugging
+        title: User Guides
+      - file: ray-observability/index
+        title: Tools
 
   - caption: References
     chapters:
@@ -330,6 +337,5 @@ parts:
           - file: ray-contribute/fake-autoscaler
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
-      - file: ray-observability/index
       - file: ray-contribute/whitepaper
       - file: ray-use-cases/overview
