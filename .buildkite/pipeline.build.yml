@@ -217,7 +217,7 @@
 
 - label: ":cpp: Tests (UBSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: small
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
@@ -227,7 +227,7 @@
 
 - label: ":cpp: Tests (TSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: small
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=tsan-clang $(./ci/run/bazel_export_options)
@@ -393,7 +393,7 @@
 
 - label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: small
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
@@ -412,6 +412,7 @@
 
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -453,6 +454,7 @@
 
 - label: ":redis: (External Redis) (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT

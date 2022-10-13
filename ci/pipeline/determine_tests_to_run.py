@@ -24,10 +24,6 @@ def list_changed_files(commit_range):
     Returns:
         list: List of changed files within the commit range
     """
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    if base_branch:
-        pull_command = ["git", "fetch", "origin", base_branch]
-        subprocess.check_call(pull_command)
 
     command = ["git", "diff", "--name-only", commit_range, "--"]
     out = subprocess.check_output(command)
@@ -259,7 +255,7 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
-    if True:
+    else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_TRAIN_AFFECTED = 1
