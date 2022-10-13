@@ -1,9 +1,14 @@
-package io.ray.serve;
+package io.ray.serve.router;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
+import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
@@ -11,38 +16,29 @@ import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
-import io.ray.serve.router.Query;
-import io.ray.serve.router.ReplicaSet;
+import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ReplicaSetTest extends BaseTest {
-  private String deploymentName = "ReplicaSetTest";
-
+public class RouterTest {
   @Test
-  public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-    ActorNameList.Builder builder = ActorNameList.newBuilder();
-
-    replicaSet.updateWorkerReplicas(builder.build());
-    Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
-    Assert.assertTrue(inFlightQueries.isEmpty());
-  }
-
-  @SuppressWarnings("unused")
-  @Test
-  public void assignReplicaTest() {
-    init();
+  public void test() {
 
     try {
-      String controllerName = deploymentName + "_controller";
+      BaseServeTest.initRay();
+
+      String deploymentName = "RouterTest";
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
@@ -69,23 +65,24 @@ public class ReplicaSetTest extends BaseTest {
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
-      // ReplicaSet
-      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
+      // Set ReplicaContext
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+
+      // Router
+      Router router = new Router(controllerHandle, deploymentName);
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
-      replicaSet.updateWorkerReplicas(builder.build());
+      router.getReplicaSet().updateWorkerReplicas(builder.build());
 
       // assign
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
       requestMetadata.setCallMethod("getDeploymentName");
 
-      Query query = new Query(requestMetadata.build(), null);
-      ObjectRef<Object> resultRef = replicaSet.assignReplica(query);
-
+      ObjectRef<Object> resultRef = router.assignRequest(requestMetadata.build(), null);
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      shutdown();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }
