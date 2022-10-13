@@ -4,12 +4,12 @@ from collections import Counter
 from unittest.mock import patch
 import pytest
 import torch
+import torchvision
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
 from ray.air import session
-from ray.cluster_utils import Cluster
 from ray import tune
 
 import ray.train as train
@@ -19,41 +19,6 @@ from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train._internal.worker_group import WorkerGroup
-
-
-@pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_1_cpu_1_gpu():
-    address_info = ray.init(num_cpus=1, num_gpus=1)
-    yield address_info
-    ray.shutdown()
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_2_node_2_gpu():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
 
 
 class LinearDatasetDict(LinearDataset):
@@ -265,6 +230,56 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
         train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
     trainer.fit()
+
+
+@pytest.mark.parametrize("use_gpu", (False, True))
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+    # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
+    # identical hardware and software dependencies. This test should be okay given that
+    # it only runs for two epochs on a small dataset.
+    # NOTE: I've chosen to use a ResNet model over a more simple model, because
+    # `enable_reproducibility` disables CUDA convolution benchmarking, and a simpler
+    # model (e.g., linear) might not test this feature.
+    def train_func():
+        train.torch.enable_reproducibility()
+
+        model = torchvision.models.resnet18()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 128
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 32, 32),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(2):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                loss.backward()
+                optimizer.step()
+
+        session.report(dict(loss=loss.item()))
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    result1 = trainer.fit()
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    result2 = trainer.fit()
+
+    assert result1.metrics["loss"] == result2.metrics["loss"]
 
 
 @pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])

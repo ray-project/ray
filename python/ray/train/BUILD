@@ -175,14 +175,6 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_long_running",
-    size = "large",
-    srcs = ["tests/test_gpu_long_running.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_gpu_auto_transfer",
     size = "large",
     srcs = ["tests/test_gpu_auto_transfer.py"],
@@ -194,6 +186,14 @@ py_test(
     name = "test_gpu_examples",
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_gpu_with_amp",
+    size = "large",
+    srcs = ["tests/test_gpu_with_amp.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib"]
 )
