@@ -28,6 +28,7 @@ all_rules = size_rules + timeout_rules + manual_rules + size_and_timeout_rules
 
 @pytest.fixture
 def mock_build_dir():
+    """Create a mock bazel workspace"""
     tmpdir = tempfile.mkdtemp()
     with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
         f.write(
@@ -48,46 +49,64 @@ workspace(name = "fake_workspace")
 
 
 def test_bazel_sharding_end_to_end(mock_build_dir):
-    output = bazel_sharding.main(["..."], 0, 1)
+    """Test e2e working of the script without sharding.
+
+    Assert that if we are doing no sharding, all the rules
+    are outputted and the two strategies have the same
+    outputs.
+    """
+    output = bazel_sharding.main(["..."], index=0, count=1)
     output = set(output)
     assert output == set(all_rules)
 
-    output_naive = bazel_sharding.main(["..."], 0, 1, sharding_strategy="naive")
+    output_naive = bazel_sharding.main(
+        ["..."], index=0, count=1, sharding_strategy="naive"
+    )
     output_naive = set(output_naive)
     assert output == output_naive
 
-    output = bazel_sharding.main(["..."], 0, 1, exclude_manual=True)
+    output = bazel_sharding.main(["..."], index=0, count=1, exclude_manual=True)
     output = set(output)
     assert output == set(all_rules).difference(set(manual_rules))
 
 
 def test_bazel_sharding_with_filters(mock_build_dir):
-    output = bazel_sharding.main(["..."], 0, 1, tag_filters="size")
+    """Test e2e working of the script without sharding with filters.
+
+    Assert that the rules are properly filtered.
+    """
+    output = bazel_sharding.main(["..."], index=0, count=1, tag_filters="size")
     output = set(output)
     assert output == set(size_rules + size_and_timeout_rules)
 
-    output = bazel_sharding.main(["..."], 0, 1, tag_filters="-timeout")
+    output = bazel_sharding.main(["..."], index=0, count=1, tag_filters="-timeout")
     output = set(output)
     assert output == set(size_rules + manual_rules)
 
-    output = bazel_sharding.main(["..."], 0, 1, tag_filters="size,timeout")
+    output = bazel_sharding.main(["..."], index=0, count=1, tag_filters="size,timeout")
     output = set(output)
     assert output == set(size_rules + timeout_rules + size_and_timeout_rules)
 
-    output = bazel_sharding.main(["..."], 0, 1, tag_filters="size,-timeout")
+    output = bazel_sharding.main(["..."], index=0, count=1, tag_filters="size,-timeout")
     output = set(output)
     assert output == set(size_rules)
 
-    output = bazel_sharding.main(["..."], 0, 1, tag_filters="-size,-timeout")
+    output = bazel_sharding.main(
+        ["..."], index=0, count=1, tag_filters="-size,-timeout"
+    )
     output = set(output)
     assert output == set(manual_rules)
 
 
 def test_bazel_sharding_two_shards(mock_build_dir):
-    output_1_list = bazel_sharding.main(["..."], 0, 2)
+    """Test e2e working of the script with sharding.
+
+    Assert that the two shards are balanced as expected.
+    """
+    output_1_list = bazel_sharding.main(["..."], index=0, count=2)
     output_1 = set(output_1_list)
 
-    output_2_list = bazel_sharding.main(["..."], 1, 2)
+    output_2_list = bazel_sharding.main(["..."], index=1, count=2)
     output_2 = set(output_2_list)
 
     assert output_1.union(output_2) == set(all_rules)
@@ -109,10 +128,14 @@ def test_bazel_sharding_two_shards(mock_build_dir):
         f"//{WORKSPACE_KEY}:test_short",
     ]
 
-    output_1_naive = bazel_sharding.main(["..."], 0, 2, sharding_strategy="naive")
+    output_1_naive = bazel_sharding.main(
+        ["..."], index=0, count=2, sharding_strategy="naive"
+    )
     output_1_naive = set(output_1_naive)
 
-    output_2_naive = bazel_sharding.main(["..."], 1, 2, sharding_strategy="naive")
+    output_2_naive = bazel_sharding.main(
+        ["..."], index=1, count=2, sharding_strategy="naive"
+    )
     output_2_naive = set(output_2_naive)
 
     assert output_1_naive.union(output_2_naive) == set(all_rules)
@@ -120,13 +143,21 @@ def test_bazel_sharding_two_shards(mock_build_dir):
 
 @pytest.mark.parametrize("sharding_strategy", ("optimal", "naive"))
 def test_bazel_sharding_optimal_too_many_shards(mock_build_dir, sharding_strategy):
+    """
+    Test e2e working of the script with sharding in the case of more shards than tests.
+
+    Assert that the first shard has one test and the final one has none.
+    """
     output_1 = bazel_sharding.main(
-        ["..."], 0, len(all_rules) + 1, sharding_strategy=sharding_strategy
+        ["..."], index=0, count=len(all_rules) + 1, sharding_strategy=sharding_strategy
     )
     output_1 = set(output_1)
 
     output_2 = bazel_sharding.main(
-        ["..."], len(all_rules), len(all_rules) + 1, sharding_strategy=sharding_strategy
+        ["..."],
+        index=len(all_rules),
+        count=len(all_rules) + 1,
+        sharding_strategy=sharding_strategy,
     )
     output_2 = set(output_2)
 

@@ -28,7 +28,12 @@ import xml.etree.ElementTree as ET
 
 @dataclass
 class BazelRule:
-    # Only the subset of fields we care about
+    """
+    Dataclass representing a bazel py_test rule (BUILD entry).
+
+    Only the subset of fields we care about is included.
+    """
+
     name: str
     size: str
     timeout: Optional[str] = None
@@ -40,6 +45,7 @@ class BazelRule:
     @property
     def actual_timeout_s(self) -> float:
         # See https://bazel.build/reference/be/common-definitions
+        # Timeout takes priority over size
         if self.timeout == "short":
             return 60
         if self.timeout == "moderate":
@@ -65,6 +71,11 @@ class BazelRule:
 
     @classmethod
     def from_xml_element(cls, element: ET.Element) -> "BazelRule":
+        """Create a BazelRule from an XML element.
+
+        The XML element is expected to be produced by the
+        ``bazel query --output=xml`` command.
+        """
         name = element.get("name")
         all_string_tags = element.findall("string")
         size = next(
@@ -83,6 +94,10 @@ class BazelRule:
 
 
 def partition_targets(targets: Iterable[str]) -> Tuple[List[str], List[str]]:
+    """
+    Given a list of string targets, partition them into included and excluded
+    lists depending on whether they start with a - (exclude) or not (include).
+    """
     included_targets, excluded_targets = [], []
     for target in targets:
         if target.startswith("-"):
@@ -93,11 +108,12 @@ def partition_targets(targets: Iterable[str]) -> Tuple[List[str], List[str]]:
 
 
 def quote_targets(targets: Iterable[str]) -> str:
+    """Quote each target in a list so that it can be passed used in subprocess."""
     return (" ".join("'{}'".format(t) for t in targets)) if targets else ""
 
 
 def split_tag_filters(tag_str: str) -> Tuple[Set[str], Set[str]]:
-    """Split tag_filters str into include & exclude tags"""
+    """Split tag_filters string into include & exclude tags."""
     split_tags = tag_str.split(",") if tag_str else []
     include_tags = set()
     exclude_tags = set()
@@ -111,6 +127,7 @@ def split_tag_filters(tag_str: str) -> Tuple[Set[str], Set[str]]:
 
 
 def generate_regex_from_tags(tags: Iterable[str]) -> str:
+    """Turn tag filters into a regex used in bazel query."""
     return "|".join([f"(\\b{tag}\\b)" for tag in tags])
 
 
@@ -121,42 +138,52 @@ def get_target_expansion_query(
     include_tags: Optional[Iterable[str]] = None,
     exclude_tags: Optional[Iterable[str]] = None,
 ) -> str:
+    """Generate the bazel query to obtain individual rules."""
     included_targets, excluded_targets = partition_targets(targets)
 
     included_targets = quote_targets(included_targets)
     excluded_targets = quote_targets(excluded_targets)
 
-    query = "set({})".format(included_targets)
+    query = f"set({included_targets})"
 
     if include_tags:
         tags_regex = generate_regex_from_tags(include_tags)
-        query = 'attr("tags", "{}", {})'.format(tags_regex, query)
+        # Each rule has to have at least one tag from
+        # include_tags
+        query = f'attr("tags", "{tags_regex}", {query})'
 
     if tests_only:
-        query = "tests({})".format(query)
+        # Discard any non-test rules
+        query = f"tests({query})"
 
     if excluded_targets:
-        excluded_set = "set({})".format(excluded_targets)
+        # Exclude the targets we do not want
+        excluded_set = f"set({excluded_targets})"
         if tests_only:
-            excluded_set = "tests({})".format(excluded_set)
-        query = "{} except {}".format(query, excluded_set)
+            excluded_set = f"tests({excluded_set})"
+        query = f"{query} except {excluded_set}"
 
     if exclude_manual:
-        query = '{} except tests(attr("tags", "\\bmanual\\b", set({})))'.format(
-            query, included_targets
+        # Exclude targets with 'manual' tag
+        query = (
+            f'{query} except tests(attr("tags", "\\bmanual\\b", '
+            f"set({included_targets})))"
         )
 
     if exclude_tags:
+        # Exclude targets which have at least one exclude_tag
         tags_regex = generate_regex_from_tags(exclude_tags)
-        query = '{} except attr("tags", "{}", set({}))'.format(
-            query, tags_regex, included_targets
-        )
+        query = f'{query} except attr("tags", "{tags_regex}", set({included_targets}))'
 
     return query
 
 
 def run_bazel_query(query: str, debug: bool) -> ET.Element:
-    """Runs bazel query with xml output format"""
+    """Runs bazel query with XML output format.
+
+    We need the XML to obtain rule metadata such as
+    size, timeout, etc.
+    """
     args = ["bazel", "query", query]
     if debug:
         print("$ {}".format(" ".join(args)), file=sys.stderr)
@@ -173,6 +200,7 @@ def run_bazel_query(query: str, debug: bool) -> ET.Element:
 
 
 def extract_rules_from_xml(element: ET.Element) -> List[BazelRule]:
+    """Extract BazelRules from the XML obtained from ``bazel query --output=xml``."""
     xml_rules = element.findall("rule")
     return [BazelRule.from_xml_element(element) for element in xml_rules]
 
@@ -180,7 +208,10 @@ def extract_rules_from_xml(element: ET.Element) -> List[BazelRule]:
 def group_rules_by_time_needed(
     rules: List[BazelRule],
 ) -> List[Tuple[float, List[BazelRule]]]:
-    """Returns a list of tuples of (timeout, list of rules) sorted descending"""
+    """
+    Return a list of tuples of (timeout in seconds, list of rules)
+    sorted descending.
+    """
     grouped_rules = defaultdict(list)
     for rule in rules:
         grouped_rules[rule.actual_timeout_s].append(rule)
@@ -189,95 +220,123 @@ def group_rules_by_time_needed(
     return sorted(grouped_rules.items(), key=lambda x: x[0], reverse=True)
 
 
-def get_targets_for_shard_naive(
+def get_rules_for_shard_naive(
     rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
-    """Create shards by assigning the same number of targets to each shard"""
-    all_targets = []
-    for timeout, targets in rules_grouped_by_time:
-        all_targets.extend(targets)
-    shard = sorted(all_targets)[index::count]
+    """Create shards by assigning the same number of rules to each shard."""
+    all_rules = []
+    for _, rules in rules_grouped_by_time:
+        all_rules.extend(rules)
+    shard = sorted(all_rules)[index::count]
     return [rule.name for rule in shard]
 
 
-def get_targets_for_shard_optimal(
+def get_rules_for_shard_optimal(
     rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
-    """Creates shards by trying to make sure each shard takes around the same time"""
-    # For sanity checks later
-    expected_num_all_targets = sum(
-        len(targets) for timeout, targets in rules_grouped_by_time
-    )
-    all_targets = []
-    for timeout, targets in rules_grouped_by_time:
-        all_targets.extend(targets)
+    """Creates shards by trying to make sure each shard takes around the same time.
 
-    # We use a simple heuristic here (as this problem is NP-complete):
-    # 1. Determine how long one shard would take if they were ideally balanced
-    #    (this may be impossible to attain, but that's fine)
-    # 2. Allocate the next biggest item into the first shard that is below the optimum
-    # 3. If there's no shard below optimium, choose the shard closest to optimum
+    We use a simple heuristic here (as this problem is NP-complete):
+    1. Determine how long one shard would take if they were ideally balanced
+       (this may be impossible to attain, but that's fine).
+    2. Allocate the next biggest item into the first shard that is below the optimum.
+    3. If there's no shard below optimium, choose the shard closest to optimum.
 
+    This works very well for our usecase and is fully deterministic.
+
+    ``rules_grouped_by_time`` is expected to be a list of tuples of
+    (timeout in seconds, list of rules).
+    """
+    # For sanity checks later.
+    all_rules = []
+    for _, rules in rules_grouped_by_time:
+        all_rules.extend(rules)
+
+    # Instantiate the shards, each represented by a list.
     shards: List[List[BazelRule]] = [list() for _ in range(count)]
+
+    # The theoretical optimum we are aiming for. Note that this may be unattainable
+    # as it doesn't take into account that tests are discrete and cannot be split.
+    # This is however fine, because it should only serve as a guide which shard to
+    # add the next test to.
     optimum = (
         sum(timeout * len(rules) for timeout, rules in rules_grouped_by_time) / count
     )
 
-    def get_next_biggest_item() -> BazelRule:
+    def get_next_longest_rule() -> BazelRule:
+        """
+        Get the next longest (taking up the most time) BazelRule from the
+        ``rules_grouped_by_time`` list.
+        """
         item = None
-        for timeout, items in rules_grouped_by_time:
+        for _, items in rules_grouped_by_time:
             if items:
                 item = items.pop()
                 break
         return item
 
-    def get_shard_index_to_add_to(item_to_add: BazelRule) -> int:
-        shard_indices_below_optimum = []
+    def add_rule_to_best_shard(rule_to_add: BazelRule):
+        """Adds a rule to the best shard.
+
+        The best shard is determined in the following fashion:
+        1. Pick first shard which is below optimum,
+        2. If no shard is below optimum, pick the shard closest
+           to optimum.
+        """
+        first_shard_index_below_optimum = None
         shard_index_right_above_optimum = None
         shard_index_right_above_optimum_time = None
         for i, shard in enumerate(shards):
+            # Total time the shard needs to run so far
             shard_time = sum(rule.actual_timeout_s for rule in shard)
-            shard_time_with_item = shard_time + item_to_add.actual_timeout_s
+            # Total time the shard would need to run with the rule_to_add
+            shard_time_with_item = shard_time + rule_to_add.actual_timeout_s
+
             if shard_time_with_item < optimum:
-                shard_indices_below_optimum.append(i)
+                # If there's a shard below optimum, just use that
+                first_shard_index_below_optimum = i
+                break
             elif (
                 shard_index_right_above_optimum is None
                 or shard_index_right_above_optimum_time > shard_time_with_item
             ):
+                # Otherwise, pick the shard closest to optimum
                 shard_index_right_above_optimum = i
                 shard_index_right_above_optimum_time = shard_time_with_item
-        if shard_indices_below_optimum:
-            return shard_indices_below_optimum[0]
-        return shard_index_right_above_optimum
+        if first_shard_index_below_optimum:
+            best_shard_index = first_shard_index_below_optimum
+        else:
+            best_shard_index = shard_index_right_above_optimum
+        shards[best_shard_index].append(rule_to_add)
 
-    item_to_add = get_next_biggest_item()
-    while item_to_add:
-        shard_index_to_add_to = get_shard_index_to_add_to(item_to_add)
-        shards[shard_index_to_add_to].append(item_to_add)
-        item_to_add = get_next_biggest_item()
+    rule_to_add = get_next_longest_rule()
+    while rule_to_add:
+        add_rule_to_best_shard(rule_to_add)
+        rule_to_add = get_next_longest_rule()
 
     # Sanity checks.
-    num_all_targets = sum(len(shard) for shard in shards)
-    assert (
-        num_all_targets == expected_num_all_targets
-    ), f"got {num_all_targets} targets, expected {expected_num_all_targets}"
-    all_targets_set = set()
+    num_all_rules = sum(len(shard) for shard in shards)
+
+    # Make sure that there are no duplicate rules.
+    all_rules_set = set()
     for shard in shards:
-        all_targets_set = all_targets_set.union(set(shard))
-    assert len(all_targets_set) == num_all_targets, (
-        f"num of unique targets {len(all_targets_set)} "
-        f"doesn't match num of targets {num_all_targets}"
+        all_rules_set = all_rules_set.union(set(shard))
+    assert len(all_rules_set) == num_all_rules, (
+        f"num of unique rules {len(all_rules_set)} "
+        f"doesn't match num of rules {num_all_rules}"
     )
-    assert all_targets_set == set(all_targets_set), (
-        f"unique targets after sharding {len(all_targets_set)} "
-        f"doesn't match unique targets after sharding {num_all_targets}"
+
+    # Make sure that all rules have been included in the shards.
+    assert all_rules_set == set(all_rules_set), (
+        f"unique rules after sharding {len(all_rules_set)} "
+        f"doesn't match unique rules after sharding {num_all_rules}"
     )
 
     print(
-        f"get_targets_for_shard statistics:\n\tOptimum: {optimum} seconds\n"
+        f"get_rules_for_shard statistics:\n\tOptimum: {optimum} seconds\n"
         + "\n".join(
             (
-                f"\tShard {i}: {len(shard)} targets, "
+                f"\tShard {i}: {len(shard)} rules, "
                 f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
             )
             for i, shard in enumerate(shards)
@@ -289,6 +348,7 @@ def get_targets_for_shard_optimal(
 
 def main(
     targets: List[str],
+    *,
     index: int,
     count: int,
     tests_only: bool = False,
@@ -306,9 +366,9 @@ def main(
     rules = extract_rules_from_xml(xml_output)
     rules_grouped_by_time = group_rules_by_time_needed(rules)
     if sharding_strategy == "optimal":
-        my_targets = get_targets_for_shard_optimal(rules_grouped_by_time, index, count)
+        my_targets = get_rules_for_shard_optimal(rules_grouped_by_time, index, count)
     else:
-        my_targets = get_targets_for_shard_naive(rules_grouped_by_time, index, count)
+        my_targets = get_rules_for_shard_naive(rules_grouped_by_time, index, count)
     return my_targets
 
 
@@ -363,5 +423,7 @@ if __name__ == "__main__":
         sharding_strategy=args.sharding_strategy,
         debug=args.debug,
     )
+
+    # Print so we can capture the stdout and pipe it somewhere.
     print(" ".join(my_targets))
     sys.exit(0)
