@@ -6,6 +6,7 @@ from numpy import random
 
 ray.init()
 
+
 def partition(collection):
     # Use the last element as the pivot
     pivot = collection.pop()
@@ -17,6 +18,7 @@ def partition(collection):
             lesser.append(element)
     return lesser, pivot, greater
 
+
 def quick_sort(collection):
     if len(collection) <= 200000:  # magic number
         return sorted(collection)
@@ -25,6 +27,7 @@ def quick_sort(collection):
         lesser = quick_sort(lesser)
         greater = quick_sort(greater)
     return lesser + [pivot] + greater
+
 
 @ray.remote
 def quick_sort_distributed(collection):
@@ -42,8 +45,9 @@ def quick_sort_distributed(collection):
         greater = quick_sort_distributed.remote(greater)
         return ray.get(lesser) + [pivot] + ray.get(greater)
 
+
 for size in [200000, 4000000, 8000000]:
-    print(f'Array size: {size}')
+    print(f"Array size: {size}")
     unsorted = random.randint(1000000, size=(size)).tolist()
     s = time.time()
     quick_sort(unsorted)
