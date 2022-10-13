@@ -313,6 +313,7 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
 
   - caption: Monitoring and Debugging
     chapters:
