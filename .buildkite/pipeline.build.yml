@@ -10,7 +10,7 @@
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     # Build the wheels and jars
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
@@ -29,7 +29,7 @@
 
 - label: ":ferris_wheel: Post-wheel tests"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -51,7 +51,7 @@
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     # Build the debug wheels
     - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/ci.sh build
@@ -86,7 +86,7 @@
 
 - label: ":docker: Build Images: py36 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -96,7 +96,7 @@
 
 - label: ":docker: Build Images: py36 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -106,7 +106,7 @@
 
 - label: ":docker: Build Images: py37 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -116,7 +116,7 @@
 
 - label: ":docker: Build Images: py37 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -126,7 +126,7 @@
 
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -136,7 +136,7 @@
 
 - label: ":docker: Build Images: py38 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -146,7 +146,7 @@
 
 - label: ":docker: Build Images: py39 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -156,7 +156,7 @@
 
 - label: ":docker: Build Images: py39 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -166,7 +166,7 @@
 
 - label: ":docker: Build Images: py310 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -176,7 +176,7 @@
 
 - label: ":docker: Build Images: py310 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
@@ -185,20 +185,20 @@
 
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - ./java/test.sh
 
 - label: ":cpp: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_cpp
 
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./ci/run/bazel_export_options)
@@ -207,7 +207,7 @@
 
 - label: ":cpp: Tests (ASAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=asan-clang $(./ci/run/bazel_export_options)
@@ -217,7 +217,7 @@
 
 - label: ":cpp: Tests (UBSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
@@ -227,7 +227,7 @@
 
 - label: ":cpp: Tests (TSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=tsan-clang $(./ci/run/bazel_export_options)
@@ -245,7 +245,7 @@
         "RAY_CI_DASHBOARD_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
@@ -258,7 +258,7 @@
         "RAY_CI_SERVE_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
@@ -301,7 +301,7 @@
         "RAY_CI_SERVE_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
@@ -319,7 +319,7 @@
 
 - label: ":python: Minimal install 3.6"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.6
@@ -327,7 +327,7 @@
 
 - label: ":python: Minimal install 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.7
@@ -335,7 +335,7 @@
 
 - label: ":python: Minimal install 3.8"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.8
@@ -343,7 +343,7 @@
 
 - label: ":python: Minimal install 3.9"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.9
@@ -351,7 +351,7 @@
 
 - label: ":python: Minimal install 3.10"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.10
@@ -359,7 +359,7 @@
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-default.sh
@@ -369,7 +369,7 @@
 
 - label: ":python: Ray Serve default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-serve.sh
@@ -381,7 +381,7 @@
 
 - label: ":python: Release test package unit tests"
   conditions: ["ALWAYS"]
-  instance_size: large
+  instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip install -e release/
@@ -393,7 +393,7 @@
 
 - label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
@@ -412,6 +412,7 @@
 
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -421,7 +422,7 @@
 
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
@@ -431,7 +432,7 @@
 
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
@@ -441,7 +442,7 @@
 
 - label: ":redis: (External Redis) (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
@@ -453,6 +454,7 @@
 
 - label: ":redis: (External Redis) (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -462,7 +464,7 @@
 
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
@@ -473,7 +475,7 @@
 
 - label: ":redis: (External Redis) (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
@@ -485,7 +487,7 @@
 
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
@@ -497,7 +499,7 @@
 
 - label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -531,7 +533,7 @@
 
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   commands:
     - |
       cleanup() {
@@ -583,7 +585,7 @@
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: large
+  instance_size: small
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
@@ -609,7 +611,7 @@
 # Test to see if Train can be used without torch, tf, etc. installed
 - label: ":steam_locomotive: Train minimal install"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
-  instance_size: large
+  instance_size: small
   commands:
       - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
       - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
@@ -621,7 +623,7 @@
 - label: ":cold_face: :python: Ray Python 3.6 ML compatibility tests"
   conditions:
     ["ALWAYS", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-minimal.sh 3.6
