@@ -1572,31 +1572,19 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    loop = None
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-
-    if loop is not None:
-        return loop
-
     import sys
-
     vers_info = sys.version_info
-
-    # python 2.7 and below doesn't have `major` and `minor` fields.
-    if sys.version_info[0] == 2:
-        return asyncio.get_event_loop()
-
     if vers_info.major >= 3 and vers_info.minor >= 10:
-        # TODO(rickyx): This is currently a walk-around to circumvent
-        # the deprecation message. There have been discussions where
-        # get_event_loop_policy() will be deprecated sometimes.
-        # One should use `asyncio.run()` as much as possible. If not,
-        # it's advised to create running loop and pass it around if
-        # such low level loop APIs need to be used.
-        # Ref: https://bugs.python.org/issue39529
-        return asyncio.get_event_loop_policy().get_event_loop()
-    else:
-        return asyncio.get_event_loop()
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio.
+        # See python3.10/asyncio/events.py::_get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError:
+            # No running loop
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
