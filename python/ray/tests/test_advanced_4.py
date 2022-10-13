@@ -189,7 +189,8 @@ def get_gcs_memory_used():
         [
             process.memory_info().rss
             for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
+            if (process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+                and process.name() in ("gcs_server", "redis-server"))
         ]
     )
     return m
