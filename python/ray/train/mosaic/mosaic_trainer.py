@@ -30,8 +30,6 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
-        .. code-block:: python
-
     >>> def trainer_init_per_worker(**config):
     ...     # prepare the model for distributed training and wrap with
     ...     # ComposerClassifier for Composer Trainer compatibility
