@@ -362,12 +362,16 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        """Generate the base Trainable class.
+
+        Returns:
+            A Trainable class to use for training.
+        """
+
         from ray.tune.execution.placement_groups import PlacementGroupFactory
         from ray.tune.trainable import wrap_function
 
-        base_config = self._param_dict
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
 
@@ -414,9 +418,8 @@ class BaseTrainer(abc.ABC):
                 """Returns the unchanged scaling config provided through the Trainer."""
                 return scaling_config
 
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+            def setup(self, config, **kwargs):
+                base_config = dict(kwargs)
                 # Create a new config by merging the dicts.
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
@@ -431,6 +434,7 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(
                 self, scaling_config: ScalingConfig
@@ -487,3 +491,13 @@ class BaseTrainer(abc.ABC):
                 return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable
+
+    def as_trainable(self) -> Type["Trainable"]:
+        """Convert self to a ``tune.Trainable`` class."""
+        from ray import tune
+
+        base_config = self._param_dict
+        trainable_cls = self._generate_trainable_cls()
+
+        # Wrap with `tune.with_parameters` to handle very large values in base_config
+        return tune.with_parameters(trainable_cls, **base_config)

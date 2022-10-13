@@ -29,10 +29,9 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     concat_multi_gpu_td_errors,
@@ -464,44 +463,6 @@ class ComputeTDErrorMixin:
 
         # Assign the method to policy (self) for later usage.
         self.compute_td_error = compute_td_error
-
-
-# TODO: Unify with DDPG's TargetNetworkMixin when SAC policy subclasses PolicyV2
-class TargetNetworkMixin:
-    """Mixin class adding a method for (soft) target net(s) synchronizations.
-
-    - Adds the `update_target` method to the policy.
-      Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
-    """
-
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
-
-    def update_target(self, tau=None):
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        tau = tau or self.config.get("tau")
-        model_state_dict = self.model.state_dict()
-        # Support partial (soft) synching.
-        # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = next(iter(self.target_models.values())).state_dict()
-        model_state_dict = {
-            k: tau * model_state_dict[k] + (1 - tau) * v
-            for k, v in target_state_dict.items()
-        }
-
-        for target in self.target_models.values():
-            target.load_state_dict(model_state_dict)
-
-    @override(TorchPolicy)
-    def set_weights(self, weights):
-        # Makes sure that whenever we restore weights for this policy's
-        # model, we sync the target network (from the main model)
-        # at the same time.
-        TorchPolicy.set_weights(self, weights)
-        self.update_target()
 
 
 def setup_late_mixins(

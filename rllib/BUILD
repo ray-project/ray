@@ -767,6 +767,13 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_export_checkpoint",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_export_checkpoint.py"],
+)
+
+py_test(
     name = "test_callbacks",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
@@ -1792,6 +1799,39 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
+# Test Tensor specs
+py_test(
+    name = "test_tensor_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_tensor_specs.py"]
+)
+
+# test abstract base models
+py_test(
+    name = "test_base_model",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_base_model.py"]
+)
+
+# test torch base models
+py_test(
+    name = "test_torch_model",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_torch_model.py"]
+)
+
+# test ModelSpecDict
+py_test(
+    name = "test_tensor_specs_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
@@ -1814,7 +1854,7 @@ py_test(
     name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_feature_importance.py"]
+    srcs = ["offline/tests/test_feature_importance.py"]
 )
 
 py_test(
@@ -1831,6 +1871,13 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_ope_math",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_ope_math.py"]
 )
 
 py_test(
@@ -1859,6 +1906,13 @@ py_test(
     tags = ["team:rllib", "policy"],
     size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
+)
+
+py_test(
+    name = "policy/tests/test_export_checkpoint_and_model",
+    tags = ["team:rllib", "policy"],
+    size = "large",
+    srcs = ["policy/tests/test_export_checkpoint_and_model.py"]
 )
 
 py_test(
@@ -1904,11 +1958,26 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
+# Checkpoint Utils
+py_test(
+    name = "test_checkpoint_utils",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_checkpoint_utils.py"]
+)
+
 py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
     size = "medium",
     srcs = ["utils/tests/test_errors.py"]
+)
+
+py_test(
+    name = "test_nested_dict",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_nested_dict.py"]
 )
 
 py_test(
@@ -2063,7 +2132,8 @@ py_test(
     name = "tests/backward_compat/test_backward_compat",
     tags = ["team:rllib", "tests_dir", "tests_dir_B"],
     size = "medium",
-    srcs = ["tests/backward_compat/test_backward_compat.py"]
+    srcs = ["tests/backward_compat/test_backward_compat.py"],
+    data = glob(["tests/backward_compat/checkpoints/**"]),
 )
 
 py_test(
@@ -2151,13 +2221,6 @@ py_test(
     tags = ["team:rllib", "tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_execution.py"]
-)
-
-py_test(
-    name = "tests/test_export",
-    tags = ["team:rllib", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_export.py"]
 )
 
 py_test(
@@ -2925,6 +2988,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_tf.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "examples/export/onnx_tf2",
+    main = "examples/export/onnx_tf.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_E", "no_main"],
+    size = "medium",
+    srcs = ["examples/export/onnx_tf.py"],
+    args = ["--framework=tf2"],
 )
 
 py_test(
