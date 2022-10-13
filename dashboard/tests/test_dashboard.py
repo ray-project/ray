@@ -956,8 +956,8 @@ def test_agent_port_conflict():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") != "1",
-    reason="This test only works for minimal installation.",
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
 )
 def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     """Check that requests from client fail with minimal installation"""
@@ -1013,6 +1013,10 @@ def test_dashboard_module_load(tmpdir):
     assert loaded_modules_actual == loaded_modules_expected
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test only works for non-minimal installation.",
+)
 def test_dashboard_module_no_warnings(enable_test_module):
     # Disable log_once so we will get all warnings
     from ray.util import debug
