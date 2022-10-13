@@ -56,11 +56,14 @@ class GcsHealthCheckManager {
   /// It can be updated to support streaming call for efficiency.
   class HealthCheckContext {
    public:
-    HealthCheckContext(GcsHealthCheckManager *_manager, NodeID node_id)
+    HealthCheckContext(GcsHealthCheckManager *_manager,
+                       std::shared_ptr<grpc::Channel> channel,
+                       NodeID node_id)
         : manager(_manager),
           node_id(node_id),
           timer(manager->io_service_),
           health_check_remaining(manager->failure_threshold_) {
+      stub = grpc::health::v1::Health::NewStub(channel);
       timer.expires_from_now(boost::posix_time::milliseconds(manager->initial_delay_ms_));
       timer.async_wait([this](auto ec) {
         if (ec) {
