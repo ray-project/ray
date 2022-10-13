@@ -18,6 +18,7 @@ hpbandster==0.7.4
 HEBO==0.3.2
 hyperopt==0.2.5
 jupyter==1.0.0
+tensorboardX >= 1.9
 kubernetes==17.17.0
 lightgbm==3.2.1
 matplotlib!=3.4.3
