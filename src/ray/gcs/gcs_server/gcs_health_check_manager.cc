@@ -110,7 +110,6 @@ void GcsHealthCheckManager::AddNode(const rpc::GcsNodeInfo &node_info) {
   auto node_id = NodeID::FromBinary(node_info.node_id());
   RAY_CHECK(inflight_health_checks_.count(node_id) == 0);
   inflight_health_checks_.emplace(node_id, HealthCheckContext(this, channel, node_id));
-
 }
 
 }  // namespace gcs
