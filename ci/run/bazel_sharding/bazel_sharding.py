@@ -303,10 +303,11 @@ def get_rules_for_shard_optimal(
                 # Otherwise, pick the shard closest to optimum
                 shard_index_right_above_optimum = i
                 shard_index_right_above_optimum_time = shard_time_with_item
-        if first_shard_index_below_optimum:
+        if first_shard_index_below_optimum is not None:
             best_shard_index = first_shard_index_below_optimum
         else:
             best_shard_index = shard_index_right_above_optimum
+
         shards[best_shard_index].append(rule_to_add)
 
     rule_to_add = get_next_longest_rule()
