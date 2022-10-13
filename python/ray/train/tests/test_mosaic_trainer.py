@@ -20,26 +20,6 @@ from ray.air import session
 from ray.train.mosaic import MosaicTrainer
 
 
-mean = (0.507, 0.487, 0.441)
-std = (0.267, 0.256, 0.276)
-cifar10_transforms = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize(mean, std)]
-)
-
-data_directory = "./data"
-train_dataset = torch.utils.data.Subset(
-    datasets.CIFAR10(
-        data_directory, train=True, download=True, transform=cifar10_transforms
-    ),
-    list(range(64)),
-)
-test_dataset = torch.utils.data.Subset(
-    datasets.CIFAR10(
-        data_directory, train=False, download=True, transform=cifar10_transforms
-    ),
-    list(range(64)),
-)
-
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
@@ -51,8 +31,25 @@ def trainer_init_per_worker(**config):
     model = ComposerClassifier(ray.train.torch.prepare_model(model))
 
     # prepare train/test dataset
-    train_dataset = config.pop("train_dataset")
-    test_dataset = config.pop("test_dataset")
+    mean = (0.507, 0.487, 0.441)
+    std = (0.267, 0.256, 0.276)
+    cifar10_transforms = transforms.Compose(
+        [transforms.ToTensor(), transforms.Normalize(mean, std)]
+    )
+
+    data_directory = "./data"
+    train_dataset = torch.utils.data.Subset(
+        datasets.CIFAR10(
+            data_directory, train=True, download=True, transform=cifar10_transforms
+        ),
+        list(range(64)),
+    )
+    test_dataset = torch.utils.data.Subset(
+        datasets.CIFAR10(
+            data_directory, train=False, download=True, transform=cifar10_transforms
+        ),
+        list(range(64)),
+    )
 
     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
@@ -94,8 +91,6 @@ def test_mosaic_e2e(ray_start_4_cpus):
     """
     trainer_init_config = {
         "max_duration": "1ep",
-        "train_dataset": train_dataset,
-        "test_dataset": test_dataset,
         "loggers": [InMemoryLogger()],
         "algorithms": [LabelSmoothing()],
     }
@@ -120,8 +115,6 @@ def test_init_errors(ray_start_4_cpus):
 
     trainer_init_config = {
         "max_duration": "1ba",
-        "train_dataset": train_dataset,
-        "test_dataset": test_dataset,
     }
 
     with pytest.raises(ValueError):
