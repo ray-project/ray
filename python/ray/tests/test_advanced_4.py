@@ -187,11 +187,11 @@ def get_gcs_memory_used():
 
     m = {
         process.name(): process.memory_info().rss
-            for process in psutil.process_iter()
-            if (
-                    process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
-                    and process.name() in ("gcs_server", "redis-server")
-            )
+        for process in psutil.process_iter()
+        if (
+            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and process.name() in ("gcs_server", "redis-server")
+        )
     }
     assert "gcs_server" in m
     return sum(m.values())
