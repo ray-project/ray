@@ -185,17 +185,16 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
 def get_gcs_memory_used():
     import psutil
 
-    m = sum(
-        [
-            process.memory_info().rss
+    m = {
+        process.name(): process.memory_info().rss
             for process in psutil.process_iter()
             if (
-                process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
-                and process.name() in ("gcs_server", "redis-server")
+                    process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+                    and process.name() in ("gcs_server", "redis-server")
             )
-        ]
-    )
-    return m
+    }
+    assert "gcs_server" in m
+    return sum(m.values())
 
 
 def function_entry_num(job_id):
