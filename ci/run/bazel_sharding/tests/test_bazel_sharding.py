@@ -111,8 +111,7 @@ def test_bazel_sharding_two_shards(mock_build_dir):
 
     assert output_1.union(output_2) == set(all_rules)
 
-    # We should be deterministic, therefore we can hardcode
-    # this
+    # We should be deterministic, therefore we can hardcode this
     assert output_1_list == [
         f"//{WORKSPACE_KEY}:test_eternal",
         f"//{WORKSPACE_KEY}:test_large",
@@ -128,17 +127,32 @@ def test_bazel_sharding_two_shards(mock_build_dir):
         f"//{WORKSPACE_KEY}:test_short",
     ]
 
-    output_1_naive = bazel_sharding.main(
+    output_1_naive_list = bazel_sharding.main(
         ["..."], index=0, count=2, sharding_strategy="naive"
     )
-    output_1_naive = set(output_1_naive)
+    output_1_naive = set(output_1_naive_list)
 
-    output_2_naive = bazel_sharding.main(
+    output_2_naive_list = bazel_sharding.main(
         ["..."], index=1, count=2, sharding_strategy="naive"
     )
-    output_2_naive = set(output_2_naive)
+    output_2_naive = set(output_2_naive_list)
 
     assert output_1_naive.union(output_2_naive) == set(all_rules)
+    # We should be deterministic, therefore we can hardcode this
+    assert output_1_naive_list == [
+        f"//{WORKSPACE_KEY}:test_both_size_and_timeout",
+        f"//{WORKSPACE_KEY}:test_enormous",
+        f"//{WORKSPACE_KEY}:test_large",
+        f"//{WORKSPACE_KEY}:test_medium",
+        f"//{WORKSPACE_KEY}:test_short",
+    ]
+    assert output_2_naive_list == [
+        f"//{WORKSPACE_KEY}:test_default",
+        f"//{WORKSPACE_KEY}:test_eternal",
+        f"//{WORKSPACE_KEY}:test_long",
+        f"//{WORKSPACE_KEY}:test_moderate",
+        f"//{WORKSPACE_KEY}:test_small",
+    ]
 
 
 @pytest.mark.parametrize("sharding_strategy", ("optimal", "naive"))

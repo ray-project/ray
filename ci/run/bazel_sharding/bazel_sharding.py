@@ -367,10 +367,14 @@ def main(
     rules = extract_rules_from_xml(xml_output)
     rules_grouped_by_time = group_rules_by_time_needed(rules)
     if sharding_strategy == "optimal":
-        my_targets = get_rules_for_shard_optimal(rules_grouped_by_time, index, count)
+        rules_for_this_shard = get_rules_for_shard_optimal(
+            rules_grouped_by_time, index, count
+        )
     else:
-        my_targets = get_rules_for_shard_naive(rules_grouped_by_time, index, count)
-    return my_targets
+        rules_for_this_shard = get_rules_for_shard_naive(
+            rules_grouped_by_time, index, count
+        )
+    return rules_for_this_shard
 
 
 if __name__ == "__main__":
