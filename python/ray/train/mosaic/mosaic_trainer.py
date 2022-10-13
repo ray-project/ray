@@ -5,10 +5,6 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional
 from composer.trainer import Trainer
 
 from ray.air import session
-from ray.train.constants import (
-    EVALUATION_DATASET_KEY,
-    TRAIN_DATASET_KEY,
-)
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig, TorchTrainer
@@ -123,6 +119,8 @@ class MosaicTrainer(TorchTrainer):
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
+        self._validate_datasets(datasets)
+
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         if "_trainer_init_per_worker" in trainer_init_config:
             raise ValueError(
@@ -152,6 +150,15 @@ class MosaicTrainer(TorchTrainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
+    def _validate_datasets(self, datasets) -> None:
+        if not (datasets is None or len(datasets) == 0):
+            raise ValueError(
+                "MosaicTrainer does not support providing dataset shards \
+                to `trainer_init_per_worker`. Instead of passing in the dataset into \
+                    MosaicTrainer, define a dataloader and use `prepare_dataloader` \
+                    inside the `trainer_init_per_worker`."
+            )
+
 
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
@@ -161,11 +168,6 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-
-    # get dataset shard -- For now we don't support using ray dataset shards.
-    # the dataloader should be prepared inside the ``trainer_init_per_worker`` function
-    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     # initialize Composer trainer
     config["progress_bar"] = False
