@@ -162,6 +162,7 @@ def _mosaic_train_loop_per_worker(config):
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     # initialize Composer trainer
+    config["progress_bar"] = False
     trainer: Trainer = trainer_init_per_worker(**config)
 
     # call the trainer
