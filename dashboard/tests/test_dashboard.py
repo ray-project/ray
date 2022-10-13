@@ -1014,8 +1014,8 @@ def test_dashboard_module_load(tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_DEFAULT") != "1",
-    reason="This test only works for default installation.",
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test currently fails with minimal install.",
 )
 def test_dashboard_module_no_warnings(enable_test_module):
     # Disable log_once so we will get all warnings
