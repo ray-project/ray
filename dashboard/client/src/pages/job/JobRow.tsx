@@ -44,7 +44,9 @@ export const JobRow = ({
 
   return (
     <TableRow>
-      <TableCell align="center">{job_id ?? "-"}</TableCell>
+      <TableCell align="center">
+        {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
+      </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
       <TableCell align="center">{progressBar}</TableCell>
