@@ -11,7 +11,7 @@ import ray.air
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
-from ray import air, tune
+from ray import tune
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.examples.pytorch.torch_linear_example import (

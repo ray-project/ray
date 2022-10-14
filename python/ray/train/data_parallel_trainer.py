@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from tabulate import tabulate
