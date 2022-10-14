@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import random
 import time
-from typing import Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, PolicyID
 
 logger = logging.getLogger(__name__)
 
@@ -552,16 +552,22 @@ class ES(Algorithm):
 
         return results, num_episodes, num_timesteps
 
+    def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
+        return self.policy.get_flat_weights()
+
+    def set_weights(self, weights: Dict[PolicyID, dict]):
+        self.policy.set_flat_weights(weights)
+
     def __getstate__(self):
         return {
-            "weights": self.policy.get_flat_weights(),
+            "weights": self.get_weights(),
             "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_flat_weights(state["weights"])
+        self.set_weights(state["weights"])
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
