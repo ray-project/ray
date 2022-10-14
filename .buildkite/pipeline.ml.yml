@@ -366,12 +366,12 @@
       python ./ci/run/bazel_sharding/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-example,-py37,-soft_imports,-gpu_only,-rllib
+      --tag_filters=-example,-py37,-soft_imports,-gpu_only,-rllib,-multinode
       python/ray/tune/...
       > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-example,-py37,-soft_imports,-gpu_only,-rllib
+      --test_tag_filters=-example,-py37,-soft_imports,-gpu_only,-rllib,-multinode
       $(cat test_shard.txt)
 
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
