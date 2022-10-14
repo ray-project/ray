@@ -183,7 +183,7 @@ py_test(
     name = "learning_tests_cartpole_separate_losses_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "tf_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.yaml"
@@ -348,7 +348,7 @@ py_test(
     name = "learning_tests_cartpole_dqn_softq",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -476,7 +476,7 @@ py_test(
     name = "learning_tests_two_step_game_maddpg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "tf_only", "no_tf_eager_tracing", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
     args = ["--yaml-dir=tuned_examples/maddpg", "--framework=tf"]
@@ -540,7 +540,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
