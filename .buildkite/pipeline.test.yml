@@ -31,3 +31,12 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=ray_dag_tests
       python/ray/dag/...
+
+- label: ":toolbox: CI Tools"
+  conditions: ["RAY_CI_TOOLS_AFFECTED"]
+  instance_size: small
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only ci/run/bazel_sharding/...
