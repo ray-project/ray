@@ -194,6 +194,7 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
               - file: serve/migration
+              - file: serve/direct-ingress
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -312,6 +313,7 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
 
   - caption: Monitoring and Debugging
     chapters:
