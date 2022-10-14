@@ -14,7 +14,10 @@ def allocate_memory():
         chunks.append([0] * bits_to_allocate)
 
 
-ray.get(allocate_memory.remote())
+try:
+    ray.get(allocate_memory.remote())
+except ray.exceptions.OutOfMemoryError as ex:
+    print("task failed with OutOfMemoryError, which is expected")
 # __oom_end__
 # fmt: on
 
