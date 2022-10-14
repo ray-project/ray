@@ -19,21 +19,6 @@ from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def preprocess(batch: np.ndarray) -> pd.DataFrame:
-    """
-    User Pytorch code to transform user image.
-    """
-    preprocess = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
-
-
 def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
     """
     User Pytorch code to transform user image.
