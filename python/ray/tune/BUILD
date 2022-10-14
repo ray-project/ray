@@ -130,7 +130,7 @@ py_test(
 
 py_test(
     name = "test_function_api_legacy",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_function_api_legacy.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -202,7 +202,7 @@ py_test(
 
 py_test(
     name = "test_resource_updater",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_resource_updater.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -290,7 +290,7 @@ py_test(
 
 py_test(
     name = "test_syncer",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -346,7 +346,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_3",
-    size = "medium",
+    size = "long",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -501,7 +501,7 @@ py_test(
 
 py_test(
     name = "ax_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/ax_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "py37"],
@@ -679,7 +679,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "large",
+    size = "small",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
@@ -742,7 +742,7 @@ py_test(
 
 py_test(
     name = "pb2_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pb2_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -805,7 +805,7 @@ py_test(
 
 py_test(
     name = "pbt_memnn_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -824,7 +824,7 @@ py_test(
 
 py_test(
     name = "pbt_transformers",
-    size = "large",
+    size = "small",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
