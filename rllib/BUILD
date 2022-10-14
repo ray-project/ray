@@ -163,7 +163,7 @@ py_test(
     name = "learning_tests_cartpole_appo_no_vtrace",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "small",
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo.yaml"],
     args = ["--yaml-dir=tuned_examples/appo"]
@@ -510,7 +510,7 @@ py_test(
     name = "learning_tests_cartpole_crashing_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -520,7 +520,7 @@ py_test(
     name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -530,7 +530,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -540,7 +540,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
