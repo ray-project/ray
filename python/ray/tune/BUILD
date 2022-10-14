@@ -346,7 +346,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_3",
-    size = "long",
+    size = "large",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
