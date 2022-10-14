@@ -1552,3 +1552,18 @@ def external_ray_cluster_activity_hook5():
             "timestamp": datetime.now().timestamp(),
         }
     }
+
+
+def get_gcs_memory_used():
+    import psutil
+
+    m = {
+        process.name(): process.memory_info().rss
+        for process in psutil.process_iter()
+        if (
+            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and process.name() in ("gcs_server", "redis-server")
+        )
+    }
+    assert "gcs_server" in m
+    return sum(m.values())

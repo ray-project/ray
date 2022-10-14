@@ -9,6 +9,7 @@ from ray._private.test_utils import (
     client_test_enabled,
     run_string_as_driver,
     wait_for_condition,
+    get_gcs_memory_used,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
@@ -80,19 +81,6 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     bar = Bar.remote()
     # Expect ping_actor call returns normally without deadlock.
     assert ray.get(foo.ping_actor.remote(bar)) == 3
-
-
-def get_gcs_memory_used():
-    import psutil
-
-    m = sum(
-        [
-            process.memory_info().rss
-            for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
-        ]
-    )
-    return m
 
 
 def function_entry_num(job_id):
