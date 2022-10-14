@@ -17,6 +17,8 @@ import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
+import uuid
+from ray._raylet import Config
 
 import grpc
 import numpy as np
@@ -170,14 +172,14 @@ def start_redis_instance(
         command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
-    process_info = start_ray_process(
+    process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    port = new_port(denylist=port_denylist)
+    port = ray._private.services.new_port(denylist=port_denylist)
     return port, process_info
 
 

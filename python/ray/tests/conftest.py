@@ -439,7 +439,7 @@ def call_ray_start_with_external_redis(request):
     port_list = ports.split(",")
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
+        start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))

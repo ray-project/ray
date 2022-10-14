@@ -14,7 +14,6 @@ import socket
 import subprocess
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,7 +24,7 @@ import psutil
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions, Config
+from ray._raylet import GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
