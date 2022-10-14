@@ -745,31 +745,23 @@ directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
 guarantees separate working directories for each worker process, avoiding conflicts when
 saving trial-specific outputs.
 
-Option 1: Setting `chdir_to_trial_dir=False` in `air.RunConfig`
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-The first option is to explicitly tell Tune to not change the working directory
-to the trial directory. In this case, the :meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
+You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig`.
+This explicitly tells Tune to not change the working directory
+to the trial directory, giving access to paths relative to the original working directory.
+One caveat is that the working directory is now shared between workers, so the
+:meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
-    :emphasize-lines: 8, 14
+    :emphasize-lines: 3, 10, 11, 12, 16
     :language: python
     :start-after: __no_chdir_start__
     :end-before: __no_chdir_end__
 
-Option 2: Manual control using environment variables
-''''''''''''''''''''''''''''''''''''''''''''''''''''
+.. warning::
 
-The second option is to allow Tune to change the working directory and use the
-``TUNE_ORIG_WORKING_DIR`` environment variable to convert relative paths to the
-correct absolute path in your training function. Saving trial-specific outputs can
-happen relative to the working directory, since it's been changed to an independent trial directory.
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :emphasize-lines: 2, 11
-    :language: python
-    :start-after: __abspath_with_env_var_start__
-    :end-before: __abspath_with_env_var_end__
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.

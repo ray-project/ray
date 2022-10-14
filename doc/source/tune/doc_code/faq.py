@@ -421,7 +421,8 @@ if not MOCK:
         # Read from relative paths
         print(open("./read.txt").read())
 
-        # The working directory shouldn't have changed
+        # The working directory shouldn't have changed from the original
+        # NOTE: The `TUNE_ORIG_WORKING_DIR` environment variable is deprecated.
         assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
 
         # Write to the Tune trial directory, not the shared working dir
@@ -435,19 +436,3 @@ if not MOCK:
     )
     tuner.fit()
     # __no_chdir_end__
-
-    # __abspath_with_env_var_start__
-    def train_func(config):
-        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
-        print(open(orig_working_dir / "read.txt").read())
-
-        # Write to the Tune trial directory, which is the current working directory
-        with open("./write.txt", "w") as f:
-            f.write("test write")
-
-    tuner = tune.Tuner(
-        train_func,
-        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=True),
-    )
-    tuner.fit()
-    # __abspath_with_env_var_end__
