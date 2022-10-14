@@ -522,11 +522,7 @@
 
 - label: ":book: Doc examples with authentication "
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
-<<<<<<< HEAD
-  instance_size: medium
-=======
   instance_size: large
->>>>>>> parent of d0faec1285 ([ci] Reduce instance sizes for tests that require less resources [all_tests] (#29295))
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
