@@ -4677,6 +4677,28 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
+def test_random_shuffle_with_custom_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create two nodes which have different custom resources.
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    # Run dataset in "bar" nodes.
+    ds = ray.data.read_parquet(
+        "example://parquet_images_mini",
+        parallelism=2,
+        ray_remote_args={"resources": {"bar": 1}},
+    )
+    ds = ds.random_shuffle(resources={"bar": 1}).fully_executed()
+    assert "1 nodes used" in ds.stats()
+    assert "2 nodes used" not in ds.stats()
+
+
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     cluster.add_node(
