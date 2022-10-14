@@ -1,6 +1,6 @@
 - label: ":airplane: ML tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
-  instance_size: small
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -524,7 +524,7 @@
 
 - label: ":book: Doc examples with authentication "
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
-  instance_size: small
+  instance_size: medium
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
