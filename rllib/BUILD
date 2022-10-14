@@ -571,7 +571,7 @@ py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "tests", # bazel may complain about it being too long sometimes - large is on purpose
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
