@@ -2976,7 +2976,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                  "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
+          RAY_LOG_EVERY_MS(INFO, 10000) << worker_exit_message;
 
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);

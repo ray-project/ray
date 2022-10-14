@@ -137,11 +137,19 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
 
   /// Memory usage fraction between [0, 1]
-  const double usage_threshold_;
+  const float usage_threshold_;
 
   /// Indicates the minimum amount of free space to retain before it considers
   /// the usage as above threshold.
   const int64_t min_memory_free_bytes_;
+
+  /// The computed threshold in bytes based on usage_threshold_ and
+  /// min_memory_free_bytes_.
+  int64_t computed_threshold_bytes_;
+
+  /// The computed threshold fraction on usage_threshold_ and min_memory_free_bytes_.
+  float computed_threshold_fraction_;
+
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;

@@ -20,6 +20,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -37,6 +38,14 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   RAY_CHECK_LE(usage_threshold_, 1);
   if (monitor_interval_ms > 0) {
 #ifdef __linux__
+    auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+    computed_threshold_bytes_ =
+        GetMemoryThreshold(total_memory_bytes, usage_threshold_, min_memory_free_bytes_);
+    computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
+    RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
+                  << computed_threshold_bytes_ << " bytes ("
+                  << FormatFloat(computed_threshold_fraction_, 2)
+                  << " system memory), total system memory bytes: " << total_memory_bytes;
     runner_.RunFnPeriodically(
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
@@ -44,19 +53,14 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
           system_memory.used_bytes = used_memory_bytes;
           system_memory.total_bytes = total_memory_bytes;
 
-          // TODO(clarng): compute this once only.
-          int64_t threshold_bytes = GetMemoryThreshold(
-              system_memory.total_bytes, usage_threshold_, min_memory_free_bytes_);
-
           bool is_usage_above_threshold =
-              IsUsageAboveThreshold(system_memory, threshold_bytes);
+              IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);
 
-          float threshold_fraction = (float)threshold_bytes / system_memory.total_bytes;
-          monitor_callback_(is_usage_above_threshold, system_memory, threshold_fraction);
+          monitor_callback_(
+              is_usage_above_threshold, system_memory, computed_threshold_fraction_);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-    RAY_LOG(INFO) << "MemoryMonitor initialized";
 #else
     RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported "
                      << "only on Linux.";
