@@ -356,11 +356,22 @@ def build_or_pull_base_images(
 
 def prep_ray_ml():
     root_dir = _get_root_dir()
-    requirement_files = glob.glob(
-        f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True
-    )
-    for fl in requirement_files:
-        shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+
+    requirements_files = [
+        "python/requirements.txt",
+        "python/requirements_ml_docker.txt",
+        "python/requirements/ml/requirements_dl.txt",
+        "python/requirements/ml/requirements_tune.txt",
+        "python/requirements/ml/requirements_rllib.txt",
+        "python/requirements/ml/requirements_train.txt",
+        "python/requirements/ml/requirements_upstream.txt",
+    ]
+
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray-ml/"),
+        )
 
 
 def _get_docker_creds() -> Tuple[str, str]:
