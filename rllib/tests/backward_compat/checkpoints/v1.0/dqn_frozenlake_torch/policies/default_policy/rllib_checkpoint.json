@@ -1,0 +1,1 @@
+{"type": "Policy", "checkpoint_version": "1.0", "ray_version": "3.0.0.dev0", "ray_commit": "{{RAY_COMMIT_SHA}}"}
