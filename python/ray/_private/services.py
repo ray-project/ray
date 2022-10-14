@@ -1295,6 +1295,15 @@ def start_api_server(
         command = [
             sys.executable,
             "-u",
+        ]
+
+        mem_profile = os.getenv("RAY_MEM_PROFILE_DASHBOARD")
+        if mem_profile == "live":
+            command += ["-m", "memray", "run", "--live-remote", "--live-port", str(port + 1)]
+        elif mem_profile == "1" or mem_profile == "file":
+            command += ["-m", "memray", "run", "-o", f"{session_dir}_dashboard.bin"]
+
+        command += [
             dashboard_filepath,
             f"--host={host}",
             f"--port={port}",
@@ -1306,6 +1315,7 @@ def start_api_server(
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
         ]
+        print(command)
 
         if redirect_logging:
             # Avoid hanging due to fd inheritance.
@@ -1321,8 +1331,8 @@ def start_api_server(
             )
             command.append(f"--logging-format={logging_format}")
             # Inherit stdout/stderr streams.
-            stdout_file = None
-            stderr_file = None
+            # stdout_file = None
+            # stderr_file = None
         if minimal:
             command.append("--minimal")
 
@@ -1336,10 +1346,11 @@ def start_api_server(
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            # stdout_file=stdout_file,
+            # stderr_file=stderr_file,
             fate_share=fate_share,
         )
+        print(process_info)
 
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address)
@@ -1666,8 +1677,17 @@ def start_raylet(
         max_worker_port = 0
 
     agent_command = [
-        sys.executable,
-        "-u",
+            sys.executable,
+            "-u",
+    ]
+    mem_profile = os.getenv("RAY_MEM_PROFILE_AGENT")
+    print(session_dir)
+    if mem_profile == "live":
+        agent_command += ["-m", "memray", "run", "--live-remote", "--live-port", str(dashboard_agent_listen_port + 1)]
+    elif mem_profile == "1" or mem_profile == "file":
+        agent_command += ["-m", "memray", "run", "-o", f"{session_dir}_agent.bin"]
+
+    agent_command += [
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
