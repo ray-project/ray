@@ -7,7 +7,6 @@ debian_packages:
 python:
   pip_packages:
     - "validators"
-    - starlette==0.20.4
   conda_packages: []
 
 post_build_cmds:
