@@ -672,14 +672,14 @@ class Dataset(Generic[T]):
 
     def select_columns(
         self,
-        columns: List[str],
+        cols: List[str],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset[T]":
         """Select one or more columns from the dataset.
 
-        Note that all input columns need to be in the schema of the dataset.
+        All input columns used to select need to be in the schema of the dataset.
 
         Examples:
             >>> import ray
@@ -687,7 +687,7 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
             ...      for i in range(10)])
             >>> # Select only "col1" and "col2" columns.
-            >>> ds = ds.select_columns(["col1", "col2"])
+            >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
 
@@ -695,39 +695,15 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            columns: Names of the columns to select. Columns that are not
-                included in this list will be filtered out.
+            cols: Names of the columns to select. If any name is not included in the
+                dataset schema, an exception will be raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-
-        import pyarrow as pa
-
-        schema = self.schema()
-        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
-
-        # check to make sure all input columns are in the dataset schema
-        if isinstance(schema, PandasBlockSchema):
-            dataset_cols = schema.names
-        elif isinstance(schema, pa.Schema):
-            dataset_cols = [field.name for field in schema]
-        else:
-            raise ValueError(
-                "We currently only support select by column names. "
-                "Datasets with `simple` schema are not supported."
-            )
-
-        extra_cols = [col for col in columns if col not in dataset_cols]
-        if extra_cols:
-            raise ValueError(
-                "The `columns` passed in have to be in the schema of the dataset. "
-                f"Please remove {extra_cols} from your input `columns`."
-            )
-
         return self.map_batches(
-            lambda batch: BlockAccessor.for_block(batch).select(columns=columns),
+            lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
             compute=compute,
             **ray_remote_args,
         )
