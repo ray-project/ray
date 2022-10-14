@@ -19,7 +19,7 @@ py_test(
 
 py_test(
     name = "mlflow_simple_example",
-    size = "medium",
+    size = "small",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
     tags = ["team:ml", "exclusive", "no_main"],
@@ -37,7 +37,7 @@ py_test(
 
 py_test(
     name = "torch_quick_start",
-    size = "medium",
+    size = "small",
     main = "examples/torch_quick_start.py",
     srcs = ["examples/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
@@ -58,7 +58,7 @@ py_test(
 
 py_test(
     name = "transformers_example_cpu",
-    size = "large",
+    size = "medium",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
     tags = ["team:ml", "exclusive", "tune"],
@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "tune_linear_example",
-    size = "medium",
+    size = "small",
     main = "examples/tune_linear_example.py",
     srcs = ["examples/tune_linear_example.py"],
     tags = ["team:ml", "exclusive", "tune"],
@@ -95,7 +95,7 @@ py_test(
 
 py_test(
     name = "pytorch_pbt_failure",
-    size = "medium",
+    size = "small",
     srcs = ["tests/pytorch_pbt_failure.py"],
     tags = ["team:ml", "exlusive", "no_main"],
     deps = [":train_lib"],
@@ -288,7 +288,7 @@ py_test(
 
 py_test(
     name = "test_rl_predictor",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_rl_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib", ":conftest"]
