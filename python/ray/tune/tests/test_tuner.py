@@ -328,6 +328,8 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
     Also tests that `session.get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init(num_cpus=1, runtime_env=runtime_env)
 
     # Write a data file that we want to read in our training loop
@@ -372,6 +374,8 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
     # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
     # Tune should still chdir to the trial directory, since we didn't disable the
     # `chdir_to_trial_dir` flag.
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init(num_cpus=1, runtime_env=runtime_env)
 
     # Write a data file that we want to read in our training loop
