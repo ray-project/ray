@@ -136,6 +136,7 @@ def get_trial_dir() -> str:
         from ray.air import session
 
         def train_func():
+            # Example:
             # >>> session.get_trial_dir()
             # ~/ray_results/<exp-name>/<trial-dir>
 
