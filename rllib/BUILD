@@ -94,7 +94,7 @@ py_test(
     name = "learning_tests_cartpole_a2c_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/a2c"]
@@ -117,7 +117,7 @@ py_test(
     name = "learning_tests_cartpole_alpha_star",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
     args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
@@ -128,7 +128,7 @@ py_test(
     name = "learning_tests_cartpole_sparse_rewards_alpha_zero",
     tags = ["team:rllib", "exclusive", "torch_only", "learning_tests", "learning_tests_discrete"],
     main = "tests/run_regression_tests.py",
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml"],
     args = ["--yaml-dir=tuned_examples/alpha_zero", "--num-cpus=8"]
@@ -215,7 +215,7 @@ py_test(
     name = "learning_tests_cartpole_appo_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/appo"]
@@ -253,7 +253,7 @@ py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-   size = "large",
+   size = "medium",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
    data = [
@@ -267,7 +267,7 @@ py_test(
     name = "learning_tests_cartpole_crr",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
@@ -281,7 +281,7 @@ py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
@@ -317,7 +317,7 @@ py_test(
     name = "learning_tests_cartpole_ddppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "small",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddppo/cartpole-ddppo.yaml"]),
     args = ["--yaml-dir=tuned_examples/ddppo"]
@@ -396,7 +396,7 @@ py_test(
     name = "learning_tests_cartpole_dt",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
     data = [
@@ -423,7 +423,7 @@ py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/simple_q"]
@@ -510,7 +510,7 @@ py_test(
     name = "learning_tests_cartpole_crashing_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -520,7 +520,7 @@ py_test(
     name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -530,7 +530,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -540,7 +540,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
@@ -550,7 +550,7 @@ py_test(
     name = "learning_tests_cartpole_pg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -571,7 +571,7 @@ py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "medium",
+    size = "tests", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -581,7 +581,7 @@ py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -612,7 +612,7 @@ py_test(
     name = "learning_tests_two_step_game_qmix",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "small",
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix.yaml"],
     args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
@@ -622,7 +622,7 @@ py_test(
     name = "learning_tests_two_step_game_qmix_vdn_mixer",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "small",
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-vdn-mixer.yaml"],
     args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
@@ -632,7 +632,7 @@ py_test(
     name = "learning_tests_two_step_game_qmix_no_mixer",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "small",
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-no-mixer.yaml"],
     args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
@@ -770,7 +770,7 @@ py_test(
 py_test(
     name = "test_callbacks",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/tests/test_callbacks.py"]
 )
 
@@ -1592,7 +1592,7 @@ py_test(
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole", "8810"],
     data = glob(["examples/serving/*.py"]),
@@ -1601,7 +1601,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_lstm",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole_lstm", "8820"],
     data = glob(["examples/serving/*.py"]),
@@ -1610,7 +1610,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
     data = glob(["examples/serving/*.py"]),
