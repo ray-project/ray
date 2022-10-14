@@ -1,7 +1,7 @@
 import gym
 import logging
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Union, Type, TYPE_CHECKING
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec

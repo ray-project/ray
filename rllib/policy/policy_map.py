@@ -27,7 +27,6 @@ class PolicyMap(dict):
         *,
         capacity: Optional[int] = None,
         policies_swappable: bool = False,
-
         # Deprecated args.
         worker_index=None,
         num_workers=None,
@@ -53,7 +52,7 @@ class PolicyMap(dict):
             ]
         ):
             deprecation_warning(
-                old="PolicyMap([deprecated_args]...)",
+                old="PolicyMap([deprecated args]...)",
                 new="PolicyMap(capacity=..., policies_swappable=...)",
                 error=False,
             )
@@ -75,50 +74,6 @@ class PolicyMap(dict):
         # Ray object store references to the stashed Policy states.
         self._policy_state_refs = {}
 
-    def create_policy(
-        self,
-        policy_id: PolicyID,
-        policy_cls: Type["Policy"],
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        config_override: PartialAlgorithmConfigDict,
-        merged_config: AlgorithmConfigDict,
-    ) -> None:
-        """Creates a new policy and stores it to the cache.
-
-        Args:
-            policy_id: The policy ID. This is the key under which
-                the created policy will be stored in this map.
-            policy_cls: The (original) policy class to use.
-                This may still be altered in case tf-eager (and tracing)
-                is used.
-            observation_space: The observation space of the
-                policy.
-            action_space: The action space of the policy.
-            config_override: The config override
-                dict for this policy. This is the partial dict provided by
-                the user.
-            merged_config: The entire config (merged
-                default config + `config_override`).
-        """
-        _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
-
-        def session_creator():
-            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
-            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
-
-        policy = create_policy_for_framework(
-            policy_id,
-            _class,
-            merged_config,
-            observation_space,
-            action_space,
-            self.worker_index,
-            self.session_creator,
-            self.seed,
-        )
-        self.insert_policy(policy_id, policy, config_override)
-
     @with_lock
     @override(dict)
     def __getitem__(self, item):
@@ -136,9 +91,10 @@ class PolicyMap(dict):
             self.deque.append(item)
             return self.cache[item]
 
-        # Item not currently in cache -> Get from disk and - if at capacity -
+        # Item not currently in cache -> Get from stash and - if at capacity -
         # remove leftmost one.
         else:
+            assert item in self._policy_state_refs
             policy_state = ray.get(self._policy_state_refs[item])
 
             # All our policies have same NN-architecture (are "swappable").
@@ -146,26 +102,21 @@ class PolicyMap(dict):
             # new policy's state into that one. This way, we save the costly
             # re-creation step.
             if self.policies_swappable and len(self.deque) == self.deque.maxlen:
-                old_policy_id = self.deque.popleft()
-                assert old_policy_id in self.cache
+                old_policy_id = self.deque[0]
                 policy = self.cache[old_policy_id]
-                self._stash_state_to_disk(old_policy_id)
+                self._stash_least_used_policy()
                 self.cache[item] = policy
-                self.deque.append(item)
+                # Restore policy's state and return it.
+                policy.set_state(policy_state)
             # Policies are different or we are not at capacity:
             # Have to (re-)create new policy here.
             else:
+                self._stash_least_used_policy()
                 # Create policy object (from its spec: cls, obs-space, act-space,
                 # config).
-                policy = self.create_policy(
-                    item,
-                    self.policy_specs[item].policy_class,
-                    self.policy_specs[item].observation_space,
-                    self.policy_specs[item].action_space,
-                    self.policy_specs[item].config,
-                )
-            # Restore policy's state and return it.
-            policy.set_state(policy_state)
+                policy = Policy.from_state(policy_state)
+                self.cache[item] = policy
+            self.deque.append(item)
             return policy
 
     @with_lock
@@ -180,8 +131,7 @@ class PolicyMap(dict):
         else:
             # Cache at capacity -> Drop leftmost item.
             if len(self.deque) == self.deque.maxlen:
-                policy_id = self.deque.popleft()
-                self._stash_state_to_disk(policy_id)
+                self._stash_least_used_policy()
 
         # Promote `key` to "most recently used".
         self.deque.append(key)
@@ -189,15 +139,6 @@ class PolicyMap(dict):
         # Update our cache.
         self.cache[key] = value
         self.valid_keys.add(key)
-
-        # Store spec (class, observation space, action space, config) such
-        # that the map will be able to reproduce policies from disk.
-        #self.policy_specs[key] = PolicySpec(
-        #    policy_class=type(value),
-        #    observation_space=value.observation_space,
-        #    action_space=value.action_space,
-        #    config=value.config,
-        #)
 
     @with_lock
     @override(dict)
@@ -218,7 +159,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def items(self):
-        """Iterates over all policies, even the stashed-to-disk ones."""
+        """Iterates over all policies, even the stashed ones."""
 
         def gen():
             for key in self.valid_keys:
@@ -276,26 +217,30 @@ class PolicyMap(dict):
     def __contains__(self, item):
         return item in self.valid_keys
 
-    def _stash_state_to_disk(self, policy_id):
-        """Writes the least-recently used policy to disk and rearranges cache.
+    def _stash_least_used_policy(self):
+        """Writes the least-recently used policy's state to the Ray object store.
 
         Also closes the session - if applicable - of the stashed policy.
         """
         # Get policy's state for writing to disk.
-        policy = self.cache[policy_id]
+        dropped_policy_id = self.deque.popleft()
+        assert dropped_policy_id in self.cache
+        policy = self.cache[dropped_policy_id]
         policy_state = policy.get_state()
-        # Closes policy's tf session, if any.
-        self._close_session(policy)
+
+        # If we don't simply swap out vs an existing policy:
+        # Close the tf session, if any.
+        if not self.policies_swappable:
+            self._close_session(policy)
+
         # Remove from memory. This will clear the tf Graph as well.
-        del self.cache[policy_id]
+        del self.cache[dropped_policy_id]
 
-        # Write state to disk.
-        #with open(self.path + "/" + policy_id + self.extension, "wb") as f:
-        #    pickle.dump(policy_state, file=f)
-        #self._secret_stash[policy_id] = policy_state
-        self._secret_stash[policy_id] = ray.put(policy_state)
+        # Store state in Ray object store.
+        self._policy_state_refs[dropped_policy_id] = ray.put(policy_state)
 
-    def _close_session(self, policy):
+    @staticmethod
+    def _close_session(policy):
         sess = policy.get_session()
         # Closes the tf session, if any.
         if sess is not None:

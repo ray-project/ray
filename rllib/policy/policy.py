@@ -53,6 +53,7 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -286,9 +287,13 @@ class Policy(metaclass=ABCMeta):
                 "Cannot create new Policy."
             )
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+        actual_class = get_tf_eager_cls_if_necessary(
+            pol_spec.policy_class,
+            pol_spec.config,
+        )
 
         # Create the new policy.
-        new_policy = pol_spec.policy_class(
+        new_policy = actual_class(
             observation_space=pol_spec.observation_space,
             action_space=pol_spec.action_space,
             config=pol_spec.config,

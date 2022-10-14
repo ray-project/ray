@@ -46,7 +46,11 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -221,7 +225,6 @@ class RolloutWorker(ParallelIteratorWorker):
         policies_to_train: Union[
             Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]
         ] = None,
-        tf_session_creator=None,
         rollout_fragment_length: int = 100,
         count_steps_by: str = "env_steps",
         batch_mode: str = "truncate_episodes",
@@ -257,8 +260,10 @@ class RolloutWorker(ParallelIteratorWorker):
         extra_python_environs: Optional[dict] = None,
         fake_sampler: bool = False,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        # Deprecated args:
         policy=None,
         disable_env_checking=False,
+        tf_session_creator=None,  # Use config.tf_session_options instead.
     ):
         """Initializes a RolloutWorker instance.
 
@@ -374,6 +379,13 @@ class RolloutWorker(ParallelIteratorWorker):
         assert (
             policy_spec is not None
         ), "Must provide `policy_spec` when creating RolloutWorker!"
+
+        if tf_session_creator != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="RolloutWorker(.., tf_session_creator=.., ..)",
+                new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
+                error=False,
+            )
 
         # Do quick translation into MultiAgentPolicyConfigDict.
         if not isinstance(policy_spec, dict):
@@ -623,9 +635,8 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
         self._build_policy_map(
-            self.policy_dict,
-            policy_config,
-            #session_creator=tf_session_creator,
+            policy_dict=self.policy_dict,
+            policy_config=policy_config,
             seed=seed,
         )
 
@@ -1824,6 +1835,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def _build_policy_map(
         self,
+        *,
         policy_dict: MultiAgentPolicyConfigDict,
         policy_config: PartialAlgorithmConfigDict,
         policy: Optional[Policy] = None,
@@ -1845,13 +1857,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            #worker_index=self.worker_index,
-            #num_workers=self.num_workers,
             capacity=ma_config.get("policy_map_capacity"),
-            #path=ma_config.get("policy_map_cache"),
-            #policy_config=policy_config,
-            #session_creator=session_creator,
-            #seed=seed,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1892,16 +1898,16 @@ class RolloutWorker(ParallelIteratorWorker):
             # Create the actual policy object.
             if policy is None:
                 policy = create_policy_for_framework(
-                    name,
-                    get_tf_eager_cls_if_necessary(
+                    policy_id=name,
+                    policy_class=get_tf_eager_cls_if_necessary(
                         policy_spec.policy_class, merged_conf
                     ),
-                    merged_conf,
-                    obs_space,
-                    policy_spec.action_space,
-                    self.worker_index,
-                    self.session_creator,
-                    self.seed,
+                    merged_config=merged_conf,
+                    observation_space=obs_space,
+                    action_space=policy_spec.action_space,
+                    worker_index=self.worker_index,
+                    #self.session_creator,
+                    seed=seed,
                 )
 
             self.policy_map[name] = policy

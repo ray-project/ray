@@ -228,7 +228,7 @@ def get_placeholder(
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
     orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
-) -> Type["TFPolicy"]:
+) -> Type[Union["TFPolicy", "EagerTFPolicy", "EagerTFPolicyV2"]]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
