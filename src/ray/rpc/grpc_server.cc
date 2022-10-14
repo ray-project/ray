@@ -39,6 +39,9 @@ GrpcServer::GrpcServer(std::string name,
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
+  // Enable built in health check implemented by gRPC:
+  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  grpc::EnableDefaultHealthCheckService(true);
 }
 
 void GrpcServer::Run() {
