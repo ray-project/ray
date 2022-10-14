@@ -500,7 +500,7 @@ py_test(
     name = "learning_tests_cartpole_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "small",
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -1391,7 +1391,7 @@ py_test(
     main = "train.py",
     srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     args = [
         "--env", "PongDeterministic-v4",
         "--run", "IMPALA",
@@ -1569,7 +1569,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_local_inference_unity3d",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "unity3d", "8850"],
     data = glob(["examples/serving/*.py"]),
@@ -2172,7 +2172,7 @@ py_test(
 py_test(
     name = "tests/test_custom_resource",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/test_custom_resource.py"]
 )
 
@@ -2291,7 +2291,7 @@ py_test(
 py_test(
     name = "tests/test_placement_groups",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose
     srcs = ["tests/test_placement_groups.py"]
 )
 
@@ -2569,7 +2569,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_C_AtoT"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--framework=tf2", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -2813,7 +2813,7 @@ py_test(
     name = "examples/custom_model_loss_and_metrics_ppo_torch",
     main = "examples/custom_model_loss_and_metrics.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_C_UtoZ"],
-    size = "medium",
+    size = "small",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
