@@ -292,15 +292,13 @@ def run(
             for generating the trial dirname. This function should take
             in a Trial object and return a string representing the
             name of the directory. The return value cannot be a path.
-        chdir_to_trial_dir: Determines whether or not to change the each worker's
-            working dir to their corresponding trial-level directory.
-            If set to False, files are accessible with paths relative to the directory
-            that the Tune experiment is launched from. The trial directory can be
-            accessible through the `session.get_trial_dir()` env variable.
-            If set to True, the original directory can still be accessed by the
-            `TUNE_ORIG_WORKING_DIR` env variable.
-            Defaults to True to prevent file write contention if workers try writing to
-            relative paths that may be shared if the working directory is not changed.
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of

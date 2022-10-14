@@ -76,8 +76,7 @@ class Session(abc.ABC):
 
     @property
     def trial_dir(self) -> str:
-        """Trial-level log directory for the corresponding trial.
-        """
+        """Trial-level log directory for the corresponding trial."""
         raise NotImplementedError
 
 

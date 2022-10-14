@@ -46,6 +46,13 @@ class TuneConfig:
             Defaults to ``True`` for function trainables (including most
             Ray AIR trainers) and ``False`` for class and registered trainables
             (e.g. RLlib).
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
