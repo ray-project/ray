@@ -23,7 +23,7 @@ py_test(
 
 py_test(
     name = "distributed_sage_example",
-    size = "large",
+    size = "small",
     main = "examples/pytorch_geometric/distributed_sage_example.py",
     srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
     tags = ["team:ml", "exclusive", "gpu"],

@@ -46,7 +46,7 @@ py_test(
 
 py_test(
     name = "transformers_example_gpu",
-    size = "large",
+    size = "medium",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
     tags = ["team:ml", "exclusive", "tune", "gpu_only"],
@@ -176,7 +176,7 @@ py_test(
 
 py_test(
     name = "test_gpu_auto_transfer",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
@@ -200,7 +200,7 @@ py_test(
 
 py_test(
     name = "test_torch_fsdp",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
     tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
     deps = [":train_lib"]
