@@ -1,7 +1,7 @@
 Limiting the memory usage
 =========================
 
-The application may consume a large amount of heap space and causes the node to run out of memory. When that happens the operating system will start killing worker or raylet processes, which breaks Ray. It may stall the metrics and if this happens on the node head, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and causes Ray to fail.
+The application may consume a large amount of heap space and causes the node to run out of memory. When that happens the operating system will start killing worker or raylet processes, which breaks Ray. It may stall the metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and causes Ray to fail.
 
 Memory Monitor
 --------------
