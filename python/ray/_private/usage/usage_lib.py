@@ -262,6 +262,10 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
+    # Dashboard
+    DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
+    DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.

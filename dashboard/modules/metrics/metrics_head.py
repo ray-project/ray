@@ -1,3 +1,5 @@
+import asyncio
+import time
 from typing import Any, Dict, Optional
 import aiohttp
 import logging
@@ -5,6 +7,7 @@ import os
 from pydantic import BaseModel
 import shutil
 from urllib.parse import quote
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -28,6 +31,7 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
+PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -66,6 +70,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     ):
         super().__init__(dashboard_head)
         self.http_session = http_session or aiohttp.ClientSession()
+        self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -83,18 +88,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Endpoint that checks if grafana is running
         """
-        grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
-
         # If disabled, we don't want to show the metrics tab at all.
-        if grafana_host == GRAFANA_HOST_DISABLED_VALUE:
+        if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Grafana disabled",
                 grafana_host=GRAFANA_HOST_DISABLED_VALUE,
             )
 
-        grafana_iframe_host = os.environ.get(GRAFANA_IFRAME_HOST_ENV_VAR, grafana_host)
-        path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
+        grafana_iframe_host = os.environ.get(
+            GRAFANA_IFRAME_HOST_ENV_VAR, self.grafana_host
+        )
+        path = f"{self.grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
             async with self._session.get(path) as resp:
                 if resp.status != 200:
@@ -217,9 +222,71 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
+    async def _check_grafana_running(self) -> bool:
+        try:
+            if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
+                return False
+
+            path = f"{self.grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
+            async with self._session.get(path) as resp:
+                if resp.status != 200:
+                    return False
+
+                json = await resp.json()
+                # Basic sanity check of grafana health check schema
+                if "version" not in json:
+                    return False
+
+                return True
+        except Exception:
+            return False
+
+    async def _check_prometheus_health(self) -> bool:
+        try:
+            path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
+
+            async with self._session.get(path) as resp:
+                if resp.status != 200:
+                    return False
+
+                text = await resp.text()
+                # Basic sanity check of prometheus health check schema
+                if "Prometheus" not in text:
+                    return False
+
+                return True
+        except Exception:
+            return False
+
+    async def _push_telemetry_data_loop(self):
+        time_between_pushes = 600  # 10 minutes
+        last_push = (
+            -time_between_pushes
+        )  # First loop should always send telemetry data.
+        while True:
+            now = time.monotonic()
+            try:
+                if now - last_push >= time_between_pushes:
+                    # Push data
+                    logger.info("Recording dashboard metrics telemetry data...")
+                    record_extra_usage_tag(
+                        TagKey.DASHBOARD_METRICS_GRAFANA_ENABLED,
+                        str(await self._check_grafana_running()),
+                    )
+                    record_extra_usage_tag(
+                        TagKey.DASHBOARD_METRICS_PROMETHEUS_ENABLED,
+                        str(await self._check_prometheus_health()),
+                    )
+                    last_push = now
+            except Exception as exc:
+                logger.warning("Error pushing telemetry data" + str(exc))
+
+            await asyncio.sleep(max(0, time_between_pushes - (now - last_push)))
+
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
+        asyncio.create_task(self._push_telemetry_data_loop())
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
