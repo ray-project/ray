@@ -336,32 +336,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         except Exception:
             logger.exception("Error updating gcs stats.")
 
-    async def _update_log_info(self):
-        if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
-            return
-
-        def process_log_batch(log_batch):
-            ip = log_batch["ip"]
-            pid = str(log_batch["pid"])
-            if pid != "autoscaler":
-                log_counts_for_ip = dict(
-                    DataSource.ip_and_pid_to_log_counts.get(ip, {})
-                )
-                log_counts_for_pid = log_counts_for_ip.get(pid, 0)
-                log_counts_for_pid += len(log_batch["lines"])
-                log_counts_for_ip[pid] = log_counts_for_pid
-                DataSource.ip_and_pid_to_log_counts[ip] = log_counts_for_ip
-            logger.debug(f"Received a log for {ip} and {pid}")
-
-        while True:
-            try:
-                log_batch = await self._dashboard_head.gcs_log_subscriber.poll()
-                if log_batch is None:
-                    continue
-                process_log_batch(log_batch)
-            except Exception:
-                logger.exception("Error receiving log from GCS.")
-
     async def _update_error_info(self):
         def process_error(error_data):
             message = error_data.error_message
@@ -414,7 +388,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
-            self._update_log_info(),
             self._update_error_info(),
         )
 
