@@ -26,7 +26,6 @@ from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
-    _start_redis_instance,
 )
 from ray._private.test_utils import (
     get_and_run_node_killer,
@@ -35,6 +34,7 @@ from ray._private.test_utils import (
     setup_tls,
     teardown_tls,
     enable_external_redis,
+    start_redis_instance,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -155,7 +155,7 @@ def _setup_redis(request):
     enable_tls = "RAY_REDIS_CA_CERT" in os.environ
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        port, proc = _start_redis_instance(
+        port, proc = start_redis_instance(
             REDIS_EXECUTABLE,
             temp_dir,
             port,

@@ -74,6 +74,113 @@ def enable_external_redis():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def start_redis_instance(
+    executable: str,
+    session_dir_path: str,
+    port: int,
+    redis_max_clients: Optional[int] = None,
+    num_retries: int = 20,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    password: Optional[str] = None,
+    redis_max_memory: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    port_denylist: Optional[List[int]] = None,
+    listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
+):
+    """Start a single Redis server.
+
+    Notes:
+        We will initially try to start the Redis instance at the given port,
+        and then try at most `num_retries - 1` times to start the Redis
+        instance at successive random ports.
+
+    Args:
+        executable: Full path of the redis-server executable.
+        session_dir_path: Path to the session directory of
+            this Ray cluster.
+        port: Try to start a Redis server at this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
+        num_retries: The number of times to attempt to start Redis at
+            successive ports.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        password: Prevents external clients without the password
+            from connecting to Redis if provided.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
+        port_denylist: A set of denylist ports that shouldn't
+            be used when allocating a new port.
+        listen_to_localhost_only: Redis server only listens to
+            localhost (127.0.0.1) if it's true,
+            otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
+
+    Returns:
+        A tuple of the port used by Redis and ProcessInfo for the process that
+            was started. If a port is passed in, then the returned port value
+            is the same.
+
+    Raises:
+        Exception: An exception is raised if Redis could not be started.
+    """
+
+    assert os.path.isfile(executable)
+
+    # Construct the command to start the Redis server.
+    command = [executable]
+    if password:
+        if " " in password:
+            raise ValueError("Spaces not permitted in redis password.")
+        command += ["--requirepass", password]
+
+    if enable_tls:
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("", 0))
+            free_port = s.getsockname()[1]
+        command += [
+            "--tls-port",
+            str(port),
+            "--loglevel",
+            "warning",
+            "--port",
+            str(free_port),
+        ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
+
+    if listen_to_localhost_only:
+        command += ["--bind", "127.0.0.1"]
+p    pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+    command += ["--pidfile", pidfile]
+    if enable_tls:
+        if Config.REDIS_CA_CERT():
+            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
+        if Config.REDIS_CLIENT_CERT():
+            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
+        if Config.REDIS_CLIENT_KEY():
+            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
+        command += ["--tls-replication", "yes"]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    port = new_port(denylist=port_denylist)
+    return port, process_info
+
+
 def _pid_alive(pid):
     """Check if the process with this PID is alive or not.
 
