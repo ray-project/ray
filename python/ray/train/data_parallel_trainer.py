@@ -338,7 +338,7 @@ class DataParallelTrainer(BaseTrainer):
             name=session.get_trial_name(),
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
-            logdir=os.getcwd(),
+            logdir=session.get_trial_dir(),
         )
 
         backend_executor = self._backend_executor_cls(
