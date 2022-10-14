@@ -828,8 +828,17 @@ class RayTrialExecutor:
                 # If using cloud checkpointing, trial will get cp from cloud.
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
+                fallback_to_latest = bool(
+                    int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
+                )
+
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(checkpoint_dir, node_ip)
+                    remote = trial.runner.restore.remote(
+                        checkpoint_dir,
+                        checkpoint_node_ip=node_ip,
+                        fallback_to_latest=fallback_to_latest,
+                    )
+
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.

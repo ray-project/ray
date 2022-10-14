@@ -24,6 +24,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -836,6 +837,20 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     return samples_by_name
 
 
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
+
+
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
@@ -1253,7 +1268,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster):
+def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1261,16 +1276,13 @@ def check_local_files_gced(cluster):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
+            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (
-                len(
-                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-                )
-                > 0
-            ):
-                print(str(all_files))
+            items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+            if whitelist and set(items).issubset(whitelist):
+                continue
+            if len(items) > 0:
                 return False
-
     return True
 
 
