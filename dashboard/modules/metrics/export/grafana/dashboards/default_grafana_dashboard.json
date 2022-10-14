@@ -1348,12 +1348,10 @@
       "decimals": 2,
       "description": "This is measured from aggregated disk io stats on the node (with psutil) ",
       "fieldConfig": {
-        "defaults": {
-          "unit": "binBps"
-        },
+        "defaults": {},
         "overrides": []
       },
-      "fill": 10,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
@@ -1430,7 +1428,7 @@
       "yaxes": [
         {
           "$$hashKey": "object:2779",
-          "format": "binBps",
+          "format": "Bps",
           "label": null,
           "logBase": 1,
           "max": null,
