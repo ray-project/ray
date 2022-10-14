@@ -62,7 +62,7 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.trial_resources
 
     @property
-    def log_dir(self) -> str:
+    def trial_dir(self) -> str:
         return self._status_reporter.logdir
 
 

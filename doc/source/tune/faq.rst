@@ -745,11 +745,11 @@ directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
 guarantees separate working directories for each worker process, avoiding conflicts when
 saving trial-specific outputs.
 
-Option 1: Setting `chdir_to_log_dir=False` in `air.RunConfig`
+Option 1: Setting `chdir_to_trial_dir=False` in `air.RunConfig`
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The first option is to explicitly tell Tune to not change the working directory
-to the trial directory. In this case, the :meth:`session.get_log_dir() <ray.air.session.get_log_dir>`
+to the trial directory. In this case, the :meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

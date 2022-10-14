@@ -325,7 +325,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
 def test_tuner_no_chdir_to_trial_dir(runtime_env):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
     reading relatives paths to the original working directory.
-    Also tests that `TUNE_TRIAL_DIR` env variable can be used as the directory
+    Also tests that `session.get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
     ray.init(num_cpus=1, runtime_env=runtime_env)
@@ -345,7 +345,7 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
 
         # Write operations should happen in each trial's independent logdir to
         # prevent write conflicts
-        trial_dir = Path(session.get_log_dir())
+        trial_dir = Path(session.get_trial_dir())
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
         # Make sure we didn't write to the working dir
@@ -389,7 +389,7 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
         data_path = orig_working_dir / "read.txt"
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
-        trial_dir = Path(session.get_log_dir())
+        trial_dir = Path(session.get_trial_dir())
         # Tune should have changed the working directory to the trial directory
         assert str(trial_dir) == os.getcwd()
 

@@ -148,8 +148,6 @@ def _noop_logger_creator(config, logdir, should_chdir: bool = True):
     # Upon remote process setup, record the actor's original working dir before
     # changing the working dir to the Tune logdir
     os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
-    # Also, record the trial logdir
-    os.environ["TUNE_TRIAL_DIR"] = logdir
 
     os.makedirs(logdir, exist_ok=True)
     if should_chdir:

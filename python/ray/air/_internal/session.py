@@ -75,9 +75,8 @@ class Session(abc.ABC):
         raise NotImplementedError
 
     @property
-    def log_dir(self) -> str:
-        """Log directory corresponding to the session where data such as checkpoints
-        can be written.
+    def trial_dir(self) -> str:
+        """Trial-level log directory for the corresponding trial.
         """
         raise NotImplementedError
 

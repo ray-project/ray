@@ -421,11 +421,11 @@ if not MOCK:
         # Read from relative paths
         print(open("./read.txt").read())
 
-        # Access working dir, which should be the same as `os.getcwd()`
+        # The working directory shouldn't have changed
         assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
 
-        # Write to the Tune trial directory, NOT the shared working dir
-        tune_trial_dir = Path(os.environ["TUNE_TRIAL_DIR"])
+        # Write to the Tune trial directory, not the shared working dir
+        tune_trial_dir = Path(session.get_trial_dir())
         with open(tune_trial_dir / "write.txt", "w") as f:
             f.write("trial saved artifact")
 

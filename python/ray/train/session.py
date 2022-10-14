@@ -46,7 +46,7 @@ class _TrainSessionImpl(Session):
         return self._session.trial_info.resources
 
     @property
-    def log_dir(self) -> str:
+    def trial_dir(self) -> str:
         return self._session.trial_info.logdir
 
     @property

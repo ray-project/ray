@@ -125,38 +125,24 @@ def get_trial_resources() -> "PlacementGroupFactory":
     return _get_session().trial_resources
 
 
-def get_log_dir() -> str:
-    """Log directory corresponding to the trial directory for a Tune session, and the
-    training worker directory (within the trial directory) for a Train session.
-    This directory is unique to the worker and is the recommended directory to write
-    artifacts to, if needed.
+def get_trial_dir() -> str:
+    """Log directory corresponding to the trial directory for a Tune session.
+    If calling from a Train session, this will give the trial directory of its parent
+    Tune session.
 
     .. code-block:: python
 
         from ray import tune
         from ray.air import session
-        from ray.train.tensorflow import TensorflowTrainer
 
-        # Using both Train and Tune, calling `session.get_log_dir()` inside the
-        # `train_loop_per_worker` gives a unique directory for each train worker
-        # in each Tune trial.
         def train_func():
-            # >>> session.get_log_dir()
-            # ~/ray_results/<exp-name>/<trial-dir>/rank_<worker-world-rank>
-
-        trainer = TensorflowTrainer(train_loop_per_worker=train_func)
-        tuner = tune.Tuner(trainer)
-        tuner.fit()
-
-        # Using just Tune, this gives a unique directory per trial.
-        def train_func():
-            # >>> session.get_log_dir()
+            # >>> session.get_trial_dir()
             # ~/ray_results/<exp-name>/<trial-dir>
 
         tuner = tune.Tuner(train_func)
         tuner.fit()
     """
-    return _get_session().log_dir
+    return _get_session().trial_dir
 
 
 def get_world_size() -> int:
