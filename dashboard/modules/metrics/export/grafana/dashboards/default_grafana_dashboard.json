@@ -1411,7 +1411,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Disk IO Speed",
+      "title": "Node Disk IO",
       "tooltip": {
         "shared": true,
         "sort": 0,
