@@ -3,12 +3,15 @@ import sys
 import time
 import numpy as np
 
-import psutil
 import pytest
 
 import ray
 from ray._private import test_utils
 from ray._private.test_utils import get_node_stats, wait_for_condition
+
+import numpy as np
+from ray._private.utils import get_system_memory
+from ray._private.utils import get_used_memory
 
 
 memory_usage_threshold_fraction = 0.65
@@ -33,6 +36,7 @@ def ray_with_memory_monitor(shutdown_only):
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": task_oom_retries,
+            "min_memory_free_bytes": -1,
         },
     ):
         yield
@@ -49,6 +53,7 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 0,
+            "min_memory_free_bytes": -1,
         },
     ):
         yield
@@ -92,10 +97,10 @@ class Leaker:
         return ray._private.worker.global_worker.core_worker.get_actor_id().hex()
 
 
-def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
-    node_mem = psutil.virtual_memory()
-    used = node_mem.total - node_mem.available
-    bytes_needed = node_mem.total * pct - used
+def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
+    used = get_used_memory()
+    total = get_system_memory()
+    bytes_needed = int(total * pct) - used
     assert bytes_needed > 0, "node has less memory than what is requested"
     return bytes_needed
 
@@ -405,30 +410,34 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_filled_object_store_lowers_available_heap_for_oom_trigger(
-    ray_with_memory_monitor,
-):
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 0.05
-    )
-
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+def test_put_object_task_usage_slightly_below_limit_does_not_crash():
+    with ray.init(
+        num_cpus=1,
+        object_store_memory=2 << 30,
+        _system_config={
+            "memory_monitor_interval_ms": 0,
+        },
+    ):
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(
-                allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=100
+                allocate_bytes=bytes_to_alloc,
             ),
+            timeout=90,
         )
 
-    entries = int(object_store_memory / 8)
-    obj_ref = ray.put(np.random.rand(entries))
-    ray.get(obj_ref)
+        entries = int((1 << 30) / 8)
+        obj_ref = ray.put(np.random.rand(entries))
+        ray.get(obj_ref)
 
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(
-                allocate_bytes=bytes_to_alloc - object_store_memory,
-                post_allocate_sleep_s=100,
+                allocate_bytes=bytes_to_alloc,
             ),
+            timeout=90,
         )
 
 

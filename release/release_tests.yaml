@@ -196,7 +196,7 @@
     script: python workloads/xgboost_benchmark.py
 
     wait_for_nodes:
-      num_nodes: 10
+      num_nodes: 11
 
     type: sdk_command
     file_manager: job
@@ -2090,7 +2090,7 @@
   team: serve
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
     timeout: 86400
@@ -4525,7 +4525,7 @@
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
     test_suite: dataset_test
 
-  frequency: nightly
+  frequency: weekly
   team: data
   cluster:
     cluster_env: shuffle/100tb_shuffle_app_config.yaml

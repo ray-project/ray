@@ -25,7 +25,7 @@ import psutil
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClientOptions, Config
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -1058,6 +1058,7 @@ def _start_redis_instance(
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
 ):
     """Start a single Redis server.
 
@@ -1089,6 +1090,7 @@ def _start_redis_instance(
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -1107,11 +1109,36 @@ def _start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-    command += ["--port", str(port), "--loglevel", "warning"]
+
+    if enable_tls:
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("", 0))
+            free_port = s.getsockname()[1]
+        command += [
+            "--tls-port",
+            str(port),
+            "--loglevel",
+            "warning",
+            "--port",
+            str(free_port),
+        ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
+
     if listen_to_localhost_only:
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
+    if enable_tls:
+        if Config.REDIS_CA_CERT():
+            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
+        if Config.REDIS_CLIENT_CERT():
+            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
+        if Config.REDIS_CLIENT_KEY():
+            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
+        command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     process_info = start_ray_process(
@@ -1422,10 +1449,21 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_address:
-        redis_ip_address, redis_port = redis_address.rsplit(":")
+        parts = redis_address.split("://", 1)
+        enable_redis_ssl = "false"
+        if len(parts) == 1:
+            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+        else:
+            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+                raise ValueError(f"Invalid redis address {redis_address}")
+            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+            if parts[0] == "rediss":
+                enable_redis_ssl = "true"
+
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
+            f"--redis_enable_ssl={enable_redis_ssl}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]

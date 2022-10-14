@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -44,6 +45,7 @@ from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
+    _adapt_for_multiple_blocks,
 )
 from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
@@ -290,6 +292,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -346,6 +349,14 @@ class Dataset(Generic[T]):
             For some standard operations like imputing, encoding or normalization,
             one may find directly using :py:class:`~ray.data.preprocessors.Preprocessor` to be
             more convenient.
+
+        .. note::
+            The size of the batches provided to ``fn`` may be smaller than the provided
+            ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
+            a given map task. Each map task will be sent a single block if the block is
+            equal to or larger than ``batch_size``, and will be sent a bundle of blocks
+            up to (but not exceeding) ``batch_size`` if blocks are smaller than
+            ``batch_size``.
 
         Examples:
 
@@ -419,16 +430,17 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: The number of rows in each batch, or ``None`` to use entire
-                blocks as batches. Blocks can contain different number of rows, and
-                the last batch can include fewer than ``batch_size`` rows. Defaults to
-                ``4096``.
+            batch_size: The desired number of rows in each batch, or None to use entire
+                blocks as batches (blocks may contain different number of rows).
+                The actual size of the batch provided to ``fn`` may be smaller than
+                ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
+                to a given map task. Defaults to 4096.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
                 :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` instance.
                 If you're passing callable type to ``fn``, you must pass an
-                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` or ``"actors"``.
             batch_format: Specify ``"default"`` to use the default block format
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
@@ -504,46 +516,42 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
 
         def transform(
-            block: Block,
+            blocks: Iterable[Block],
             batch_fn: BatchUDF,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            block = BlockAccessor.for_block(block)
-            total_rows = block.num_rows()
-            max_batch_size = batch_size
-            if max_batch_size is None:
-                max_batch_size = max(total_rows, 1)
-
-            for start in range(0, total_rows, max_batch_size):
-                # Build a block for each batch.
-                end = min(total_rows, start + max_batch_size)
-                # Make sure to copy if slicing to avoid the Arrow serialization
-                # bug where we include the entire base view on serialization.
-                view = block.slice(start, end, copy=batch_size is not None)
+            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+            for block in blocks:
+                batcher.add(block)
+            batcher.done_adding()
+            while batcher.has_any():
+                batch = batcher.next_batch()
                 # Convert to batch format.
-                view = BlockAccessor.for_block(view).to_batch_format(batch_format)
-
-                applied = batch_fn(view, *fn_args, **fn_kwargs)
+                batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
+                # Apply UDF.
+                batch = batch_fn(batch, *fn_args, **fn_kwargs)
                 if not (
-                    isinstance(applied, list)
-                    or isinstance(applied, pa.Table)
-                    or isinstance(applied, np.ndarray)
+                    isinstance(batch, list)
+                    or isinstance(batch, pa.Table)
+                    or isinstance(batch, np.ndarray)
                     or (
-                        isinstance(applied, dict)
-                        and all(isinstance(col, np.ndarray) for col in applied.values())
+                        isinstance(batch, dict)
+                        and all(isinstance(col, np.ndarray) for col in batch.values())
                     )
-                    or isinstance(applied, pd.core.frame.DataFrame)
+                    or isinstance(batch, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
                         "The map batches UDF returned the value "
-                        f"{applied} of type {type(applied)}, "
+                        f"{batch} of type {type(batch)}, "
                         "which is not allowed. "
                         f"The return type must be one of: {BatchType}"
                     )
-                output_buffer.add_batch(applied)
+                # Add output batch to output buffer.
+                output_buffer.add_batch(batch)
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
@@ -557,6 +565,8 @@ class Dataset(Generic[T]):
                 transform,
                 compute,
                 ray_remote_args,
+                # TODO(Clark): Add a strict cap here.
+                target_block_size=batch_size,
                 fn=fn,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
@@ -698,6 +708,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -765,6 +776,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
@@ -2793,14 +2805,9 @@ class Dataset(Generic[T]):
 
     def to_tf(
         self,
+        feature_columns: Union[str, List[str]],
+        label_columns: Union[str, List[str]],
         *,
-        output_signature: Union[
-            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
-        ],
-        label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
-        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
@@ -2813,49 +2820,24 @@ class Dataset(Generic[T]):
         ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
         arguments will be passed to that method.
 
-        For the features tensor (N is the ``batch_size`` and n1, ..., nk
-        are the number of features per tensor):
-
-        * If ``feature_columns`` is a ``List[str]``, the features will be
-          a tensor of shape (N, n), with columns corresponding to
-          ``feature_columns``
-
-        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
-          a list of tensors of shape [(N, n1),...,(N, nk)], with columns of each
-          tensor corresponding to the elements of ``feature_columns``
-
-        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
-          will be a dict of key-tensor pairs of shape
-          {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
-          tensor corresponding to the value of ``feature_columns`` under the
-          key.
-
         This is only supported for datasets convertible to Arrow records.
-
-        Requires all datasets to have the same columns.
 
         It is recommended to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
 
-        The elements generated must be compatible with the given
-        ``output_signature`` argument (same as in
-        ``tf.data.Dataset.from_generator``).
+        .. warning::
 
-        Time complexity: O(1)
+            If your dataset contains ragged tensors, this method will error. To prevent
+            errors, resize tensors or
+            :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
 
         Args:
-            output_signature: If ``label_column`` is specified,
-                a two-element tuple containing a ``FeatureTypeSpec`` and
-                ``tf.TypeSpec`` object corresponding to (features, label). Otherwise, a
-                single ``TensorflowFeatureTypeSpec`` corresponding to features tensor.
-                A ``TensorflowFeatureTypeSpec`` is a ``tf.TypeSpec``,
-                ``List["tf.TypeSpec"]``, or ``Dict[str, "tf.TypeSpec"]``.
-            label_column: The name of the column used as the label
-                (second element of the output tuple). If not specified, output
-                will be just one tensor instead of a tuple.
-            feature_columns: The names of the columns to use as the features. Can be a
-                list of lists or a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label columns as the features.
+            feature_columns: Columns that correspond to model inputs. If this is a
+                string, the input data is a tensor. If this is a list, the input data
+                is a ``dict`` that maps column names to their tensor representation.
+            label_column: Columns that correspond to model targets. If this is a
+                string, the target data is a tensor. If this is a list, the target data
+                is a ``dict`` that maps column names to their tensor representation.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -2874,75 +2856,82 @@ class Dataset(Generic[T]):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            A tf.data.Dataset.
+            A ``tf.data.Dataset`` that yields inputs and targets.
         """
-
-        # argument exception checking is done in from_generator
+        from ray.air._internal.tensorflow_utils import get_type_spec
 
         try:
             import tensorflow as tf
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
+        if self._dataset_format() == "simple":
+            raise NotImplementedError(
+                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
+                "convert your data to a tabular format. Alternatively, call the more-"
+                "flexible `iter_batches` in place of `to_tf`."
+            )
 
-        # `output_signature` can be a tuple but not a list. See
-        # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
-        if isinstance(output_signature, list):
-            output_signature = tuple(output_signature)
+        if self._is_tensor_dataset():
+            raise NotImplementedError(
+                "`to_tf` doesn't support single-column tensor datasets. Call the "
+                "more-flexible `iter_batches` instead."
+            )
 
-        def make_generator():
-            for batch in self.iter_batches(
+        schema = self.schema()
+        valid_columns = schema.names
+
+        def validate_column(column: str) -> None:
+            if column not in valid_columns:
+                raise ValueError(
+                    f"You specified '{column}' in `feature_columns` or "
+                    f"`label_columns`, but there's no column named '{column}' in the "
+                    f"dataset. Valid column names are: {valid_columns}."
+                )
+
+        def validate_columns(columns: Union[str, List]) -> None:
+            if isinstance(columns, list):
+                for column in columns:
+                    validate_column(column)
+            else:
+                validate_column(columns)
+
+        validate_columns(feature_columns)
+        validate_columns(label_columns)
+
+        def get_columns_from_batch(
+            batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
+        ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+            if isinstance(columns, str):
+                return batch[columns]
+            return {column: batch[column] for column in columns}
+
+        def generator():
+            for batch in self.iter_tf_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
-                batch_format="pandas",
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
-                if label_column:
-                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
-                    if targets.ndim == 2 and targets.shape[1] == 1:
-                        targets = tf.squeeze(targets, axis=1)
-                    batch.pop(label_column)
+                assert isinstance(batch, dict)
+                features = get_columns_from_batch(batch, columns=feature_columns)
+                labels = get_columns_from_batch(batch, columns=label_columns)
+                yield features, labels
 
-                features = None
-                if feature_columns is None:
-                    features = convert_pandas_to_tf_tensor(batch)
-                elif isinstance(feature_columns, list):
-                    if all(isinstance(column, str) for column in feature_columns):
-                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
-                    elif all(isinstance(columns, list) for columns in feature_columns):
-                        features = tuple(
-                            convert_pandas_to_tf_tensor(batch[columns])
-                            for columns in feature_columns
-                        )
-                    else:
-                        raise ValueError(
-                            "Expected `feature_columns` to be a list of strings or a "
-                            "list of lists."
-                        )
-                elif isinstance(feature_columns, dict):
-                    features = {
-                        key: convert_pandas_to_tf_tensor(batch[columns])
-                        for key, columns in feature_columns.items()
-                    }
-                else:
-                    raise ValueError(
-                        "Expected `feature_columns` to be a list or a dictionary, "
-                        f"but got a `{type(feature_columns).__name__}` instead."
-                    )
-
-                if label_column:
-                    yield features, targets
-                else:
-                    yield features
+        feature_type_spec = get_type_spec(schema, columns=feature_columns)
+        label_type_spec = get_type_spec(schema, columns=label_columns)
+        output_signature = (feature_type_spec, label_type_spec)
 
         dataset = tf.data.Dataset.from_generator(
-            make_generator, output_signature=output_signature
+            generator, output_signature=output_signature
         )
 
-        return dataset
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = (
+            tf.data.experimental.AutoShardPolicy.OFF
+        )
+        return dataset.with_options(options)
 
     def to_dask(
         self,
@@ -3736,6 +3725,15 @@ class Dataset(Generic[T]):
             if schema.names == [VALUE_COL_NAME]:
                 return np.ndarray
             return pd.DataFrame
+
+    def _is_tensor_dataset(self) -> bool:
+        """Return ``True`` if this dataset is a tensor dataset."""
+        from ray.air.constants import TENSOR_COLUMN_NAME
+
+        schema = self.schema()
+        if schema is None or isinstance(schema, type):
+            return False
+        return schema.names == [TENSOR_COLUMN_NAME]
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",

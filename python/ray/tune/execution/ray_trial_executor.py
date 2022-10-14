@@ -504,7 +504,8 @@ class RayTrialExecutor:
         trial.set_location(_Location())
 
         try:
-            trial.write_error_log(exc=exc)
+            if exc:
+                trial.handle_error(exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -618,7 +619,12 @@ class RayTrialExecutor:
             for result_id in out:
                 self._futures.pop(result_id)
         trial.saving_to = None
-        self._stop_trial(trial, error=error or exc, exc=exc)
+        trial.restoring_from = None
+        self._stop_trial(
+            trial,
+            error=error or exc,
+            exc=exc,
+        )
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
@@ -828,8 +834,17 @@ class RayTrialExecutor:
                 # If using cloud checkpointing, trial will get cp from cloud.
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
+                fallback_to_latest = bool(
+                    int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
+                )
+
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(checkpoint_dir, node_ip)
+                    remote = trial.runner.restore.remote(
+                        checkpoint_dir,
+                        checkpoint_node_ip=node_ip,
+                        fallback_to_latest=fallback_to_latest,
+                    )
+
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.

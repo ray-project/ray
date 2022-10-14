@@ -70,7 +70,14 @@ def convert_pandas_to_torch_tensor(
             # or otherwise cannot be made into a tensor directly.
             # We assume it's a sequence in that case.
             # This is more robust than checking for dtype.
-            return torch.stack([tensorize(x, dtype) for x in vals])
+            tensors = [tensorize(x, dtype) for x in vals]
+            try:
+                return torch.stack(tensors)
+            except RuntimeError:
+                # NOTE: RuntimeError is raised when trying to stack ragged tensors.
+                # Try to coerce the tensor to a nested tensor, if possible.
+                # If this fails, the exception will be propagated up to the caller.
+                return torch.nested_tensor(tensors)
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
@@ -82,7 +89,13 @@ def convert_pandas_to_torch_tensor(
 
         for col in batch.columns:
             col_vals = batch[col].values
-            t = tensorize(col_vals, dtype=dtype)
+            try:
+                t = tensorize(col_vals, dtype=dtype)
+            except Exception:
+                raise ValueError(
+                    f"Failed to convert column {col} to a Torch Tensor of dtype "
+                    f"{dtype}. See above exception chain for the exact failure."
+                )
             if unsqueeze:
                 t = t.unsqueeze(1)
             feature_tensors.append(t)
