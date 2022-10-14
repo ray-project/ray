@@ -51,7 +51,7 @@ SERVICES = {
 }
 
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) < 2:
         print(f"Usage: python {sys.argv[0]} <service1> [service2] ...")
         sys.exit(0)
@@ -68,7 +68,8 @@ if __name__ == "__main__":
         client = boto3.client("secretsmanager", region_name="us-west-2")
         ray_air_secrets = get_ray_air_secrets(client)
     except Exception as e:
-        raise RuntimeError(f"Could not get Ray AIR secrets: {e}")
+        print(f"Could not get Ray AIR secrets: {e}")
+        return
 
     for service in services:
         try:
@@ -76,3 +77,7 @@ if __name__ == "__main__":
             setup_fn(ray_air_secrets[secret_key])
         except Exception as e:
             print(f"Could not setup service credentials for {service}: {e}")
+
+
+if __name__ == "__main__":
+    main()
