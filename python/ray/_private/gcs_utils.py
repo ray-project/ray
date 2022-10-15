@@ -116,7 +116,7 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     req = gcs_service_pb2.CheckAliveRequest()
     try:
         channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
         traceback.print_exc()

@@ -63,6 +63,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle check alive request for GCS.
+  void HandleCheckAlive(rpc::CheckAliveRequest request,
+                        rpc::CheckAliveReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
   void OnNodeFailure(const NodeID &node_id);
 
   /// Add an alive node.
@@ -129,7 +134,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
-
+  
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.

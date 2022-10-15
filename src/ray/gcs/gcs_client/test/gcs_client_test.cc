@@ -471,7 +471,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
 
   auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
-  auto stub = rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
   *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
