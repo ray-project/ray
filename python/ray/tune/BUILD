@@ -736,7 +736,7 @@ py_test(
     size = "small",
     srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "medium_instance"],
     args = ["--smoke-test"]
 )
 
