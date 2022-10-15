@@ -289,21 +289,15 @@ class PullManager {
       if (task_name.empty()) {
         return;  // Don't record stats for non-task requests.
       }
-      auto num_active = active_by_name.Get(task_name);
       auto num_inactive = inactive_by_name.Get(task_name);
       ray::stats::STATS_tasks.Record(
-          -static_cast<int64_t>(num_active + num_inactive),
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+          -static_cast<int64_t>(num_inactive),
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
            {"Name", task_name},
            {"Source", "pull_manager"}});
       ray::stats::STATS_tasks.Record(
           num_inactive,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", task_name},
-           {"Source", "pull_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_active,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
            {"Name", task_name},
            {"Source", "pull_manager"}});
     }

@@ -29,6 +29,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 namespace raylet {
@@ -333,6 +334,9 @@ class LocalTaskManager : public ILocalTaskManager {
   /// An index for the above queue.
   absl::flat_hash_map<TaskID, std::list<std::shared_ptr<internal::Work>>::iterator>
       waiting_tasks_index_;
+
+  /// Tracks tasks in waiting state.
+  CounterMap<std::string> waiting_tasks_counter_;
 
   /// Track the backlog of all workers belonging to this raylet.
   absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
