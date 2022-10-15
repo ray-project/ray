@@ -47,6 +47,12 @@ from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 
+REDIS_EXECUTABLE = (
+    os.environ["REDIS_SERVER_BINARY_FOR_TEST"]
+    if "REDIS_SERVER_BINARY_FOR_TEST" in os.environ["REDIS_SERVER_BINARY_FOR_TEST"]
+    else None
+)
+
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -77,7 +83,6 @@ def enable_external_redis():
 
 
 def start_redis_instance(
-    executable: str,
     session_dir_path: str,
     port: int,
     redis_max_clients: Optional[int] = None,
@@ -99,7 +104,6 @@ def start_redis_instance(
         instance at successive random ports.
 
     Args:
-        executable: Full path of the redis-server executable.
         session_dir_path: Path to the session directory of
             this Ray cluster.
         port: Try to start a Redis server at this port.
@@ -132,10 +136,10 @@ def start_redis_instance(
         Exception: An exception is raised if Redis could not be started.
     """
 
-    assert os.path.isfile(executable)
+    assert os.path.isfile(REDIS_EXECUTABLE)
 
     # Construct the command to start the Redis server.
-    command = [executable]
+    command = [REDIS_EXECUTABLE]
     if password:
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
