@@ -57,10 +57,9 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
-                                           rpc::CheckAliveReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+                                      rpc::CheckAliveReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
   // for (const auto &addr : request.raylet_address()) {
   //   reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
@@ -68,7 +67,6 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
-
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
