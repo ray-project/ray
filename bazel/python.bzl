@@ -3,21 +3,18 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 
-def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], name_suffix="", **kwargs):
+def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwargs):
     for file in files:
         # remove .py
         name = paths.split_extension(file)[0] + name_suffix
         if name == file:
             basename = basename + "_test"
-            
         native.py_test(
             name = name,
             size = size,
             main = file,
             srcs = extra_srcs + [file],
             deps = deps,
-            tags = tags,
-            env = env,
             **kwargs
         )
 
