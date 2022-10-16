@@ -4,9 +4,6 @@ import time
 from numpy import random
 
 
-ray.init()
-
-
 def partition(collection):
     # Use the last element as the pivot
     pivot = collection.pop()

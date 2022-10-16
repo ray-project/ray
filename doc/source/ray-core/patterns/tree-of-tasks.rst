@@ -1,10 +1,14 @@
 .. _task-pattern-tree-of-tasks:
 
-Pattern: Using a tree of tasks to achieve nested parallelism
-============================================================
+Pattern: Using nested tasks to achieve nested parallelism
+=========================================================
 
-In this pattern, a remote function can dynamically call other remote functions (including itself) for parallelism.
+In this pattern, a remote task can dynamically call other remote tasks (including itself) for nested parallelism.
+This is useful when sub-tasks can be parallelized and the speedup due to nested parallelism is more than the overhead.
 
+Nested tasks come with their own cost: extra worker processes, scheduling overhead, bookkeeping overhead, etc
+and a too deeply nested task tree can launch too many worker processes.
+As a result, you should always benchmark the nested tasks version of the code and make sure you get the speedup instead of slowdown!
 
 Example use case
 ----------------
