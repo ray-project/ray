@@ -87,7 +87,7 @@ class TestPG(unittest.TestCase):
                 print(f"env={env}")
                 config.environment(env)
 
-                trainer = config.build()
+                trainer = config.build(use_copy=True)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)

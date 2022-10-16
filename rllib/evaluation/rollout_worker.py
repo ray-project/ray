@@ -18,9 +18,9 @@ from typing import (
 )
 
 import gym
+from gym.spaces import Discrete, MultiDiscrete, Space
 import numpy as np
 import tree  # pip install dm_tree
-from gym.spaces import Discrete, MultiDiscrete, Space
 
 import ray
 from ray import ObjectRef
@@ -80,6 +80,7 @@ from ray.util.debug import disable_log_once_globally, enable_periodic_logging, l
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
@@ -92,7 +93,7 @@ logger = logging.getLogger(__name__)
 # Handle to the current rollout worker, which will be set to the most recently
 # created RolloutWorker in this process. This can be helpful to access in
 # custom env or policy classes for debugging or advanced use cases.
-_global_worker: "RolloutWorker" = None
+_global_worker: Optional["RolloutWorker"] = None
 
 
 @DeveloperAPI
@@ -1788,7 +1789,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _build_policy_map(
         self,
         policy_dict: MultiAgentPolicyConfigDict,
-        policy_config: PartialAlgorithmConfigDict,
+        policy_config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
@@ -1798,7 +1799,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Args:
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
-            policy_config: The general policy config to use. May be updated
+            policy_config: The general AlgorithmConfig to use. May be updated
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
@@ -1807,14 +1808,12 @@ class RolloutWorker(ParallelIteratorWorker):
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
         """
-        ma_config = policy_config.get("multiagent", {})
-
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
             worker_index=self.worker_index,
             num_workers=self.num_workers,
-            capacity=ma_config.get("policy_map_capacity"),
-            path=ma_config.get("policy_map_cache"),
+            capacity=policy_config.policy_map_capacity,
+            path=policy_config.policy_map_cache,
             policy_config=policy_config,
             session_creator=session_creator,
             seed=seed,
@@ -1827,13 +1826,12 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.debug("Creating policy for {}".format(name))
             # Update the general policy_config with the specific config
             # for this particular policy.
-            merged_conf = merge_dicts(policy_config, policy_spec.config or {})
+            merged_conf: "AlgorithmConfig" = copy.deepcopy(policy_config)
+            merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
-            merged_conf["num_workers"] = self.num_workers
-            merged_conf["worker_index"] = self.worker_index
-
-            connectors_enabled = policy_config.get("enable_connectors", False)
+            #merged_conf["num_workers"] = self.num_workers
+            merged_conf.worker_index = self.worker_index
 
             # Preprocessors.
             obs_space = policy_spec.observation_space
@@ -1843,14 +1841,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf.get("model")
+                    obs_space, merged_conf.model
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
 
-                if not connectors_enabled:
+                if not merged_conf.enable_connectors:
                     # If connectors are not enabled, rollout worker will handle
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
@@ -1869,7 +1867,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
 
             new_policy = self.policy_map[name]
-            if connectors_enabled:
+            if merged_conf.enable_connectors:
                 create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
@@ -1883,7 +1881,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
 
                 self.filters[name] = get_filter(
-                    (merged_conf or {}).get("observation_filter", "NoFilter"),
+                    merged_conf.observation_filter,
                     filter_shape,
                 )
 

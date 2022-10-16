@@ -253,7 +253,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -279,7 +279,7 @@ class WorkerSet:
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -340,7 +340,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -367,7 +367,7 @@ class WorkerSet:
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -870,7 +870,7 @@ class WorkerSet:
 
         if not policy_specs:
             # Infer policy specs from multiagent.policies dict.
-            if config["multiagent"]["policies"]:
+            if config.policies:
                 # Make a copy so we don't modify the original multiagent config dict
                 # by accident.
                 policy_specs = config["multiagent"]["policies"].copy()

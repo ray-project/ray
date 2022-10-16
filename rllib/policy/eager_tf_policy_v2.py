@@ -78,9 +78,6 @@ class EagerTFPolicyV2(Policy):
 
         Policy.__init__(self, observation_space, action_space, config)
 
-        #config = dict(self.get_default_config(), **config)
-        #self.config = config
-
         self._is_training = False
         # Global timestep should be a tensor.
         self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
@@ -145,11 +142,6 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
