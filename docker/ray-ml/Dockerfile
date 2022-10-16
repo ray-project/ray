@@ -23,14 +23,14 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    && $HOME/anaconda3/bin/pip --no-cache-dir --use-deprecated=legacy-resolver install -U \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements.txt \
     && cat \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
            -r requirements_tune.txt \
            -r requirements_upstream.txt | sort -n | uniq > _requirements_combined.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir --use-deprecated=legacy-resolver install -U \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r _requirements_combined.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
