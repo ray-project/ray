@@ -507,7 +507,7 @@ class EagerTFPolicyV2(Policy):
         if info_batch is not None:
             input_dict[SampleBatch.INFOS] = info_batch
 
-        return self.compute_actions_from_input_dict(
+        return self._compute_actions_without_connectors_from_input_dict(
             input_dict=input_dict,
             explore=explore,
             timestep=timestep,

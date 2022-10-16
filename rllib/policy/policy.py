@@ -371,7 +371,7 @@ class Policy(metaclass=ABCMeta):
         # Until we have fully migrated to connectors, we wrap
         # compute_action_from_input_dict-methods
         if self.config.get("enable_connectors"):
-            return self._compute_action_with_connectors(*args, **kwargs)
+            return self._compute_actions_with_connectors(*args, **kwargs)
         else:
             return self._compute_actions_without_connectors_from_input_dict(*args,
                                                                             **kwargs)
@@ -380,20 +380,20 @@ class Policy(metaclass=ABCMeta):
     def compute_actions(self, *args, **kwargs):
         # Until we have fully migrated to connectors, we wrap compute_action-methods
         if self.config.get("enable_connectors"):
-            return self._compute_action_with_connectors(*args, **kwargs)
+            return self._compute_actions_with_connectors(*args, **kwargs)
         else:
             return self._compute_actions_without_connectors(*args, **kwargs)
 
     # TODO (Artur): Replace original compute_actions_from_input_dict method with this
     # method after we have migrated to connectors
-    def _compute_action_with_connectors(
+    def _compute_actions_with_connectors(
         self,
         obs_batch: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions from an observation.
+        """Computes actions from observations.
 
         Args:
             obs_batch: Batch of observations.
@@ -433,7 +433,8 @@ class Policy(metaclass=ABCMeta):
                                             "provided as an argument.".format(old_kwarg)
 
         # Create input dict to simply pass the entire call to
-        # self.compute_actions_from_input_dict().
+        # self.compute_actions_from_input_dict(), i.e.
+        # _compute_action_connectors_input_from_agent_connectors_output.
         input_dict = SampleBatch(
             {
                 SampleBatch.CUR_OBS: obs_batch,
