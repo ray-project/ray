@@ -437,14 +437,16 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]):
 
-        # Setup our config: Merge the user-supplied config (which could
-        # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
-        )
-        self.config["env"] = self._env_id
+        # Setup our config: Merge the user-supplied config dict (which could
+        # be a partial config dict) with the class' default.
+        if not isinstance(config, AlgorithmConfig):
+            assert isinstance(config, dict)
+            self.config = self.merge_trainer_configs(
+                self.get_default_config(), config, self._allow_unknown_configs
+            )
+            self.config["env"] = self._env_id
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
@@ -2241,12 +2243,13 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(config: PartialAlgorithmConfigDict) -> None:
-        """Validates the config dictionary wrt the framework settings.
+    def validate_framework(
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
+    ) -> None:
+        """Validates the config object (or dictionary) wrt. the framework settings.
 
         Args:
-            config: The config dictionary to be validated.
-
+            config: The config object (or dictionary) to be validated.
         """
         _tf1, _tf, _tfv = None, None, None
         _torch = None
@@ -2319,15 +2322,18 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates a given config dict for this Algorithm.
+    def validate_config(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> None:
+        """Validates a given config object (or dictionary) for this Algorithm.
 
         Users should override this method to implement custom validation
         behavior. It is recommended to call `super().validate_config()` in
         this override.
 
         Args:
-            config: The given config dict to check.
+            config: The given config object (or dictionary) to check.
 
         Raises:
             ValueError: If there is something wrong with the config.

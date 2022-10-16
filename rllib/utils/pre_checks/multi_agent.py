@@ -1,6 +1,7 @@
 import logging
-from typing import Tuple
+from typing import Tuple, Union
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def check_multi_agent(
-    config: PartialAlgorithmConfigDict,
+    config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
 ) -> Tuple[MultiAgentPolicyConfigDict, bool]:
     """Checks, whether a (partial) config defines a multi-agent setup.
 
@@ -34,29 +35,37 @@ def check_multi_agent(
         ValueError: If any subkey of the "multiagent" dict has an invalid
             value.
     """
-    if "multiagent" not in config:
-        raise KeyError(
-            "Your `config` to be checked for a multi-agent setup must have "
-            "the 'multiagent' key defined!"
-        )
-    multiagent_config = config["multiagent"]
+    if not isinstance(config, AlgorithmConfig):
+        is_dict = True
+
+        if "multiagent" not in config:
+            raise KeyError(
+                "Your `config` to be checked for a multi-agent setup must have "
+                "the 'multiagent' key defined!"
+            )
+
+        multiagent_config = config["multiagent"]
+    else:
+        is_dict = False
+        multiagent_config = config
 
     policies = multiagent_config.get("policies")
 
-    # Check for invalid sub-keys of multiagent config.
-    from ray.rllib.algorithms.algorithm import COMMON_CONFIG
+    if is_dict:
+        # Check for invalid sub-keys of multiagent config.
+        from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
-    allowed = list(COMMON_CONFIG["multiagent"].keys())
-    if (
-        "replay_mode" in multiagent_config
-        and multiagent_config["replay_mode"] == "independent"
-    ):
-        multiagent_config.pop("replay_mode")
-    if any(k not in allowed for k in multiagent_config.keys()):
-        raise KeyError(
-            f"You have invalid keys in your 'multiagent' config dict! "
-            f"The only allowed keys are: {allowed}."
-        )
+        allowed = list(COMMON_CONFIG["multiagent"].keys())
+        if (
+            "replay_mode" in multiagent_config
+            and multiagent_config["replay_mode"] == "independent"
+        ):
+            multiagent_config.pop("replay_mode")
+        if any(k not in allowed for k in multiagent_config.keys()):
+            raise KeyError(
+                f"You have invalid keys in your 'multiagent' config dict! "
+                f"The only allowed keys are: {allowed}."
+            )
 
     # Nothing specified in config dict -> Assume simple single agent setup
     # with DEFAULT_POLICY_ID as only policy.

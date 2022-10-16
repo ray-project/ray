@@ -337,8 +337,14 @@ class AlgorithmConfig:
                 )
         return self
 
-    def freeze(self):
-        """Freezes this config object, such that no attributes can be set anymore."""
+    def freeze(self) -> None:
+        """Freezes this config object, such that no attributes can be set anymore.
+
+        Algorithms should use this method to make sure that their config objects
+        remain read-only after this.
+        """
+        if self._is_frozen:
+            return
         self._is_frozen = True
 
     def build(
@@ -1373,22 +1379,37 @@ class AlgorithmConfig:
         super().__setattr__(key, value)
 
     def __getitem__(self, item):
-        if log_once("algo_config_getitem"):
-            logger.warning(
-                "AlgorithmConfig objects should NOT be used as dict! "
-                f"Try accessing `{item}` directly as a property."
-            )
+        # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
+        #  hood (as well as Ray Tune).
+        # if log_once("algo_config_getitem"):
+        #    logger.warning(
+        #        "AlgorithmConfig objects should NOT be used as dict! "
+        #        f"Try accessing `{item}` directly as a property."
+        #    )
         item = self._translate_special_keys(item)
-        return self.__getattribute__(item)
+        return getattr(self, item)
 
     def __setitem__(self, key, value):
+        prop = self._translate_special_keys(key)
         raise AttributeError(
             "AlgorithmConfig objects should not have their values set like dicts"
             f"(`config['{key}'] = {value}`), "
-            f"but via setting their properties directly (config.{key} = {value})."
+            f"but via setting their properties directly (config.{prop} = {value})."
         )
 
-    def _translate_special_keys(self, key):
+    def __contains__(self, item) -> bool:
+        prop = self._translate_special_keys(item)
+        return hasattr(self, prop)
+
+    def get(self, key, default=None):
+        prop = self._translate_special_keys(key)
+        return getattr(self, prop, default)
+
+    def pop(self, key, default=None):
+        return self.get(key, default)
+
+    @staticmethod
+    def _translate_special_keys(key: str) -> str:
         # Handle special edge-cases.
         if key == "callbacks":
             key = "callbacks_class"
