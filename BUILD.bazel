@@ -2777,6 +2777,15 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
+    name = "cp_redis",
+    srcs = [
+        ":redis-cli",
+        ":redis-server",
+    ],
+    dstdir = "python/ray/core/src/ray/thirdparty/redis/src",
+)
+
+copy_to_workspace(
     name = "cp_raylet",
     srcs = [":raylet"],
     dstdir = "python/ray/core/src/ray/raylet",

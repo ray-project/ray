@@ -47,10 +47,10 @@ from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 
-REDIS_EXECUTABLE = (
-    os.environ["REDIS_SERVER_BINARY_FOR_TEST"]
-    if "REDIS_SERVER_BINARY_FOR_TEST" in os.environ["REDIS_SERVER_BINARY_FOR_TEST"]
-    else None
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+REDIS_EXECUTABLE = os.path.join(
+    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
 
 try:

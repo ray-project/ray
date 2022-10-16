@@ -10,9 +10,6 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
         if name == file:
             basename = basename + "_test"
             
-        if "team:core" in tags:
-            deps += ["//:redis-server"]
-            env["REDIS_SERVER_BINARY_FOR_TEST"] = "$(location redis-server)"
         native.py_test(
             name = name,
             size = size,
