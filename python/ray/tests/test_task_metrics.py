@@ -458,7 +458,7 @@ ray.get([f.remote(x) for x in buf])"""
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 2.0,
-        "PENDING_LOCAL_RESOURCES": 7.0,
+        "PENDING_NODE_ASSIGNMENT": 7.0,
         "PENDING_OBJ_STORE_MEM_AVAIL": 91.0,
     }
     wait_for_condition(
@@ -466,7 +466,7 @@ ray.get([f.remote(x) for x in buf])"""
     )
     assert tasks_by_name_and_state(info) == {
         ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_LOCAL_RESOURCES"): 7.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 7.0,
         ("f", "PENDING_OBJ_STORE_MEM_AVAIL"): 91.0,
     }
     proc.kill()

@@ -607,26 +607,22 @@ enum TaskStatus {
   // actively downloaded onto the node.
   // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
   PENDING_ARGS_FETCH = 4;
-  // The task's dependencies have been satisfied, and we are now only waiting for
-  // resources to free up on the local node.
-  // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
-  PENDING_LOCAL_RESOURCES = 5;
   // A node / worker for the task has been selected, and the task has been submitted
   // to the worker. It will be executed shortly. For actor tasks, execution may be
   // delayed to satisfy ordering constraints or argument fetching.
-  SUBMITTED_TO_WORKER = 6;
+  SUBMITTED_TO_WORKER = 5;
   // The task is running on a worker.
-  RUNNING = 7;
+  RUNNING = 6;
   // The task is running on a worker, but is blocked in a ray.get() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_GET = 8;
+  RUNNING_IN_RAY_GET = 7;
   // The task is running on a worker, but is blocked in a ray.wait() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_WAIT = 9;
+  RUNNING_IN_RAY_WAIT = 8;
   // The task has finished.
-  FINISHED = 10;
+  FINISHED = 9;
   // The task has finished but failed with an Exception or system error.
-  FAILED = 11;
+  FAILED = 10;
 }
 
 // Debug info for a referenced object.
