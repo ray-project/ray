@@ -826,6 +826,7 @@ class Dataset(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
+        **ray_remote_args,
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -853,7 +854,9 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        plan = self._plan.with_stage(RandomShuffleStage(seed, num_blocks))
+        plan = self._plan.with_stage(
+            RandomShuffleStage(seed, num_blocks, ray_remote_args)
+        )
         return Dataset(plan, self._epoch, self._lazy)
 
     def randomize_block_order(
