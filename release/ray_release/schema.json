@@ -39,6 +39,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				},
@@ -207,6 +208,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				}

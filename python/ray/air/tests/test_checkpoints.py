@@ -47,6 +47,16 @@ class OtherStubCheckpoint(Checkpoint):
     pass
 
 
+def test_from_checkpoint():
+    checkpoint = Checkpoint.from_dict({"spam": "ham"})
+    assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
+
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+
 class TestCheckpointTypeCasting:
     def test_dict(self):
         data = StubCheckpoint.from_dict({"foo": "bar"}).to_dict()
@@ -80,6 +90,70 @@ class TestCheckpointTypeCasting:
         with pytest.raises(ValueError):
             uri = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://3/")
             StubCheckpoint.from_uri(uri)
+
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert isinstance(results.checkpoint, StubCheckpoint)
+
+
+class TestCheckpointSerializedAttrs:
+    def test_dict(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_dict(checkpoint.to_dict())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_directory(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_uri(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        uri = checkpoint.to_uri("memory://bucket")
+        recovered_checkpoint = StubCheckpoint.from_uri(uri)
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            assert "foo" in checkpoint._SERIALIZED_ATTRS
+            checkpoint.foo = "bar"
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert results.checkpoint.foo == "bar"
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -136,6 +210,11 @@ class CheckpointsConversionTest(unittest.TestCase):
         if check_state:
             self.assertEqual(checkpoint.foo, "bar")
             self.assertEqual(checkpoint.baz, None)
+        checkpoint_data = {
+            key: value
+            for key, value in checkpoint_data.items()
+            if not key.startswith("_")
+        }
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
 
     def test_dict_checkpoint_bytes(self):
@@ -627,6 +706,22 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             checkpoint = Checkpoint.from_directory(tmpdir)
             with self.assertRaises(TypeError):
                 os.path.exists(checkpoint)
+
+    def testCheckpointUri(self):
+        orig_checkpoint = Checkpoint.from_dict({"data": 2})
+
+        self.assertEqual(orig_checkpoint.uri, None)
+
+        # file:// URI
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(orig_checkpoint.to_directory(tmpdir))
+            self.assertEqual(checkpoint.uri, "file://" + tmpdir)
+
+        # cloud URI
+        checkpoint = Checkpoint.from_uri(
+            orig_checkpoint.to_uri("memory://some/location")
+        )
+        self.assertEqual(checkpoint.uri, "memory://some/location")
 
 
 if __name__ == "__main__":
