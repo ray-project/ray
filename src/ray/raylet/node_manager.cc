@@ -405,6 +405,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
       },
+      [this](const std::string &task_name) {
+        return object_manager_.PullManagerNumInactivePulls(task_name);
+      },
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
