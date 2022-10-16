@@ -3,7 +3,6 @@ import numpy as np
 import unittest
 from gym.spaces import Box
 
-import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
@@ -207,9 +206,7 @@ class TestAgentConnector(unittest.TestCase):
                 )
 
             # Check if transformed observations are actually mean-std filtered
-            self.assertTrue(
-                np.isclose(np.mean(transformed_observations), 0, atol=0.1)
-            )
+            self.assertTrue(np.isclose(np.mean(transformed_observations), 0, atol=0.1))
             self.assertTrue(np.isclose(np.var(transformed_observations), 1, atol=0.1))
 
             # Check if filter parameters where frozen because we are not training
@@ -466,7 +463,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         policy = PPOTorchPolicy(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            config=config.to_dict()
+            config=config.to_dict(),
         )
 
         # create a connector context
