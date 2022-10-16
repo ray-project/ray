@@ -163,7 +163,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_examples.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -171,7 +171,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_gpu.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -179,7 +179,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_gpu_auto_transfer.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -187,7 +187,15 @@ py_test(
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_amp",
+    size = "large",
+    srcs = ["tests/test_gpu_amp.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
