@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
-from ray.air._internal.util import skip_exceptions
+from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
@@ -351,7 +351,8 @@ class Trainable:
         try:
             result = self.step()
         except Exception as e:
-            raise skip_exceptions(e) from None
+            skipped = skip_exceptions(e)
+            raise skipped from exception_cause(skipped)
 
         assert isinstance(result, dict), "step() needs to return a dict."
 

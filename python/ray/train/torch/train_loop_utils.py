@@ -1,4 +1,3 @@
-import tempfile
 import logging
 import os
 import random
@@ -7,14 +6,12 @@ import warnings
 import collections
 from distutils.version import LooseVersion
 
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import ray
 from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import PYTORCH_PROFILER_KEY
 from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import PublicAPI, Deprecated
@@ -240,62 +237,9 @@ class TorchWorkerProfiler:
     WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
     def __init__(self, trace_dir: Optional[str] = None):
-        warnings.warn(
-            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0",
-            DeprecationWarning,
-            stacklevel=2,
+        raise DeprecationWarning(
+            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0.",
         )
-        if profile is None:
-            raise ImportError(
-                "Torch Profiler requires torch>=1.8.1. "
-                "Run `pip install 'torch>=1.8.1'` to use TorchWorkerProfiler."
-            )
-
-        trace_dir = trace_dir or Path(tempfile.gettempdir()).joinpath(
-            self.WORKER_TRACE_DIR_NAME
-        )
-        self.trace_dir = Path(trace_dir)
-        self.trace_dir.mkdir(parents=True, exist_ok=True)
-        # Accumulated traces.
-        self.profiler_trace_filenames = []
-
-    def trace_handler(self, p: profile):
-        """A stateful PyTorch Profiler trace handler.
-
-        This will the export chrome trace to a file on disk.
-
-        These exported traces can then be fetched by calling
-        ``get_and_clear_profile_traces``.
-
-        Args:
-            p: A PyTorch Profiler profile.
-        """
-        trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
-        trace_path = self.trace_dir.joinpath(trace_filename)
-
-        logger.debug(f"Writing worker trace to {trace_path}.")
-        p.export_chrome_trace(str(trace_path))
-        self.profiler_trace_filenames.append(trace_filename)
-
-    def get_and_clear_profile_traces(self):
-        """Reads unread Profiler traces from this worker.
-
-        Returns:
-            The traces in a format consumable by
-            ``TorchTensorboardProfilerCallback``.
-        """
-
-        def get_trace(filename):
-            trace_path = self.trace_dir.joinpath(filename)
-            return trace_path.read_text()
-
-        traces = [
-            (trace_filename, get_trace(trace_filename))
-            for trace_filename in self.profiler_trace_filenames
-        ]
-
-        self.profiler_trace_files = []
-        return {PYTORCH_PROFILER_KEY: traces}
 
 
 class _TorchAccelerator(Accelerator):
