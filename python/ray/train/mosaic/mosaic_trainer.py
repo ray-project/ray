@@ -87,8 +87,7 @@ class MosaicTrainer(TorchTrainer):
             loop. Instead, configure and load the datasets inside
             ``trainer_init_per_worker`` function
         trainer_init_config: Configurations to pass into ``trainer_init_per_worker`` as
-            kwargs. To define configurations for the composer trainer's ``fit`` call,
-            use ``"fit_config"`` key.
+            kwargs.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -119,7 +118,7 @@ class MosaicTrainer(TorchTrainer):
         )
 
         self._validate_datasets(datasets)
-        self._validate_trainiter_init_config(trainer_init_config)
+        self._validate_trainer_init_config(trainer_init_config)
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         if "_trainer_init_per_worker" in trainer_init_config:
@@ -146,7 +145,7 @@ class MosaicTrainer(TorchTrainer):
         num_params = len(inspect.signature(trainer_init_per_worker).parameters)
         if num_params != 1:
             raise ValueError(
-                f"{fn_name} should take in at most 1 argument (`**config`), "
+                f"{fn_name} should take in at most 1 argument (`config`), "
                 f"but it accepts {num_params} arguments instead."
             )
 
@@ -159,7 +158,7 @@ class MosaicTrainer(TorchTrainer):
                     inside the `trainer_init_per_worker`."
             )
 
-    def _validate_trainiter_init_config(self, config) -> None:
+    def _validate_trainer_init_config(self, config) -> None:
         if config is not None and "loggers" in config:
             warnings.warn(
                 "Composer's Loggers (any subclass of LoggerDestination) are \
@@ -170,7 +169,6 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-    fit_config = config.pop("fit_config", dict())
 
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
@@ -188,4 +186,4 @@ def _mosaic_train_loop_per_worker(config):
     trainer.state.callbacks = filtered_callbacks
 
     # call the trainer
-    trainer.fit(**fit_config)
+    trainer.fit()

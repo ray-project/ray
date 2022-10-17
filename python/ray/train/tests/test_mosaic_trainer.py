@@ -106,24 +106,6 @@ def test_mosaic_e2e(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_fit_config(ray_start_4_cpus):
-    trainer_init_config = {
-        "max_duration": "2ba",
-        "algorithms": [LabelSmoothing()],
-        "fit_config": {"duration": "1ba"},
-    }
-
-    trainer = MosaicTrainer(
-        trainer_init_per_worker=trainer_init_per_worker,
-        trainer_init_config=trainer_init_config,
-        scaling_config=scaling_config,
-    )
-
-    trainer.fit()
-
-    # TODO : check the training duration once reporting/checkpoint has been integrated
-
-
 def test_init_errors(ray_start_4_cpus):
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
     be due to bad `trainer_init_per_worker` function or missing requirements in the

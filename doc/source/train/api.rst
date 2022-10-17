@@ -117,7 +117,7 @@ Scikit-Learn
     :show-inheritance:
 
 Mosaic
-~~~~~~~~~~~
+~~~~~~
 
 .. autoclass:: ray.train.mosaic.MosaicTrainer
     :members:

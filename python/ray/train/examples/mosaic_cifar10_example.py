@@ -9,7 +9,6 @@ from torchmetrics.classification.accuracy import Accuracy
 from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
 import composer.optim
-from composer.loggers import InMemoryLogger
 from composer.algorithms import LabelSmoothing
 
 import ray
@@ -23,7 +22,7 @@ def trainer_init_per_worker(config):
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
-    model = config.pop("model", torchvision.models.resnet18(num_classes=10))
+    model = torchvision.models.resnet18(num_classes=10)
     model = ComposerClassifier(ray.train.torch.prepare_model(model))
 
     # prepare train/test dataset
@@ -70,7 +69,7 @@ def trainer_init_per_worker(config):
         weight_decay=2.0e-3,
     )
 
-    if config.pop("eval", False):
+    if config.pop("should_eval", False):
         config["eval_dataloader"] = evaluator
 
     return composer.trainer.Trainer(
@@ -81,8 +80,8 @@ def trainer_init_per_worker(config):
 def train_mosaic_cifar10(num_workers=2, use_gpu=False):
     trainer_init_config = {
         "max_duration": "1ep",
-        "loggers": [InMemoryLogger()],
         "algorithms": [LabelSmoothing()],
+        "should_eval": False,
     }
 
     trainer = MosaicTrainer(
