@@ -9,7 +9,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-gpu_only,-gpu,-needs_credentials python/ray/train/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air python/ray/data/...
 
-- label: ":brain: RLlib: Learning actions TF2-static-graph"
+- label: ":brain: RLlib: Learning tests TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 3
   instance_size: large
@@ -32,7 +32,7 @@
       --test_arg=--framework=tf
       $(cat test_shard.txt)
 
-- label: ":brain: RLlib: Learning actions TF2-eager-tracing"
+- label: ":brain: RLlib: Learning tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 3
   instance_size: large
@@ -55,7 +55,7 @@
       --test_arg=--framework=tf2
       $(cat test_shard.txt)
 
-- label: ":brain: RLlib: Learning actions PyTorch"
+- label: ":brain: RLlib: Learning tests PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 3
   instance_size: large
