@@ -10,7 +10,6 @@ from torchmetrics.classification.accuracy import Accuracy
 from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
 import composer.optim
-from composer.loggers import InMemoryLogger
 from composer.algorithms import LabelSmoothing
 
 import ray
@@ -18,7 +17,6 @@ from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
 from ray.train.mosaic import MosaicTrainer
-
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
@@ -91,7 +89,6 @@ def test_mosaic_e2e(ray_start_4_cpus):
     """
     trainer_init_config = {
         "max_duration": "1ep",
-        "loggers": [InMemoryLogger()],
         "algorithms": [LabelSmoothing()],
     }
 
@@ -107,7 +104,6 @@ def test_mosaic_e2e(ray_start_4_cpus):
 def test_fit_config(ray_start_4_cpus):
     trainer_init_config = {
         "max_duration": "2ba",
-        "loggers": [InMemoryLogger()],
         "algorithms": [LabelSmoothing()],
         "fit_config": {"duration": "1ba"},
     }

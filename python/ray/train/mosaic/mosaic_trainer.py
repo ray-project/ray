@@ -1,8 +1,10 @@
 import inspect
 import os
 from typing import TYPE_CHECKING, Callable, Dict, Optional
+import warnings
 
 from composer.trainer import Trainer
+from composer.loggers.logger_destination import LoggerDestination
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -63,7 +65,6 @@ class MosaicTrainer(TorchTrainer):
     >>> trainer_init_config = {
     ...     "max_duration": "1ba",
     ...     "train_dataset": train_dataset,
-    ...     "loggers": [InMemoryLogger()],
     ...     "algorithms": [LabelSmoothing()],
     ... }
     ...
@@ -118,6 +119,7 @@ class MosaicTrainer(TorchTrainer):
         )
 
         self._validate_datasets(datasets)
+        self._validate_trainiter_init_config(trainer_init_config)
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         if "_trainer_init_per_worker" in trainer_init_config:
@@ -157,6 +159,13 @@ class MosaicTrainer(TorchTrainer):
                     inside the `trainer_init_per_worker`."
             )
 
+    def _validate_trainiter_init_config(self, config) -> None:
+        if config is not None and "loggers" in config:
+            warnings.warn(
+                "Composer's Loggers (any subclass of LoggerDestination) are \
+                not supported for MosaicComposer. Use Ray AIR provided loggers instead"
+            )
+
 
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
@@ -170,6 +179,13 @@ def _mosaic_train_loop_per_worker(config):
     # initialize Composer trainer
     config["progress_bar"] = False
     trainer: Trainer = trainer_init_per_worker(config)
+
+    # Remove Composer's Loggers
+    filtered_callbacks = list()
+    for callback in trainer.state.callbacks:
+        if not isinstance(callback, LoggerDestination):
+            filtered_callbacks.append(callback)
+    trainer.state.callbacks = filtered_callbacks
 
     # call the trainer
     trainer.fit(**fit_config)
