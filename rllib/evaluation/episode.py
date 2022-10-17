@@ -125,7 +125,6 @@ class Episode:
         """
         self.length = 0
         self.episode_id = random.randrange(int(1e18))
-        self.episode_id = random.randrange(int(2e9))
         self.total_reward = 0.0
         self.agent_rewards = defaultdict(float)
         self._agent_reward_history = defaultdict(list)
