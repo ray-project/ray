@@ -124,6 +124,9 @@ def _build_python_executable_command_memory_profileable(
     if unbuffered:
         command.append("-u")
     components_to_memory_profile = os.getenv(RAY_MEMRAY_PROFILE_COMPONENT_ENV, "")
+    if not components_to_memory_profile:
+        return command
+
     components_to_memory_profile = set(components_to_memory_profile.split(","))
     if component in components_to_memory_profile:
         session_dir = Path(session_dir)
@@ -1354,7 +1357,6 @@ def start_api_server(
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
         ]
-        print(command)
 
         if redirect_logging:
             # Avoid hanging due to fd inheritance.
