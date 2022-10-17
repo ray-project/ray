@@ -210,7 +210,7 @@ class StateApiClient(SubmissionClient):
                     "log for details. Make sure dependencies are installed with "
                     "`pip install ray[default]`. Please also check dashboard is "
                     "available, and included when starting ray cluster, "
-                    "i.e. `include_dashboard=True`."
+                    "i.e. `ray start --include-dashboard=True --head`. "
                 )
                 if response is None:
                     raise ServerUnavailable(err_str)
