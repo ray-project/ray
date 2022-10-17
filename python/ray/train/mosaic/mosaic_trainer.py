@@ -87,7 +87,13 @@ class MosaicTrainer(TorchTrainer):
             loop. Instead, configure and load the datasets inside
             ``trainer_init_per_worker`` function
         trainer_init_config: Configurations to pass into ``trainer_init_per_worker`` as
-            kwargs.
+            kwargs. Although the kwargs can be hard-coded in the
+            ``trianer_init_per_worker``, using the config allows the flexibility of
+            reusing the same worker init function while changing the trainer arguments.
+            For example, when hyperparameter tuning you can reuse the
+            same ``trainer_init_per_worker`` function with different hyperparameter
+            values rather than having multiple ``trainer_init_per_worker`` functions
+            with different hard-coded hyperparameter values.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
