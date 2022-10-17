@@ -17,18 +17,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials
-      python/ray/train/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - ./ci/run/run_bazel_test_with_sharding.sh
+      --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials
-      $(cat test_shard.txt)
+      python/ray/train/...
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
