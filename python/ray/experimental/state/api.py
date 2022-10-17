@@ -9,6 +9,10 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 import requests
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.utils import (
+    get_address_for_submission_client,
+    ray_address_to_api_server_url,
+)
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
@@ -27,7 +31,6 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
-    ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -118,9 +121,11 @@ class StateApiClient(SubmissionClient):
         """Initialize a StateApiClient and check the connection to the cluster.
 
         Args:
-            address: Ray bootstrap address. E.g. `127.0.0.0:6379`, `auto`.
+            address: Ray bootstrap address (e.g. `127.0.0.0:6379`, `auto`), or Ray
+                Client adress (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
+                address (e.g. `http://<head-node-ip>:8265`).
                 If not provided, it will be detected automatically from any running
-                local ray cluster.
+                local Ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
@@ -134,7 +139,7 @@ class StateApiClient(SubmissionClient):
             headers = {"Content-Type": "application/json"}
 
         # Resolve API server URL
-        api_server_url = ray_address_to_api_server_url(address)
+        api_server_url = get_address_for_submission_client(address)
 
         super().__init__(
             address=api_server_url,
@@ -1063,6 +1068,25 @@ def list_runtime_envs(
     """
     return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
+def list_cluster_events(
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[Dict]:
+    return StateApiClient(address=address).list(
+        StateResource.CLUSTER_EVENTS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),

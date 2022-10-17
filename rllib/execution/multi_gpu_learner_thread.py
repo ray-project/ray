@@ -85,7 +85,7 @@ class MultiGPULearnerThread(LearnerThread):
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",
-                error=False,
+                error=True,
             )
         super().__init__(
             local_worker=local_worker,

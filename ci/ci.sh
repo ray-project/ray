@@ -199,6 +199,7 @@ test_python() {
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -207,7 +208,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/run/bazel-sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.

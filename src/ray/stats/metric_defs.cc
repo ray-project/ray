@@ -41,8 +41,9 @@ DEFINE_stats(
     tasks,
     "Current number of tasks currently in a particular state.",
     // State: the task state, as described by rpc::TaskState proto in common.proto.
+    // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Source"),
+    ("State", "Name", "Source"),
     (),
     ray::stats::GAUGE);
 
@@ -169,6 +170,14 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              (),
              ray::stats::GAUGE);
 
+/// Raylet Resource Manager
+DEFINE_stats(resources,
+             // TODO(sang): Support placement_group_reserved_available | used
+             "Logical Ray resources broken per state {AVAILABLE, USED}",
+             ("Name", "State"),
+             (),
+             ray::stats::GAUGE);
+
 /// Local Object Manager
 DEFINE_stats(
     spill_manager_objects,
@@ -203,6 +212,24 @@ DEFINE_stats(gcs_storage_operation_count,
              ("Operation"),
              (),
              ray::stats::COUNT);
+
+/// Object store
+DEFINE_stats(object_store_memory,
+             "Object store memory by various sub-kinds on this node",
+             /// Location:
+             ///    TODO(rickyx): spill fallback from in memory
+             ///    - IN_MEMORY: currently in shared memory(e.g. /dev/shm) and
+             ///      fallback allocated. This is memory already sealed.
+             ///    - SPILLED: current number of bytes from objects spilled
+             ///      to external storage. Note this might be smaller than
+             ///      the physical storage incurred on the external storage because
+             ///      Ray might fuse spilled objects into a single file, so a deleted
+             ///      spill object might still exist in the spilled file. Check
+             ///      spilled object fusing for more details.
+             ///    - UNSEALED: unsealed bytes that come from objects just created.
+             ("Location"),
+             (),
+             ray::stats::GAUGE);
 
 /// Placement Group
 // The end to end placement group creation latency.
