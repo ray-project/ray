@@ -55,7 +55,7 @@ def test_raylet_gdb(ray_gdb_start):
 def test_memory_profiler_command_builder(monkeypatch, tmp_path):
     session_dir = tmp_path
     # When there's no env var, command should be just a regular python command.
-    command = services._build_python_executable_command(
+    command = services._build_python_executable_command_memory_profileable(
         ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
     )
     assert command == [sys.executable, "-u"]
@@ -63,7 +63,7 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
     with monkeypatch.context() as m:
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard")
         m.setenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "-q")
-        command = services._build_python_executable_command(
+        command = services._build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
         )
 
@@ -85,7 +85,7 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
         m.delenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV)
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard,dashboard_agent")
         m.setenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "-q,--live,--live-port,1234")
-        command = services._build_python_executable_command(
+        command = services._build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         )
         assert command == [
