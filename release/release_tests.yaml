@@ -3007,7 +3007,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
+    cluster_compute: 8gpus_112cpus_multinode.yaml
 
   run:
     timeout: 7200
@@ -3031,7 +3031,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
+    cluster_compute: 8gpus_112cpus_multinode.yaml
 
   run:
     timeout: 7200
@@ -3055,7 +3055,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
+    cluster_compute: 8gpus_112cpus_multinode.yaml
 
   run:
     timeout: 7200
