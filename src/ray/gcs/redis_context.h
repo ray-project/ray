@@ -186,7 +186,8 @@ class RedisContext {
   Status Connect(const std::string &address,
                  int port,
                  bool sharding,
-                 const std::string &password);
+                 const std::string &password,
+                 bool enable_ssl = false);
 
   /// Run an arbitrary Redis command synchronously.
   ///
