@@ -181,7 +181,12 @@ You can also implement checkpoint/restore using the Trainable Class API:
             checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             self.model.load_state_dict(torch.load(checkpoint_path))
 
-    tuner = tune.Tuner(MyTrainableClass, run_config=air.RunConfig(checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2)))
+    tuner = tune.Tuner(
+        MyTrainableClass,
+        run_config=air.RunConfig(
+            checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2)
+        )
+    )
     results = tuner.fit()
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
