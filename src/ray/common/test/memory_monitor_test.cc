@@ -104,10 +104,10 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
 }
 
 TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
-  std::condition_variable callback_ran;
-  std::mutex callback_ran_mutex;
-
   {
+    std::condition_variable callback_ran;
+    std::mutex callback_ran_mutex;
+
     MemoryMonitor monitor(MemoryMonitorTest::io_context_,
                           1 /*usage_threshold*/,
                           -1 /*min_memory_free_bytes*/,
@@ -125,6 +125,9 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
   }
 
   {
+    std::condition_variable callback_ran;
+    std::mutex callback_ran_mutex;
+
     MemoryMonitor monitor(MemoryMonitorTest::io_context_,
                           0.4 /*usage_threshold*/,
                           -1 /*min_memory_free_bytes*/,
