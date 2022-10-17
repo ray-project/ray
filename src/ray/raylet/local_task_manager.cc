@@ -35,8 +35,7 @@ LocalTaskManager::LocalTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    std::function<int64_t(const std::string& task_name)>
-        pull_manager_num_inactive_pulls,
+    std::function<int64_t(const std::string &task_name)> pull_manager_num_inactive_pulls,
     size_t max_pinned_task_arguments_bytes,
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
@@ -56,28 +55,28 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {
-    waiting_tasks_counter_.SetOnChangeCallback(
-      [this](std::string task_name, int64_t value) mutable {
-      // Of the waiting tasks of this name, some fraction may be inactive (blocked on
-      // object store memory availability). Get this breakdown by querying the pull manager.
-      int64_t num_inactive = std::min(value, pull_manager_num_inactive_pulls_(task_name));
-      // Offset the metric values recorded from the owner process.
-      ray::stats::STATS_tasks.Record(
-          -value,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-           {"Name", task_name},
-           {"Source", "local_task_manager"}});
-      ray::stats::STATS_tasks.Record(
-          value - num_inactive,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-           {"Name", task_name},
-           {"Source", "local_task_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_inactive,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", task_name},
-           {"Source", "local_task_manager"}});
-      });
+  waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name,
+                                                    int64_t value) mutable {
+    // Of the waiting tasks of this name, some fraction may be inactive (blocked on
+    // object store memory availability). Get this breakdown by querying the pull manager.
+    int64_t num_inactive = std::min(value, pull_manager_num_inactive_pulls_(task_name));
+    // Offset the metric values recorded from the owner process.
+    ray::stats::STATS_tasks.Record(
+        -value,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+         {"Name", task_name},
+         {"Source", "local_task_manager"}});
+    ray::stats::STATS_tasks.Record(
+        value - num_inactive,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+         {"Name", task_name},
+         {"Source", "local_task_manager"}});
+    ray::stats::STATS_tasks.Record(
+        num_inactive,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
+         {"Name", task_name},
+         {"Source", "local_task_manager"}});
+  });
 }
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
@@ -208,6 +207,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          RAY_CHECK(waiting_tasks_counter_.Total() == waiting_task_index_.size());
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
@@ -383,6 +383,7 @@ void LocalTaskManager::SpillWaitingTasks() {
       num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
       waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
+      RAY_CHECK(waiting_tasks_counter_.Total() == waiting_task_index_.size());
       it = waiting_task_queue_.erase(it);
     } else {
       if (scheduling_node_id.IsNil()) {
@@ -624,6 +625,7 @@ void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
+      RAY_CHECK(waiting_tasks_counter_.Total() == waiting_task_index_.size());
     }
   }
   ScheduleAndDispatchTasks();
@@ -813,6 +815,7 @@ bool LocalTaskManager::CancelTask(
     waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
     waiting_task_queue_.erase(iter->second);
     waiting_tasks_index_.erase(iter);
+    RAY_CHECK(waiting_tasks_counter_.Total() == waiting_task_index_.size());
 
     return true;
   }
