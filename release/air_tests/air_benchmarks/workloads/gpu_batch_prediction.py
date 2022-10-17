@@ -2,6 +2,7 @@ import click
 import time
 import json
 import os
+import numpy as np
 import pandas as pd
 
 from torchvision import transforms
@@ -11,10 +12,9 @@ import ray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
-from ray.data.datasource import ImageFolderDatasource
 
 
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess(batch: np.ndarray) -> pd.DataFrame:
     """
     User Pytorch code to transform user image.
     """
@@ -26,8 +26,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
-    return df
+    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
@@ -36,17 +35,17 @@ def main(data_size_gb: int):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
     start = time.time()
-    dataset = ray.data.read_datasource(
-        ImageFolderDatasource(), root=data_url, size=(256, 256)
-    )
+    dataset = ray.data.read_images(data_url, size=(256, 256))
 
     model = resnet18(pretrained=True)
 
-    preprocessor = BatchMapper(preprocess)
+    preprocessor = BatchMapper(preprocess, batch_format="numpy")
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-    predictor.predict(dataset, num_gpus_per_worker=1, feature_columns=["image"])
+    predictor.predict(
+        dataset, num_gpus_per_worker=1, feature_columns=["image"], batch_size=512
+    )
     total_time_s = round(time.time() - start, 2)
 
     # For structured output integration with internal tooling

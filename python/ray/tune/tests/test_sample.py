@@ -54,6 +54,8 @@ class SearchSpaceTest(unittest.TestCase):
             "randint": tune.randint(-9, 15),
             "lograndint": tune.lograndint(1, 10),
             "qrandint": tune.qrandint(-21, 12, 3),
+            "qrandint_q3": tune.qrandint(1, 10, 3),
+            "qrandint_q1": tune.qrandint(1, 5, 1),
             "qlograndint": tune.qlograndint(2, 20, 2),
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
@@ -115,6 +117,18 @@ class SearchSpaceTest(unittest.TestCase):
                 self.assertEqual(out["qrandint"] % 3, 0)
                 self.assertTrue(isinstance(out["qrandint"], int))
 
+            if "qrandint_q3" not in ignore:
+                self.assertGreaterEqual(out["qrandint_q3"], 1)
+                self.assertLessEqual(out["qrandint_q3"], 10)
+                self.assertEqual(out["qrandint_q3"] % 3, 0)
+                self.assertTrue(isinstance(out["qrandint_q3"], int))
+
+            if "qrandint_q1" not in ignore:
+                self.assertGreaterEqual(out["qrandint_q1"], 1)
+                self.assertLessEqual(out["qrandint_q1"], 5)
+                self.assertEqual(out["qrandint_q1"] % 1, 0)
+                self.assertTrue(isinstance(out["qrandint_q1"], int))
+
             if "qlograndint" not in ignore:
                 self.assertGreaterEqual(out["qlograndint"], 2)
                 self.assertLessEqual(out["qlograndint"], 20)
@@ -145,6 +159,14 @@ class SearchSpaceTest(unittest.TestCase):
                 elif k == "qrandint":
                     for i in range(-21, 13, 3):
                         self.assertIn(i, v, msg=f"qrandint failed for i={i}")
+
+                elif k == "qrandint_q3":
+                    for i in range(3, 11, 3):
+                        self.assertIn(i, v, msg=f"qrandint_q3 failed for i={i}")
+
+                elif k == "qrandint_q1":
+                    for i in range(1, 5, 1):
+                        self.assertIn(i, v, msg=f"qrandint_q1 failed for i={i}")
 
                 elif k == "lograndint":
                     for i in range(1, 10):
@@ -529,6 +551,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -638,6 +662,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -834,6 +860,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -916,6 +944,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -1085,8 +1115,11 @@ class SearchSpaceTest(unittest.TestCase):
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
+        # Todo: Hyperopt actually suffers from the same problem as we did before
+        # https://github.com/ray-project/ray/pull/28187
         ignore = [
             "func",
+            "qrandint_q3",
         ]
 
         config = self.config.copy()
@@ -1186,6 +1219,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -1388,7 +1423,15 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.search.optuna import OptunaSearch
 
         # Quantization and log does not seem to work with Optuna
-        ignore = ["func", "randn", "qrandn", "qloguniform", "qlograndint"]
+        # Also, qrandint works differently in Optuna (it moves the boundaries)
+        ignore = [
+            "func",
+            "randn",
+            "qrandn",
+            "qloguniform",
+            "qlograndint",
+            "qrandint_q3",
+        ]
 
         config = self.config.copy()
         for k in ignore:
@@ -1468,6 +1511,8 @@ class SearchSpaceTest(unittest.TestCase):
             "qlograndint",
             "quniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
         ]
 
         config = self.config.copy()
@@ -1585,6 +1630,8 @@ class SearchSpaceTest(unittest.TestCase):
             "qlograndint",
             "quniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "loguniform",
             "lograndint",
         ]

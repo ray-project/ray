@@ -498,14 +498,14 @@ class RayTrialExecutor:
         Args:
             error: Whether to mark this trial as terminated in error.
             exc: Optional exception.
-
         """
         self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
         trial.set_location(_Location())
 
         try:
-            trial.write_error_log(exc=exc)
+            if exc:
+                trial.handle_error(exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -602,27 +602,53 @@ class RayTrialExecutor:
         error: bool = False,
         exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
+        """Stops the trial, releasing held resources and removing futures related to
+        this trial from the execution queue.
+
+        Args:
+            trial: Trial to stop.
+            error: Whether to mark this trial as terminated in error. The trial status
+                will be set to either `Trial.ERROR` or `Trial.TERMINATED` based on this.
+                Defaults to False.
+            exc: Optional exception to log (as a reason for stopping). Defaults to None.
+        """
         prior_status = trial.status
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_future(trial)
             for result_id in out:
                 self._futures.pop(result_id)
-        self._stop_trial(trial, error=error or exc, exc=exc)
+        trial.saving_to = None
+        trial.restoring_from = None
+        self._stop_trial(
+            trial,
+            error=error or exc,
+            exc=exc,
+        )
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
         self._train(trial)
 
-    def pause_trial(self, trial: Trial) -> None:
-        """Pauses the trial.
+    def pause_trial(self, trial: Trial, should_checkpoint: bool = True) -> None:
+        """Pauses the trial, releasing resources (specifically GPUs)
 
-        We want to release resources (specifically GPUs) when pausing an
-        experiment. This results in PAUSED state that similar to TERMINATED.
+        We do this by:
+        1. Checkpoint the trial (if `should_checkpoint`) in memory to allow us to resume
+        from this state in the future. We may not always  want to checkpoint, if we
+        know that the checkpoint will not be used.
+        2. Stop the trial and release resources, see `RayTrialExecutor.stop_trial` above
+        3. Set the trial status to `Trial.PAUSED`, which is similar to
+        `Trial.TERMINATED`, except we have the intention of resuming the trial.
+
+        Args:
+            trial: Trial to pause.
+            should_checkpoint: Whether to save an in-memory checkpoint before stopping.
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, CheckpointStorage.MEMORY)
+            if should_checkpoint:
+                self.save(trial, CheckpointStorage.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -808,8 +834,17 @@ class RayTrialExecutor:
                 # If using cloud checkpointing, trial will get cp from cloud.
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
+                fallback_to_latest = bool(
+                    int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
+                )
+
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(checkpoint_dir, node_ip)
+                    remote = trial.runner.restore.remote(
+                        checkpoint_dir,
+                        checkpoint_node_ip=node_ip,
+                        fallback_to_latest=fallback_to_latest,
+                    )
+
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.

@@ -4,10 +4,6 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
@@ -60,6 +56,7 @@ class StateResource(Enum):
     TASKS = "tasks"
     OBJECTS = "objects"
     RUNTIME_ENVS = "runtime_envs"
+    CLUSTER_EVENTS = "cluster_events"
 
 
 @unique
@@ -304,6 +301,8 @@ class GetLogOptions:
             )
 
 
+# See the ActorTableData message in gcs.proto for all potential options that
+# can be included in this class.
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
@@ -333,6 +332,8 @@ class ActorState(StateSchema):
     name: Optional[str] = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
+    #: The namespace of the actor.
+    ray_namespace: str = state_column(filterable=True)
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
@@ -441,6 +442,15 @@ class WorkerState(StateSchema):
 
 
 @dataclass(init=True)
+class ClusterEventState(StateSchema):
+    severity: str = state_column(filterable=True)
+    time: int = state_column(filterable=False)
+    source_type: str = state_column(filterable=True)
+    message: str = state_column(filterable=False)
+    event_id: int = state_column(filterable=True)
+
+
+@dataclass(init=True)
 class TaskState(StateSchema):
     """Task State"""
 
@@ -450,20 +460,9 @@ class TaskState(StateSchema):
     name: str = state_column(filterable=True)
     #: The state of the task.
     #:
-    #: - NIL: We don't have a status for this task because we are not the owner or the
-    #:   task metadata has already been deleted.
-    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
-    #:   to be created.
-    #: - SCHEDULED: All dependencies have been created and the task is
-    #:   scheduled to execute.
-    #:   It could be because the task is waiting for resources,
-    #:   runtime environmenet creation, fetching dependencies to the
-    #:   local node, and etc..
-    #: - FINISHED: The task finished successfully.
-    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
-    #:   waiting for execution. It includes time to deliver the task
-    #:   to the remote worker + queueing time from the execution side.
-    #: - RUNNING: The task that is running.
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
+    #:
     scheduling_state: TypeTaskStatus = state_column(filterable=True)
     #: The type of the task.
     #:
@@ -899,42 +898,7 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return TaskState
     elif resource == StateResource.WORKERS:
         return WorkerState
+    elif resource == StateResource.CLUSTER_EVENTS:
+        return ClusterEventState
     else:
         assert False, "Unreachable"
-
-
-def ray_address_to_api_server_url(address: Optional[str]) -> str:
-    """Parse a ray cluster bootstrap address into API server URL.
-
-    When an address is provided, it will be used to query GCS for
-    API server address from GCS.
-
-    When an address is not provided, it will first try to auto-detect
-    a running ray instance, or look for local GCS process.
-
-    Args:
-        address: Ray cluster bootstrap address. Could also be `auto`.
-
-    Return:
-        API server HTTP URL.
-    """
-    address = services.canonicalize_bootstrap_address_or_die(address)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-    api_server_url = f"http://{api_server_url.decode()}"
-    return api_server_url

@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 
 void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
-    const rpc::PinRuntimeEnvURIRequest &request,
+    rpc::PinRuntimeEnvURIRequest request,
     rpc::PinRuntimeEnvURIReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received PinRuntimeEnvURI request: " << request.DebugString();

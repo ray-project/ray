@@ -220,6 +220,11 @@ class DataParallelTrainer(BaseTrainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
+    # Exposed here for testing purposes. Should never need
+    # to be overriden.
+    _backend_executor_cls: Type[BackendExecutor] = BackendExecutor
+    _training_iterator_cls: Type[TrainingIterator] = TrainingIterator
+
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
@@ -311,6 +316,12 @@ class DataParallelTrainer(BaseTrainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
+    def _report(self, training_iterator: TrainingIterator) -> None:
+        for results in training_iterator:
+            # TODO(ml-team): add ability to report results from multiple workers.
+            first_worker_results = results[0]
+            tune.report(**first_worker_results)
+
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
 
@@ -330,7 +341,7 @@ class DataParallelTrainer(BaseTrainer):
             logdir=os.getcwd(),
         )
 
-        backend_executor = BackendExecutor(
+        backend_executor = self._backend_executor_cls(
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
@@ -347,7 +358,7 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
-        training_iterator = TrainingIterator(
+        training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
@@ -357,11 +368,7 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_strategy=None,
         )
 
-        for results in training_iterator:
-            # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_results = results[0]
-
-            tune.report(**first_worker_results)
+        self._report(training_iterator)
 
         # Shutdown workers.
         backend_executor.shutdown()
@@ -484,10 +491,10 @@ class DataParallelTrainer(BaseTrainer):
         return VBox(content, layout=Layout(width="100%"))
 
 
-def _load_checkpoint(
+def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint.
+    """Load a Ray Train Checkpoint (dict based).
 
     This is a private API.
 

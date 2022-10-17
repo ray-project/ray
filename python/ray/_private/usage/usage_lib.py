@@ -185,7 +185,7 @@ class LibUsageRecorder:
         self._lib_usage_dir = Path(temp_dir_path)
         self._lib_usage_prefix = "_ray_lib_usage-"
         self._lib_usage_filename_match = re.compile(
-            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
         )
 
     def put_lib_usage(self, lib_name: str):
@@ -259,7 +259,7 @@ class TagKey(Enum):
     # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
 
-    # The GCS storage type, which could be memory or redis
+    # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
 
