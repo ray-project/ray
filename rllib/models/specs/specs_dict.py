@@ -1,4 +1,5 @@
-from typing import Union, Type, Mapping, Any
+import functools
+from typing import Union, Type, Mapping, Any, Dict, Callable
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -128,3 +129,57 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
     @override(NestedDict)
     def __repr__(self) -> str:
         return f"ModelSpecDict({repr(self._data)})"
+
+
+def check_specs(
+    input_spec: str = "", 
+    output_spec: str = "",
+    filter: bool = True,
+    cache: bool = False,
+):
+    """A general-purpose [stateful decorator](https://realpython.com/primer-on-python-decorators/#stateful-decorators) to enforce input/output specs for any instance method that has `input_dict` in input args and returns and a dict. 
+    
+
+    It has the ability to filter the input dict to only contain the keys in the spec and also to cache to make sure the spec check is only called once in the lifetime of the instance.
+
+    
+    Args:
+        func: The instance method to decorate. It should be a callable that takes `self` as the first argument, `input_dict` as the second argument and any other keyword argument thereafter. It should return a dict.
+        input_spec: `getattr(self, input_spec)` should correspond to the spec that `input_dict` should comply with
+        output_spec: `getattr(self, output_spec)` should correspond to the spec that the returned dict should comply with. 
+        filter: If True, the input_dict is filtered by its corresponding spec tree structure and then passed into the implemented function to make sure user is not confounded by unnecessary data. 
+        cache: If True, only checks the input/output for the first time the instance method is called. 
+
+    Returns:
+        A wrapped instance method that has `__checked_specs__` attribute. This is a special attribute can be used as a decorator marker and also for the cache. 
+    """
+
+    if not input_spec and not output_spec:
+        raise ValueError("At least one of input_spec or output_spec must be provided.")
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, input_dict, **kwargs):
+
+            def should_check():
+                return not cache or not wrapper.__checked_specs__
+
+            input_dict_ = NestedDict(input_dict)
+        
+            if input_spec and should_check():
+                input_spec_ = getattr(self, input_spec)
+                input_spec_.validate(input_dict_)
+                if filter:
+                    input_dict_ = input_dict_.filter(input_spec_)
+
+            output_dict_ = func(self, input_dict_, **kwargs)
+            if output_spec and should_check():
+                output_spec_ = getattr(self, output_spec)
+                output_spec_.validate(output_dict_)
+                wrapper.__checked_specs__ = True
+            return output_dict_
+        
+        wrapper.__checked_specs__ = False
+        return wrapper
+
+    return decorator
