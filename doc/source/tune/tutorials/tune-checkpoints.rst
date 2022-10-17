@@ -274,8 +274,8 @@ via ``ray.init()``, making your script on your laptop the "driver".
             checkpoint_config=air.CheckpointConfig(
                 # We'll keep the best five checkpoints at all times
                 # checkpoints (by AUC score, reported by the trainable, descending)
-                checkpoint_score_attr="max-auc",
-                keep_checkpoints_num=5,
+                checkpoint_score_attribute="max-auc",
+                num_to_keep=5,
             ),
         ),
     )
@@ -339,9 +339,9 @@ Let's take a look at an example:
             # do it here for clarity and comparison
             sync_config=sync_config,
             checkpoint_config=air.CheckpointConfig(
-                checkpoint_score_attr="max-auc",
-                keep_checkpoints_num=5,
-            )
+                checkpoint_score_attribute="max-auc",
+                num_to_keep=5,
+            ),
         )
     )
 
