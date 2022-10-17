@@ -396,6 +396,12 @@ class BaseTrainer(abc.ABC):
 
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
+        if has_base_dataset:
+            from ray.data.context import DatasetContext
+
+            dataset_context = DatasetContext.get_current()
+        else:
+            dataset_context = None
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
@@ -434,6 +440,10 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                if self.has_base_dataset():
+                    # Set the DatasetContext on the Trainer actor to the DatasetContext
+                    # specified on the driver.
+                    DatasetContext._set_current(dataset_context)
                 super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(
