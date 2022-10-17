@@ -184,7 +184,7 @@ install_shellcheck() {
 }
 
 install_linters() {
-  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+  pip install -Ur "${WORKSPACE_DIR}"/python/requirements_linters.txt
 
   install_shellcheck
 }
@@ -301,7 +301,7 @@ install_pip_packages() {
     # Remove this entire section once Serve dependencies are fixed.
     if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
+      pip install -Ur "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
@@ -310,7 +310,7 @@ install_pip_packages() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -Ur "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
@@ -320,7 +320,7 @@ install_pip_packages() {
 
   # Default requirements
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
   fi
 
   if [ "${LINT-}" = 1 ]; then
@@ -332,8 +332,8 @@ install_pip_packages() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -Ur "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -Ur "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
@@ -350,26 +350,26 @@ install_pip_packages() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
     #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.
@@ -389,10 +389,10 @@ install_pip_packages() {
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    pip install -Ur "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
