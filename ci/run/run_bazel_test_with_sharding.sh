@@ -23,4 +23,4 @@ done
 
 python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters="$test_tag_filters" "${targets[@]}" > test_shard.txt
 cat test_shard.txt
-bazel test --test_tag_filters="$test_tag_filters" "${optional_args[@]}" $(cat test_shard.txt)
+bazel test --test_tag_filters="$test_tag_filters" "${optional_args[@]}" "$(cat test_shard.txt)"
