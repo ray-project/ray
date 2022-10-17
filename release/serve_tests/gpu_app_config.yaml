@@ -1,0 +1,20 @@
+base_image: {{ env["RAY_IMAGE_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+env_vars: {}
+debian_packages:
+  - curl
+  - unzip
+
+python:
+  pip_packages:
+    - "validators"
+    # ray-ml image is not able to reflect the requirements.txt
+    # So install the starlette here temporary.
+    # https://github.com/ray-project/ray/issues/29396
+    - starlette==0.20.4
+  conda_packages: []
+
+post_build_cmds:
+  - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - pip install pytest
