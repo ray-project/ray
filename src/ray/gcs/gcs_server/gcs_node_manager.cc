@@ -192,8 +192,8 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    auto node_addr = node_info.node_manager_address() + ":" +
-                     std::to_string(node_info.node_manager_port());
+    auto node_addr =
+        node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
     node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
