@@ -38,7 +38,7 @@ class SimpleRollingStat:
 
     def update(self, other):
         n1 = self._n
-        n2 = other._n
+        n2 = other.num_pushes
         n = n1 + n2
         if n == 0:
             return

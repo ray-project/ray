@@ -581,15 +581,6 @@ def wrap_function(
             "Found: {}".format(func_args)
         )
 
-    if use_config_single and not use_checkpoint:
-        if log_once("tune_function_checkpoint") and warn:
-            logger.warning(
-                "Function checkpointing is disabled. This may result in "
-                "unexpected behavior when using checkpointing features or "
-                "certain schedulers. To enable, set the train function "
-                "arguments to be `func(config, checkpoint_dir=None)`."
-            )
-
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
             with warnings.catch_warnings():
@@ -604,7 +595,7 @@ def wrap_function(
                     "    # ...\n"
                     '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
-                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                    "https://docs.ray.io/en/master/tune/api_docs/trainable.html\n"
                 )
                 warnings.warn(
                     warning_msg,

@@ -14,7 +14,7 @@ from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchCategorical,
+    get_torch_categorical_class_with_temperature,
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.policy import Policy
@@ -24,6 +24,7 @@ from ray.rllib.policy.torch_mixins import (
     LearningRateSchedule,
     TargetNetworkMixin,
 )
+
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -42,16 +43,6 @@ torch, nn = try_import_torch()
 F = None
 if nn:
     F = nn.functional
-
-
-def get_dist_class_with_temperature(t: float):
-    """TorchCategorical distribution class that has customized default temperature."""
-
-    class TorchCategoricalWithTemperature(TorchCategorical):
-        def __init__(self, inputs, model=None, temperature=t):
-            super().__init__(inputs, model, temperature)
-
-    return TorchCategoricalWithTemperature
 
 
 class QLoss:
@@ -233,7 +224,7 @@ def build_q_model_and_distribution(
     # parameter is partially binded to the configured value.
     temperature = config["categorical_distribution_temperature"]
 
-    return model, get_dist_class_with_temperature(temperature)
+    return model, get_torch_categorical_class_with_temperature(temperature)
 
 
 def get_distribution_inputs_and_class(
@@ -256,7 +247,11 @@ def get_distribution_inputs_and_class(
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
 
-    return q_vals, get_dist_class_with_temperature(temperature), []  # state-out
+    return (
+        q_vals,
+        get_torch_categorical_class_with_temperature(temperature),
+        [],  # state-out
+    )
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
