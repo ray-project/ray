@@ -1,4 +1,4 @@
-import { IconButton, Tooltip, Button } from "@material-ui/core";
+import { IconButton, Tooltip } from "@material-ui/core";
 import Drawer from "@material-ui/core/Drawer";
 import List from "@material-ui/core/List";
 import ListItem from "@material-ui/core/ListItem";
@@ -169,7 +169,7 @@ const BasicLayout = (
               target="_blank"
               rel="noopener noreferrer"
             > 
-              <Tooltip title={`Doc`}>
+              <Tooltip title="Doc">
                 <Help />
               </Tooltip>
             </IconButton>
