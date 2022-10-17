@@ -11,6 +11,7 @@ import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 from ray.util.client import _ClientContext, CURRENT_PROTOCOL_VERSION
+from ray.util.debug import reset_log_once
 from ray.cluster_utils import cluster_not_supported
 
 import ray
@@ -198,11 +199,14 @@ def test_python_patch_version(init_and_serve, monkeypatch):
             protocol_version=CURRENT_PROTOCOL_VERSION,
         )
 
-    # inject mock connection function
+    # inject mock connection response
     server_handle.data_servicer._build_connection_response = mock_connection_response
 
+    # reset log_once in case another test triggers this logic
+    reset_log_once("client_server_patch_mismatch")
+
     ray = _ClientContext()
-    _ = ray.connect("localhost:50051")
+    ray.connect("localhost:50051")
     ray.disconnect()
 
     for call_args in logger_mock.warning.call_args_list:
