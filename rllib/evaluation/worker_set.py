@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TYPE_CHECKING,
     TypeVar,
     Union,
 )
@@ -51,6 +52,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.tune.registry import registry_contains_input, registry_get_input
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -253,7 +257,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
+        config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -340,7 +344,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
+        config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -893,40 +897,17 @@ class WorkerSet:
             env_creator=env_creator,
             validate_env=validate_env,
             policy_spec=policy_specs,
-            policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
-            policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator if config["tf_session_args"] else None),
-            rollout_fragment_length=config["rollout_fragment_length"],
-            count_steps_by=config["multiagent"]["count_steps_by"],
-            batch_mode=config["batch_mode"],
-            episode_horizon=config["horizon"],
-            preprocessor_pref=config["preprocessor_pref"],
-            sample_async=config["sample_async"],
-            compress_observations=config["compress_observations"],
-            num_envs=config["num_envs_per_worker"],
-            observation_fn=config["multiagent"]["observation_fn"],
-            clip_rewards=config["clip_rewards"],
-            normalize_actions=config["normalize_actions"],
-            clip_actions=config["clip_actions"],
-            env_config=config["env_config"],
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
             recreated_worker=recreated_worker,
             log_dir=self._logdir,
-            log_level=config["log_level"],
-            callbacks=config["callbacks"],
             input_creator=input_creator,
             output_creator=output_creator,
-            remote_worker_envs=config["remote_worker_envs"],
-            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
-            soft_horizon=config["soft_horizon"],
-            no_done_at_end=config["no_done_at_end"],
             seed=(config["seed"] + worker_index)
             if config["seed"] is not None
             else None,
-            fake_sampler=config["fake_sampler"],
-            extra_python_environs=extra_python_environs,
             spaces=spaces,
             disable_env_checking=config["disable_env_checking"],
         )

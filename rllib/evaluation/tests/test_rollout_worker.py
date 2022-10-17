@@ -10,6 +10,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -98,7 +99,12 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_basic(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"), policy_spec=MockPolicy
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            config=AlgorithmConfig()
+            .multi_agent(
+                policies={"default_policy": PolicySpec(policy_class=MockPolicy)}
+            )
+            .rollouts(num_rollout_workers=0),
         )
         batch = ev.sample()
         for key in [
@@ -129,8 +135,11 @@ class TestRolloutWorker(unittest.TestCase):
         fragment_len = 100
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=fragment_len,
+            config=AlgorithmConfig()
+            .multi_agent(
+                policies={"default_policy": PolicySpec(policy_class=MockPolicy)}
+            )
+            .rollouts(rollout_fragment_length=fragment_len, num_rollout_workers=0),
         )
         batch1 = ev.sample()
         batch2 = ev.sample()
@@ -238,14 +247,14 @@ class TestRolloutWorker(unittest.TestCase):
                     check_action_bounds=True,
                 )
             ),
-            policy_spec=RandomPolicy,
-            policy_config=dict(
-                action_space=action_space,
-                ignore_action_bounds=True,
+            config=AlgorithmConfig()
+            .multi_agent(
+                policies={"default_policy": PolicySpec(policy_class=RandomPolicy, config={"ignore_action_bounds": True})}
+            )
+            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .environment(
+                action_space=action_space, normalize_actions=False, clip_actions=True
             ),
-            normalize_actions=False,
-            clip_actions=True,
-            batch_mode="complete_episodes",
         )
         sample = ev.sample()
         # Check, whether the action bounds have been breached (expected).
@@ -266,16 +275,22 @@ class TestRolloutWorker(unittest.TestCase):
                     check_action_bounds=True,
                 )
             ),
-            policy_spec=RandomPolicy,
-            policy_config=dict(
-                action_space=action_space,
-                ignore_action_bounds=True,
-            ),
             # No normalization (+clipping) and no clipping ->
             # Should lead to Env complaining.
-            normalize_actions=False,
-            clip_actions=False,
-            batch_mode="complete_episodes",
+            config=AlgorithmConfig()
+            .environment(
+                normalize_actions=False,
+                clip_actions=False,
+                action_space=action_space,
+            )
+            .rollouts(batch_mode="complete_episodes")
+            .multi_agent(
+                policies={
+                    "default_policy": PolicySpec(
+                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                    )
+                }
+            ),
         )
         self.assertRaisesRegex(ValueError, r"Illegal action", ev2.sample)
         ev2.stop()
@@ -291,12 +306,15 @@ class TestRolloutWorker(unittest.TestCase):
                     check_action_bounds=True,
                 )
             ),
-            policy_spec=RandomPolicy,
-            policy_config=dict(action_space=action_space),
+            config=AlgorithmConfig()
+            .multi_agent(
+                policies={"default_policy": PolicySpec(policy_class=RandomPolicy)}
+            )
+            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
             # Should not be a problem as RandomPolicy abides to bounds.
-            normalize_actions=False,
-            clip_actions=False,
-            batch_mode="complete_episodes",
+            .environment(
+                action_space=action_space, normalize_actions=False, clip_actions=False
+            ),
         )
         sample = ev3.sample()
         self.assertGreater(np.min(sample["actions"]), action_space.low[0])
@@ -318,14 +336,14 @@ class TestRolloutWorker(unittest.TestCase):
                     check_action_bounds=True,
                 )
             ),
-            policy_spec=RandomPolicy,
-            policy_config=dict(
-                action_space=action_space,
-                ignore_action_bounds=True,
+            config=AlgorithmConfig()
+                .multi_agent(
+                policies={"default_policy": PolicySpec(policy_class=RandomPolicy, config={"ignore_action_bounds": True})}
+            )
+                .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+                .environment(
+                action_space=action_space, normalize_actions=True, clip_actions=False
             ),
-            normalize_actions=True,
-            clip_actions=False,
-            batch_mode="complete_episodes",
         )
         sample = ev.sample()
         # Check, whether the action bounds have been breached (expected).
@@ -384,16 +402,27 @@ class TestRolloutWorker(unittest.TestCase):
                 for actions_in_input_normalized, normalize_actions in parameters:
                     ev = RolloutWorker(
                         env_creator=lambda _: env,
-                        policy_spec=MockPolicy,
-                        policy_config=dict(
-                            actions_in_input_normalized=actions_in_input_normalized,
+                        config=AlgorithmConfig()
+                        .multi_agent(
+                            policies={
+                                "default_policy": PolicySpec(policy_class=MockPolicy)
+                            }
+                        )
+                        .rollouts(
+                            num_rollout_workers=0,
+                            rollout_fragment_length=1,
+                            batch_mode="complete_episodes",
+                        )
+                        .environment(
                             normalize_actions=normalize_actions,
                             clip_actions=False,
+                        )
+                        .training(train_batch_size=1)
+                        .offline_data(
                             offline_sampling=True,
-                            train_batch_size=1,
+                            actions_in_input_normalized=actions_in_input_normalized,
+                            input_=input_creator,
                         ),
-                        rollout_fragment_length=1,
-                        input_creator=input_creator,
                     )
 
                     sample = ev.sample()
@@ -446,7 +475,7 @@ class TestRolloutWorker(unittest.TestCase):
                 )
             ),
             policy_spec=RandomPolicy,
-            policy_config=dict(
+            config=dict(
                 action_space=action_space,
                 ignore_action_bounds=True,
             ),

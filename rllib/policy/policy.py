@@ -328,6 +328,7 @@ class Policy(metaclass=ABCMeta):
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         if isinstance(config, dict):
             config = AlgorithmConfig().from_dict(config)
         self.config = config
@@ -1509,9 +1510,7 @@ class Policy(metaclass=ABCMeta):
                         "state_out_{}".format(i),
                         shift=-1,
                         used_for_compute_actions=True,
-                        batch_repeat_value=self.config.model.get(
-                            "max_seq_len", 1
-                        ),
+                        batch_repeat_value=self.config.model.get("max_seq_len", 1),
                         space=space,
                     )
                 # Only override if user has not already provided

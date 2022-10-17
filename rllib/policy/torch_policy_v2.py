@@ -77,6 +77,7 @@ class TorchPolicyV2(Policy):
             max_seq_len: Max sequence length for LSTM training.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         if isinstance(config, dict):
             config = AlgorithmConfig().from_dict(config)
 

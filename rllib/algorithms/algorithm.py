@@ -450,9 +450,9 @@ class Algorithm(Trainable):
             config_obj.update_from_dict(config)
             config_obj.env = self._env_id
 
-            #self.config = self.merge_trainer_configs(
+            # self.config = self.merge_trainer_configs(
             #    , config, self._allow_unknown_configs
-            #)
+            # )
             self.config = config_obj
 
         # Validate the framework settings in config.
@@ -2339,6 +2339,7 @@ class Algorithm(Trainable):
             ValueError: If there is something wrong with the config.
         """
         from ray.rllib.models.catalog import MODEL_DEFAULTS
+
         model_config = config.get("model", MODEL_DEFAULTS)
 
         # Multi-GPU settings.

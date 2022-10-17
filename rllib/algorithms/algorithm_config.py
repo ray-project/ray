@@ -181,6 +181,7 @@ class AlgorithmConfig:
         self.output_config = {}
         self.output_compress_columns = ["obs", "new_obs"]
         self.output_max_file_size = 64 * 1024 * 1024
+        self.offline_sampling = False
 
         # `self.evaluation()`
         self.evaluation_interval = None
@@ -676,15 +677,23 @@ class AlgorithmConfig:
             batch_mode: How to build per-Sampler (RolloutWorker) batches, which are then
                 usually concat'd to form the train batch. Note that "steps" below can
                 mean different things (either env- or agent-steps) and depends on the
-                `count_steps_by` (multiagent) setting below.
-                "truncate_episodes": Each produced batch (when calling
-                RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
-                steps. This mode guarantees evenly sized batches, but increases
+                `count_steps_by` setting, adjustable via
+                `AlgorithmConfig.multi_agent(count_steps_by=..)`:
+                1) "truncate_episodes": Each call to sample() will return a
+                batch of at most `rollout_fragment_length * num_envs_per_worker` in
+                size. The batch will be exactly `rollout_fragment_length * num_envs`
+                in size if postprocessing does not change batch sizes. Episodes
+                may be truncated in order to meet this size requirement.
+                This mode guarantees evenly sized batches, but increases
                 variance as the future return must now be estimated at truncation
                 boundaries.
-                "complete_episodes": Each unroll happens exactly over one episode, from
-                beginning to end. Data collection will not stop unless the episode
-                terminates or a configured horizon (hard or soft) is hit.
+                2) "complete_episodes": Each call to sample() will return a
+                batch of at least `rollout_fragment_length * num_envs_per_worker` in
+                size. Episodes will not be truncated, but multiple episodes
+                may be packed within one batch to meet the (minimum) batch size.
+                Note that when `num_envs_per_worker > 1`, episode steps will be buffered
+                until the episode completes, and hence batches may contain
+                significant amounts of off-policy data.
             remote_worker_envs: If using num_envs_per_worker > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
                 This adds overheads, but can make sense if your envs can take much
@@ -1096,6 +1105,7 @@ class AlgorithmConfig:
         output_config=None,
         output_compress_columns=None,
         output_max_file_size=None,
+        offline_sampling=None,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
@@ -1153,6 +1163,11 @@ class AlgorithmConfig:
                 output data.
             output_max_file_size: Max output file size before rolling over to a
                 new file.
+            offline_sampling: Whether sampling for the Algorithm happens via
+                reading from offline data. If True, RolloutWorkers will NOT limit the
+                number of collected batches within the same `sample()` call based on
+                the number of sub-environments within the worker (no sub-environments
+                present).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1184,6 +1199,8 @@ class AlgorithmConfig:
             self.output_compress_columns = output_compress_columns
         if output_max_file_size is not None:
             self.output_max_file_size = output_max_file_size
+        if offline_sampling is not None:
+            self.offline_sampling = offline_sampling
 
         return self
 
@@ -1296,9 +1313,7 @@ class AlgorithmConfig:
         # automatically via empty PolicySpec (will make RLlib infer observation- and
         # action spaces as well as the Policy's class).
         if isinstance(self.policies, (set, list, tuple)):
-            self.policies = {
-                pid: PolicySpec() for pid in self.policies
-            }
+            self.policies = {pid: PolicySpec() for pid in self.policies}
 
         # Check each defined policy ID and unify its spec.
         for pid, policy_spec in self.policies.copy().items():
@@ -1353,15 +1368,17 @@ class AlgorithmConfig:
         return self._is_multi_agent
 
     def _set_ma_legacy_dict(self):
-        self._multi_agent_legacy_dict.update({
-            "policies": self.policies,
-            "policy_mapping_fn": self.policy_mapping_fn,
-            "policies_to_train": self.policies_to_train,
-            "policy_map_capacity": self.policy_map_capacity,
-            "policy_map_cache": self.policy_map_cache,
-            "count_steps_by": self.count_steps_by,
-            "observation_fn": self.observation_fn,
-        })
+        self._multi_agent_legacy_dict.update(
+            {
+                "policies": self.policies,
+                "policy_mapping_fn": self.policy_mapping_fn,
+                "policies_to_train": self.policies_to_train,
+                "policy_map_capacity": self.policy_map_capacity,
+                "policy_map_cache": self.policy_map_cache,
+                "count_steps_by": self.count_steps_by,
+                "observation_fn": self.observation_fn,
+            }
+        )
 
     def reporting(
         self,
@@ -1658,11 +1675,11 @@ class AlgorithmConfig:
                 "`config.min_train_timesteps_per_iteration`",
                 error=True,
             )
-        elif key  == "evaluation_num_episodes":
+        elif key == "evaluation_num_episodes":
             deprecation_warning(
                 old="config.evaluation_num_episodes",
                 new="`config.evaluation_duration` and "
-                    "`config.evaluation_duration_unit=episodes`",
+                "`config.evaluation_duration_unit=episodes`",
                 error=True,
             )
 

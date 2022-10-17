@@ -30,7 +30,7 @@ class PGTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
     def __init__(self, observation_space, action_space, config: PGConfig):
 
-        #config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
+        # config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
 
         TorchPolicyV2.__init__(
             self,

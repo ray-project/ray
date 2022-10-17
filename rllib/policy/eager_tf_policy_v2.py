@@ -66,7 +66,7 @@ class EagerTFPolicyV2(Policy):
         config: AlgorithmConfig,
         **kwargs,
     ):
-        #assert config.framework_str == "tf2"
+        # assert config.framework_str == "tf2"
         self.framework = "tf2"
 
         # Log device.
@@ -81,9 +81,7 @@ class EagerTFPolicyV2(Policy):
         self._is_training = False
         # Global timestep should be a tensor.
         self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
-        self.explore = tf.Variable(
-            self.config.explore, trainable=False, dtype=tf.bool
-        )
+        self.explore = tf.Variable(self.config.explore, trainable=False, dtype=tf.bool)
 
         # Log device and worker index.
         num_gpus = self._get_num_gpus_for_policy()
