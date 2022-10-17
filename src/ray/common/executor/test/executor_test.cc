@@ -12,19 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/executor/executor.h"
+
+#include <iostream>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/executor/executor.h"
-#include <iostream>
 TEST(Executor, Basic) {
   ray::executor::Executor exec;
-  auto f = exec.submit([](){
-    return 10; 
-  });
+  auto f = exec.submit([]() { return 10; });
   ASSERT_EQ(10, f.get());
   int v = 10;
-  exec.submit([&v] () mutable {
-    v = 100;
-  }).get();
+  exec.submit([&v]() mutable { v = 100; }).get();
   ASSERT_EQ(100, v);
 }
