@@ -29,10 +29,14 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
+* **TUNE_FALLBACK_TO_LATEST_CHECKPOINT**: If Ray Tune tries to recover from a checkpoint
+  that has been deleted from local and remote storage, it tries to recover from the
+  latest available checkpoint instead. Setting this variable to ``0`` will disable this
+  behavior and fail restoration/start the trial from scratch instead. Defaults to ``1``.
 * **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
-  terminated after a grace period of that many seconds. Defaults to ``0``.
+  terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
 * **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
   next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
@@ -81,6 +85,10 @@ These are the environment variables Ray Tune currently considers:
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
+* **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
+  unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
+  Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
+  is compared against ``max_failures``.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

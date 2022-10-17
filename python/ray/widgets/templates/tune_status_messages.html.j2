@@ -1,0 +1,25 @@
+<div class="vDivider"></div>
+<div class="messages">
+  <h3>Messages</h3>
+  {{ memory_message }}
+  {{ trial_progress_messages }}
+  {{ trial_errors }}
+</div>
+<style>
+.messages {
+  color: var(--jp-ui-font-color1);
+  display: flex;
+  flex-direction: column;
+  padding-left: 1em;
+  overflow-y: auto;
+}
+.messages h3 {
+  font-weight: bold;
+}
+.vDivider {
+  border-left-width: var(--jp-border-width);
+  border-left-color: var(--jp-border-color0);
+  border-left-style: solid;
+  margin: 0.5em 1em 0.5em 1em;
+}
+</style>

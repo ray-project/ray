@@ -1,3 +1,4 @@
+from collections import defaultdict
 import copy
 import logging
 import os
@@ -24,7 +25,10 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
-from ray.rllib.connectors.util import create_connectors_for_policy
+from ray.rllib.connectors.util import (
+    create_connectors_for_policy,
+    maybe_get_filters_for_syncing,
+)
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -37,7 +41,12 @@ from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.utils.filter import NoFilter
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    concat_samples,
+)
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
@@ -47,6 +56,7 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
@@ -176,7 +186,6 @@ class RolloutWorker(ParallelIteratorWorker):
         num_cpus: Optional[int] = None,
         num_gpus: Optional[Union[int, float]] = None,
         memory: Optional[int] = None,
-        object_store_memory: Optional[int] = None,
         resources: Optional[dict] = None,
     ) -> type:
         """Returns RolloutWorker class as a `@ray.remote using given options`.
@@ -188,7 +197,6 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
             memory: The heap memory request for the remote actor.
-            object_store_memory: The object store memory for the remote actor.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -199,7 +207,6 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
-            object_store_memory=object_store_memory,
             resources=resources,
         )(cls)
 
@@ -224,7 +231,6 @@ class RolloutWorker(ParallelIteratorWorker):
         compress_observations: bool = False,
         num_envs: int = 1,
         observation_fn: Optional["ObservationFunction"] = None,
-        observation_filter: str = "NoFilter",
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: bool = True,
         clip_actions: bool = False,
@@ -307,7 +313,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_fn: Optional multi-agent observation function.
-            observation_filter: Name of observation filter to use.
             clip_rewards: True for clipping rewards to [-1.0, 1.0] prior
                 to experience postprocessing. None: Clip for Atari only.
                 float: Clip to [-clip_rewards; +clip_rewards].
@@ -457,7 +462,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.preprocessing_enabled: bool = not policy_config.get(
             "_disable_preprocessor_api"
         )
-        self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
@@ -497,6 +501,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # algorithm trainer.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
+
             # We can't auto-wrap a BaseEnv.
             if isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
@@ -509,7 +514,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and not model_config.get("custom_preprocessor")
                 and preprocessor_pref == "deepmind"
             ):
-
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -525,6 +529,16 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrap_deepmind(
                         env, dim=model_config.get("dim"), framestack=use_framestack
                     )
+                    return env
+
+            elif (
+                not model_config.get("custom_preprocessor")
+                and preprocessor_pref is None
+            ):
+                # Only turn off preprocessing
+                self.preprocessing_enabled = False
+
+                def wrap(env):
                     return env
 
             else:
@@ -610,6 +624,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"is ignored."
             )
 
+        self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
+
         self._build_policy_map(
             self.policy_dict,
             policy_config,
@@ -636,19 +652,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"env {self.env} is not a subclass of BaseEnv, "
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
                 )
-
-        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
-        self.filters: Dict[PolicyID, Filter] = {}
-        for (policy_id, policy) in self.policy_map.items():
-            filter_shape = tree.map_structure(
-                lambda s: (
-                    None
-                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                    else np.array(s.shape)
-                ),
-                policy.observation_space_struct,
-            )
-            self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
@@ -830,7 +833,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 else batch.agent_steps()
             )
             batches.append(batch)
-        batch = batches[0].concat_samples(batches) if len(batches) > 1 else batches[0]
+        batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
@@ -1013,7 +1016,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatiblity for A2C: Single-agent only (ComputeGradients execution
+        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
         # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
         # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
@@ -1179,9 +1182,10 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def add_policy(
         self,
-        *,
         policy_id: PolicyID,
-        policy_cls: Type[Policy],
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
+        *,
         observation_space: Optional[Space] = None,
         action_space: Optional[Space] = None,
         config: Optional[PartialAlgorithmConfigDict] = None,
@@ -1195,8 +1199,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Args:
             policy_id: ID of the policy to add.
-            policy_cls: The Policy class to use for constructing the new
-                Policy.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this algorithm.
+                Note: Only one of `policy_cls` or `policy` must be provided.
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             config: The config overrides for the policy to add.
@@ -1217,40 +1223,58 @@ class RolloutWorker(ParallelIteratorWorker):
             The newly added policy.
 
         Raises:
+            ValueError: If both `policy_cls` AND `policy` are provided.
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        validate_policy_id(policy_id, error=False)
+
         if policy_id in self.policy_map:
-            raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
-            {
+            raise KeyError(
+                f"Policy ID '{policy_id}' already exists in policy map! "
+                "Make sure you use a Policy ID that has not been taken yet."
+                " Policy IDs that are already in your policy map: "
+                f"{list(self.policy_map.keys())}"
+            )
+        if (policy_cls is None) == (policy is None):
+            raise ValueError(
+                "Only one of `policy_cls` or `policy` must be provided to "
+                "RolloutWorker.add_policy()!"
+            )
+
+        if policy is None:
+            policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
+                {
+                    policy_id: PolicySpec(
+                        policy_cls, observation_space, action_space, config or {}
+                    )
+                },
+                self.env,
+                spaces=self.spaces,
+                policy_config=self.policy_config,
+            )
+        else:
+            policy_dict_to_add = {
                 policy_id: PolicySpec(
-                    policy_cls, observation_space, action_space, config or {}
+                    type(policy),
+                    policy.observation_space,
+                    policy.action_space,
+                    policy.config,
                 )
-            },
-            self.env,
-            spaces=self.spaces,
-            policy_config=self.policy_config,
-        )
+            }
+
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
-            policy_dict_to_add, self.policy_config, seed=self.policy_config.get("seed")
+            policy_dict=policy_dict_to_add,
+            policy_config=self.policy_config,
+            policy=policy,
+            seed=self.policy_config.get("seed"),
         )
+
         new_policy = self.policy_map[policy_id]
         # Set the state of the newly created policy.
         if policy_state:
             new_policy.set_state(policy_state)
-
-        filter_shape = tree.map_structure(
-            lambda s: (
-                None
-                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                else np.array(s.shape)
-            ),
-            new_policy.observation_space_struct,
-        )
-
-        self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1464,7 +1488,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def save(self) -> bytes:
+    def get_state(self) -> dict:
         """Serializes this RolloutWorker's current state and returns it.
 
         Returns:
@@ -1472,48 +1496,65 @@ class RolloutWorker(ParallelIteratorWorker):
             byte sequence.
         """
         filters = self.get_filters(flush_after=True)
-        state = {}
-        policy_specs = {}
-        connector_enabled = self.policy_config.get("enable_connectors", False)
+        policy_states = {}
         for pid in self.policy_map:
-            state[pid] = self.policy_map[pid].get_state()
-            policy_spec = self.policy_map.policy_specs[pid]
-            # If connectors are enabled, try serializing the policy spec
-            # instead of picking the spec object.
-            policy_specs[pid] = (
-                policy_spec.serialize() if connector_enabled else policy_spec
-            )
-        return pickle.dumps(
-            {
-                "filters": filters,
-                "state": state,
-                "policy_specs": policy_specs,
-                "policy_config": self.policy_config,
-            }
-        )
+            policy_states[pid] = self.policy_map[pid].get_state()
+        return {
+            # List all known policy IDs here for convenience. When an Algorithm gets
+            # restored from a checkpoint, it will not have access to the list of
+            # possible IDs as each policy is stored in its own sub-dir
+            # (see "policy_states").
+            "policy_ids": list(self.policy_map.keys()),
+            # Note that this field will not be stored in the algorithm checkpoint's
+            # state file, but each policy will get its own state file generated in
+            # a sub-dir within the algo's checkpoint dir.
+            "policy_states": policy_states,
+            # Also store current mapping fn and which policies to train.
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "is_policy_to_train": self.is_policy_to_train,
+            # TODO: Filters will be replaced by connectors.
+            "filters": filters,
+        }
 
     @DeveloperAPI
-    def restore(self, objs: bytes) -> None:
-        """Restores this RolloutWorker's state from a sequence of bytes.
+    def set_state(self, state: dict) -> None:
+        """Restores this RolloutWorker's state from a state dict.
 
         Args:
-            objs: The byte sequence to restore this worker's state from.
+            state: The state dict to restore this worker's state from.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
-            >>> state = worker.save() # doctest: +SKIP
+            >>> state = worker.get_state() # doctest: +SKIP
             >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.restore(state) # doctest: +SKIP
+            >>> new_worker.set_state(state) # doctest: +SKIP
         """
-        objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
+        # Backward compatibility (old checkpoints' states would have the local
+        # worker state as a bytes object, not a dict).
+        if isinstance(state, bytes):
+            state = pickle.loads(state)
+
+        # TODO: Once filters are handled by connectors, get rid of the "filters"
+        #  key in `state` entirely (will be part of the policies then).
+        self.sync_filters(state["filters"])
+
         connector_enabled = self.policy_config.get("enable_connectors", False)
-        for pid, state in objs["state"].items():
+
+        # Support older checkpoint versions (< 1.0), in which the policy_map
+        # was stored under the "state" key, not "policy_states".
+        policy_states = (
+            state["policy_states"] if "policy_states" in state else state["state"]
+        )
+        for pid, policy_state in policy_states.items():
+            # If - for some reason - we have an invalid PolicyID in the state,
+            # this might be from an older checkpoint (pre v1.0). Just warn here.
+            validate_policy_id(pid, error=False)
+
             if pid not in self.policy_map:
-                spec = objs.get("policy_specs", {}).get(pid)
-                if not spec:
+                spec = policy_state.get("policy_spec", None)
+                if spec is None:
                     logger.warning(
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
@@ -1532,7 +1573,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         config=policy_spec.config,
                     )
             if pid in self.policy_map:
-                self.policy_map[pid].set_state(state)
+                self.policy_map[pid].set_state(policy_state)
+
+        # Also restore mapping fn and which policies to train.
+        if "policy_mapping_fn" in state:
+            self.set_policy_mapping_fn(state["policy_mapping_fn"])
+        if "is_policy_to_train" in state:
+            self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
     def get_weights(
@@ -1599,7 +1646,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # Only update our weights, if no seq no given OR given seq no is different
-        # from ours
+        # from ours.
         if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
             # If per-policy weights are object refs, `ray.get()` them first.
             if weights and isinstance(next(iter(weights.values())), ObjectRef):
@@ -1742,6 +1789,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self,
         policy_dict: MultiAgentPolicyConfigDict,
         policy_config: PartialAlgorithmConfigDict,
+        policy: Optional[Policy] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -1753,6 +1801,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_config: The general policy config to use. May be updated
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
+            policy: If the policy to add already exists, user can provide it here.
             session_creator: A callable that creates a tf session
                 (if applicable).
             seed: An optional random seed to pass to PolicyMap's
@@ -1806,18 +1855,37 @@ class RolloutWorker(ParallelIteratorWorker):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            # Create the actual policy object.
-            self.policy_map.create_policy(
-                name,
-                policy_spec.policy_class,
-                obs_space,
-                policy_spec.action_space,
-                policy_spec.config,  # overrides.
-                merged_conf,
-            )
+            if policy is not None:
+                self.policy_map.insert_policy(name, policy)
+            else:
+                # Create the actual policy object.
+                self.policy_map.create_policy(
+                    name,
+                    policy_spec.policy_class,
+                    obs_space,
+                    policy_spec.action_space,
+                    policy_spec.config,  # overrides.
+                    merged_conf,
+                )
 
-            if connectors_enabled and name in self.policy_map:
-                create_connectors_for_policy(self.policy_map[name], policy_config)
+            new_policy = self.policy_map[name]
+            if connectors_enabled:
+                create_connectors_for_policy(new_policy, merged_conf)
+                maybe_get_filters_for_syncing(self, name)
+            else:
+                filter_shape = tree.map_structure(
+                    lambda s: (
+                        None
+                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                        else np.array(s.shape)
+                    ),
+                    new_policy.observation_space_struct,
+                )
+
+                self.filters[name] = get_filter(
+                    (merged_conf or {}).get("observation_filter", "NoFilter"),
+                    filter_shape,
+                )
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
@@ -1920,9 +1988,19 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
+
+    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=False)
+    def save(self):
+        state = self.get_state()
+        return pickle.dumps(state)
+
+    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=False)
+    def restore(self, objs):
+        state_dict = pickle.loads(objs)
+        self.set_state(state_dict)
 
 
 def _determine_spaces_for_multi_agent_dict(

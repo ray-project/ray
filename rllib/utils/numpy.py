@@ -128,7 +128,7 @@ def convert_to_numpy(
     """
 
     if reduce_floats != DEPRECATED_VALUE:
-        deprecation_warning(old="reduce_floats", new="reduce_types", error=False)
+        deprecation_warning(old="reduce_floats", new="reduce_types", error=True)
         reduce_type = reduce_floats
 
     # The mapping function used to numpyize torch/tf Tensors (and move them

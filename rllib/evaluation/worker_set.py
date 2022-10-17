@@ -3,7 +3,17 @@ import logging
 import importlib.util
 import os
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import (
+    Callable,
+    Container,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -22,19 +32,23 @@ from ray.rllib.offline import (
     DatasetWriter,
     get_dataset_and_shards,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
+    AgentID,
+    AlgorithmConfigDict,
     EnvCreator,
     EnvType,
+    EpisodeID,
+    PartialAlgorithmConfigDict,
     PolicyID,
     SampleBatchType,
     TensorType,
-    AlgorithmConfigDict,
 )
 from ray.tune.registry import registry_contains_input, registry_get_input
 
@@ -173,6 +187,8 @@ class WorkerSet:
                     env_creator=env_creator,
                     validate_env=validate_env,
                     policy_cls=self._policy_class,
+                    # Initially, policy_specs will be inferred from config dict.
+                    policy_specs=None,
                     worker_index=0,
                     num_workers=num_workers,
                     config=self._local_config,
@@ -229,6 +245,208 @@ class WorkerSet:
         elif self.local_worker() is not None and global_vars is not None:
             self.local_worker().set_global_vars(global_vars)
 
+    def add_policy(
+        self,
+        policy_id: PolicyID,
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
+        *,
+        observation_space: Optional[gym.spaces.Space] = None,
+        action_space: Optional[gym.spaces.Space] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
+        policy_state: Optional[PolicyState] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
+    ) -> None:
+        """Adds a policy to this WorkerSet's workers or a specific list of workers.
+
+        Args:
+            policy_id: ID of the policy to add.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this WorkerSet. If not None, the
+                given Policy object will be directly inserted into the
+                local worker and clones of that Policy will be created on all remote
+                workers.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            observation_space: The observation space of the policy to add.
+                If None, try to infer this space from the environment.
+            action_space: The action space of the policy to add.
+                If None, try to infer this space from the environment.
+            config: The config overrides for the policy to add.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on. Note that already ongoing episodes will
+                not change their mapping but will use the old mapping till
+                the end of the episode.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+            workers: A list of RolloutWorker/ActorHandles (remote
+                RolloutWorkers) to add this policy to. If defined, will only
+                add the given policy to these workers.
+
+        Raises:
+            KeyError: If the given `policy_id` already exists in this WorkerSet.
+        """
+        if (
+            workers is None
+            and self.local_worker()
+            and policy_id in self.local_worker().policy_map
+        ):
+            raise KeyError(
+                f"Policy ID '{policy_id}' already exists in policy map! "
+                "Make sure you use a Policy ID that has not been taken yet."
+                " Policy IDs that are already in your policy map: "
+                f"{list(self.local_worker().policy_map.keys())}"
+            )
+
+        # No `workers` arg provided: Compile list of workers automatically from
+        # all RolloutWorkers in this WorkerSet.
+        if workers is None:
+            workers = (
+                [self.local_worker()] if self.local_worker() else []
+            ) + self.remote_workers()
+
+        self.add_policy_to_workers(
+            workers=workers,
+            policy_id=policy_id,
+            policy_cls=policy_cls,
+            policy=policy,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+    @staticmethod
+    def add_policy_to_workers(
+        workers: List[Union[RolloutWorker, ActorHandle]],
+        policy_id: PolicyID,
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
+        *,
+        observation_space: Optional[gym.spaces.Space] = None,
+        action_space: Optional[gym.spaces.Space] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
+        policy_state: Optional[PolicyState] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> None:
+        """Adds a new policy to a specific list of RolloutWorkers (or remote actors).
+
+        Args:
+            workers: A list of RolloutWorker/ActorHandles (remote
+                RolloutWorkers) to add this policy to.
+            policy_id: ID of the policy to add.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this WorkerSet. If not None, the
+                given Policy object will be directly inserted into the
+                local worker and clones of that Policy will be created on all remote
+                workers.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            observation_space: The observation space of the policy to add.
+                If None, try to infer this space from the environment.
+            action_space: The action space of the policy to add.
+                If None, try to infer this space from the environment.
+            config: The config overrides for the policy to add.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on. Note that already ongoing episodes will
+                not change their mapping but will use the old mapping till
+                the end of the episode.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Raises:
+            ValueError: If both `policy_cls` AND `policy` are provided.
+            ValueError: If Policy ID is not a valid one.
+        """
+        if (policy_cls is None) == (policy is None):
+            raise ValueError(
+                "Only one of `policy_cls` or `policy` must be provided to "
+                "staticmethod: `WorkerSet.add_policy_to_workers()`!"
+            )
+        validate_policy_id(policy_id, error=False)
+
+        # Policy instance not provided: Use the information given here.
+        if policy_cls is not None:
+            new_policy_instance_kwargs = dict(
+                policy_id=policy_id,
+                policy_cls=policy_cls,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies_to_train)
+                if policies_to_train
+                else None,
+            )
+        # Policy instance provided: Create clones of this very policy on the different
+        # workers (copy all its properties here for the calls to add_policy on the
+        # remote workers).
+        else:
+            new_policy_instance_kwargs = dict(
+                policy_id=policy_id,
+                policy_cls=type(policy),
+                observation_space=policy.observation_space,
+                action_space=policy.action_space,
+                config=policy.config,
+                policy_state=policy.get_state(),
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies_to_train)
+                if policies_to_train
+                else None,
+            )
+
+        def _create_new_policy_fn(worker: RolloutWorker):
+            # `foreach_worker` function: Adds the policy the the worker (and
+            # maybe changes its policy_mapping_fn - if provided here).
+            worker.add_policy(**new_policy_instance_kwargs)
+
+        ray_gets = []
+        for worker in workers:
+            # Existing policy AND local worker: Add Policy as-is.
+            if policy is not None and not isinstance(worker, ActorHandle):
+                worker.add_policy(
+                    policy_id=policy_id,
+                    policy=policy,
+                    policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=policies_to_train,
+                )
+            # A remote worker (ray actor).
+            elif isinstance(worker, ActorHandle):
+                ray_gets.append(worker.apply.remote(_create_new_policy_fn))
+            # (Local) RolloutWorker instance.
+            else:
+                worker.add_policy(**new_policy_instance_kwargs)
+
+        ray.get(ray_gets)
+
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
         """Creates and adds a number of remote workers to this worker set.
 
@@ -253,6 +471,9 @@ class WorkerSet:
                     env_creator=self._env_creator,
                     validate_env=None,
                     policy_cls=self._policy_class,
+                    # Setup remote workers with policy_specs inferred from config dict.
+                    # Simply provide None here.
+                    policy_specs=None,
                     worker_index=old_num_workers + i + 1,
                     num_workers=old_num_workers + num_workers,
                     config=self._remote_config,
@@ -333,6 +554,13 @@ class WorkerSet:
                 env_creator=self._env_creator,
                 validate_env=None,
                 policy_cls=self._policy_class,
+                # For recreated remote workers, we need to sync the entire
+                # policy specs dict from local_worker_for_synching.
+                # We can not let self._make_worker() infer policy specs
+                # from self._remote_config dict because custom policies
+                # may be added to both rollout and evaluation workers
+                # while the training job progresses.
+                policy_specs=local_worker_for_synching.policy_dict,
                 worker_index=worker_index,
                 num_workers=len(self._remote_workers),
                 recreated_worker=True,
@@ -340,6 +568,7 @@ class WorkerSet:
             )
 
             # Sync new worker from provided one (or local one).
+            # Restore weights and global variables.
             new_worker.set_weights.remote(
                 weights=local_worker_for_synching.get_weights(),
                 global_vars=local_worker_for_synching.get_global_vars(),
@@ -546,6 +775,7 @@ class WorkerSet:
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         policy_cls: Type[Policy],
+        policy_specs: Optional[Dict[str, PolicySpec]] = None,
         worker_index: int,
         num_workers: int,
         recreated_worker: bool = False,
@@ -638,20 +868,21 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        # Assert everything is correct in "multiagent" config dict (if given).
-        ma_policies = config["multiagent"]["policies"]
-        if ma_policies:
-            for pid, policy_spec in ma_policies.copy().items():
-                assert isinstance(policy_spec, PolicySpec)
-                # Class is None -> Use `policy_cls`.
-                if policy_spec.policy_class is None:
-                    ma_policies[pid].policy_class = policy_cls
-            policies = ma_policies
-
-        # Create a policy_spec (MultiAgentPolicyConfigDict),
-        # even if no "multiagent" setup given by user.
-        else:
-            policies = policy_cls
+        if not policy_specs:
+            # Infer policy specs from multiagent.policies dict.
+            if config["multiagent"]["policies"]:
+                # Make a copy so we don't modify the original multiagent config dict
+                # by accident.
+                policy_specs = config["multiagent"]["policies"].copy()
+                # Assert everything is correct in "multiagent" config dict (if given).
+                for policy_spec in policy_specs.values():
+                    assert isinstance(policy_spec, PolicySpec)
+                    # Class is None -> Use `policy_cls`.
+                    if policy_spec.policy_class is None:
+                        policy_spec.policy_class = policy_cls
+            # Use the only policy class as policy specs.
+            else:
+                policy_specs = policy_cls
 
         if worker_index == 0:
             extra_python_environs = config.get("extra_python_environs_for_driver", None)
@@ -661,7 +892,7 @@ class WorkerSet:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policies,
+            policy_spec=policy_specs,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator if config["tf_session_args"] else None),
@@ -674,7 +905,6 @@ class WorkerSet:
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_fn=config["multiagent"]["observation_fn"],
-            observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
@@ -750,11 +980,11 @@ class WorkerSet:
                 )
         return False
 
-    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):
         return self.foreach_policy_to_train(func)
 
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
         local_worker = self.local_worker()
         if local_worker is not None:

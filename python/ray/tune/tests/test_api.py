@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
@@ -1107,7 +1108,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(result)
         self.assertEqual(test_trainable.state["hi"], 1)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1137,7 +1145,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(checkpoint_1)
         self.assertEqual(test_trainable.state["iter"], 0)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1484,6 +1499,27 @@ def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             MyTrainable,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
+    class Worker:
+        def train_fn(self, config):
+            return len(ray.get_gpu_ids())
+
+    worker = Worker()
+
+    [trial] = tune.run(
+        tune.with_resources(
+            worker.train_fn,
             resources=lambda config: PlacementGroupFactory(
                 [{"GPU": config["use_gpus"]}]
             ),

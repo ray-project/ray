@@ -9,6 +9,7 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air import CheckpointConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -428,6 +429,8 @@ def run(
 
     del remote_run_kwargs
 
+    ray._private.usage.usage_lib.record_library_usage("tune")
+
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
@@ -441,6 +444,21 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     _validate_upload_dir(sync_config)
+
+    checkpoint_score_attr = checkpoint_score_attr or ""
+    if checkpoint_score_attr.startswith("min-"):
+        checkpoint_score_attr = checkpoint_score_attr[4:]
+        checkpoint_score_order = "min"
+    else:
+        checkpoint_score_order = "max"
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=keep_checkpoints_num,
+        checkpoint_score_attribute=checkpoint_score_attr,
+        checkpoint_score_order=checkpoint_score_order,
+        checkpoint_frequency=checkpoint_freq,
+        checkpoint_at_end=checkpoint_at_end,
+    )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -528,13 +546,10 @@ def run(
                 local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
+                checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
-                checkpoint_freq=checkpoint_freq,
-                checkpoint_at_end=checkpoint_at_end,
-                keep_checkpoints_num=keep_checkpoints_num,
-                checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
                 restore=restore,
@@ -673,9 +688,11 @@ def run(
         else:
             logger.warning(
                 "Tune detects GPUs, but no trials are using GPUs. "
-                "To enable trials to use GPUs, set "
-                "tune.run(resources_per_trial={'gpu': 1}...) "
+                "To enable trials to use GPUs, wrap `train_func` with "
+                "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
+                "For Ray AIR Trainers, you can specify GPU resources "
+                "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
                 "Trainable API."

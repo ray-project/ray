@@ -4,7 +4,6 @@ import inspect
 import os
 import logging
 from pathlib import Path
-from threading import Thread
 
 from typing import (
     Tuple,
@@ -18,7 +17,7 @@ from typing import (
 )
 
 import ray
-from ray.air._internal.util import find_free_port, StartTraceback, skip_exceptions
+from ray.air._internal.util import find_free_port, StartTraceback
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
@@ -59,7 +58,7 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                raise StartTraceback from skip_exceptions(exc)
+                raise StartTraceback from exc
 
     return True, None
 
@@ -85,23 +84,6 @@ def construct_path(path: Path, parent_path: Path) -> Path:
         return path.expanduser().resolve()
     else:
         return parent_path.joinpath(path).expanduser().resolve()
-
-
-class PropagatingThread(Thread):
-    """A Thread subclass that stores exceptions and results."""
-
-    def run(self):
-        self.exc = None
-        try:
-            self.ret = self._target(*self._args, **self._kwargs)
-        except BaseException as e:
-            self.exc = e
-
-    def join(self, timeout=None):
-        super(PropagatingThread, self).join(timeout)
-        if self.exc:
-            raise self.exc
-        return self.ret
 
 
 def update_env_vars(env_vars: Dict[str, Any]):

@@ -32,10 +32,10 @@ class BCConfig(MARWILConfig):
         >>> config.environment(env="CartPole-v0")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "BC",
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -84,7 +84,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.marwil.bc::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.bc.bc::BCConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

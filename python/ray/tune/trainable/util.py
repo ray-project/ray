@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import shutil
+import types
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pandas as pd
@@ -101,7 +102,7 @@ class TrainableUtil:
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
@@ -338,6 +339,11 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
         _Inner.__name__ = trainable_name
         return _Inner
     else:
@@ -443,8 +449,31 @@ def with_resources(
         )
 
     if not inspect.isclass(trainable):
+        if isinstance(trainable, types.MethodType):
+            # Methods cannot set arbitrary attributes, so we have to wrap them
+            use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
+            if use_checkpoint:
+
+                def _trainable(config, checkpoint_dir):
+                    return trainable(config, checkpoint_dir=checkpoint_dir)
+
+            else:
+
+                def _trainable(config):
+                    return trainable(config)
+
+            _trainable._resources = pgf
+            return _trainable
+
         # Just set an attribute. This will be resolved later in `wrap_function()`.
-        trainable._resources = pgf
+        try:
+            trainable._resources = pgf
+        except AttributeError as e:
+            raise RuntimeError(
+                "Could not use `tune.with_resources()` on the supplied trainable. "
+                "Wrap your trainable in a regular function before passing it "
+                "to Ray Tune."
+            ) from e
     else:
 
         class ResourceTrainable(trainable):

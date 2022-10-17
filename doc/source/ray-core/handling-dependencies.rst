@@ -475,22 +475,28 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
 
 Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
 You would need to first compress the ``example_dir`` directory into a zip file.
-You can use the following command in the Terminal to do so:
-
-.. code-block:: bash
-
-    zip -r example.zip /some_path/example_dir
-
-In general, to compress a directory called ``directory_to_zip`` into a zip file called ``zip_file_name.zip``, the command is:
-
-.. code-block:: bash
-
-    # General command
-    zip -r zip_file_name.zip directory_to_zip
 
 There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
+You can use the following command in the Terminal to do this:
+
+.. code-block:: bash
+
+    cd /some_path
+    zip -r zip_file_name.zip example_dir
+
+Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting zip file contains a single top-level directory.
 In general, the zip file's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
+
+You can check that the zip file contains a single top-level directory by running the following command in the Terminal:
+
+.. code-block:: bash
+
+  zipinfo -1 zip_file_name.zip
+  # example_dir/
+  # example_dir/my_file_1.txt
+  # example_dir/subdir/my_file_2.txt
+
 Suppose you upload the compressed ``example_dir`` directory to AWS S3 at the S3 URI ``s3://example_bucket/example.zip``.
 Your ``runtime_env`` dictionary should contain:
 
@@ -500,11 +506,11 @@ Your ``runtime_env`` dictionary should contain:
 
 .. warning::
 
-  Check for hidden files and metadata directories (e.g. ``__MACOSX/``) in zipped dependencies.
+  Check for hidden files and metadata directories in zipped dependencies.
   You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
   Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
-  This will cause Ray to throw an error because the structure of the zip file is invalid since there is more than a single directory at the top level.
-  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress.
+  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you what to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
+  If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
 
 Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 

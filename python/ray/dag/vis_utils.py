@@ -69,16 +69,16 @@ def _get_nodes_and_edges(dag: DAGNode):
     while edges will be used to construct the graph.
     """
 
-    def _dfs(node, res, visited):
-        if node not in visited:
-            visited.append(node)
-            for child_node in node._get_all_child_nodes():
-                res.append((child_node, node))
-                _dfs(child_node, res, visited)
-
     edges = []
     nodes = []
-    _dfs(dag, edges, nodes)
+
+    def _dfs(node):
+        nodes.append(node)
+        for child_node in node._get_all_child_nodes():
+            edges.append((child_node, node))
+        return node
+
+    dag.apply_recursive(_dfs)
     return nodes, edges
 
 
