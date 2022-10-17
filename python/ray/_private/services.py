@@ -73,6 +73,7 @@ RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
 # Comma separated name of components that will run memory profiler.
 # Ray uses `memray` to memory profile internal components.
+# The name of the component must be one of ray_constants.PROCESS_TYPE*.
 RAY_MEMRAY_PROFILE_COMPONENT_ENV = "RAY_INTERNAL_MEM_PROFILE_COMPONENTS"
 # Options to specify for `memray run` command. See
 # `memray run --help` for more details.
@@ -101,7 +102,7 @@ ProcessInfo = collections.namedtuple(
 )
 
 
-def _build_python_executable_command(
+def _build_python_executable_command_memory_profileable(
     component: str, session_dir: str, unbuffered: bool = True
 ):
     """Build the Python executable command.
@@ -1339,7 +1340,7 @@ def start_api_server(
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
 
         command = [
-            *_build_python_executable_command(
+            *_build_python_executable_command_memory_profileable(
                 ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
             ),
             dashboard_filepath,
@@ -1714,7 +1715,7 @@ def start_raylet(
         max_worker_port = 0
 
     agent_command = [
-        *_build_python_executable_command(
+        *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
