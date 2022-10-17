@@ -31,7 +31,7 @@ RLlib Feature Guides
     :img-top: /rllib/images/rllib-logo.svg
 
     +++
-    .. link-button:: rllib-checkpoints-and-exports
+    .. link-button:: rllib-saving-and-loading-algos-and-policies
         :type: ref
         :text: Checkpointing your Algorithms and Policies, and Exporting your NN Models
         :classes: btn-link btn-block stretched-link

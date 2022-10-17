@@ -2,17 +2,20 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. _checkpoints-and-exports-docs:
+.. _saving-and-loading-algos-and-policies-docs:
 
 ##################################################
-Saving and loading your RL Algorithms and Policies
+Saving and Loading your RL Algorithms and Policies
 ##################################################
 
 
 You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
 and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
-within these structures.
+within these structures. In the following, we will cover how you can create these
+checkpoints (and hence save your Algos and Policies) to disk, where you can find them,
+and how you can recover (load) your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+or :py:class:`~ray.rllib.policy.policy.Policy` from such a given checkpoint.
 
 
 What's a checkpoint?
@@ -47,7 +50,7 @@ The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method crea
 Let's take a look at a simple example on how to create such an
 Algorithm checkpoint:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __create-algo-checkpoint-begin__
     :end-before: __create-algo-checkpoint-end__
@@ -136,7 +139,7 @@ Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
 had stopped (and could thus no longer use) in the example above:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-begin__
     :end-before: __restore-from-algo-checkpoint-end__
@@ -146,7 +149,7 @@ Alternatively, you could also first create a new Algorithm instance using the
 same config that you used for the original algo, and only then call the new
 Algorithm's ``restore()`` method, passing it the checkpoint directory:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-2-begin__
     :end-before: __restore-from-algo-checkpoint-2-end__
@@ -187,7 +190,7 @@ inside the sub-directory ``policies/``.
 
 For example:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __multi-agent-checkpoints-begin__
     :end-before: __multi-agent-checkpoints-end__
@@ -202,7 +205,7 @@ However, there may be a situation where you have so many policies in your algori
 instance from your checkpoint, but only include some of the original policies in this
 new Algorithm object. In this case, you can also do:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
     :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
@@ -220,23 +223,22 @@ Thus, we now have the entire picture of a checkpoint:
 
 .. code-block::
 
-    .
-    ..
-    .is_checkpoint
-    .tune_metadata
+  .
+  ..
+  .is_checkpoint
+  .tune_metadata
 
-    rllib_checkpoint.json           # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-    algorithm_state.pkl             # <- state of the Algorithm (excluding Policy states)
+  algorithm_state.pkl        # <- state of the Algorithm (excluding Policy states)
+  rllib_checkpoint.json      # <- checkpoint info, such as checkpoint version, e.g. "1.0"
 
-    policies/
+  policies/
+    policy_A/
+      policy_state.pkl       # <- state of policy_A
+      rllib_checkpoint.json  # <- checkpoint info, such as checkpoint version, e.g. "1.0"
 
-        policy_A/
-            rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-            policy_state.pkl        # <- state of policy_A
-
-        policy_B/
-            rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-            policy_state.pkl        # <- state of policy_B
+    policy_B/
+      policy_state.pkl       # <- state of policy_B
+      rllib_checkpoint.json  # <- checkpoint info, such as checkpoint version, e.g. "1.0"
 
 
 How do I create a Policy checkpoint?
@@ -249,7 +251,7 @@ described above or - if you need more fine-grained control - by doing the follow
 
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __create-policy-checkpoint-begin__
     :end-before: __create-policy-checkpoint-end__
@@ -282,7 +284,7 @@ contains all its Policies' checkpoints.
 
 Here is how you can do this:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-policy-begin__
     :end-before: __restore-policy-end__
@@ -307,7 +309,7 @@ You can use the original checkpoint (with the 100 policies in it) and the
 This example here shows this for five original policies that you would like reduce to
 two policies:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
     :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
@@ -336,7 +338,7 @@ There are several ways of creating Keras- or PyTorch native model "exports".
 
 Here is the example code that illustrates these:
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-begin__
     :end-before: __export-models-end__
@@ -349,7 +351,7 @@ RLlib also supports exporting your NN models in the ONNX format. For that, use t
 extra ``onnx`` arg as follows:
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
     :language: python
     :start-after: __export-models-as-onnx-begin__
     :end-before: __export-models-as-onnx-end__
