@@ -18,14 +18,11 @@ from ray.train.examples.torch_quick_start import (
 from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.mosaic_cifar10_example import (
-    trainer_init_per_worker as mosaic_cifar10_trainer_init,
-)
+from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 from ray.train.examples.torch_linear_example import train_func as linear_train_func
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-from ray.train.mosaic import MosaicTrainer
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
@@ -101,23 +98,7 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
 
 
 def test_mosaic_cifar10(ray_start_4_cpus):
-    from composer.loggers import InMemoryLogger
-    from composer.algorithms import LabelSmoothing
-
-    num_workers = 2
-    trainer_init_config = {
-        "max_duration": "1ep",
-        "loggers": [InMemoryLogger()],
-        "algorithms": [LabelSmoothing()],
-    }
-
-    trainer = MosaicTrainer(
-        trainer_init_per_worker=mosaic_cifar10_trainer_init,
-        trainer_init_config=trainer_init_config,
-        scaling_config=ScalingConfig(num_workers=num_workers),
-    )
-
-    results = trainer.fit()
+    result = train_mosaic_cifar10()
 
     # TODO : add asserts once reporting has been integrated
 

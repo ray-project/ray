@@ -92,6 +92,8 @@ def train_mosaic_cifar10(num_workers=2, use_gpu=False):
     result = trainer.fit()
     print(f"Results: {result.metrics}")
 
+    return result
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
