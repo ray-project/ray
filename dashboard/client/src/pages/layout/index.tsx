@@ -5,7 +5,7 @@ import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
-import { NightsStay, VerticalAlignTop, WbSunny, Help } from "@material-ui/icons";
+import { Help, NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
 import classnames from "classnames";
 import React, { PropsWithChildren, useContext } from "react";
 
