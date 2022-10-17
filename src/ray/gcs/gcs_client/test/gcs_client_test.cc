@@ -138,8 +138,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
