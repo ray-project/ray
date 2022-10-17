@@ -88,7 +88,7 @@ class MosaicTrainer(TorchTrainer):
             ``trainer_init_per_worker`` function
         trainer_init_config: Configurations to pass into ``trainer_init_per_worker`` as
             kwargs. Although the kwargs can be hard-coded in the
-            ``trianer_init_per_worker``, using the config allows the flexibility of
+            ``trainer_init_per_worker``, using the config allows the flexibility of
             reusing the same worker init function while changing the trainer arguments.
             For example, when hyperparameter tuning you can reuse the
             same ``trainer_init_per_worker`` function with different hyperparameter
