@@ -80,7 +80,7 @@ class MosaicTrainer(TorchTrainer):
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``composer.Trainer`` object and takes in configuration
-            dictionary (``**config``) as an argument. This dictionary is based on
+            dictionary (``config``) as an argument. This dictionary is based on
             ``trainer_init_config`` and is modified for Ray - Composer integration.
         datasets: Any Ray Datasets to use for training. At the moment, we do not support
             passing datasets to the trainer and using the dataset shards in the trainer
