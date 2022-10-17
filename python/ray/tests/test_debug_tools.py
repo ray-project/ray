@@ -52,6 +52,7 @@ def test_raylet_gdb(ray_gdb_start):
     assert pgrep_command.communicate()[0]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="memray not supported in win32")
 def test_memory_profiler_command_builder(monkeypatch, tmp_path):
     session_dir = tmp_path
     # When there's no env var, command should be just a regular python command.
@@ -107,6 +108,7 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
         ]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="memray not supported in win32")
 def test_memory_profile_dashboard_and_agent(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard,dashboard_agent")
