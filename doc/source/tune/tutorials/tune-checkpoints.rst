@@ -31,15 +31,30 @@ Commonly, this includes the model and optimizer states. This is useful mostly fo
   the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 
-Everything that is reported by ``session.report()`` is a trial-level checkpoint.
-See :ref:`here for more information on saving checkpoints <air-checkpoint-ref>`.
+Everything that is saved by ``session.report()`` (if using the Function API) or
+``Trainable.save_checkpoint`` (if using the Class API) is a **trial-level checkpoint.**
+See below for examples of saving and loading trial-level checkpoints.
+
+
+How do I save and load trial checkpoints?
+-----------------------------------------
+
+.. include:: ../api_docs/checkpointing/function-checkpointing.rst
+
+.. include:: ../api_docs/checkpointing/class-checkpointing.rst
+
+See :ref:`here for more information on creating checkpoints <air-checkpoint-ref>`.
+If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
+references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 .. _tune-checkpoint-syncing:
 
 Checkpointing and synchronization
 ---------------------------------
 
-This topic is mostly relevant to Trial checkpoint.
+.. note::
+
+    This topic is relevant to trial checkpoints.
 
 Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
 this means that some trial checkpoints may be on the head node and others are not.
