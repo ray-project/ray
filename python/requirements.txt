@@ -103,6 +103,7 @@ tqdm
 testfixtures
 werkzeug<2.2.0
 xlrd
+memray
 
 # For doc tests
 myst-parser==0.15.2

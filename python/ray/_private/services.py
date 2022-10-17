@@ -128,6 +128,13 @@ def _build_python_executable_command_memory_profileable(
         return command
 
     components_to_memory_profile = set(components_to_memory_profile.split(","))
+    try:
+        import memray  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "Memray is required to memory profiler on components "
+            f"{components_to_memory_profile}. Run `pip install memray`"
+        )
     if component in components_to_memory_profile:
         session_dir = Path(session_dir)
         session_name = session_dir.name
