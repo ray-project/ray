@@ -198,7 +198,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
    * ``bash Miniforge3-MacOSX-arm64.sh``
 
-   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
 
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
 
