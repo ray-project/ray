@@ -11,6 +11,11 @@ from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
 import composer.optim
 from composer.algorithms import LabelSmoothing
+from composer.loggers.logger_destination import LoggerDestination
+from composer.core.state import State
+from composer.loggers import Logger
+from composer.core.callback import Callback
+
 
 import ray
 from ray.air.config import ScalingConfig
@@ -158,6 +163,43 @@ def test_init_errors(ray_start_4_cpus):
             scaling_config=scaling_config,
             datasets={"train": [1]},
         )
+
+
+def test_loggers(ray_start_4_cpus):
+    class DummyLogger(LoggerDestination):
+        def fit_start(self, state: State, logger: Logger) -> None:
+            raise ValueError("Composer Logger object exists.")
+
+    class DummyCallback(Callback):
+        def fit_start(self, state: State, logger: Logger) -> None:
+            raise ValueError("Composer Callback object exists.")
+
+    # DummyLogger should not throw an error since it should be removed before `fit` call
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "loggers": DummyLogger(),
+        "algorithms": [LabelSmoothing()],
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    trainer.fit()
+
+    # DummyCallback should throw an error since it should not have been removed.
+    trainer_init_config["callbacks"] = DummyCallback()
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    with pytest.raises(ValueError) as e:
+        trainer.fit()
+        assert e == "Composer Callback object exists."
 
 
 if __name__ == "__main__":
