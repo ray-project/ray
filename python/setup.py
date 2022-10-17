@@ -313,6 +313,7 @@ if setup_spec.type == SetupType.RAY:
         "packaging; python_version >= '3.10'",
         "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
+        "six >= 1.16; python_version >= '3.10'",
         "aiosignal",
         "frozenlist",
         "requests",
