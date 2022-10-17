@@ -9,6 +9,7 @@ aws:
           Ebs:
             DeleteOnTermination: true
             VolumeSize: 500
+            VolumeType: gp3
 
 head_node_type:
     name: head_node
