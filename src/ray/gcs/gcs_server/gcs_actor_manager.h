@@ -18,8 +18,8 @@
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/id.h"
 #include "ray/common/executor/executor.h"
+#include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -304,7 +304,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method should be called when new nodes are registered or resources
   /// change.
   void SchedulePendingActors();
-
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -595,154 +594,130 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 class GcsActorManagerPool : public rpc::ActorInfoHandler {
  public:
   GcsActorManagerPool(std::vector<std::unique_ptr<GcsActorManager>> instances)
-      : executors_(instances.size()), instances_(std::move(instances)) {
-  }
+      : executors_(instances.size()), instances_(std::move(instances)) {}
 
   void HandleRegisterActor(const rpc::RegisterActorRequest &request,
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleRegisterActor(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleRegisterActor(request, reply, send_reply_callback); });
   }
 
   void HandleCreateActor(const rpc::CreateActorRequest &request,
                          rpc::CreateActorReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleCreateActor(request, reply, send_reply_callback);
-    });
-    
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleCreateActor(request, reply, send_reply_callback); });
   }
-  
 
   void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
                           rpc::GetActorInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleGetActorInfo(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleGetActorInfo(request, reply, send_reply_callback); });
   }
 
   void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
     executor.submit([&]() {
       instance->HandleGetNamedActorInfo(request, reply, send_reply_callback);
     });
-    
   }
 
   void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
                              rpc::ListNamedActorsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleListNamedActors(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleListNamedActors(request, reply, send_reply_callback); });
   }
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleGetAllActorInfo(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleGetAllActorInfo(request, reply, send_reply_callback); });
   }
 
   void HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleKillActorViaGcs(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleKillActorViaGcs(request, reply, send_reply_callback); });
   }
 
-  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address) {
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address) {}
 
-  }
+  void Initialize(const GcsInitData &gcs_init_data) {}
 
-  void Initialize(const GcsInitData &gcs_init_data) {
-
-  }
-
-  void OnJobFinished(const JobID &job_id) {
-  }
+  void OnJobFinished(const JobID &job_id) {}
 
   void OnWorkerDead(const NodeID &node_id,
                     const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const std::string &disconnect_detail,
-                    const rpc::RayException *creation_task_exception = nullptr) {
-  }
+                    const rpc::RayException *creation_task_exception = nullptr) {}
 
-  void SchedulePendingActors() {
-
-  }
-
+  void SchedulePendingActors() {}
 
   void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                              const rpc::PushTaskReply &reply) {
-  }
+                              const rpc::PushTaskReply &reply) {}
   void OnActorSchedulingFailed(
       std::shared_ptr<GcsActor> actor,
       const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleRegisterActor(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleRegisterActor(request, reply, send_reply_callback); });
   }
 
   std::string DebugString() const {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleRegisterActor(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleRegisterActor(request, reply, send_reply_callback); });
   }
 
   void RecordMetrics() const {
     auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
-    auto& instance = instances_[shard].get();
-    auto& executor = executors_[shard];
-    executor.submit([&]() {
-      instance->HandleRegisterActor(request, reply, send_reply_callback);
-    });
+    auto &instance = instances_[shard].get();
+    auto &executor = executors_[shard];
+    executor.submit(
+        [&]() { instance->HandleRegisterActor(request, reply, send_reply_callback); });
   }
 
  private:
-  template<typename F>
-  std::invoke_result_t<F> execute(const std::string& key, F&& f) const {
+  template <typename F>
+  std::invoke_result_t<F> execute(const std::string &key, F &&f) const {
     std::hash<std::string> hasher;
     auto shard = hasher(val) & executor_.size();
-    
   }
-  
+
   mutable std::vector<executor::Executor> executors_;
   mutable std::vector<std::unique_ptr<GcsActorManager>> instances_;
 };
