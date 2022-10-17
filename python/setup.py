@@ -234,7 +234,7 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0b1",  # for windows
+            "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
@@ -271,6 +271,8 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
+        "typer",
+        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -309,7 +311,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",

@@ -23,11 +23,29 @@ from ray.data.datasource import (
     PathPartitionEncoder,
     PathPartitionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
+
+
+def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "file.csv")
+    os.mkdir(os.path.dirname(path))
+    df = pd.DataFrame({"numbers": [1, 2, 3], "letters": ["a", "b", "c"]})
+    df.to_csv(path, index=False)
+
+    ds = ray.data.read_csv(path)
+
+    assert ds.take() == [
+        {"numbers": 1, "letters": "a", "country": "us"},
+        {"numbers": 2, "letters": "b", "country": "us"},
+        {"numbers": 3, "letters": "c", "country": "us"},
+    ]
 
 
 @pytest.mark.parametrize(
@@ -57,7 +75,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(data_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path1, filesystem=fs)
+    ds = ray.data.read_csv(path1, filesystem=fs, partitioning=None)
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
@@ -69,7 +87,9 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], parallelism=2, filesystem=fs)
+    ds = ray.data.read_csv(
+        [path1, path2], parallelism=2, filesystem=fs, partitioning=None
+    )
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
@@ -81,7 +101,9 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     path3 = os.path.join(data_path, "test3.csv")
     df3.to_csv(path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2, path3], parallelism=2, filesystem=fs)
+    ds = ray.data.read_csv(
+        [path1, path2, path3], parallelism=2, filesystem=fs, partitioning=None
+    )
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -98,7 +120,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path, filesystem=fs)
+    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -125,7 +147,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.csv")
     df3.to_csv(file_path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], filesystem=fs)
+    ds = ray.data.read_csv([path1, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -148,7 +170,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir_path, path2], filesystem=fs)
+    ds = ray.data.read_csv([dir_path, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -177,7 +199,12 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options=storage_options,
     )
 
-    ds = ray.data.read_csv(path, filesystem=fs)
+    ds = ray.data.read_csv(
+        path,
+        filesystem=fs,
+        partition_filter=FileExtensionFilter("csv"),
+        partitioning=None,
+    )
     assert ds.num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
@@ -623,7 +650,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
 
     # Incorrect to parse scientific notation in int64 as PyArrow represents
     # it as double.
-    with pytest.raises(pa.lib.ArrowInvalid):
+    with pytest.raises(ValueError):
         ray.data.read_csv(
             file_path,
             convert_options=csv.ConvertOptions(
@@ -642,15 +669,53 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     assert ds.to_pandas().equals(expected_df)
 
 
-def test_csv_read_filter_no_file(shutdown_only, tmp_path):
+def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df)
-    path = os.path.join(str(tmp_path), "test.parquet")
-    pq.write_table(table, path)
 
+    # CSV file with .csv extension.
+    path1 = os.path.join(tmp_path, "test2.csv")
+    df.to_csv(path1, index=False)
+
+    # CSV file without .csv extension.
+    path2 = os.path.join(tmp_path, "test3")
+    df.to_csv(path2, index=False)
+
+    # Directory of CSV files.
+    ds = ray.data.read_csv(tmp_path)
+    assert ds.to_pandas().equals(pd.concat([df, df], ignore_index=True))
+
+    # Non-CSV file in Parquet format.
+    table = pa.Table.from_pandas(df)
+    path3 = os.path.join(tmp_path, "test1.parquet")
+    pq.write_table(table, path3)
+
+    # Single non-CSV file.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path3)
+
+    # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path)
+        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv"))
+
+    # Single CSV file without extension.
+    ds = ray.data.read_csv(path2)
+    assert ds.to_pandas().equals(df)
+
+    # Single CSV file without extension with filter.
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv"))
+
+    # Directory of CSV and non-CSV files.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(tmp_path)
+
+    # Directory of CSV and non-CSV files with filter.
+    ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
+    assert ds.to_pandas().equals(df)
 
 
 @pytest.mark.skipif(
@@ -671,3 +736,9 @@ def test_csv_invalid_file_handler(shutdown_only, tmp_path):
             delimiter=",", invalid_row_handler=lambda i: "skip"
         ),
     )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

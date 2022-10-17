@@ -12,7 +12,7 @@ from ray._private.state_api_test_utils import (
     periodic_invoke_state_apis_with_actor,
 )
 
-sleep_time = 150
+sleep_time = 300
 
 
 def test_max_running_tasks(num_tasks):

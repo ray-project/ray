@@ -24,6 +24,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -836,6 +837,20 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     return samples_by_name
 
 
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
+
+
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
@@ -1537,3 +1552,18 @@ def external_ray_cluster_activity_hook5():
             "timestamp": datetime.now().timestamp(),
         }
     }
+
+
+def get_gcs_memory_used():
+    import psutil
+
+    m = {
+        process.name(): process.memory_info().rss
+        for process in psutil.process_iter()
+        if (
+            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and process.name() in ("gcs_server", "redis-server")
+        )
+    }
+    assert "gcs_server" in m
+    return sum(m.values())
