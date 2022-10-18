@@ -174,7 +174,8 @@ def check_specs(
         A wrapped instance method. In case of `cache=True`, after the first invokation
         of the decorated method, the intance will have `__checked_specs_cache__`
         attribute that store which method has been invoked at least once. This is a
-        special attribute can be used as a marker for the cache.
+        special attribute can be used as for the cache. The wrapped class method also
+        has a special attribute `__checked_specs__` that marks the method as decorated.
     """
 
     if not input_spec and not output_spec:
@@ -187,19 +188,20 @@ def check_specs(
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
 
-            def should_check():
+            def should_validate():
                 return not cache or func.__name__ not in self.__checked_specs_cache__
 
             input_dict_ = NestedDict(input_dict)
 
-            if input_spec and should_check():
+            if input_spec:
                 input_spec_ = getattr(self, input_spec)
-                input_spec_.validate(input_dict_, exact_match=input_exact_match)
+                if should_validate():
+                    input_spec_.validate(input_dict_, exact_match=input_exact_match)
                 if filter:
                     input_dict_ = input_dict_.filter(input_spec_)
 
             output_dict_ = func(self, input_dict_, **kwargs)
-            if output_spec and should_check():
+            if output_spec and should_validate():
                 output_spec_ = getattr(self, output_spec)
                 output_spec_.validate(output_dict_, exact_match=output_exact_match)
 
@@ -208,6 +210,7 @@ def check_specs(
 
             return output_dict_
 
+        wrapper.__check_specs__ = True
         return wrapper
 
     return decorator
