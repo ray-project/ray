@@ -3354,8 +3354,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    main = "examples/replay_buffer_api.py",
-    tags = ["team:rllib", "examples"],
+    tags = ["team:rllib", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]
