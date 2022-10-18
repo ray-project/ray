@@ -72,6 +72,7 @@ class DependencyManagerTest : public ::testing::Test {
     ASSERT_TRUE(dependency_manager_.queued_task_requests_.empty());
     ASSERT_TRUE(dependency_manager_.get_requests_.empty());
     ASSERT_TRUE(dependency_manager_.wait_requests_.empty());
+    ASSERT_TRUE(dependency_manager_.active_requests_counter_.Total() == 0);
     // All pull requests are canceled.
     ASSERT_TRUE(object_manager_mock_.active_task_requests.empty());
     ASSERT_TRUE(object_manager_mock_.active_get_requests.empty());
