@@ -18,7 +18,11 @@ from ray_release.config import (
 )
 from ray_release.exception import ReleaseTestCLIError
 from ray_release.logger import logger
-from ray_release.wheels import find_and_wait_for_ray_wheels_url, find_ray_wheels_url
+from ray_release.wheels import (
+    find_and_wait_for_ray_wheels_url,
+    find_ray_wheels_url,
+    get_buildkite_repo_branch,
+)
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -120,10 +124,13 @@ def main(test_collection_file: Optional[str] = None):
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule
+    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
+    # both the buildkite wheel branch and the test branch started with 'releases/')
+    _, buildkite_branch = get_buildkite_repo_branch()
     report = (
         bool(int(os.environ.get("REPORT", "0")))
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
+        or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
     )
 
     steps = []
