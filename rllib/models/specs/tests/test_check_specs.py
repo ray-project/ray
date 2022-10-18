@@ -5,6 +5,7 @@ import numpy as np
 
 from typing import Dict, Any
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
@@ -76,16 +77,19 @@ class InputNumberOutputFloat(AbstractInterfaceClass):
 
 
 class CorrectImplementation(InputNumberOutputFloat):
+
     def run(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         output = float(input_dict["input"]) * 2
         return {"output": output}
 
+    @override(AbstractInterfaceClass)
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
         if len(input_dict) > 1 or "input" not in input_dict:
             raise ValueError(ONLY_ONE_KEY_ALLOWED)
         return self.run(input_dict)
 
+    @override(AbstractInterfaceClass)
     def _check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
         if len(input_dict) > 1 or "input" not in input_dict:
@@ -96,6 +100,7 @@ class CorrectImplementation(InputNumberOutputFloat):
         # output can be anything since ther is no output_spec
         return {"output": str(out)}
 
+    @override(AbstractInterfaceClass)
     def _check_only_output(self, input_dict) -> Dict[str, Any]:
         # there is no input spec, so we can pass anything
         if "input" in input_dict:
@@ -107,12 +112,15 @@ class CorrectImplementation(InputNumberOutputFloat):
 
 
 class IncorrectImplementation(CorrectImplementation):
+
+    @override(CorrectImplementation)
     def run(self, input_dict) -> Dict[str, Any]:
         output = str(input_dict["input"] * 2)
         return {"output": output}
 
 
 class TestCheckSpecs(unittest.TestCase):
+    
     def test_check_input_and_output(self):
 
         correct_module = CorrectImplementation()
