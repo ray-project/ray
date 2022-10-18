@@ -35,7 +35,6 @@ LocalTaskManager::LocalTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    std::function<int64_t(const std::string &task_name)> pull_manager_num_inactive_pulls,
     size_t max_pinned_task_arguments_bytes,
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
@@ -49,16 +48,11 @@ LocalTaskManager::LocalTaskManager(
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
-      pull_manager_num_inactive_pulls_(pull_manager_num_inactive_pulls),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
       get_time_ms_(get_time_ms),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {
-  waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name,
-                                                    int64_t value) mutable {
-  });
-}
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   WaitForTaskArgsRequests(work);
@@ -81,8 +75,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      const auto &task = work->task;
-      waiting_tasks_counter_.Increment(task.GetTaskSpecification().GetName());
       auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), work);
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
@@ -184,11 +176,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
-          waiting_tasks_counter_.Increment(task.GetTaskSpecification().GetName());
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
-          RAY_CHECK(waiting_tasks_counter_.Total() == waiting_tasks_index_.size());
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
@@ -363,8 +353,6 @@ void LocalTaskManager::SpillWaitingTasks() {
       }
       num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
-      waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
-      RAY_CHECK(waiting_tasks_counter_.Total() == waiting_tasks_index_.size());
       it = waiting_task_queue_.erase(it);
     } else {
       if (scheduling_node_id.IsNil()) {
@@ -603,10 +591,8 @@ void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
-      RAY_CHECK(waiting_tasks_counter_.Total() == waiting_tasks_index_.size());
     }
   }
   ScheduleAndDispatchTasks();
@@ -793,10 +779,8 @@ bool LocalTaskManager::CancelTask(
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
     }
-    waiting_tasks_counter_.Decrement(task.GetTaskSpecification().GetName());
     waiting_task_queue_.erase(iter->second);
     waiting_tasks_index_.erase(iter);
-    RAY_CHECK(waiting_tasks_counter_.Total() == waiting_tasks_index_.size());
 
     return true;
   }

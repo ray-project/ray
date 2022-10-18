@@ -29,7 +29,6 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/util/counter_map.h"
 
 namespace ray {
 namespace raylet {
@@ -86,8 +85,6 @@ class LocalTaskManager : public ILocalTaskManager {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      std::function<int64_t(const std::string &task_name)>
-          pull_manager_num_inactive_pulls,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
           []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
@@ -337,9 +334,6 @@ class LocalTaskManager : public ILocalTaskManager {
   absl::flat_hash_map<TaskID, std::list<std::shared_ptr<internal::Work>>::iterator>
       waiting_tasks_index_;
 
-  /// Tracks tasks in waiting state.
-  CounterMap<std::string> waiting_tasks_counter_;
-
   /// Track the backlog of all workers belonging to this raylet.
   absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       backlog_tracker_;
@@ -354,10 +348,6 @@ class LocalTaskManager : public ILocalTaskManager {
   std::function<bool(const std::vector<ObjectID> &object_ids,
                      std::vector<std::unique_ptr<RayObject>> *results)>
       get_task_arguments_;
-
-  /// Callback to get the number of inactive bundles for the given task name.
-  /// For metrics use only.
-  std::function<int64_t(const std::string &task_name)> pull_manager_num_inactive_pulls_;
 
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not

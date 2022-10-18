@@ -457,8 +457,8 @@ ray.get([f.remote(x) for x in buf])"""
 
     proc = run_string_as_driver_nonblocking(driver)
 
-    # TODO(ekl) why is LocalTaskManager nondeterministic in how many tasks end up in
-    # the dispatch queue? Otherwise, we should expect 7 pending node assignment.
+    # This test is non-deterministic since pull bundles can sometimes end up fallback
+    # allocated. This leads to slightly more objects pulled than you'd expect.
     def close_to_expected(stats):
         assert len(stats) == 3, stats
         assert stats["RUNNING"] == 2, stats
