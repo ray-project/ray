@@ -166,11 +166,11 @@ def run_release_test(
         cluster_timeout = int(
             test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
         )
-        wait_timeout = int(
-            test["run"]
-            .get("wait_for_nodes", {})
-            .get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
-        )
+        # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
+        # sure we don't inflate the maximum_uptime_minutes too much if we don't wait
+        # for nodes at all.
+        # The actual default will be otherwise loaded further down.
+        wait_timeout = int(test["run"].get("wait_for_nodes", {}).get("timeout", 0))
 
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
         if autosuspend_mins:
@@ -180,12 +180,12 @@ def run_release_test(
                 DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
             )
 
-        maximum_uptime_mins = test["cluster"].get("maximum_uptime_minutes", None)
-        if maximum_uptime_mins:
-            cluster_manager.maximum_uptime_minutes = maximum_uptime_mins
+        maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
+        if maximum_uptime_minutes:
+            cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                cluster_manager.autosuspend_minutes + wait_timeout + 10
+                cluster_manager.autosuspend_minutes + int(wait_timeout / 60) + 10
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
@@ -239,6 +239,10 @@ def run_release_test(
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
+            # Overwrite wait_timeout from above to account for better default
+            wait_timeout = int(
+                wait_for_nodes.get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
+            )
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
