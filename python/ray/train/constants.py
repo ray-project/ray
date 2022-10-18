@@ -66,16 +66,6 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 # functions being used outside of the session
 SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
 
-# Reserved keyword used by the ``TorchWorkerProfiler`` and
-# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``session.report()``
-PYTORCH_PROFILER_KEY = "_train_torch_profiler"
-
-# Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``session.report()``.
-# See ``TrainingCallback._preprocess_results`` for more details.
-ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
-
 # Default NCCL_SOCKET_IFNAME.
 # Use ethernet when possible.
 # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
