@@ -185,7 +185,7 @@ def run_release_test(
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                cluster_manager.autosuspend_minutes + int(wait_timeout / 60) + 10
+                cluster_manager.autosuspend_minutes + wait_timeout + 10
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
