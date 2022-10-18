@@ -561,7 +561,7 @@ class EnvRunnerV2:
                     continue
 
                 values_dict = {
-                    SampleBatch.T: episode.length - 1,
+                    SampleBatch.T: episode.length,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                     # Last action (SampleBatch.ACTIONS) column will be populated by
@@ -602,7 +602,7 @@ class EnvRunnerV2:
                     obs_space = policy.observation_space
                     obs_space = getattr(obs_space, "original_space", obs_space)
                     values_dict = {
-                        SampleBatch.T: episode.length - 1,
+                        SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                         SampleBatch.REWARDS: 0.0,
@@ -637,9 +637,13 @@ class EnvRunnerV2:
                 for d in processed:
                     # Record transition info if applicable.
                     if not episode.has_init_obs(d.agent_id):
-                        assert d.data.raw_dict[SampleBatch.T] == -1, "Initial " \
-                                                                     "timestep " \
-                                                                     "must be zero."
+                        assert d.data.raw_dict[SampleBatch.T] == -1, (
+                            "Initial "
+                            "timestep "
+                            "must be -1 at "
+                            "creation time "
+                            "of episode."
+                        )
                         episode.add_init_obs(
                             agent_id=d.agent_id,
                             init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
