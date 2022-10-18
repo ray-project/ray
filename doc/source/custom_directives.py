@@ -113,7 +113,7 @@ MOCK_MODULES = [
     "composer",
     "composer.trainer",
     "composer.loggers",
-    "composer.loggers.logger_destination"
+    "composer.loggers.logger_destination",
 ]
 
 
