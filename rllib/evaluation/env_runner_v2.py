@@ -380,7 +380,7 @@ class EnvRunnerV2:
             and other fields as dictated by `policy`.
         """
         while True:
-            outputs = self.step(do_yield=True)
+            outputs = self.step()
             for o in outputs:
                 yield o
 
