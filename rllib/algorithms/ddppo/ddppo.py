@@ -58,8 +58,8 @@ class DDPPOConfig(PPOConfig):
         ...             .rollouts(num_workers=10)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig

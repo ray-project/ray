@@ -50,11 +50,12 @@ class ARSConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        ...     .rollouts(num_rollout_workers=4)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig

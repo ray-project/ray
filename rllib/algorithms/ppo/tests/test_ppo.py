@@ -133,9 +133,9 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = config.build(env=env)
-                    policy = trainer.get_policy()
-                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
                     if fw == "tf":
                         entropy_coeff, lr = policy.get_session().run(
@@ -145,14 +145,14 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
-                        results = trainer.train()
+                        results = algo.train()
                         check_train_results(results)
                         print(results)
 
                     check_compute_single_action(
-                        trainer, include_prev_action_reward=True, include_state=lstm
+                        algo, include_prev_action_reward=True, include_state=lstm
                     )
-                    trainer.stop()
+                    algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""

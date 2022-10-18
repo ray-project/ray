@@ -28,13 +28,13 @@ class TestA2C(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["CartPole-v0", "Pendulum-v1", "PongDeterministic-v0"]:
                 config.environment(env)
-                trainer = config.build(use_copy=True)
+                algo = config.build()
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
-                check_compute_single_action(trainer)
-                trainer.stop()
+                check_compute_single_action(algo)
+                algo.stop()
 
     def test_a2c_exec_impl(self):
         config = (
@@ -44,12 +44,12 @@ class TestA2C(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = config.build()
-            results = trainer.train()
+            algo = config.build()
+            results = algo.train()
             check_train_results(results)
             print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_a2c_exec_impl_microbatch(self):
         config = (
@@ -60,12 +60,12 @@ class TestA2C(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = config.build()
-            results = trainer.train()
+            algo = config.build()
+            results = algo.train()
             check_train_results(results)
             print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
 
 if __name__ == "__main__":
