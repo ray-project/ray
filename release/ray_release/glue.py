@@ -167,7 +167,9 @@ def run_release_test(
             test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
         )
         wait_timeout = int(
-            test["run"]["wait_for_nodes"].get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
+            test["run"]
+            .get("wait_for_nodes", {})
+            .get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
         )
 
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
