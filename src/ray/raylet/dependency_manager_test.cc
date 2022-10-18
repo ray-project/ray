@@ -56,6 +56,10 @@ class MockObjectManager : public ObjectManagerInterface {
            active_task_requests.count(request_id);
   }
 
+  int64_t PullManagerNumInactivePulls(const std::string& name) const {
+    return 0;
+  }
+
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_get_requests;
   std::unordered_set<uint64_t> active_wait_requests;

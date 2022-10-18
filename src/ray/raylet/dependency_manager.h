@@ -57,8 +57,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
                                                         int64_t num_total) mutable {
       RAY_LOG(ERROR) << "Active task requests " << task_name << " " << num_total;
       // Of the waiting tasks of this name, some fraction may be inactive (blocked on
-      // object store memory availability). Get this breakdown by querying the pull manager.
-      int64_t num_inactive =  std::min(num_total, object_manager_.PullManagerNumInactivePulls(task_name));
+      // object store memory availability). Get this breakdown by querying the pull
+      // manager.
+      int64_t num_inactive =
+          std::min(num_total, object_manager_.PullManagerNumInactivePulls(task_name));
       // Offset the metric values recorded from the owner process.
       ray::stats::STATS_tasks.Record(
           -num_total,
