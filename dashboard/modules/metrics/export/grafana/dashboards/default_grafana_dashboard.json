@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665706959202,
+  "iteration": 1666137227787,
   "links": [],
   "panels": [
     {
@@ -1055,7 +1055,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * 1024 * 1024",
           "interval": "",
           "legendFormat": "Used GRAM: {{instance}}",
           "queryType": "randomWalk",
@@ -1063,7 +1063,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_gram_available{cluster_id=\"$cluster_id\"}) + sum(ray_node_gram_used{cluster_id=\"$cluster_id\"})",
+          "expr": "(sum(ray_node_gram_available{cluster_id=\"$cluster_id\"}) + sum(ray_node_gram_used{cluster_id=\"$cluster_id\"})) * 1024 * 1024",
           "interval": "",
           "legendFormat": "MAX",
           "refId": "B"
@@ -1346,12 +1346,12 @@
       "dashes": false,
       "datasource": "Prometheus",
       "decimals": 2,
-      "description": "This is measured from aggregated disk io stats on the node (with psutil) ",
+      "description": "",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "fill": 0,
+      "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
@@ -1388,7 +1388,7 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": false,
+      "stack": true,
       "steppedLine": false,
       "targets": [
         {
@@ -1524,5 +1524,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 1
+  "version": 2
 }
