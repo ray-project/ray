@@ -80,7 +80,7 @@ class EagerTFPolicyV2(Policy):
         self._is_training = False
         # Global timestep should be a tensor.
         self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
-        self.explore = tf.Variable(self.config.explore, trainable=False, dtype=tf.bool)
+        self.explore = tf.Variable(self.config["explore"], trainable=False, dtype=tf.bool)
 
         # Log device and worker index.
         num_gpus = self._get_num_gpus_for_policy()
@@ -97,7 +97,7 @@ class EagerTFPolicyV2(Policy):
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
-        self._max_seq_len = config.model["max_seq_len"]
+        self._max_seq_len = self.config["model"]["max_seq_len"]
 
         self.validate_spaces(observation_space, action_space, self.config)
 
