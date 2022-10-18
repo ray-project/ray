@@ -110,6 +110,7 @@ MOCK_MODULES = [
     "tree",
     "wandb",
     "zoopt",
+    "mosaicml",
 ]
 
 
