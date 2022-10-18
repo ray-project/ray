@@ -316,6 +316,10 @@ class AlgorithmConfig:
         """
         # Create a default config object of this class.
         config_obj = cls()
+        # Remove `_is_frozen` flag from config dict in case the AlgorithmConfig that
+        # the dict was derived from was already frozen (we don't want to copy the
+        # frozenness).
+        config_dict.pop("_is_frozen", None)
         return config_obj.update_from_dict(config_dict)
 
     def update_from_dict(

@@ -309,7 +309,7 @@ class Algorithm(Trainable):
     def __init__(
         self,
         config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
-        env=None,  # deprecated
+        env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
@@ -2309,7 +2309,7 @@ class Algorithm(Trainable):
         framework = config.get("framework", "tf")
 
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config.num_gpus > 1:
+        if config["num_gpus"] > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
@@ -2330,7 +2330,11 @@ class Algorithm(Trainable):
                 config["simple_optimizer"] = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif config.is_multi_agent():
+            elif (
+                (isinstance(config, AlgorithmConfig) and config.is_multi_agent())
+                or isinstance(config, dict)
+                and AlgorithmConfig.from_dict(config).is_multi_agent()
+            ):
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
@@ -2376,11 +2380,11 @@ class Algorithm(Trainable):
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=True,
             )
-            model_config["lstm_use_prev_action"] = prev_a_r
-            model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Store multi-agent batch count mode.
-        self._by_agent_steps = self.config["count_steps_by"] == "agent_steps"
+        self._by_agent_steps = (
+            self.config["multiagent"].get("count_steps_by") == "agent_steps"
+        )
 
     @staticmethod
     @ExperimentalAPI
