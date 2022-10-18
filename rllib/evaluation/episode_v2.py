@@ -169,7 +169,6 @@ class EpisodeV2:
 
         Args:
             agent_id: Agent ID.
-            t: timestamp.
             init_obs: Initial observations.
         """
         policy = self.policy_map[self.policy_for(agent_id)]
