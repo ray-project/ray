@@ -4,7 +4,7 @@ Pattern: Using nested tasks to achieve nested parallelism
 =========================================================
 
 In this pattern, a remote task can dynamically call other remote tasks (including itself) for nested parallelism.
-This is useful when sub-tasks can be parallelized and the speedup due to nested parallelism is more than the overhead.
+This is useful when sub-tasks can be parallelized.
 
 Keepy in mind that nested tasks come with their own cost: extra worker processes, scheduling overhead, bookkeeping overhead, etc
 so make sure your nested tasks do significant work to hide the overhead. See :doc:`too-fine-grained-tasks` for more details.
