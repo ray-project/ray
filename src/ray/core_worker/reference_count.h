@@ -36,7 +36,7 @@ namespace core {
 
 /// Extract a key to identify a Address so that the flyweight can look
 /// up the Address from the pool.
-struct AddressWorkeridExtractor {
+struct AddressWorkerIdExtractor {
   const std::string &operator()(const rpc::Address &addr) const {
     return addr.worker_id();
   }
@@ -46,7 +46,7 @@ struct AddressWorkeridExtractor {
 /// we use boost::flyweight to maintain an intern table to reduce
 /// memory footprint per object.
 typedef boost::flyweight<
-    boost::flyweights::key_value<std::string, rpc::Address, AddressWorkeridExtractor>>
+    boost::flyweights::key_value<std::string, rpc::Address, AddressWorkerIdExtractor>>
     InternAddress;
 
 // Interface for mocking.
