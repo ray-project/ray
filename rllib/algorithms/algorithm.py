@@ -2302,14 +2302,14 @@ class Algorithm(Trainable):
         model_config = config.get("model", MODEL_DEFAULTS)
 
         # Multi-GPU settings.
-        simple_optim_setting = config["simple_optimizer"]
+        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework", "tf")
 
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config["num_gpus"] > 1:
+        if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
