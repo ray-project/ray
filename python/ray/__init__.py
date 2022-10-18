@@ -212,7 +212,6 @@ __all__ = [
     "client",
     "ClientBuilder",
     "cluster_resources",
-    "data",
     "get",
     "get_actor",
     "get_gpu_ids",
