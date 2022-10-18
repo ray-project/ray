@@ -246,6 +246,7 @@ class RolloutWorker(ParallelIteratorWorker):
         log_dir: Optional[str] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
+        dataset_shards: Optional[List[ray.data.dataset.Dataset]] = None,
         # Deprecated: This is all specified in `config` anyways.
         policy_config=DEPRECATED_VALUE,
         input_creator=DEPRECATED_VALUE,
@@ -479,6 +480,10 @@ class RolloutWorker(ParallelIteratorWorker):
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_workers
         )
+        # In case we are reading from distributed datasets, store the shards here
+        # and pick our shard by our worker-index.
+        self._ds_shards = dataset_shards
+        self.worker_index: int = worker_index
 
         if (
             tf1
@@ -494,14 +499,14 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.config.log_level:
             logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
-        if worker_index > 1:
+        if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
         elif self.config.log_level == "DEBUG":
             enable_periodic_logging()
 
         env_context = EnvContext(
             self.config.env_config,
-            worker_index=worker_index,
+            worker_index=self.worker_index,
             vector_index=0,
             num_workers=self.num_workers,
             remote=self.config.remote_worker_envs,
@@ -510,7 +515,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.env_context = env_context
         self.config: AlgorithmConfig = config
         self.callbacks: DefaultCallbacks = self.config.callbacks_class()
-        self.worker_index: int = worker_index
         self.recreated_worker: bool = recreated_worker
 
         # Setup current policy_mapping_fn (start with the one from the config).
@@ -529,7 +533,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.seed = (
             None
             if self.config.seed is None
-            else self.config.seed + worker_index + self.config.in_evaluation * 10000
+            else self.config.seed
+            + self.worker_index
+            + self.config.in_evaluation * 10000
         )
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
@@ -551,7 +557,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Create a (single) env for this worker.
         if not (
-            worker_index == 0
+            self.worker_index == 0
             and self.num_workers > 0
             and not self.config.create_env_on_local_worker
         ):
@@ -619,7 +625,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # to create self.env, but wrap(env) and self.env has a cyclic
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
-            _update_env_seed_if_necessary(self.env, self.seed, worker_index, 0)
+            _update_env_seed_if_necessary(self.env, self.seed, self.worker_index, 0)
             # Call custom callback function `on_sub_environment_created`.
             self.callbacks.on_sub_environment_created(
                 worker=self,
@@ -757,11 +763,13 @@ class RolloutWorker(ParallelIteratorWorker):
             pack = False
 
         # Create the IOContext for this worker.
-        self.io_context: IOContext = IOContext(log_dir, self.config, worker_index, self)
+        self.io_context: IOContext = IOContext(
+            log_dir, self.config, self.worker_index, self
+        )
 
         render = False
         if self.config.render_env is True and (
-            self.num_workers == 0 or worker_index == 1
+            self.num_workers == 0 or self.worker_index == 1
         ):
             render = True
 
@@ -1991,6 +1999,7 @@ class RolloutWorker(ParallelIteratorWorker):
             return lambda ioctx: ioctx.default_sampler_input()
         # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
         elif self.config.input_ == "dataset":
+            assert self._ds_shards is not None
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             return lambda ioctx: DatasetReader(

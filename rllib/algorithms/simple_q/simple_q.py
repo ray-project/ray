@@ -176,8 +176,6 @@ class SimpleQConfig(AlgorithmConfig):
         """Sets the training related configuration.
 
         Args:
-            timesteps_per_iteration: Minimum env steps to optimize for per train call.
-                This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.

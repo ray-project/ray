@@ -326,8 +326,8 @@ class Algorithm(Trainable):
         # TODO: In the future, only support AlgorithmConfig objects here.
         if isinstance(config, dict):
             default_config = self.get_default_config()
-            # self.get_default_config also returns a dict -> Last resort:
-            # Create core AlgorithmConfig from merged dicts.
+            # `self.get_default_config()` also returned a dict ->
+            # Last resort: Create core AlgorithmConfig from merged dicts.
             if isinstance(default_config, dict):
                 config = AlgorithmConfig.from_dict(
                     config_dict=self.merge_trainer_configs(default_config, config, True)

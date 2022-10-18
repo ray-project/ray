@@ -138,10 +138,6 @@ class CQL(SAC):
                 new="min_train_timesteps_per_iteration",
                 error=True,
             )
-            config["min_train_timesteps_per_iteration"] = config[
-                "timesteps_per_iteration"
-            ]
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Call super's validation method.
         super().validate_config(config)

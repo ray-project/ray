@@ -801,6 +801,7 @@ class WorkerSet:
             recreated_worker=recreated_worker,
             log_dir=self._logdir,
             spaces=spaces,
+            dataset_shards=self._ds_shards,
         )
 
         return worker

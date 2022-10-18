@@ -266,6 +266,7 @@ class AlgorithmConfig:
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
+        config.pop("_is_frozen")
 
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
@@ -320,7 +321,9 @@ class AlgorithmConfig:
         # the dict was derived from was already frozen (we don't want to copy the
         # frozenness).
         config_dict.pop("_is_frozen", None)
-        return config_obj.update_from_dict(config_dict)
+        config_obj.update_from_dict(config_dict)
+        config_obj._recompile_eval_config(config_obj.evaluation_config)
+        return config_obj
 
     def update_from_dict(
         self,
@@ -341,6 +344,9 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        # In case anythings changes that the eval config needs to know, we will have to
+        # recompile evaluation_config after this update.
+        eval_config = self.evaluation_config
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -359,6 +365,11 @@ class AlgorithmConfig:
                     "count_steps_by",
                 ]:
                     setattr(self, k, value[k])
+            # Special handling of eval config (normally an override dict):
+            # Re-compile our `evaluation_config` property (such that it's always a
+            # full AlgorithmConfig object itself).
+            elif key == "evaluation_config" and value is not None:
+                eval_config = value
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -369,6 +380,11 @@ class AlgorithmConfig:
                         f"`config_dict`! Property {key} not supported."
                     )
                 setattr(self, key, value)
+
+        # Now that all settings have been applied, update our eval config.
+        if eval_config is not None:
+            self._recompile_eval_config(eval_config)
+
         return self
 
     def freeze(self) -> None:
@@ -380,6 +396,9 @@ class AlgorithmConfig:
         if self._is_frozen:
             return
         self._is_frozen = True
+        # Also freeze underlying eval config, if applicable.
+        if isinstance(self.evaluation_config, AlgorithmConfig):
+            self.evaluation_config.freeze()
 
     def build(
         self,
@@ -1039,56 +1058,12 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        # Merge user-provided eval config overrides with `self`. This makes sure
-        # the eval config is always complete, no matter whether we have eval
-        # workers or perform evaluation on the (non-eval) local worker.
-        if evaluation_config is not None:
-            # Convert AlgorithmConfig into dict (for later updating from dict).
-            if isinstance(evaluation_config, AlgorithmConfig):
-                evaluation_config = evaluation_config.to_dict()
-
-            # Update with evaluation settings:
-            eval_config_obj = copy.deepcopy(self)
-            # Switch on the `in_evaluation` flag.
-            eval_config_obj.in_evaluation = True
-            eval_config_obj.update_from_dict(evaluation_config)
-            self.evaluation_config = eval_config_obj
-
         if evaluation_interval is not None:
             self.evaluation_interval = evaluation_interval
         if evaluation_duration is not None:
             self.evaluation_duration = evaluation_duration
-
         if evaluation_duration_unit is not None:
-            # Evaluation duration unit: episodes.
-            # Switch on `complete_episode` rollouts. Also, make sure
-            # rollout fragments are short so we never have more than one
-            # episode in one rollout.
-            if evaluation_duration_unit == "episodes":
-                self.evaluation_config.batch_mode = "complete_episodes"
-                self.evaluation_config.rollout_fragment_length = 1
-            # Evaluation duration unit: timesteps.
-            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
-            #   strictly along episode borders.
-            # Set `rollout_fragment_length` such that desired steps are divided
-            # equally amongst workers or - in "auto" duration mode - set it
-            # to a reasonably small number (10), such that a single `sample()`
-            # call doesn't take too much time and we can stop evaluation as soon
-            # as possible after the train step is completed.
-            else:
-                self.evaluation_config.batch_mode = "truncate_episodes"
-                self.evaluation_config.rollout_fragment_length = (
-                    10
-                    if self.evaluation_duration == "auto"
-                    else int(
-                        math.ceil(
-                            self.evaluation_duration
-                            / (self.evaluation_num_workers or 1)
-                        )
-                    )
-                )
             self.evaluation_duration_unit = evaluation_duration_unit
-
         if evaluation_sample_timeout_s is not None:
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not None:
@@ -1145,6 +1120,11 @@ class AlgorithmConfig:
                 f"`evaluation_duration` ({self.evaluation_duration}) must be an "
                 f"int and >0!"
             )
+
+        # Merge user-provided eval config overrides with `self`. This makes sure
+        # the eval config is always complete, no matter whether we have eval
+        # workers or perform evaluation on the (non-eval) local worker.
+        self._recompile_eval_config(evaluation_config or self.evaluation_config)
 
         return self
 
@@ -1658,15 +1638,63 @@ class AlgorithmConfig:
         super().__setattr__(key, value)
 
     def __contains__(self, item) -> bool:
-        prop = self._translate_special_keys(item)
+        prop = self._translate_special_keys(item, warn_deprecated=False)
         return hasattr(self, prop)
 
     def get(self, key, default=None):
-        prop = self._translate_special_keys(key)
+        prop = self._translate_special_keys(key, warn_deprecated=False)
         return getattr(self, prop, default)
 
     def pop(self, key, default=None):
         return self.get(key, default)
+
+    def _recompile_eval_config(
+        self,
+        evaluation_config: Union["AlgorithmConfig", AlgorithmConfigDict],
+    ) -> None:
+        """Re-creates `self.evaluation_config` from given override dict.
+
+        This makes sure that `self.evaluation_config` is always its own fully valid
+        and complete AlgorithmConfig.
+        """
+        # Convert AlgorithmConfig into dict (for later updating from dict).
+        if isinstance(evaluation_config, AlgorithmConfig):
+            evaluation_config = evaluation_config.to_dict()
+
+        # Update with evaluation settings:
+        eval_config_obj = copy.deepcopy(self)
+        # Switch on the `in_evaluation` flag.
+        eval_config_obj.in_evaluation = True
+        eval_config_obj.update_from_dict(evaluation_config)
+
+        # Evaluation duration unit: episodes.
+        # Switch on `complete_episode` rollouts. Also, make sure
+        # rollout fragments are short so we never have more than one
+        # episode in one rollout.
+        if self.evaluation_duration_unit == "episodes":
+            eval_config_obj.batch_mode = "complete_episodes"
+            eval_config_obj.rollout_fragment_length = 1
+        # Evaluation duration unit: timesteps.
+        # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
+        #   strictly along episode borders.
+        # Set `rollout_fragment_length` such that desired steps are divided
+        # equally amongst workers or - in "auto" duration mode - set it
+        # to a reasonably small number (10), such that a single `sample()`
+        # call doesn't take too much time and we can stop evaluation as soon
+        # as possible after the train step is completed.
+        else:
+            eval_config_obj.batch_mode = "truncate_episodes"
+            eval_config_obj.rollout_fragment_length = (
+                10
+                if self.evaluation_duration == "auto"
+                else int(
+                    math.ceil(
+                        self.evaluation_duration / (self.evaluation_num_workers or 1)
+                    )
+                )
+            )
+
+        self.evaluation_config = eval_config_obj
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
