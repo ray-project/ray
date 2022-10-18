@@ -23,4 +23,3 @@ class RLModule:
     def set_state(self, state):
         """Sets the current state of the module from a dict."""
         pass
-    

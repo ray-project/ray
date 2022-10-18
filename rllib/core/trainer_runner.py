@@ -10,7 +10,7 @@ from ray.air.config import ScalingConfig
 
 class TrainerRunner:
     """This gets instantiated in Algorithm and then is used with calls to .update() to actually perform 1 gradient step
-    
+
     Public API:
         .update()
         .get_state() -> returns the state of the model on worker 0 which should be in sync with the other workers
@@ -18,6 +18,7 @@ class TrainerRunner:
         .apply(fn, *args, **kwargs) -> apply a function to all workers while having access to the attributes
             >>> trainer_runner.apply(lambda rl_trainer_worker: rl_trainer_worker.get_weights())
     """
+
     def __init__(self, trainer_class, trainer_config, framework="torch"):
         """TODO: frameowrk seems redundant if you know that the trainer_class is a subclass of TorchTrainer or TFTrainer
 
@@ -44,10 +45,10 @@ class TrainerRunner:
             num_workers=scaling_config.num_workers,
             num_cpus_per_worker=scaling_config.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            max_retries=0, # TODO: make this configurable in trainer_config with default 0
+            max_retries=0,  # TODO: make this configurable in trainer_config with default 0
         )
 
-        # TODO: let's not pass this into the config which will cause information leakage into the SARLTrainer about other workers. 
+        # TODO: let's not pass this into the config which will cause information leakage into the SARLTrainer about other workers.
         _scaling_config = {"world_size": resources["num_workers"]}
         trainer_config["_scaling_config"] = _scaling_config
         self.backend_executor.start(
@@ -76,11 +77,11 @@ class TrainerRunner:
 
     def update(self, batch=None, **kwargs):
         """TODO: acount for **kwargs
-        
+
         Example in DQN:
             >>> trainer_runner.update(batch) # updates the gradient
             >>> trainer_runner.update(update_target=True) # should soft-update the target network
-        
+
         """
         if batch is None:
             for worker in self.workers:
