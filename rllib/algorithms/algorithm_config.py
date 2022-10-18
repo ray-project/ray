@@ -312,13 +312,32 @@ class AlgorithmConfig:
             config_dict: The legacy formatted python config dict for some algorithm.
 
         Returns:
-             A new TrainerConfig object that matches the given python config dict.
+             A new AlgorithmConfig object that matches the given python config dict.
         """
         # Create a default config object of this class.
         config_obj = cls()
         return config_obj.update_from_dict(config_dict)
 
-    def update_from_dict(self, config_dict: dict) -> "AlgorithmConfig":
+    def update_from_dict(
+        self,
+        config_dict: PartialAlgorithmConfigDict,
+    ) -> "AlgorithmConfig":
+        """Modifies this AlgorithmConfig via the provided python config dict.
+
+        Warns if `config_dict` contains deprecated keys.
+        Silently sets even properties of `self` that do NOT exist. This way, this method
+        may be used to configure custom Policies which do not have their own specific
+        AlgorithmConfig classes, e.g.
+        `ray.rllib.examples.policy.random_policy::RandomPolicy`.
+
+        Args:
+            config_dict: The old-style python config dict (PartialAlgorithmConfigDict)
+                to use for overriding some properties defined in there.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -375,7 +394,9 @@ class AlgorithmConfig:
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
-                (instead of `self`) as config.
+                (instead of `self`) as config. This is useful in case you would like to
+                recycle the same AlgorithmConfig over and over, e.g. in a test case, in
+                which we loop over different DL-frameworks.
 
         Returns:
             A ray.rllib.algorithms.algorithm.Algorithm object.
@@ -389,7 +410,6 @@ class AlgorithmConfig:
 
         return self.algo_class(
             config=self if not use_copy else copy.deepcopy(self),
-            env=None,  # TODO: deprecate `env` arg from Algorithm c'tor signature.
             logger_creator=self.logger_creator,
         )
 
@@ -1041,7 +1061,7 @@ class AlgorithmConfig:
             # rollout fragments are short so we never have more than one
             # episode in one rollout.
             if evaluation_duration_unit == "episodes":
-                self.evaluation_config.batch_mode = ("complete_episodes",)
+                self.evaluation_config.batch_mode = "complete_episodes"
                 self.evaluation_config.rollout_fragment_length = 1
             # Evaluation duration unit: timesteps.
             # - Set `batch_mode=truncate_episodes` so we don't perform rollouts

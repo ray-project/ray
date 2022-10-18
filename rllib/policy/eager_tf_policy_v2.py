@@ -10,7 +10,6 @@ import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -41,6 +40,7 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
@@ -62,11 +62,10 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: AlgorithmConfig,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
-        # assert config.framework_str == "tf2"
-        self.framework = "tf2"
+        self.framework = config.get("framework", "tf2")
 
         # Log device.
         logger.info(
@@ -146,7 +145,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: AlgorithmConfig,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -209,13 +208,13 @@ class EagerTFPolicyV2(Policy):
         """
         # Default ModelV2 model.
         _, logit_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config.model
+            self.action_space, self.config["model"]
         )
         return ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
             logit_dim,
-            self.config.model,
+            self.config["model"],
             framework=self.framework,
         )
 
@@ -376,7 +375,7 @@ class EagerTFPolicyV2(Policy):
             A local optimizer or a list of local optimizers to use for this
                 Policy's Model.
         """
-        return tf.keras.optimizers.Adam(self.config.lr)
+        return tf.keras.optimizers.Adam(self.config["lr"])
 
     def _init_dist_class(self):
         if is_overridden(self.action_sampler_fn) or is_overridden(
@@ -390,7 +389,7 @@ class EagerTFPolicyV2(Policy):
             return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
-                self.action_space, self.config.model
+                self.action_space, self.config["model"]
             )
             return dist_class
 
@@ -457,7 +456,7 @@ class EagerTFPolicyV2(Policy):
             input_dict,
             state_batches,
             # TODO: Passing episodes into a traced method does not work.
-            None if self.config.eager_tracing else episodes,
+            None if self.config["eager_tracing"] else episodes,
             explore,
             timestep,
         )
@@ -555,7 +554,7 @@ class EagerTFPolicyV2(Policy):
         action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
-        if not actions_normalized and self.config.normalize_actions:
+        if not actions_normalized and self.config["normalize_actions"]:
             actions = normalize_action(actions, self.action_space_struct)
 
         log_likelihoods = action_dist.logp(actions)
@@ -875,7 +874,7 @@ class EagerTFPolicyV2(Policy):
             # and tf-eager.
             optimizer = _OptimizerWrapper(tape)
             # More than one loss terms/optimizers.
-            if self.config._tf_policy_handles_more_than_one_loss:
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads_and_vars = self.compute_gradients_fn(
                     [optimizer] * len(losses), losses
                 )
@@ -896,7 +895,7 @@ class EagerTFPolicyV2(Policy):
 
         # `grads_and_vars` is returned a list (len=num optimizers/losses)
         # of lists of (grad, var) tuples.
-        if self.config._tf_policy_handles_more_than_one_loss:
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
             grads = [[g for g, _ in g_and_v] for g_and_v in grads_and_vars]
         # `grads_and_vars` is returned as a list of (grad, var) tuples.
         else:
@@ -914,12 +913,12 @@ class EagerTFPolicyV2(Policy):
         self._re_trace_counter += 1
 
         if is_overridden(self.apply_gradients_fn):
-            if self.config._tf_policy_handles_more_than_one_loss:
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
                 self.apply_gradients_fn(self._optimizers, grads_and_vars)
             else:
                 self.apply_gradients_fn(self._optimizer, grads_and_vars)
         else:
-            if self.config._tf_policy_handles_more_than_one_loss:
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
                 for i, o in enumerate(self._optimizers):
                     o.apply_gradients(
                         [(g, v) for g, v in grads_and_vars[i] if g is not None]

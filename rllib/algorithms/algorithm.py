@@ -320,7 +320,6 @@ class Algorithm(Trainable):
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
-
         """
 
         # Resolve possible dict into an AlgorithmConfig object.
