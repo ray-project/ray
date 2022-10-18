@@ -2,16 +2,15 @@ from typing import Mapping, Any
 import abc
 from ray.rllib.models.specs.specs_base import TensorSpecs
 from ray.rllib.utils.annotations import ExperimentalAPI
-import functools
 from ray.rllib.core.base_module import Module
 
 from ray.rllib.models.specs.specs_dict import apply_specs, ModelSpecDict
-from ray.rllib.models.action_dist import ActionDistribution
+
 
 @ExperimentalAPI
 class RLModule(Module):
     """Base class for RLlib modules.
-    
+
     Here is the pseudo code for how the forward methods are called:
 
     # During Training (acting in env from each rollout worker)
@@ -41,19 +40,19 @@ class RLModule(Module):
 
     # During Inference (acting in env during evaluation)
     ----------------------------------------------------------
-    .. code-block:: python   
+    .. code-block:: python
         module: RLModule = ...
         obs = env.reset()
         while not done:
             fwd_outputs = module.forward_inference({"obs": obs})
             action = fwd_outputs["action"]
             next_obs, reward, done, info = env.step(action)
-            next_obs = obs   
+            next_obs = obs
 
     Args:
         config: The config object for the module.
         **kwargs: Foward compatibility kwargs.
-    
+
     Abstract Methods:
         forward_train: Forward pass during training.
         forward_exploration: Forward pass during training for exploration.
@@ -67,14 +66,22 @@ class RLModule(Module):
         super().__init_subclass__()
 
         if not hasattr(cls.forward_exploration, "__apply_specs__"):
-            setattr(cls, "forward_exploration", apply_specs(
-                cls.forward_exploration, output_specs="output_specs_exploration"
-            ))
+            setattr(
+                cls,
+                "forward_exploration",
+                apply_specs(
+                    cls.forward_exploration, output_specs="output_specs_exploration"
+                ),
+            )
 
         if not hasattr(cls.forward_inference, "__apply_specs__"):
-            setattr(cls, "forward_inference", apply_specs(
-                cls.forward_inference, output_specs="output_specs_inference"
-            ))
+            setattr(
+                cls,
+                "forward_inference",
+                apply_specs(
+                    cls.forward_inference, output_specs="output_specs_inference"
+                ),
+            )
 
     @property
     @abc.abstractmethod
@@ -88,12 +95,16 @@ class RLModule(Module):
 
     @apply_specs(output_specs="output_specs_inference")
     @abc.abstractmethod
-    def forward_inference(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def forward_inference(
+        self, batch: Mapping[str, Any], **kwargs
+    ) -> Mapping[str, Any]:
         """Forward-pass during evaluation"""
-    
+
     @apply_specs(output_specs="output_specs_exploration")
     @abc.abstractmethod
-    def forward_exploration(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def forward_exploration(
+        self, batch: Mapping[str, Any], **kwargs
+    ) -> Mapping[str, Any]:
         """Forward-pass during exploration"""
 
     @abc.abstractmethod
@@ -102,6 +113,5 @@ class RLModule(Module):
 
 
 class MultiAgentRLModule(RLModule):
-
     def forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         return batch

@@ -1,5 +1,3 @@
-
-
 from ray.rllib.models.temp_spec_classes import SpecDict
 
 import abc
@@ -17,7 +15,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 
 
-# def check_module_spec(fn: Callable[..., Dict], 
+# def check_module_spec(fn: Callable[..., Dict],
 #     input_spec=None, output_spec=None, filter=True):
 #     """A decorator that checks input/output spec"""
 #     @functools.wraps(fn)
@@ -25,7 +23,7 @@ from ray.rllib.models.specs.specs_dict import ModelSpecDict
 #         input_data = NestedDict(input_data)
 #         if input_spec:
 #             input_spec.validate(input_data)
-            
+
 #         if filter:
 #             input_data = input_data.filter(input_data)
 
@@ -38,10 +36,9 @@ from ray.rllib.models.specs.specs_dict import ModelSpecDict
 
 @ExperimentalAPI
 class Module(abc.ABC):
-
     def __init__(self, name: Optional[str] = None):
         self._name = name or self.__class__.__name__
-    
+
     @property
     def name(self) -> str:
         """Returns the name of this module."""
@@ -51,7 +48,7 @@ class Module(abc.ABC):
     @abc.abstractmethod
     def fwd_in_spec(self) -> SpecDict:
         """Returns the spec of the input of this module."""
-    
+
     @property
     @abc.abstractmethod
     def fwd_out_spec(self) -> SpecDict:
@@ -76,41 +73,45 @@ class Module(abc.ABC):
     def _fwd(self, fwd_in: NestedDict[Any], **kwargs) -> NestedDict[Any]:
         """The actual forward pass of this module."""
 
+
 @ExperimentalAPI
 class RecurrentModule(Module):
-
     @property
     def fwd_in_spec(self) -> SpecDict:
         """Returns the spec of the input of this module."""
-        return ModelSpecDict({
-            "input_dict": self.input_spec,
-            "state_dict": self.prev_state_spec,
-        })
+        return ModelSpecDict(
+            {
+                "input_dict": self.input_spec,
+                "state_dict": self.prev_state_spec,
+            }
+        )
 
     @property
     def fwd_out_spec(self) -> SpecDict:
         """Returns the spec of the output of this module."""
-        return ModelSpecDict({
-            "output_dict": self.output_spec,
-            "state_dict": self.next_state_spec,
-        })
+        return ModelSpecDict(
+            {
+                "output_dict": self.output_spec,
+                "state_dict": self.next_state_spec,
+            }
+        )
 
     @property
     @abc.abstractmethod
     def prev_state_spec(self) -> SpecDict:
         """Returns the spec of the previous state of this module."""
-    
+
     @property
     @abc.abstractmethod
     def input_spec(self) -> SpecDict:
         """Returns the spec of the input of this module."""
-    
+
     @property
     @abc.abstractmethod
     def output_spec(self) -> SpecDict:
         """Returns the spec of the output of this module."""
 
-    @property   
+    @property
     @abc.abstractmethod
     def next_state_spec(self) -> SpecDict:
         """Returns the spec of the next state of this module."""
@@ -134,5 +135,3 @@ class RecurrentModule(Module):
     @abc.abstractmethod
     def _initial_state(self) -> TensorDict:
         """The initial state of this module."""
-    
-    

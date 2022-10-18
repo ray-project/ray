@@ -1,5 +1,5 @@
 import functools
-from typing import Union, Type, Mapping, Any, Dict, Callable
+from typing import Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -92,7 +92,7 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
     def validate(
         self,
         data: DATA_TYPE,
-        exact_match: bool = True,
+        exact_match: bool = False,
     ) -> None:
         """Checks whether the data matches the spec.
 
@@ -132,26 +132,49 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
 
 def check_specs(
-    input_spec: str = "", 
+    input_spec: str = "",
     output_spec: str = "",
     filter: bool = True,
     cache: bool = False,
+    input_exact_match: bool = False,
+    output_exact_match: bool = False,
 ):
-    """A general-purpose [stateful decorator](https://realpython.com/primer-on-python-decorators/#stateful-decorators) to enforce input/output specs for any instance method that has `input_dict` in input args and returns and a dict. 
-    
+    """A general-purpose [stateful decorator]
+    (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
+    enforce input/output specs for any instance method that has `input_dict` in input
+    args and returns and a dict.
 
-    It has the ability to filter the input dict to only contain the keys in the spec and also to cache to make sure the spec check is only called once in the lifetime of the instance.
 
-    
+    It has the ability to filter the input dict to only contain the keys in the spec
+    and also to cache to make sure the spec check is only called once in the lifetime
+    of the instance.
+
+
     Args:
-        func: The instance method to decorate. It should be a callable that takes `self` as the first argument, `input_dict` as the second argument and any other keyword argument thereafter. It should return a dict.
-        input_spec: `getattr(self, input_spec)` should correspond to the spec that `input_dict` should comply with
-        output_spec: `getattr(self, output_spec)` should correspond to the spec that the returned dict should comply with. 
-        filter: If True, the input_dict is filtered by its corresponding spec tree structure and then passed into the implemented function to make sure user is not confounded by unnecessary data. 
-        cache: If True, only checks the input/output for the first time the instance method is called. 
+        func: The instance method to decorate. It should be a callable that takes
+            `self` as the first argument, `input_dict` as the second argument and any
+            other keyword argument thereafter. It should return a dict.
+        input_spec: `getattr(self, input_spec)` should correspond to the spec that
+            `input_dict` should comply with
+        output_spec: `getattr(self, output_spec)` should correspond to the spec that
+            the returned dict should comply with.
+        filter: If True, the input_dict is filtered by its corresponding spec tree
+            structure and then passed into the implemented function to make sure user
+            is not confounded by unnecessary data.
+        cache: If True, only checks the input/output for the first time the instance
+            method is called.
+        input_exact_match: If True, the input data must match the spec exactly.
+            Otherwise, the data is validated as long as it contains at least the
+            elements of the spec, but can contain more entries.
+        output_exact_match: If True, the output data must match the spec exactly.
+            Otherwise, the data is validated as long as it contains at least the
+            elements of the spec, but can contain more entries.
 
     Returns:
-        A wrapped instance method that has `__checked_specs__` attribute. This is a special attribute can be used as a decorator marker and also for the cache. 
+        A wrapped instance method. In case of `cache=True`, after the first invokation
+        of the decorated method, the intance will have `__checked_specs_cache__`
+        attribute that store which method has been invoked at least once. This is a
+        special attribute can be used as a marker for the cache.
     """
 
     if not input_spec and not output_spec:
@@ -161,25 +184,30 @@ def check_specs(
         @functools.wraps(func)
         def wrapper(self, input_dict, **kwargs):
 
+            if cache and not hasattr(self, "__checked_specs_cache__"):
+                self.__checked_specs_cache__ = {}
+
             def should_check():
-                return not cache or not wrapper.__checked_specs__
+                return not cache or func.__name__ not in self.__checked_specs_cache__
 
             input_dict_ = NestedDict(input_dict)
-        
+
             if input_spec and should_check():
                 input_spec_ = getattr(self, input_spec)
-                input_spec_.validate(input_dict_)
+                input_spec_.validate(input_dict_, exact_match=input_exact_match)
                 if filter:
                     input_dict_ = input_dict_.filter(input_spec_)
 
             output_dict_ = func(self, input_dict_, **kwargs)
             if output_spec and should_check():
                 output_spec_ = getattr(self, output_spec)
-                output_spec_.validate(output_dict_)
-                wrapper.__checked_specs__ = True
+                output_spec_.validate(output_dict_, exact_match=output_exact_match)
+
+            if cache:
+                self.__checked_specs_cache__[func.__name__] = True
+
             return output_dict_
-        
-        wrapper.__checked_specs__ = False
+
         return wrapper
 
     return decorator

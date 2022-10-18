@@ -1,25 +1,29 @@
-
 import unittest
 import abc
+import time
+import numpy as np
 
 from typing import Dict, Any
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.utils.nested_dict import NestedDict
 
+ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
+
+
 class AbstractInterfaceClass(abc.ABC):
-    """An abstract class that has a couple of methods, each having their own 
+    """An abstract class that has a couple of methods, each having their own
     input/output constraints."""
 
     @property
     @abc.abstractmethod
     def input_spec(self) -> ModelSpecDict:
         pass
-    
+
     @property
     @abc.abstractmethod
     def output_spec(self) -> ModelSpecDict:
         pass
-        
+
     @check_specs(input_spec="input_spec", output_spec="output_spec")
     @abc.abstractmethod
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -35,15 +39,16 @@ class AbstractInterfaceClass(abc.ABC):
     def check_only_output(self, input_dict) -> Dict[str, Any]:
         pass
 
-    # @check_specs(input_spec="input_spec", output_spec="output_spec", cache=True)
-    # @abc.abstractmethod
-    # def check_input_and_output_with_cache(self, input_dict) -> Dict[str, Any]:
-    #     pass
+    @check_specs(input_spec="input_spec", output_spec="output_spec", cache=True)
+    @abc.abstractmethod
+    def check_input_and_output_with_cache(self, input_dict) -> Dict[str, Any]:
+        pass
 
-    # @check_specs(input_spec="input_spec", output_spec="output_spec", filter=False)
-    # @abc.abstractmethod
-    # def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
-    #     pass
+    @check_specs(input_spec="input_spec", output_spec="output_spec", filter=False)
+    @abc.abstractmethod
+    def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
+        pass
+
 
 class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
@@ -55,10 +60,9 @@ class InputNumberOutputFloat(AbstractInterfaceClass):
     @property
     def output_spec(self):
         return ModelSpecDict({"output": float})
-    
+
 
 class CorrectImplementation(InputNumberOutputFloat):
-
     def run(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         output = float(input_dict["input"]) * 2
         return {"output": output}
@@ -67,14 +71,14 @@ class CorrectImplementation(InputNumberOutputFloat):
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
         if len(input_dict) > 1 or "input" not in input_dict:
-            raise ValueError("Only one key is allowed in the input_dict in check_input_and_output")
+            raise ValueError(ONLY_ONE_KEY_ALLOWED)
         return self.run(input_dict)
 
     @check_specs(input_spec="input_spec")
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
         if len(input_dict) > 1 or "input" not in input_dict:
-            raise ValueError("Only one key is allowed in the input_dict in check_only_input")
+            raise ValueError(ONLY_ONE_KEY_ALLOWED)
 
         out = self.run(input_dict)
 
@@ -85,25 +89,34 @@ class CorrectImplementation(InputNumberOutputFloat):
     def check_only_output(self, input_dict) -> Dict[str, Any]:
         # there is no input spec, so we can pass anything
         if "input" in input_dict:
-            raise ValueError("input_dict should not have `input` key in check_only_output")
-        
+            raise ValueError(
+                "input_dict should not have `input` key in check_only_output"
+            )
+
         return self.run({"input": input_dict["not_input"]})
 
-    # def check_input_and_output_with_cache(self, input_dict) -> Dict[str, Any]:
-    #     return self.run(input_dict)
+    @check_specs(input_spec="input_spec", output_spec="output_spec", cache=True)
+    def check_input_and_output_with_cache(self, input_dict) -> Dict[str, Any]:
+        return self.run(input_dict)
 
-    # def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
-    #     return self.run(input_dict)
+    @check_specs(input_spec="input_spec", output_spec="output_spec", filter=False)
+    def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
+        # The assumption is that the unittest input dict has more keys than just `input`
+        # This line should return an error
+        if len(input_dict) > 1 or "input" not in input_dict:
+            raise ValueError(
+                "Only one key is allowed in the input_dict in check_input_and_output"
+            )
+        return self.run(input_dict)
+
 
 class IncorrectImplementation(CorrectImplementation):
-
     def run(self, input_dict) -> Dict[str, Any]:
         output = str(input_dict["input"] * 2)
         return {"output": output}
 
-        
-class TestCheckSpecs(unittest.TestCase):
 
+class TestCheckSpecs(unittest.TestCase):
     def test_check_input_and_output(self):
 
         correct_module = CorrectImplementation()
@@ -113,42 +126,102 @@ class TestCheckSpecs(unittest.TestCase):
         correct_module.output_spec.validate(NestedDict(output))
 
         # this should raise an error saying that the `input` key is missing
-        self.assertRaises(ValueError, lambda: correct_module.check_input_and_output({"not_input": 2}))
+        self.assertRaises(
+            ValueError, lambda: correct_module.check_input_and_output({"not_input": 2})
+        )
 
     def test_check_only_input(self):
         correct_module = CorrectImplementation()
         # this should not raise any error since input matches the input specs
         output = correct_module.check_only_input({"input": 2})
         # output can be anything since ther is no output_spec
-        self.assertRaises(ValueError, lambda: correct_module.output_spec.validate(NestedDict(output)))
-
+        self.assertRaises(
+            ValueError, lambda: correct_module.output_spec.validate(NestedDict(output))
+        )
 
     def test_check_only_output(self):
         correct_module = CorrectImplementation()
-        # this should not raise any error since input should not match input_spec
+        # this should not raise any error since input does not have to match input_spec
         output = correct_module.check_only_output({"not_input": 2})
         # output should match the output specs
         correct_module.output_spec.validate(NestedDict(output))
- 
-    def test_filter(self):
-        pass
 
+    def test_incorrect_implementation(self):
+        incorrect_module = IncorrectImplementation()
+        # this should raise an error saying that the output does not match the
+        # output_spec
+        self.assertRaises(
+            ValueError, lambda: incorrect_module.check_input_and_output({"input": 2})
+        )
+
+        # this should not raise an error because output is not forced to be checked
+        incorrect_module.check_only_input({"input": 2})
+
+        # this should raise an error because output does not match the output_spec
+        self.assertRaises(
+            ValueError, lambda: incorrect_module.check_only_output({"not_input": 2})
+        )
+
+    def test_filter(self):
+        # create an arbitrary large input dict and test the behavior with and without a
+        # filter
+        input_dict = NestedDict({"input": 2})
+        for i in range(100):
+            inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
+            input_dict[inds] = i
+
+        correct_module = CorrectImplementation()
+
+        # should run without errors
+        correct_module.check_input_and_output(input_dict)
+
+        # should raise an error (read the implementation of
+        # check_input_and_output_wo_filter)
+        self.assertRaises(
+            ValueError,
+            lambda: correct_module.check_input_and_output_wo_filter(input_dict),
+        )
 
     def test_cache(self):
-        pass
-        
+        # for N times, run the function twice and compare the time of each run.
+        # the second run should be faster since the output is cached
+        # to make sure the time is not too small, we run this on an input dict that is
+        # arbitrarily large and nested
+
+        input_dict = NestedDict({"input": 2})
+        for i in range(100):
+            inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
+            input_dict[inds] = i
+
+        N = 500
+        for fname in ["check_input_and_output", "check_input_and_output_with_cache"]:
+            time1, time2 = [], []
+            for _ in range(N):
+
+                module = CorrectImplementation()
+
+                fn = getattr(module, fname)
+                start = time.time()
+                fn(input_dict)
+                end = time.time()
+                time1.append(end - start)
+
+                start = time.time()
+                fn(input_dict)
+                end = time.time()
+                time2.append(end - start)
+
+            lower_bound_time1 = np.mean(time1) - 3 * np.std(time1)
+            upper_bound_time2 = np.mean(time2) + 3 * np.std(time2)
+
+            if fname == "check_input_and_output_with_cache":
+                self.assertGreater(lower_bound_time1, upper_bound_time2)
+            else:
+                self.assertGreater(upper_bound_time2, lower_bound_time1)
 
 
 if __name__ == "__main__":
     import pytest
     import sys
 
-
-
-    # def f(self, *args, **kwargs):
-    #     pass
-
-    # wrapped_f = check_specs(input_spec="input_specs", output_spec="output_specs")(f)
-
-    # breakpoint()
     sys.exit(pytest.main(["-v", __file__]))

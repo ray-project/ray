@@ -1,11 +1,10 @@
-
 from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 
 import torch
 import torch.nn as nn
 
-class SimplePPOModule(TorchRLModule):
 
+class SimplePPOModule(TorchRLModule):
     def __init__(self, config) -> None:
         super().__init__(config)
 
@@ -20,15 +19,9 @@ class SimplePPOModule(TorchRLModule):
         self.pi_head = nn.Linear(64, 2)
         self.v_head = nn.Linear(64, 1)
 
-        self.pi = nn.Sequential(
-            self.encoder,
-            self.pi_head
-        )
+        self.pi = nn.Sequential(self.encoder, self.pi_head)
 
-        self.v = nn.Sequential(
-            self.encoder,
-            self.v_head
-        )
+        self.v = nn.Sequential(self.encoder, self.v_head)
 
     def forward_inference(self, batch):
         """During inference, we only return action = mu"""
@@ -42,7 +35,7 @@ class SimplePPOModule(TorchRLModule):
         return {"action_dist": action_dist}
 
     def forward_train(self, batch, **kwargs):
-        
+
         encoded_state = self.encoder(batch["obs"])
         mu, scale = self.pi_head(encoded_state).chunk(2, dim=-1)
         action_dist = torch.distributions.Normal(mu, scale.exp())
