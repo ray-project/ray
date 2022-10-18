@@ -383,18 +383,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
-      python/ray/tune/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+    - ./ci/run/run_bazel_test_with_sharding.sh
+      --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
-      $(cat test_shard.txt)
+      python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples (medium)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
