@@ -103,7 +103,6 @@ tqdm
 testfixtures
 werkzeug<2.2.0
 xlrd
-memray; platform_system != "Windows"
 
 # For doc tests
 myst-parser==0.15.2
