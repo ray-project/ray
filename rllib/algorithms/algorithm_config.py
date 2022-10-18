@@ -1667,7 +1667,7 @@ class AlgorithmConfig:
         eval_config_obj = copy.deepcopy(self)
         # Switch on the `in_evaluation` flag.
         eval_config_obj.in_evaluation = True
-        eval_config_obj.update_from_dict(evaluation_config)
+        eval_config_obj.update_from_dict(evaluation_config or {})
 
         # Evaluation duration unit: episodes.
         # Switch on `complete_episode` rollouts. Also, make sure
