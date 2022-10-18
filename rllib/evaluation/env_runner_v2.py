@@ -637,6 +637,9 @@ class EnvRunnerV2:
                 for d in processed:
                     # Record transition info if applicable.
                     if not episode.has_init_obs(d.agent_id):
+                        assert d.data.raw_dict[SampleBatch.T] == -1, "Initial " \
+                                                                     "timestep " \
+                                                                     "must be zero."
                         episode.add_init_obs(
                             agent_id=d.agent_id,
                             init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
