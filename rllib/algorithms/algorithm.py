@@ -1980,7 +1980,13 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls.get_default_config(), **config)
+        default_config = cls.get_default_config()
+        # TODO: Have to make this work for now for AlgorithmConfigs (returned by
+        #  get_default_config(). Use only AlgorithmConfigs once all Algorithms
+        #  return an AlgorothmConfig from their get_default_config() method.
+        if not isinstance(default_config, dict):
+            default_config = default_config.to_dict()
+        cf = dict(default_config, **config)
         eval_cf = cf["evaluation_config"]
 
         local_worker = {

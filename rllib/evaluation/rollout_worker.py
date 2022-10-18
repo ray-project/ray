@@ -453,9 +453,10 @@ class RolloutWorker(ParallelIteratorWorker):
         global _global_worker
         _global_worker = self
 
+        # Default config needed?
         if config is None or isinstance(config, dict):
             config = AlgorithmConfig().update_from_dict(config or {})
-
+        # Freeze config, so no one else can alter it from here on.
         config.freeze()
 
         # Set extra python env variables before calling super constructor.
