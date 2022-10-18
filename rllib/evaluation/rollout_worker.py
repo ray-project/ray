@@ -1,8 +1,10 @@
 from collections import defaultdict
 import copy
+import importlib.util
 import logging
 import os
 import platform
+from types import FunctionType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -38,10 +40,23 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.offline import (
+    D4RLReader,
+    DatasetReader,
+    DatasetWriter,
+    IOContext,
+    InputReader,
+    JsonReader,
+    JsonWriter,
+    MixedInput,
+    NoopOutput,
+    OutputWriter,
+    ShuffledInput,
+)
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.filter import NoFilter
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
@@ -49,7 +64,7 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import check_env, force_list, merge_dicts
+from ray.rllib.utils import check_env, force_list
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
@@ -66,10 +81,8 @@ from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.typing import (
     AgentID,
-    EnvConfigDict,
     EnvCreator,
     EnvType,
-    ModelConfigDict,
     ModelGradients,
     ModelWeights,
     MultiAgentPolicyConfigDict,
@@ -82,12 +95,12 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
+from ray.tune.registry import registry_contains_input, registry_get_input
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
     from ray.rllib.evaluation.episode import Episode
-    from ray.rllib.evaluation.observation_function import ObservationFunction
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -224,17 +237,15 @@ class RolloutWorker(ParallelIteratorWorker):
         tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         config: Optional["AlgorithmConfig"] = None,
         worker_index: int = 0,
+        num_workers: Optional[int] = None,
         recreated_worker: bool = False,
         log_dir: Optional[str] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        default_policy_class: Optional[Type[Policy]] = None,
         # Deprecated: This is all specified in `config` anyways.
         policy_config=DEPRECATED_VALUE,
-        input_creator: Callable[
-            [IOContext], InputReader
-        ] = lambda ioctx: ioctx.default_sampler_input(),
-        output_creator: Callable[
-            [IOContext], OutputWriter
-        ] = lambda ioctx: NoopOutput(),
+        input_creator=DEPRECATED_VALUE,
+        output_creator=DEPRECATED_VALUE,
         rollout_fragment_length=DEPRECATED_VALUE,
         count_steps_by=DEPRECATED_VALUE,
         batch_mode=DEPRECATED_VALUE,
@@ -257,7 +268,6 @@ class RolloutWorker(ParallelIteratorWorker):
         seed=DEPRECATED_VALUE,
         log_level=DEPRECATED_VALUE,
         callbacks=DEPRECATED_VALUE,
-        num_workers=DEPRECATED_VALUE,
         disable_env_checking=DEPRECATED_VALUE,
         policy_spec=DEPRECATED_VALUE,
         policy_mapping_fn=DEPRECATED_VALUE,
@@ -287,6 +297,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
@@ -294,17 +305,23 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_spec != DEPRECATED_VALUE:
             deprecation_warning(
                 "policy_spec",
-                "config.multi_agent(policies={'default_policy': "
-                "PolicySpec([some class])})",
-                error=False,
+                "RolloutWorker(default_policy_class=...)",
+                error=True,
             )
-            assert config is None
-            config = AlgorithmConfig().multi_agent(
-                policies={DEFAULT_POLICY_ID: PolicySpec(policy_class=policy_spec)}
-            )
-            policy_spec = DEPRECATED_VALUE
         if policy_config != DEPRECATED_VALUE:
             deprecation_warning("policy_config", "config", error=True)
+        if input_creator != DEPRECATED_VALUE:
+            deprecation_warning(
+                "input_creator",
+                "config.offline_data(input_=..)",
+                error=True,
+            )
+        if output_creator != DEPRECATED_VALUE:
+            deprecation_warning(
+                "output_creator",
+                "config.offline_data(output=..)",
+                error=True,
+            )
         if rollout_fragment_length != DEPRECATED_VALUE:
             deprecation_warning(
                 "rollout_fragment_length",
@@ -399,10 +416,6 @@ class RolloutWorker(ParallelIteratorWorker):
             deprecation_warning(
                 "callbacks", "config.callbacks([DefaultCallbacks subclass])", error=True
             )
-        if num_workers != DEPRECATED_VALUE:
-            deprecation_warning(
-                "num_workers", "config.rollouts(num_rollout_workers=..)", error=True
-            )
         if disable_env_checking != DEPRECATED_VALUE:
             deprecation_warning(
                 "disable_env_checking",
@@ -429,13 +442,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 error=True,
             )
 
-        """input_creator: Callable[
-            [IOContext], InputReader
-        ] = lambda ioctx: ioctx.default_sampler_input(),
-        output_creator: Callable[
-            [IOContext], OutputWriter
-        ] = lambda ioctx: NoopOutput(),"""
-
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
@@ -443,7 +449,7 @@ class RolloutWorker(ParallelIteratorWorker):
         _global_worker = self
 
         if config is None or isinstance(config, dict):
-            config = AlgorithmConfig().update_from_dict(config)
+            config = AlgorithmConfig().update_from_dict(config or {})
 
         config.freeze()
 
@@ -462,6 +468,12 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         self.config = config
+        # TODO: Remove this backward compatibility.
+        self.policy_config = config
+
+        self.num_workers = (
+            num_workers if num_workers is not None else self.config.num_workers
+        )
 
         if (
             tf1
@@ -486,7 +498,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.config.env_config,
             worker_index=worker_index,
             vector_index=0,
-            num_workers=self.config.num_workers,
+            num_workers=self.num_workers,
             remote=self.config.remote_worker_envs,
             recreated_worker=recreated_worker,
         )
@@ -507,7 +519,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
-        self._disable_env_checking: bool = disable_env_checking
 
         # If seed is provided, add worker index to it and 10k iff evaluation worker.
         self.seed = (
@@ -536,7 +547,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Create a (single) env for this worker.
         if not (
             worker_index == 0
-            and self.config.num_workers > 0
+            and self.num_workers > 0
             and not self.config.create_env_on_local_worker
         ):
             # Run the `env_creator` function passing the EnvContext.
@@ -544,7 +555,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            if not self._disable_env_checking:
+            if not self.config.disable_env_checking:
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
@@ -614,9 +625,13 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
         self.spaces = spaces
-
+        self.default_policy_class = default_policy_class
         self.policy_dict = _determine_spaces_for_multi_agent_dict(
-            self.config.policies, self.env, spaces=self.spaces, config=self.config
+            multi_agent_policies_dict=self.config.policies,
+            env=self.env,
+            spaces=self.spaces,
+            config=self.config,
+            default_policy_class=self.default_policy_class,
         )
 
         # Set of IDs of those policies, which should be trained. This property
@@ -724,7 +739,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
         # long.
-        rollout_fragment_length_for_sampler = self.total_rollout_fragment_length
+        rollout_fragment_length_for_sampler = self.config.rollout_fragment_length
         if self.config.batch_mode == "truncate_episodes":
             pack = True
         # `complete_episodes`: Never cut episodes and sampler will return
@@ -739,7 +754,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         render = False
         if self.config.render_env is True and (
-            self.config.num_workers == 0 or worker_index == 1
+            self.num_workers == 0 or worker_index == 1
         ):
             render = True
 
@@ -784,8 +799,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 render=render,
             )
 
-        self.input_reader: InputReader = input_creator(self.io_context)
-        self.output_writer: OutputWriter = output_creator(self.io_context)
+        self.input_reader: InputReader = self._get_input_creator_from_config()(
+            self.io_context
+        )
+        self.output_writer: OutputWriter = self._get_output_creator_from_config()(
+            self.io_context
+        )
 
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
@@ -810,7 +829,7 @@ class RolloutWorker(ParallelIteratorWorker):
         is_healthy = self.policy_map and self.input_reader and self.output_writer
         assert is_healthy, (
             f"RolloutWorker {self} (idx={self.worker_index}; "
-            f"num_workers={self.config.num_workers}) not healthy!"
+            f"num_workers={self.num_workers}) not healthy!"
         )
 
     @DeveloperAPI
@@ -828,9 +847,9 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   config=AlgorithmConfig().multi_agent(policies={ # doctest: +SKIP
-            ...     'default_policy': PolicySpec(policy_class=PGTF1Policy) # doctest: +SKIP
-            ...   })) # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
+            ...   config=AlgorithmConfig(), # doctest: +SKIP
+            ... )
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
@@ -1287,14 +1306,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if policy is None:
             policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
-                {
+                multi_agent_policies_dict={
                     policy_id: PolicySpec(
                         policy_cls, observation_space, action_space, config or {}
                     )
                 },
-                self.env,
+                env=self.env,
                 spaces=self.spaces,
                 config=self.config,
+                default_policy_class=self.default_policy_class,
             )
         else:
             policy_dict_to_add = {
@@ -1853,7 +1873,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
             worker_index=self.worker_index,
-            num_workers=self.config.num_workers,
+            num_workers=self.num_workers,
             capacity=config.policy_map_capacity,
             path=config.policy_map_cache,
             policy_config=config,
@@ -1869,6 +1889,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # Update the general config with the specific config
             # for this particular policy.
             merged_conf: "AlgorithmConfig" = copy.deepcopy(config)
+            merged_conf._is_frozen = False
             merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
@@ -1903,8 +1924,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     policy_spec.policy_class,
                     obs_space,
                     policy_spec.action_space,
-                    policy_spec.config,  # overrides.
-                    merged_conf,
+                    config_override=None,
+                    merged_config=merged_conf,
                 )
 
             new_policy = self.policy_map[name]
@@ -1935,10 +1956,92 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info(f"Built policy map: {self.policy_map}")
             logger.info(f"Built preprocessor map: {self.preprocessors}")
 
+    def _get_input_creator_from_config(self):
+        def valid_module(class_path):
+            if (
+                isinstance(class_path, str)
+                and not os.path.isfile(class_path)
+                and "." in class_path
+            ):
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}"
+                    )
+            return False
+
+        # A callable returning an InputReader object to use.
+        if isinstance(self.config.input_, FunctionType):
+            return self.config.input_
+        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
+        # on `config.sample_async` setting).
+        elif self.config.input_ == "sampler":
+            return lambda ioctx: ioctx.default_sampler_input()
+        # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
+        elif self.config.input_ == "dataset":
+            # Input dataset shards should have already been prepared.
+            # We just need to take the proper shard here.
+            return lambda ioctx: DatasetReader(
+                self._ds_shards[self.worker_index], ioctx
+            )
+        # Dict: Mix of different input methods with different ratios.
+        elif isinstance(self.config.input_, dict):
+            return lambda ioctx: ShuffledInput(
+                MixedInput(self.config.input_, ioctx), self.config.shuffle_buffer_size
+            )
+        # A pre-registered input descriptor (str).
+        elif isinstance(self.config.input_, str) and registry_contains_input(
+            self.config.input_
+        ):
+            return registry_get_input(self.config.input_)
+        # D4RL input.
+        elif "d4rl" in self.config.input_:
+            env_name = self.config.input_.split(".")[-1]
+            return lambda ioctx: D4RLReader(env_name, ioctx)
+        # Valid python module (class path) -> Create using `from_config`.
+        elif valid_module(self.config.input_):
+            return lambda ioctx: ShuffledInput(
+                from_config(self.config.input_, ioctx=ioctx)
+            )
+        # JSON file or list of JSON files -> Use JsonReader (shuffled).
+        else:
+            return lambda ioctx: ShuffledInput(
+                JsonReader(self.config.input_, ioctx), self.config.shuffle_buffer_size
+            )
+
+    def _get_output_creator_from_config(self):
+        if isinstance(self.config.output, FunctionType):
+            return self.config.output
+        elif self.config.output is None:
+            return lambda ioctx: NoopOutput()
+        elif self.config.output == "dataset":
+            return lambda ioctx: DatasetWriter(
+                ioctx, compress_columns=self.config.output_compress_columns
+            )
+        elif self.config.output == "logdir":
+            return lambda ioctx: JsonWriter(
+                ioctx.log_dir,
+                ioctx,
+                max_file_size=self.config.output_max_file_size,
+                compress_columns=self.config.output_compress_columns,
+            )
+        else:
+            return lambda ioctx: JsonWriter(
+                self.config.output,
+                ioctx,
+                max_file_size=self.config.output_max_file_size,
+                compress_columns=self.config.output_compress_columns,
+            )
+
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        disable_env_checking = self._disable_env_checking
+        disable_env_checking = self.config.disable_env_checking
 
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
@@ -2047,6 +2150,7 @@ def _determine_spaces_for_multi_agent_dict(
     env: Optional[EnvType] = None,
     spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
     config: Optional["AlgorithmConfig"] = None,
+    default_policy_class: Optional[Type[Policy]] = None,
 ) -> MultiAgentPolicyConfigDict:
     """Infers the observation- and action spaces in a multi-agent policy dict.
 
@@ -2066,6 +2170,8 @@ def _determine_spaces_for_multi_agent_dict(
         The updated MultiAgentPolicyConfigDict (changed in-place from the incoming
         `multi_agent_policies_dict` arg).
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
     config = config or AlgorithmConfig()
 
     # Try extracting spaces from env or from given spaces dict.
@@ -2095,6 +2201,14 @@ def _determine_spaces_for_multi_agent_dict(
             env_act_space = spaces.get("__env__", [None, None])[1]
 
     for pid, policy_spec in multi_agent_policies_dict.copy().items():
+
+        assert isinstance(policy_spec, PolicySpec)
+
+        # Infer policy classes for policies dict, if not provided (None).
+        if policy_spec.policy_class is None and default_policy_class is not None:
+            multi_agent_policies_dict[pid].policy_class = default_policy_class
+
+        # Infer observation space.
         if policy_spec.observation_space is None:
             if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
@@ -2142,6 +2256,7 @@ def _determine_spaces_for_multi_agent_dict(
 
             multi_agent_policies_dict[pid].observation_space = obs_space
 
+        # Infer action space.
         if policy_spec.action_space is None:
             if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]

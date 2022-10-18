@@ -1,7 +1,6 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -58,8 +57,6 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
-
             # Initialize base class.
             base.__init__(
                 self,
@@ -71,11 +68,9 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
             ValueNetworkMixin.__init__(self, self.config)
-            LearningRateSchedule.__init__(
-                self, self.config["lr"], self.config["lr_schedule"]
-            )
+            LearningRateSchedule.__init__(self, self.config.lr, self.config.lr_schedule)
             EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+                self, config.entropy_coeff, config.entropy_coeff_schedule
             )
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
@@ -116,7 +111,7 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
             # Compute a value function loss.
-            if self.config.get("use_critic", True):
+            if self.config.use_critic:
                 self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
             # Ignore the value function.
             else:
@@ -128,7 +123,7 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             self.total_loss = (
                 self.pi_loss
-                + self.vf_loss * self.config["vf_loss_coeff"]
+                + self.vf_loss * self.config.vf_loss_coeff
                 - self.entropy_loss * self.entropy_coeff
             )
 

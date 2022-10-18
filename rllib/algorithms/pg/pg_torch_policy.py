@@ -30,14 +30,16 @@ class PGTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
     def __init__(self, observation_space, action_space, config: PGConfig):
 
-        # config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
+        # Enforce AlgorithmConfig for PG Policies.
+        if isinstance(config, dict):
+            config = PGConfig.from_dict(config)
 
         TorchPolicyV2.__init__(
             self,
             observation_space,
             action_space,
             config,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config.model["max_seq_len"],
         )
 
         LearningRateSchedule.__init__(self, config.lr, config.lr_schedule)

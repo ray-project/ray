@@ -41,7 +41,6 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,

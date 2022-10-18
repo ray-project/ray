@@ -1,6 +1,7 @@
 import copy
 import gym
 import logging
+import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 from ray.util import log_once
@@ -13,6 +14,7 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -319,7 +321,7 @@ class AlgorithmConfig:
     def update_from_dict(self, config_dict: dict) -> "AlgorithmConfig":
         # Modify our properties one by one.
         for key, value in config_dict.items():
-            key = self._translate_special_keys(key)
+            key = self._translate_special_keys(key, warn_deprecated=False)
 
             # Set our multi-agent settings.
             if key == "multiagent":
@@ -334,15 +336,16 @@ class AlgorithmConfig:
                     "count_steps_by",
                 ]:
                     setattr(self, k, value[k])
-            # If config key matches a property, just set it.
-            elif hasattr(self, key):
-                setattr(self, key, value)
-            # Unsupported key -> Error.
+            # If config key matches a property, just set it, otherwise, warn and set.
             else:
-                raise ValueError(
-                    f"Cannot create {type(self).__name__} from given `config_dict`! "
-                    f"Property {key} not supported."
-                )
+                if not hasattr(self, key) and log_once(
+                    "unknown_property_in_algo_config"
+                ):
+                    logger.warning(
+                        f"Cannot create {type(self).__name__} from given "
+                        f"`config_dict`! Property {key} not supported."
+                    )
+                setattr(self, key, value)
         return self
 
     def freeze(self) -> None:
@@ -1012,31 +1015,60 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if evaluation_interval is not None:
-            self.evaluation_interval = evaluation_interval
-        if evaluation_duration is not None:
-            self.evaluation_duration = evaluation_duration
-        if evaluation_duration_unit is not None:
-            self.evaluation_duration_unit = evaluation_duration_unit
-        if evaluation_sample_timeout_s is not None:
-            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
-        if evaluation_parallel_to_training is not None:
-            self.evaluation_parallel_to_training = evaluation_parallel_to_training
-
         # Merge user-provided eval config overrides with `self`. This makes sure
         # the eval config is always complete, no matter whether we have eval
         # workers or perform evaluation on the (non-eval) local worker.
         if evaluation_config is not None:
-            # Convert another AlgorithmConfig into dict.
+            # Convert AlgorithmConfig into dict (for later updating from dict).
             if isinstance(evaluation_config, AlgorithmConfig):
                 evaluation_config = evaluation_config.to_dict()
 
             # Update with evaluation settings:
             eval_config_obj = copy.deepcopy(self)
+            # Switch on the `in_evaluation` flag.
             eval_config_obj.in_evaluation = True
             eval_config_obj.update_from_dict(evaluation_config)
             self.evaluation_config = eval_config_obj
 
+        if evaluation_interval is not None:
+            self.evaluation_interval = evaluation_interval
+        if evaluation_duration is not None:
+            self.evaluation_duration = evaluation_duration
+
+        if evaluation_duration_unit is not None:
+            # Evaluation duration unit: episodes.
+            # Switch on `complete_episode` rollouts. Also, make sure
+            # rollout fragments are short so we never have more than one
+            # episode in one rollout.
+            if evaluation_duration_unit == "episodes":
+                self.evaluation_config.batch_mode = ("complete_episodes",)
+                self.evaluation_config.rollout_fragment_length = 1
+            # Evaluation duration unit: timesteps.
+            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
+            #   strictly along episode borders.
+            # Set `rollout_fragment_length` such that desired steps are divided
+            # equally amongst workers or - in "auto" duration mode - set it
+            # to a reasonably small number (10), such that a single `sample()`
+            # call doesn't take too much time and we can stop evaluation as soon
+            # as possible after the train step is completed.
+            else:
+                self.evaluation_config.batch_mode = "truncate_episodes"
+                self.evaluation_config.rollout_fragment_length = (
+                    10
+                    if self.evaluation_duration == "auto"
+                    else int(
+                        math.ceil(
+                            self.evaluation_duration
+                            / (self.evaluation_num_workers or 1)
+                        )
+                    )
+                )
+            self.evaluation_duration_unit = evaluation_duration_unit
+
+        if evaluation_sample_timeout_s is not None:
+            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
+        if evaluation_parallel_to_training is not None:
+            self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if off_policy_estimation_methods is not None:
             self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
@@ -1572,7 +1604,7 @@ class AlgorithmConfig:
         if hasattr(self, "_is_frozen") and self._is_frozen:
             # TODO: Remove `simple_optimizer` entirely.
             #  Remove need to set `worker_index` in RolloutWorker's c'tor.
-            if key != "simple_optimizer" and key != "worker_index":
+            if key not in ["simple_optimizer", "worker_index", "_is_frozen"]:
                 raise AttributeError(
                     f"Cannot set attribute ({key}) of an already frozen "
                     "AlgorithmConfig!"
@@ -1591,12 +1623,15 @@ class AlgorithmConfig:
         return getattr(self, item)
 
     def __setitem__(self, key, value):
-        prop = self._translate_special_keys(key)
-        raise AttributeError(
-            "AlgorithmConfig objects should not have their values set like dicts"
-            f"(`config['{key}'] = {value}`), "
-            f"but via setting their properties directly (config.{prop} = {value})."
-        )
+        # TODO: Remove comments once all methods/functions only support
+        #  AlgorithmConfigs and there is no more ambiguity anywhere in the code
+        #  on whether an AlgorithmConfig is used or an old python config dict.
+        # raise AttributeError(
+        #    "AlgorithmConfig objects should not have their values set like dicts"
+        #    f"(`config['{key}'] = {value}`), "
+        #    f"but via setting their properties directly (config.{prop} = {value})."
+        # )
+        super().__setattr__(key, value)
 
     def __contains__(self, item) -> bool:
         prop = self._translate_special_keys(item)
@@ -1610,7 +1645,7 @@ class AlgorithmConfig:
         return self.get(key, default)
 
     @staticmethod
-    def _translate_special_keys(key: str) -> str:
+    def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
         # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
         if key == "callbacks":
             key = "callbacks_class"
@@ -1630,57 +1665,57 @@ class AlgorithmConfig:
         # Deprecated keys.
         elif key == "multiagent":
             key = "_multi_agent_legacy_dict"
-        elif key == "metrics_smoothing_episodes":
-            deprecation_warning(
-                old="config.metrics_smoothing_episodes",
-                new="config.metrics_num_episodes_for_smoothing",
-                error=True,
-            )
-        elif key == "min_iter_time_s":
-            deprecation_warning(
-                old="config.min_iter_time_s",
-                new="config.min_time_s_per_iteration",
-                error=True,
-            )
-        elif key == "min_time_s_per_reporting":
-            deprecation_warning(
-                old="config.min_time_s_per_reporting",
-                new="config.min_time_s_per_iteration",
-                error=True,
-            )
-        elif key == "min_sample_timesteps_per_reporting":
-            deprecation_warning(
-                old="config.min_sample_timesteps_per_reporting",
-                new="config.min_sample_timesteps_per_iteration",
-                error=True,
-            )
-        elif key == "min_train_timesteps_per_reporting":
-            deprecation_warning(
-                old="config.min_train_timesteps_per_reporting",
-                new="config.min_train_timesteps_per_iteration",
-                error=True,
-            )
-        elif key == "collect_metrics_timeout":
-            # TODO: Warn once all algos use the `training_step` method.
-            # deprecation_warning(
-            #     old="collect_metrics_timeout",
-            #     new="metrics_episode_collection_timeout_s",
-            #     error=False,
-            # )
-            key = "metrics_episode_collection_timeout_s"
-        elif key == "timesteps_per_iteration":
-            deprecation_warning(
-                old="config.timesteps_per_iteration",
-                new="`config.min_sample_timesteps_per_iteration` OR "
-                "`config.min_train_timesteps_per_iteration`",
-                error=True,
-            )
-        elif key == "evaluation_num_episodes":
-            deprecation_warning(
-                old="config.evaluation_num_episodes",
-                new="`config.evaluation_duration` and "
-                "`config.evaluation_duration_unit=episodes`",
-                error=True,
-            )
+
+        if warn_deprecated:
+            if key == "collect_metrics_timeout":
+                deprecation_warning(
+                    old="collect_metrics_timeout",
+                    new="metrics_episode_collection_timeout_s",
+                    error=True,
+                )
+            elif key == "metrics_smoothing_episodes":
+                deprecation_warning(
+                    old="config.metrics_smoothing_episodes",
+                    new="config.metrics_num_episodes_for_smoothing",
+                    error=True,
+                )
+            elif key == "min_iter_time_s":
+                deprecation_warning(
+                    old="config.min_iter_time_s",
+                    new="config.min_time_s_per_iteration",
+                    error=True,
+                )
+            elif key == "min_time_s_per_reporting":
+                deprecation_warning(
+                    old="config.min_time_s_per_reporting",
+                    new="config.min_time_s_per_iteration",
+                    error=True,
+                )
+            elif key == "min_sample_timesteps_per_reporting":
+                deprecation_warning(
+                    old="config.min_sample_timesteps_per_reporting",
+                    new="config.min_sample_timesteps_per_iteration",
+                    error=True,
+                )
+            elif key == "min_train_timesteps_per_reporting":
+                deprecation_warning(
+                    old="config.min_train_timesteps_per_reporting",
+                    new="config.min_train_timesteps_per_iteration",
+                    error=True,
+                )
+            elif key == "timesteps_per_iteration":
+                deprecation_warning(
+                    old="config.timesteps_per_iteration",
+                    new="`config.min_sample_timesteps_per_iteration` OR "
+                    "`config.min_train_timesteps_per_iteration`",
+                    error=True,
+                )
+            elif key == "evaluation_num_episodes":
+                deprecation_warning(
+                    old="config.evaluation_num_episodes",
+                    new="`config.evaluation_duration` and "
+                    "`config.evaluation_duration_unit=episodes`",
+                    error=True,
+                )
 
         return key

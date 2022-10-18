@@ -2,7 +2,7 @@ from collections import deque
 import gym
 import os
 import threading
-from typing import Callable, Dict, Optional, Set, Type
+from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING, Union
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -13,12 +13,14 @@ from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
     PolicyID,
 )
 from ray.tune.utils.util import merge_dicts
 
 tf1, tf, tfv = try_import_tf()
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 @PublicAPI
@@ -109,8 +111,8 @@ class PolicyMap(dict):
         policy_cls: Type["Policy"],
         observation_space: gym.Space,
         action_space: gym.Space,
-        config_override: PartialAlgorithmConfigDict,
-        merged_config: AlgorithmConfigDict,
+        config_override,  # deprecated arg
+        merged_config: Union["AlgorithmConfig", AlgorithmConfigDict],
     ) -> None:
         """Creates a new policy and stores it to the cache.
 
@@ -123,11 +125,8 @@ class PolicyMap(dict):
             observation_space: The observation space of the
                 policy.
             action_space: The action space of the policy.
-            config_override: The config override
-                dict for this policy. This is the partial dict provided by
-                the user.
-            merged_config: The entire config (merged
-                default config + `config_override`).
+            merged_config: The config object (or complete config dict) for the policy
+                to use.
         """
         _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
@@ -141,7 +140,7 @@ class PolicyMap(dict):
             self.session_creator,
             self.seed,
         )
-        self.insert_policy(policy_id, policy, config_override)
+        self.insert_policy(policy_id, policy)
 
     @with_lock
     @override(dict)

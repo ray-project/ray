@@ -5,8 +5,6 @@ TensorFlow policy class used for PG.
 import logging
 from typing import Dict, List, Type, Union, Optional, Tuple
 
-import ray
-
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
@@ -56,6 +54,10 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
+
+            # Enforce AlgorithmConfig for PG Policies.
+            if isinstance(config, dict):
+                config = PGConfig.from_dict(config)
 
             # Initialize base class.
             base.__init__(

@@ -1161,13 +1161,13 @@ class Policy(metaclass=ABCMeta):
 
         exploration = from_config(
             Exploration,
-            self.config.exploration_config,
+            self.config["exploration_config"],
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            num_workers=self.config.num_workers,
-            worker_index=self.config.worker_index,
-            framework=getattr(self, "framework", self.config.framework_str),
+            num_workers=self.config["num_workers"],
+            worker_index=self.config["worker_index"],
+            framework=getattr(self, "framework", self.config["framework"]),
         )
         return exploration
 

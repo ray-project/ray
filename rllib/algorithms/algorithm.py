@@ -7,7 +7,6 @@ import gym
 import importlib
 import json
 import logging
-import math
 import numpy as np
 import os
 from packaging import version
@@ -36,7 +35,6 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -64,7 +62,7 @@ from ray.rllib.offline.estimators import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -328,12 +326,20 @@ class Algorithm(Trainable):
         # Resolve possible dict into an AlgorithmConfig object.
         # TODO: In the future, only support AlgorithmConfig objects here.
         if isinstance(config, dict):
-            config = AlgorithmConfig.from_dict(config)
+            default_config = self.get_default_config()
+            # self.get_default_config also returns a dict -> Last resort:
+            # Create core AlgorithmConfig from merged dicts.
+            if isinstance(default_config, dict):
+                config = AlgorithmConfig.from_dict(
+                    config_dict=self.merge_trainer_configs(default_config, config, True)
+                )
+            else:
+                config = default_config.update_from_dict(config)
 
         if env is not None:
             deprecation_warning(
-                old="algo = Algorithm(env='CartPole-v0', ...)",
-                new="algo = AlgorithmConfig().environment('CartPole-v0').build()",
+                old=f"algo = Algorithm(env='{env}', ...)",
+                new=f"algo = AlgorithmConfig().environment('{env}').build()",
                 error=False,
             )
             config.environment(env)
@@ -449,10 +455,6 @@ class Algorithm(Trainable):
                 config_obj = AlgorithmConfig().from_dict(config_obj)
             config_obj.update_from_dict(config)
             config_obj.env = self._env_id
-
-            # self.config = self.merge_trainer_configs(
-            #    , config, self._allow_unknown_configs
-            # )
             self.config = config_obj
 
         # Validate the framework settings in config.
@@ -591,52 +593,11 @@ class Algorithm(Trainable):
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
         if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
-            logger.debug(f"Using evaluation_config: {user_eval_config}.")
-
             # Validate evaluation config.
-            self.validate_config(eval_config)
-
-            # Set the `in_evaluation` flag.
-            eval_config["in_evaluation"] = True
-
-            # Evaluation duration unit: episodes.
-            # Switch on `complete_episode` rollouts. Also, make sure
-            # rollout fragments are short so we never have more than one
-            # episode in one rollout.
-            if eval_config["evaluation_duration_unit"] == "episodes":
-                eval_config.update(
-                    {
-                        "batch_mode": "complete_episodes",
-                        "rollout_fragment_length": 1,
-                    }
-                )
-            # Evaluation duration unit: timesteps.
-            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
-            #   strictly along episode borders.
-            # Set `rollout_fragment_length` such that desired steps are divided
-            # equally amongst workers or - in "auto" duration mode - set it
-            # to a reasonably small number (10), such that a single `sample()`
-            # call doesn't take too much time and we can stop evaluation as soon
-            # as possible after the train step is completed.
-            else:
-                eval_config.update(
-                    {
-                        "batch_mode": "truncate_episodes",
-                        "rollout_fragment_length": 10
-                        if self.config["evaluation_duration"] == "auto"
-                        else int(
-                            math.ceil(
-                                self.config["evaluation_duration"]
-                                / (self.config["evaluation_num_workers"] or 1)
-                            )
-                        ),
-                    }
-                )
-
-            self.config["evaluation_config"] = eval_config
+            self.validate_config(self.config.evaluation_config)
 
             _, env_creator = self._get_env_id_and_creator(
-                eval_config.get("env"), eval_config
+                self.config.evaluation_config.env, self.config.evaluation_config
             )
 
             # Create a separate evaluation worker set for evaluation.
@@ -647,7 +608,7 @@ class Algorithm(Trainable):
                 env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                trainer_config=eval_config,
+                trainer_config=self.config.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -683,7 +644,6 @@ class Algorithm(Trainable):
                 mod, obj = method_type.rsplit(".", 1)
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
-
             if isinstance(method_type, type) and issubclass(
                 method_type, OfflineEvaluator
             ):
