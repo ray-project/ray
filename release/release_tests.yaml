@@ -2573,6 +2573,31 @@
 
   alert: default
 
+
+- name: serve_resnet_benchmark
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_resnet_benchmark
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: gpu_app_config.yaml
+    cluster_compute: compute_tpl_gpu_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_resnet_benchmark.py --gpu-env
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 ########################
 # Train tests
 ########################
