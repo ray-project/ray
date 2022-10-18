@@ -109,6 +109,7 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="memray not supported in win32")
+@pytest.mark.skipif(sys.platform == "darwin", reason="memray not supported in Darwin")
 def test_memory_profile_dashboard_and_agent(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard,dashboard_agent")
