@@ -1,5 +1,3 @@
-import logging
-
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -19,8 +17,6 @@ from ray.rllib.utils.typing import (
 )
 
 from ray.util.annotations import PublicAPI
-
-logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -189,21 +185,7 @@ class AgentCollector:
         # Next obs -> obs.
         # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
         values = deepcopy(input_values)
-        if SampleBatch.OBS in values:
-            last_obs = self.buffers[SampleBatch.OBS][-1]
-            try:
-                np.testing.assert_almost_equal(
-                    last_obs, values[SampleBatch.OBS], decimal=5
-                )
-            except AssertionError:
-                raise AssertionError(
-                    "When adding input_values to agent collector, "
-                    "any next observation must be consistent with "
-                    "the following observation. You can either add "
-                    "input_values that lack a SampleBatch.OBS entry "
-                    "or conform to the previously added observation."
-                )
-
+        assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 

@@ -163,7 +163,7 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -257,7 +257,7 @@ py_test(
 
 py_test(
     name = "test_schema",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -347,7 +347,7 @@ py_test(
 
 py_test(
     name = "test_cross_language",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -363,7 +363,7 @@ py_test(
 
 py_test(
     name = "test_air_integrations_gpu",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve", "gpu"],
     deps = [":serve_lib"],
@@ -379,7 +379,7 @@ py_test(
 
 py_test(
     name = "test_deployment_graph_driver",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -489,7 +489,7 @@ py_test(
 
 py_test(
     name = "test_deployment_node",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
