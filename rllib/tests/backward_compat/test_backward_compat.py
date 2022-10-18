@@ -55,7 +55,11 @@ class TestBackwardCompatibility(unittest.TestCase):
                         state = pickle.load(f)
                     worker_state = pickle.loads(state["worker"])
                     algo = PPO(config=worker_state["policy_config"])
-                    algo.restore(path_to_checkpoint)
+                    # Note, we can not use restore() here because the testing
+                    # checkpoints are created with Algorithm.save() by
+                    # checkpoints/create_checkpoints.py. I.e, they are missing
+                    # all the Tune checkpoint metadata.
+                    algo.load_checkpoint(path_to_checkpoint)
                 # > v0.1: Simply use new `Algorithm.from_checkpoint()` staticmethod.
                 else:
                     algo = Algorithm.from_checkpoint(path_to_checkpoint)
