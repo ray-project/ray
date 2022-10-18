@@ -30,7 +30,7 @@ RUN sudo apt-get update \
            -r requirements_train.txt \
            -r requirements_tune.txt \
            -r requirements_dl.txt \
-           -r requirements_upstream.txt | tee /dev/df/2 | sort -n | uniq| tee /dev/df/2 > _requirements_combined.txt \
+           -r requirements_upstream.txt | tee /dev/df/2 | sort -n | uniq | tee /dev/df/2 > _requirements_combined.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r _requirements_combined.txt \
     # explicitly install (overwrite) pytorch with CUDA support
