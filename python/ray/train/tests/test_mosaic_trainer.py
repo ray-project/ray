@@ -22,8 +22,20 @@ from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
 from ray.train.mosaic import MosaicTrainer
+from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
+
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
+
+@pytest.fixture()
+def ray_start_4_cpus():
+    runtime_env = {"pip": ["mosaicml==0.10.1"]}
+
+    address_info = ray.init(num_cpus=4, runtime_env=runtime_env)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 def trainer_init_per_worker(config):
@@ -88,22 +100,10 @@ def trainer_init_per_worker(config):
 trainer_init_per_worker.__test__ = False
 
 
-def test_mosaic_e2e(ray_start_4_cpus):
-    """Tests if the basic MosaicTrainer with minimum configuration runs and reports correct
-    Checkpoint dictionary.
-    """
-    trainer_init_config = {
-        "max_duration": "1ep",
-        "algorithms": [LabelSmoothing()],
-    }
+def test_mosaic_cifar10(ray_start_4_cpus):
+    _ = train_mosaic_cifar10()
 
-    trainer = MosaicTrainer(
-        trainer_init_per_worker=trainer_init_per_worker,
-        trainer_init_config=trainer_init_config,
-        scaling_config=scaling_config,
-    )
-
-    trainer.fit()
+    # TODO : add asserts once reporting has been integrated
 
 
 def test_init_errors(ray_start_4_cpus):

@@ -18,7 +18,6 @@ from ray.train.examples.torch_quick_start import (
 from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 from ray.train.examples.torch_linear_example import train_func as linear_train_func
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
@@ -95,12 +94,6 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
     loss = list(results.metrics_dataframe["loss"])
     assert len(loss) == epochs
     assert loss[-1] < loss[0]
-
-
-def test_mosaic_cifar10(ray_start_4_cpus):
-    _ = train_mosaic_cifar10()
-
-    # TODO : add asserts once reporting has been integrated
 
 
 def test_torch_non_distributed(ray_start_4_cpus):
