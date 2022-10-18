@@ -15,3 +15,12 @@ class RLModule:
     def forward_train(self, batch, **kwargs):
         """Forward-pass during computing loss function"""
         pass
+
+    def get_state(self):
+        """Returns the current state of the module as a dict."""
+        pass
+
+    def set_state(self, state):
+        """Sets the current state of the module from a dict."""
+        pass
+    

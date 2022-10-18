@@ -9,8 +9,23 @@ from ray.air.config import ScalingConfig
 
 
 class TrainerRunner:
+    """This gets instantiated in Algorithm and then is used with calls to .update() to actually perform 1 gradient step
+    
+    Public API:
+        .update()
+        .get_state() -> returns the state of the model on worker 0 which should be in sync with the other workers
+        .set_state() -> sets the state of the model on all workers
+        .apply(fn, *args, **kwargs) -> apply a function to all workers while having access to the attributes
+            >>> trainer_runner.apply(lambda rl_trainer_worker: rl_trainer_worker.get_weights())
+    """
     def __init__(self, trainer_class, trainer_config, framework="torch"):
+        """TODO: frameowrk seems redundant if you know that the trainer_class is a subclass of TorchTrainer or TFTrainer
+
+        # TODO create a trainer_config clas that has all the necessary attributes
+        """
         self._trainer_config = trainer_config
+
+        # TODO: remove the _compute_necessary_resources and just use trainer_config["use_gpu"] and trainer_config["num_workers"]
         resources = self._compute_necessary_resources()
         scaling_config = ScalingConfig(
             num_workers=resources["num_workers"],
@@ -29,9 +44,10 @@ class TrainerRunner:
             num_workers=scaling_config.num_workers,
             num_cpus_per_worker=scaling_config.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            max_retries=0,
+            max_retries=0, # TODO: make this configurable in trainer_config with default 0
         )
 
+        # TODO: let's not pass this into the config which will cause information leakage into the SARLTrainer about other workers. 
         _scaling_config = {"world_size": resources["num_workers"]}
         trainer_config["_scaling_config"] = _scaling_config
         self.backend_executor.start(
@@ -58,13 +74,26 @@ class TrainerRunner:
 
         return {"num_workers": num_workers, "use_gpu": bool(num_gpus)}
 
-    def update(self, batch):
-        global_size = len(self.workers)
-        batch_size = np.ceil(len(batch) / global_size)
-        refs = []
-        for i, worker in enumerate(self.workers):
-            start = batch_size * i
-            end = min(start + batch_size, len(batch))
-            new_batch = batch[int(start) : int(end)]
-            refs.append(worker.update.remote(new_batch))
+    def update(self, batch=None, **kwargs):
+        """TODO: acount for **kwargs
+        
+        Example in DQN:
+            >>> trainer_runner.update(batch) # updates the gradient
+            >>> trainer_runner.update(update_target=True) # should soft-update the target network
+        
+        """
+        if batch is None:
+            for worker in self.workers:
+                refs.append(worker.update.remote(**kwargs))
+        else:
+
+            global_size = len(self.workers)
+            batch_size = np.ceil(len(batch) / global_size)
+            refs = []
+            for i, worker in enumerate(self.workers):
+                start = batch_size * i
+                end = min(start + batch_size, len(batch))
+                new_batch = batch[int(start) : int(end)]
+                refs.append(worker.update.remote(new_batch))
+
         return ray.get(refs)

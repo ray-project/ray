@@ -50,6 +50,7 @@ class SARLTrainer(RLTrainer, abc.ABC):
 
     @property
     def module(self):
+        # what does this return
         return self._module
 
     @property

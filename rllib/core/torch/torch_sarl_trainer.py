@@ -22,19 +22,28 @@ class TorchSARLTrainer(SARLTrainer):
         self.gpu_id = gpu_ids[0] if gpu_ids else None
 
     def _init_model(self):
+        # TODO: make this a public method and document where it's called from and why it should not be modified
         """Do not modify this function
         This function gets called by the trainer runner but can't be called
         inside of the init function since DDP has not been set up yet.
         """
+
+        # TODO: move self.make_module call to the __init__ function
         module = self.make_module(self.config["module_config"])
         self._module = self._prepare_module(module)
+
+        # TODO: depending on whether the DDP holds a copy or reference to the module we can move this call to the __init__ function.
+        # TODO: question: does the optimizer need ddp.parameters() or just model.parameters()?
         self._optimizer = self.make_optimizer(self.config["module_config"])
 
     def _prepare_module(self, module):
+
+        # TODO: write this outside to not shadow self
         class DDPWrapper(DDP):
             def forward_train(self, *args, **kwargs):
                 return self.forward(*args, **kwargs)
 
+        # TODO: share the code a bit
         if self.gpu_id is not None:
             module.to(self.gpu_id)
             pg = torch.distributed.new_group(
