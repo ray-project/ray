@@ -1657,7 +1657,6 @@ class AlgorithmConfig:
         """
         if self.in_evaluation:
             assert self.evaluation_config is None
-            assert evaluation_config is None
             return
 
         # Convert AlgorithmConfig into dict (for later updating from dict).
