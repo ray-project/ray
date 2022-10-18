@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -17,6 +19,8 @@ from ray.rllib.utils.typing import (
 )
 
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
