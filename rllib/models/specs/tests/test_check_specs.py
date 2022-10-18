@@ -77,7 +77,6 @@ class InputNumberOutputFloat(AbstractInterfaceClass):
 
 
 class CorrectImplementation(InputNumberOutputFloat):
-
     def run(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         output = float(input_dict["input"]) * 2
         return {"output": output}
@@ -112,7 +111,6 @@ class CorrectImplementation(InputNumberOutputFloat):
 
 
 class IncorrectImplementation(CorrectImplementation):
-
     @override(CorrectImplementation)
     def run(self, input_dict) -> Dict[str, Any]:
         output = str(input_dict["input"] * 2)
@@ -120,7 +118,6 @@ class IncorrectImplementation(CorrectImplementation):
 
 
 class TestCheckSpecs(unittest.TestCase):
-    
     def test_check_input_and_output(self):
 
         correct_module = CorrectImplementation()

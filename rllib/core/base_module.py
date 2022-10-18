@@ -15,25 +15,6 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 
 
-# def check_module_spec(fn: Callable[..., Dict],
-#     input_spec=None, output_spec=None, filter=True):
-#     """A decorator that checks input/output spec"""
-#     @functools.wraps(fn)
-#     def wrapper(input_data: Dict, **kwargs):
-#         input_data = NestedDict(input_data)
-#         if input_spec:
-#             input_spec.validate(input_data)
-
-#         if filter:
-#             input_data = input_data.filter(input_data)
-
-#         output_data = fn(input_data, **kwargs)
-#         if output_spec:
-#             output_spec.validate(output_data)
-#         return output_data
-#     return wrapper
-
-
 @ExperimentalAPI
 class Module(abc.ABC):
     def __init__(self, name: Optional[str] = None):
