@@ -19,6 +19,20 @@ class TestEnvRunnerV2(unittest.TestCase):
     def setUpClass(cls):
         ray.init()
 
+        # Simply alternate between the 2 policies to make sure we have
+        # data for inference for both policies for each step.
+        class AlternatePolicyMapper:
+            def __init__(self):
+                self.policies = ["one", "two"]
+                self.next = 0
+
+            def map(self):
+                p = self.policies[self.next]
+                self.next = 1 - self.next
+                return p
+
+        cls.mapper = AlternatePolicyMapper()
+
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
@@ -90,19 +104,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 self.view_requirements["rewards"].used_for_compute_actions = False
                 self.view_requirements["dones"].used_for_compute_actions = False
 
-        # Simply alternate between the 2 policies to make sure we have
-        # data for inference for both policies for each step.
-        class AlternatePolicyMapper:
-            def __init__(self):
-                self.policies = ["one", "two"]
-                self.next = 0
-
-            def map(self):
-                p = self.policies[self.next]
-                self.next = 1 - self.next
-                return p
-
-        mapper = AlternatePolicyMapper()
+        mapper = self.AlternatePolicyMapper()
 
         config = (
             PPOConfig()
@@ -191,6 +193,53 @@ class TestEnvRunnerV2(unittest.TestCase):
         rollout_worker = algo.workers.local_worker()
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
+
+    def test_build_episode(self):
+        config = (
+            PPOConfig()
+            .framework("torch")
+            .training(
+                # Specifically ask for a batch of 200 samples.
+                train_batch_size=200,
+            )
+            .rollouts(
+                num_envs_per_worker=1,
+                horizon=4,
+                num_rollout_workers=0,
+                # Enable EnvRunnerV2.
+                enable_connectors=True,
+            )
+            .multi_agent(
+                policies={
+                    "one": PolicySpec(
+                        policy_class=RandomPolicy,
+                    ),
+                    "two": PolicySpec(
+                        policy_class=RandomPolicy,
+                    ),
+                },
+                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policies_to_train=["one"],
+                count_steps_by="agent_steps",
+            )
+        )
+
+        algo = PPO(config, env="basic_multiagent")
+
+        local_worker = algo.workers.local_worker()
+
+        env_runner = local_worker.sampler._env_runner_obj
+
+        # No episodes present
+        self.assertEqual(env_runner._active_episodes.get(0), None)
+        env_runner.step()
+        # Only initial observation collected, add_init_obs called on episode
+        self.assertEqual(env_runner._active_episodes[0].total_env_steps, 0)
+        self.assertEqual(env_runner._active_episodes[0].total_agent_steps, 0)
+        env_runner.step()
+        # First recorded step, add_action_reward_done_next_obs called
+        self.assertEqual(env_runner._active_episodes[0].total_env_steps, 1)
+        self.assertEqual(env_runner._active_episodes[0].total_agent_steps, 2)
 
 
 if __name__ == "__main__":
