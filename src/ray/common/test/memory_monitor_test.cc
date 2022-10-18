@@ -166,7 +166,7 @@ TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
-  std::string file_name = UniqueID::FromRandom().Binary();
+  std::string file_name = UniqueID::FromRandom().Hex();
 
   std::ofstream mem_file;
   mem_file.open(file_name);
