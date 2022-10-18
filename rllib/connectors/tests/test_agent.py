@@ -562,6 +562,51 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # Data matches the latest timestep.
         self.assertTrue(np.array_equal(obs_data[0], np.array([4, 5, 6, 7])))
 
+    def test_vr_connector_default_agent_collector_is_empty(self):
+        """Tests that after reset() the view_requirement connector will
+        create a fresh new agent collector.
+        """
+        view_rqs = {
+            "obs": ViewRequirement(
+                None, used_for_training=True, used_for_compute_actions=True
+            ),
+        }
+
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rqs,
+            config=config,
+            is_policy_recurrent=False,
+        )
+
+        c = ViewRequirementAgentConnector(ctx)
+        c.in_training()
+
+        for i in range(5):
+            obs_arr = np.array([0, 1, 2, 3]) + i
+            agent_data = {SampleBatch.NEXT_OBS: obs_arr}
+            data = AgentConnectorDataType(0, 1, agent_data)
+
+            # Feed ViewRequirementAgentConnector 5 samples.
+            c([data])
+
+        # 1 init_obs, plus 4 agent steps.
+        self.assertEqual(c.agent_collectors[0][1].agent_steps, 4)
+
+        # Reset.
+        c.reset(0)  # env_id = 0
+
+        # Process a new timestep.
+        obs_arr = np.array([0, 1, 2, 3]) + i
+        agent_data = {SampleBatch.NEXT_OBS: obs_arr}
+        data = AgentConnectorDataType(0, 1, agent_data)
+
+        # Feed ViewRequirementAgentConnector 5 samples.
+        c([data])
+
+        # Start fresh with 0 agent step.
+        self.assertEqual(c.agent_collectors[0][1].agent_steps, 0)
+
 
 if __name__ == "__main__":
     import sys
