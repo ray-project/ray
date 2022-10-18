@@ -17,7 +17,7 @@ register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
 class TestEnvRunnerV2(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
         # When dealing with two policies in these tests, simply alternate between the 2
         # policies to make sure we have data for inference for both policies for each
