@@ -1,11 +1,15 @@
 from typing import Mapping, Any
 import abc
 from ray.rllib.models.specs.specs_base import TensorSpecs
-from ray.rllib.utils.annotations import ExperimentalAPI, OverrideToImplementCustomLogic_CallToSuperRecommended
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.core.base_module import Module
 
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
+
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
@@ -61,14 +65,13 @@ class RLModule(abc.ABC):
     def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
         self.config = config
 
-
     @property
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpecDict:
         """Returns the output specs of the forward_inference method.
-        
-        Override this method to customize the output specs of the inference call. 
-        The default implementation requires the forward_inference to reutn a dict that 
+
+        Override this method to customize the output specs of the inference call.
+        The default implementation requires the forward_inference to reutn a dict that
         has `action_dist` key and its value is an instance of `ActionDistributionV2`. This assumption must always hold.
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
@@ -77,10 +80,10 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> ModelSpecDict:
         """Returns the output specs of the forward_exploration method.
-        
-        Override this method to customize the output specs of the inference call. 
-        The default implementation requires the forward_exploration to reutn a dict 
-        that has `action_dist` key and its value is an instance of 
+
+        Override this method to customize the output specs of the inference call.
+        The default implementation requires the forward_exploration to reutn a dict
+        that has `action_dist` key and its value is an instance of
         `ActionDistributionV2`. This assumption must always hold.
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
@@ -105,48 +108,54 @@ class RLModule(abc.ABC):
     def input_specs_train(self) -> ModelSpecDict:
         """Returns the input specs of the forward_train method."""
 
-    @check_specs(input_spec="input_specs_inference", output_spec="output_specs_inference")
+    @check_specs(
+        input_spec="input_specs_inference", output_spec="output_specs_inference"
+    )
     def forward_inference(
         self, batch: Mapping[str, Any], **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler. This method should 
+        """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method."""
         return self._forward_inference(batch, **kwargs)
-    
+
     @abc.abstractmethod
-    def _forward_inference(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(
+        self, batch: Mapping[str, Any], **kwargs
+    ) -> Mapping[str, Any]:
         """Forward-pass during evaluation"""
 
-    @check_specs(input_spec="input_specs_exploration", output_spec="output_specs_exploration")
+    @check_specs(
+        input_spec="input_specs_exploration", output_spec="output_specs_exploration"
+    )
     def forward_exploration(
         self, batch: Mapping[str, Any], **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler. This method should 
+        """Forward-pass during exploration, called from the sampler. This method should
         not be overriden. Instead, override the _forward_exploration method."""
         return self._forward_exploration(batch, **kwargs)
-    
+
     @abc.abstractmethod
-    def _forward_exploration(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(
+        self, batch: Mapping[str, Any], **kwargs
+    ) -> Mapping[str, Any]:
         """Forward-pass during exploration"""
 
     @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(
-        self, batch: Mapping[str, Any], **kwargs
-    ) -> Mapping[str, Any]:
-        """Forward-pass during training called from the trainer. This method should 
+    def forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+        """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method."""
         return self._forward_train(batch, **kwargs)
-    
+
     @abc.abstractmethod
     def _forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training"""
 
-    @abc.abstractmethod    
-    def get_state_dict(self) -> Mapping[str, Any]:
+    @abc.abstractmethod
+    def get_state(self) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
 
     @abc.abstractmethod
-    def set_state_dict(self, state_dict: Mapping[str, Any]) -> None:
+    def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
 

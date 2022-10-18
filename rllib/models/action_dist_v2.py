@@ -10,17 +10,17 @@ from ray.rllib.utils.typing import TensorType, List, Union, ModelConfigDict, Map
 class ActionDistributionV2(abc.ABC):
     """The policy action distribution of an agent.
 
-        Args:
-            inputs: input vector to define the distribution over.
+    Args:
+        inputs: input vector to define the distribution over.
 
-        Examples:
-            >>> model = ... # a model that outputs a vector of logits
-            >>> action_logits = model.forward(obs)
-            >>> action_dist = ActionDistribution(action_logits)
-            >>> action = action_dist.sample()
-            >>> logp = action_dist.logp(action)
-            >>> kl = action_dist.kl(action_dist2)
-            >>> entropy = action_dist.entropy()
+    Examples:
+        >>> model = ... # a model that outputs a vector of logits
+        >>> action_logits = model.forward(obs)
+        >>> action_dist = ActionDistribution(action_logits)
+        >>> action = action_dist.sample()
+        >>> logp = action_dist.logp(action)
+        >>> kl = action_dist.kl(action_dist2)
+        >>> entropy = action_dist.entropy()
 
     """
 
@@ -28,13 +28,15 @@ class ActionDistributionV2(abc.ABC):
         self.inputs = inputs
 
     @abc.abstractmethod
-    def sample(self, return_logp: bool = False, **kwargs) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+    def sample(
+        self, return_logp: bool = False, **kwargs
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Draw a sample from the action distribution.
-        
+
         Args:
             return_logp: Whether to return the logp of the sampled action.
             **kwargs: Forward compatibility placeholder.
-        
+
         Returns:
             The sampled action. If return_logp is True, returns a tuple of the
             sampled action and its logp.
@@ -43,11 +45,11 @@ class ActionDistributionV2(abc.ABC):
     @abc.abstractmethod
     def logp(self, action: TensorType, **kwargs) -> TensorType:
         """The log-likelihood of the action distribution.
-        
+
         Args:
             action: The action to compute the log-likelihood for.
             **kwargs: Forward compatibility placeholder.
-        
+
         Returns:
             The log-likelihood of the action.
         """
@@ -55,15 +57,14 @@ class ActionDistributionV2(abc.ABC):
     @abc.abstractmethod
     def kl(self, other: "ActionDistributionV2", **kwargs) -> TensorType:
         """The KL-divergence between two action distributions.
-        
+
         Args:
             other: The other action distribution.
             **kwargs: Forward compatibility placeholder.
-        
+
         Returns:
             The KL-divergence between the two action distributions.
         """
-
 
     @abc.abstractmethod
     def entropy(self, **kwargs) -> TensorType:
@@ -71,11 +72,10 @@ class ActionDistributionV2(abc.ABC):
 
         Args:
             **kwargs: Forward compatibility placeholder.
-        
+
         Returns:
             The entropy of the action distribution.
         """
-
 
     @staticmethod
     @abc.abstractmethod
@@ -88,10 +88,10 @@ class ActionDistributionV2(abc.ABC):
 
         Args:
             action_space: The action space this distribution will be used for,
-                whose shape attributes will be used to determine the required shape of 
+                whose shape attributes will be used to determine the required shape of
                 the input parameter tensor.
             model_config: Model's config dict (as defined in catalog.py)
 
         Returns:
-            size of the required input vector (minus leading batch dimension). 
+            size of the required input vector (minus leading batch dimension).
         """
