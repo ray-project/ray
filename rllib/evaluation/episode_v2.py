@@ -163,7 +163,6 @@ class EpisodeV2:
     def add_init_obs(
         self,
         agent_id: AgentID,
-        t: int,
         init_obs: TensorType,
     ) -> None:
         """Add initial env obs at the start of a new episode
@@ -189,7 +188,6 @@ class EpisodeV2:
             episode_id=self.episode_id,
             agent_index=self.agent_index(agent_id),
             env_id=self.env_id,
-            t=t,
             init_obs=init_obs,
         )
 

@@ -220,7 +220,6 @@ class SimpleListCollector(SampleCollector):
         agent_id: AgentID,
         env_id: EnvID,
         policy_id: PolicyID,
-        t: int,
         init_obs: TensorType,
     ) -> None:
         # Make sure our mappings are up to date.
@@ -251,7 +250,6 @@ class SimpleListCollector(SampleCollector):
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
             env_id=env_id,
-            t=t,
             init_obs=init_obs,
         )
 

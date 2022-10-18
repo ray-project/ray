@@ -125,7 +125,6 @@ class AgentCollector:
         episode_id: EpisodeID,
         agent_index: int,
         env_id: EnvID,
-        t: int,
         init_obs: TensorType,
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
@@ -136,8 +135,6 @@ class AgentCollector:
             agent_index: Unique int index (starting from 0) for the agent
                 within its episode. Not to be confused with AGENT_ID (Any).
             env_id: The environment index (in a vectorized setup).
-            t: The time step (episode length - 1). The initial obs has
-                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs: The initial observation tensor (after
             `env.reset()`).
         """
@@ -154,7 +151,7 @@ class AgentCollector:
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
                     SampleBatch.ENV_ID: env_id,
-                    SampleBatch.T: t,
+                    SampleBatch.T: -1,
                     SampleBatch.EPS_ID: self.episode_id,
                     SampleBatch.UNROLL_ID: self.unroll_id,
                 }
@@ -166,7 +163,7 @@ class AgentCollector:
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
-        self.buffers[SampleBatch.T][0].append(t)
+        self.buffers[SampleBatch.T][0].append(-1)
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
