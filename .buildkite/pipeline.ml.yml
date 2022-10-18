@@ -39,20 +39,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
-      --test_arg=--framework=tf
-      $(cat test_shard.txt)
+      --test_arg=--framework=tf rllib/...
 
 - label: ":brain: RLlib: Learning tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -62,20 +52,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
-      --test_arg=--framework=tf2
-      $(cat test_shard.txt)
+      --test_arg=--framework=tf2 rllib/...
 
 - label: ":brain: RLlib: Learning tests PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -85,20 +65,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
-      --test_arg=--framework=torch
-      $(cat test_shard.txt)
+      --test_arg=--framework=torch rllib/...
 
 - label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
@@ -161,20 +131,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-multi_gpu
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-multi_gpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      $(cat test_shard.txt)
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: Examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -184,18 +144,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=examples,-multi_gpu
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      $(cat test_shard.txt)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: tests/ dir"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
@@ -205,18 +155,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=tests_dir,-multi_gpu
-      rllib/...
-      > test_shard.txt
-    - cat test_shard.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      $(cat test_shard.txt)
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: Documentation code/examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
