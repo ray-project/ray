@@ -31,5 +31,5 @@ Code example
 We call :ref:`ray.get() <ray-get-ref>` after both ``quick_sort_distributed`` function invocations take place.
 This allows you to maximize parallelism in the workload. See :doc:`ray-get-loop` for more details.
 
-Notice in the execution times above that with smaller and finer tasks, the non-distributed version is faster; however, as the task execution
-time increases, that is the task with larger list takes longer, the distributed version is faster.
+Notice in the execution times above that with smaller tasks, the non-distributed version is faster. However, as the task execution
+time increases, i.e. because the lists to sort are larger, the distributed version is faster.
