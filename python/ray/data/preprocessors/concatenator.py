@@ -138,7 +138,7 @@ class Concatenator(Preprocessor):
 
             message = f"Missing columns specified in '{parameter}': {missing_columns}"
             if self.raise_if_missing:
-                raise ValueError(message)  
+                raise ValueError(message)
             else:
                 logger.warn(message)
 
