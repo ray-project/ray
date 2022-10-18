@@ -322,8 +322,6 @@ class AlgorithmConfig:
         # frozenness).
         config_dict.pop("_is_frozen", None)
         config_obj.update_from_dict(config_dict)
-        if config_obj.evaluation_config is not None:
-            config_obj._recompile_eval_config(config_obj.evaluation_config)
         return config_obj
 
     def update_from_dict(
@@ -383,8 +381,7 @@ class AlgorithmConfig:
                 setattr(self, key, value)
 
         # Now that all settings have been applied, update our eval config.
-        if eval_config is not None:
-            self._recompile_eval_config(eval_config)
+        self._recompile_eval_config(eval_config)
 
         return self
 
@@ -1658,6 +1655,11 @@ class AlgorithmConfig:
         This makes sure that `self.evaluation_config` is always its own fully valid
         and complete AlgorithmConfig.
         """
+        if self.in_evaluation:
+            assert self.evaluation_config is None
+            assert evaluation_config is None
+            return
+
         # Convert AlgorithmConfig into dict (for later updating from dict).
         if isinstance(evaluation_config, AlgorithmConfig):
             evaluation_config = evaluation_config.to_dict()

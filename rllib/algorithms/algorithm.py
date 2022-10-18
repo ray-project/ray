@@ -1987,7 +1987,7 @@ class Algorithm(Trainable):
         if not isinstance(default_config, dict):
             default_config = default_config.to_dict()
         cf = dict(default_config, **config)
-        eval_cf = cf["evaluation_config"]
+        eval_cf = cf["evaluation_config"] or {}
 
         local_worker = {
             "CPU": cf["num_cpus_for_driver"],
