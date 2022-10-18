@@ -7,14 +7,14 @@
 Training (tune.Trainable, session.report)
 ==========================================
 
-Training can be done with either a **Class API** (``tune.Trainable``) or **function API** (``session.report``).
+Training can be done with either a **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`) or **function API** (:ref:`session.report <tune-function-docstring>`).
 
 For the sake of example, let's maximize this objective function:
 
-.. code-block:: python
-
-    def objective(x, a, b):
-        return a * (x ** 0.5) + b
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __example_objective_start__
+    :end-before: __example_objective_end__
 
 .. _tune-function-api:
 
@@ -23,27 +23,10 @@ Function API
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
 
-
-.. code-block:: python
-
-    from ray import tune
-    from ray.air import session
-
-    def trainable(config):
-        # config (dict): A dict of hyperparameters.
-
-        for x in range(20):
-            intermediate_score = objective(x, config["a"], config["b"])
-
-            session.report({"score": intermediate_score})  # This sends the score to Tune.
-
-    tuner = tune.Tuner(
-        trainable,
-        param_space={"a": 2, "b": 4}
-    )
-    results = tuner.fit()
-
-    print("best config: ", results.get_best_result(metric="score", mode="max").config)
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __function_api_report_intermediate_metrics_start__
+    :end-before: __function_api_report_intermediate_metrics_end__
 
 .. tip:: Do not use ``session.report`` within a ``Trainable`` class.
 
@@ -52,24 +35,13 @@ Tune will run this function on a separate thread in a Ray actor process.
 You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
 such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
-.. code-block:: python
+In the previous example, we reported on every step, but this metric reporting frequency
+is configurable. For example, we could also report only a single time at the end with the final score:
 
-    def trainable(config):
-        # config (dict): A dict of hyperparameters.
-
-        final_score = 0
-        for x in range(20):
-            final_score = objective(x, config["a"], config["b"])
-
-        return {"score": final_score}  # This sends the score to Tune.
-
-    tuner = tune.Tuner(
-        trainable,
-        param_space={"a": 2, "b": 4}
-    )
-    results = tuner.fit()
-
-    print("best config: ", results.get_best_result(metric="score", mode="max").config)
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __function_api_report_final_metrics_start__
+    :end-before: __function_api_report_final_metrics_end__
 
 .. _tune-function-checkpointing:
 
@@ -84,32 +56,10 @@ Trainable Class API
 
 The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
-.. code-block:: python
-
-    from ray import tune
-
-    class Trainable(tune.Trainable):
-        def setup(self, config):
-            # config (dict): A dict of hyperparameters
-            self.x = 0
-            self.a = config["a"]
-            self.b = config["b"]
-
-        def step(self):  # This is called iteratively.
-            score = objective(self.x, self.a, self.b)
-            self.x += 1
-            return {"score": score}
-
-    tuner = tune.Tuner(
-        Trainable,
-        tune_config=air.RunConfig(stop={"training_iteration": 20}),
-        param_space={
-            "a": 2,
-            "b": 4
-        })
-    results = tuner.fit()
-
-    print('best config: ', results.get_best_result(metric="score", mode="max").config)
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __class_api_example_start__
+    :end-before: __class_api_example_end__
 
 As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a
 separate process (using the :ref:`Ray Actor API <actor-guide>`).
@@ -274,9 +224,10 @@ session (Function API)
 .. autofunction:: ray.air.session.get_trial_resources
     :noindex:
 
+.. _tune-trainable-docstring:
+
 tune.Trainable (Class API)
 --------------------------
-
 
 .. autoclass:: ray.tune.Trainable
     :member-order: groupwise

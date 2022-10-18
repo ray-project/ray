@@ -307,7 +307,8 @@ If this run stopped for any reason (finished, errored, user CTRL+C), you can res
 
 .. code-block:: python
 
-    tuner = Tuner.restore(
+    from ray import tune
+    tuner = tune.Tuner.restore(
         "s3://my-checkpoints-bucket/path/my-tune-exp",
         resume_errored=True
     )
@@ -328,7 +329,7 @@ Local or rsync checkpointing can be a good option if:
 
 1. You want to tune on a single laptop Ray cluster
 2. You aren't using Ray on Kubernetes (rsync doesn't work with Ray on Kubernetes)
-3. You don't want to cloud storage (i.e. S3)
+3. You don't want to cloud storage (e.g. S3)
 
 Let's take a look at an example:
 

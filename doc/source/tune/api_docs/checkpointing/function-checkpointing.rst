@@ -2,30 +2,12 @@ Function API Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance.
-You can save and load checkpoint in Ray Tune in the following manner:
+You can save and load checkpoints in Ray Tune in the following manner:
 
-.. code-block:: python
-
-        import time
-        from ray import tune
-        from ray.air import session
-        from ray.air.checkpoint import Checkpoint
-
-        def train_func(config):
-            step = 0
-            loaded_checkpoint = session.get_checkpoint()
-            if loaded_checkpoint:
-                last_step = loaded_checkpoint.to_dict()["step"]
-                step = last_step + 1
-
-            for iter in range(step, 100):
-                time.sleep(1)
-
-                checkpoint = Checkpoint.from_dict({"step": step})
-                session.report({"message": "Hello world Ray Tune!"}, checkpoint=checkpoint)
-
-        tuner = tune.Tuner(train_func)
-        results = tuner.fit()
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __function_api_checkpointing_start__
+    :end-before: __function_api_checkpointing_end__
 
 .. note:: ``checkpoint_frequency`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 

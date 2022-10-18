@@ -1150,6 +1150,7 @@ class Trainable:
         See the examples below.
 
         Example:
+            >>> import os
             >>> from ray.tune.trainable import Trainable
             >>> class Example(Trainable):
             ...    def save_checkpoint(self, checkpoint_path):
