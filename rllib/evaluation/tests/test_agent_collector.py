@@ -26,7 +26,6 @@ class TestAgentCollector(unittest.TestCase):
             episode_id=0,
             agent_index=1,
             env_id=0,
-            t=-1,
             init_obs=obses[-1],
         )
 
@@ -68,7 +67,6 @@ class TestAgentCollector(unittest.TestCase):
                         episode_id=0,
                         agent_index=1,
                         env_id=0,
-                        t=-1,
                         init_obs=obs,
                     )
                     obses_ctx.extend([obs for _ in range(ctx_len)])

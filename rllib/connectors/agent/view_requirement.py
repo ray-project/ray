@@ -97,7 +97,6 @@ class ViewRequirementAgentConnector(AgentConnector):
                 episode_id=episode_id,
                 agent_index=agent_id,
                 env_id=env_id,
-                t=-1,
                 init_obs=d[SampleBatch.NEXT_OBS],
             )
         else:

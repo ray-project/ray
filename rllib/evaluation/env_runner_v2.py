@@ -630,9 +630,11 @@ class EnvRunnerV2:
                 for d in processed:
                     # Record transition info if applicable.
                     if not episode.has_init_obs(d.agent_id):
+                        assert d.data.raw_dict[SampleBatch.T] == -1, "Initial " \
+                                                                     "timestep " \
+                                                                     "must be zero."
                         episode.add_init_obs(
                             d.agent_id,
-                            d.data.raw_dict[SampleBatch.T],
                             d.data.raw_dict[SampleBatch.NEXT_OBS],
                         )
                     else:
@@ -826,9 +828,11 @@ class EnvRunnerV2:
 
                 for d in processed:
                     # Add initial obs to buffer.
-                    new_episode.add_init_obs(
+                    assert d.data.raw_dict[SampleBatch.T] == -1, "Initial " \
+                                                                 "timestep " \
+                                                                 "must be zero."
+                    episode.add_init_obs(
                         d.agent_id,
-                        d.data.raw_dict[SampleBatch.T],
                         d.data.raw_dict[SampleBatch.NEXT_OBS],
                     )
                     to_eval[policy_id].append(d)
