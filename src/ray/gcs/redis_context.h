@@ -37,7 +37,6 @@ namespace ray {
 namespace gcs {
 
 using rpc::TablePrefix;
-using rpc::TablePubsub;
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -71,10 +70,6 @@ class CallbackReply {
   /// \return size_t The next cursor for scan.
   size_t ReadAsScanArray(std::vector<std::string> *array) const;
 
-  bool IsSubscribeCallback() const { return is_subscribe_callback_; }
-
-  bool IsUnsubscribeCallback() const { return is_unsubscribe_callback_; }
-
  private:
   /// Parse redis reply as string array or scan array.
   void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
@@ -98,9 +93,6 @@ class CallbackReply {
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::optional<std::string>> string_array_reply_;
 
-  bool is_subscribe_callback_ = false;
-  bool is_unsubscribe_callback_ = false;
-
   /// Represent the reply of SCanArray, means the next scan cursor for scan request.
   size_t next_scan_cursor_reply_{0};
 };
@@ -122,13 +114,9 @@ class RedisCallbackManager {
     CallbackItem() = default;
 
     CallbackItem(const RedisCallback &callback,
-                 bool is_subscription,
                  int64_t start_time,
                  instrumented_io_context &io_service)
-        : callback_(callback),
-          is_subscription_(is_subscription),
-          start_time_(start_time),
-          io_service_(&io_service) {}
+        : callback_(callback), start_time_(start_time), io_service_(&io_service) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
@@ -139,7 +127,6 @@ class RedisCallbackManager {
     }
 
     RedisCallback callback_;
-    bool is_subscription_;
     int64_t start_time_;
     instrumented_io_context *io_service_;
   };
@@ -149,7 +136,6 @@ class RedisCallbackManager {
 
   /// Add a callback at an optionally specified index.
   int64_t AddCallback(const RedisCallback &function,
-                      bool is_subscription,
                       instrumented_io_context &io_service,
                       int64_t callback_index = -1);
 
@@ -203,64 +189,6 @@ class RedisContext {
   Status RunArgvAsync(const std::vector<std::string> &args,
                       const RedisCallback &redis_callback = nullptr);
 
-  /// Subscribe to a specific Pub-Sub channel.
-  ///
-  /// \param node_id The node ID that subscribe this message.
-  /// \param pubsub_channel The Pub-Sub channel to subscribe to.
-  /// \param redisCallback The callback function that the notification calls.
-  /// \param out_callback_index The output pointer to callback index.
-  /// \return Status.
-  Status SubscribeAsync(const NodeID &node_id,
-                        const TablePubsub pubsub_channel,
-                        const RedisCallback &redisCallback,
-                        int64_t *out_callback_index);
-
-  /// Subscribes the client to the given channel.
-  ///
-  /// \param channel The subscription channel.
-  /// \param redisCallback The callback function that the notification calls.
-  /// \param callback_index The index at which to add the callback. This index
-  /// must already be allocated in the callback manager via
-  /// RedisCallbackManager::AllocateCallbackIndex.
-  /// \return Status.
-  Status SubscribeAsync(const std::string &channel,
-                        const RedisCallback &redisCallback,
-                        int64_t callback_index);
-
-  /// Unsubscribes the client from the given channel.
-  ///
-  /// \param channel The unsubscription channel.
-  /// \return Status.
-  Status UnsubscribeAsync(const std::string &channel);
-
-  /// Subscribes the client to the given pattern.
-  ///
-  /// \param pattern The pattern of subscription channel.
-  /// \param redisCallback The callback function that the notification calls.
-  /// \param callback_index The index at which to add the callback. This index
-  /// must already be allocated in the callback manager via
-  /// RedisCallbackManager::AllocateCallbackIndex.
-  /// \return Status.
-  Status PSubscribeAsync(const std::string &pattern,
-                         const RedisCallback &redisCallback,
-                         int64_t callback_index);
-
-  /// Unsubscribes the client from the given pattern.
-  ///
-  /// \param pattern The pattern of unsubscription channel.
-  /// \return Status.
-  Status PUnsubscribeAsync(const std::string &pattern);
-
-  /// Posts a message to the given channel.
-  ///
-  /// \param channel The channel for message publishing to redis.
-  /// \param message The message to be published to redis.
-  /// \param redisCallback The callback will be called when the message is published to
-  /// redis. \return Status.
-  Status PublishAsync(const std::string &channel,
-                      const std::string &message,
-                      const RedisCallback &redisCallback);
-
   redisContext *sync_context() {
     RAY_CHECK(context_);
     return context_;
@@ -269,11 +197,6 @@ class RedisContext {
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
     return *redis_async_context_;
-  }
-
-  RedisAsyncContext &subscribe_context() {
-    RAY_CHECK(async_redis_subscribe_context_);
-    return *async_redis_subscribe_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
@@ -287,7 +210,6 @@ class RedisContext {
   redisContext *context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
-  std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
 
 }  // namespace gcs
