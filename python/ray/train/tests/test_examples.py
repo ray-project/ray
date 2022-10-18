@@ -1,6 +1,5 @@
 import pytest
 
-import ray
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 
@@ -23,14 +22,6 @@ from ray.train.examples.torch_linear_example import train_func as linear_train_f
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
