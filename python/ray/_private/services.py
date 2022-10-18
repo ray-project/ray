@@ -71,6 +71,17 @@ RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
 RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
 RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
+# Comma separated name of components that will run memory profiler.
+# Ray uses `memray` to memory profile internal components.
+# The name of the component must be one of ray_constants.PROCESS_TYPE*.
+RAY_MEMRAY_PROFILE_COMPONENT_ENV = "RAY_INTERNAL_MEM_PROFILE_COMPONENTS"
+# Options to specify for `memray run` command. See
+# `memray run --help` for more details.
+# Example:
+# RAY_INTERNAL_MEM_PROFILE_OPTIONS="--live,--live-port,3456,-q,"
+# -> `memray run --live --live-port 3456 -q`
+RAY_MEMRAY_PROFILE_OPTIONS_ENV = "RAY_INTERNAL_MEM_PROFILE_OPTIONS"
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -89,6 +100,52 @@ ProcessInfo = collections.namedtuple(
         "use_tmux",
     ],
 )
+
+
+def _build_python_executable_command_memory_profileable(
+    component: str, session_dir: str, unbuffered: bool = True
+):
+    """Build the Python executable command.
+
+    It runs a memory profiler if env var is configured.
+
+    Args:
+        component: Name of the component. It must be one of
+            ray_constants.PROCESS_TYPE*.
+        session_dir: The directory name of the Ray session.
+        unbuffered: If true, Python executable is started with unbuffered option.
+            e.g., `-u`.
+            It means the logs are flushed immediately (good when there's a failure),
+            but writing to a log file can be slower.
+    """
+    command = [
+        sys.executable,
+    ]
+    if unbuffered:
+        command.append("-u")
+    components_to_memory_profile = os.getenv(RAY_MEMRAY_PROFILE_COMPONENT_ENV, "")
+    if not components_to_memory_profile:
+        return command
+
+    components_to_memory_profile = set(components_to_memory_profile.split(","))
+    try:
+        import memray  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "Memray is required to memory profiler on components "
+            f"{components_to_memory_profile}. Run `pip install memray`."
+        )
+    if component in components_to_memory_profile:
+        session_dir = Path(session_dir)
+        session_name = session_dir.name
+        profile_dir = session_dir / "profile"
+        profile_dir.mkdir(exist_ok=True)
+        output_file_path = profile_dir / f"{session_name}_memory_{component}.bin"
+        options = os.getenv(RAY_MEMRAY_PROFILE_OPTIONS_ENV, None)
+        options = options.split(",") if options else []
+        command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
+
+    return command
 
 
 def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
@@ -1058,6 +1115,7 @@ def _start_redis_instance(
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
 ):
     """Start a single Redis server.
 
@@ -1089,6 +1147,7 @@ def _start_redis_instance(
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
+        enable_tls: Enable the TLS/SSL in Redis or not
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -1108,9 +1167,7 @@ def _start_redis_instance(
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
 
-    if not Config.REDIS_ENABLE_SSL():
-        command += ["--port", str(port), "--loglevel", "warning"]
-    else:
+    if enable_tls:
         import socket
 
         with socket.socket() as s:
@@ -1124,12 +1181,14 @@ def _start_redis_instance(
             "--port",
             str(free_port),
         ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
 
     if listen_to_localhost_only:
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
-    if Config.REDIS_ENABLE_SSL():
+    if enable_tls:
         if Config.REDIS_CA_CERT():
             command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
         if Config.REDIS_CLIENT_CERT():
@@ -1291,8 +1350,9 @@ def start_api_server(
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
 
         command = [
-            sys.executable,
-            "-u",
+            *_build_python_executable_command_memory_profileable(
+                ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
+            ),
             dashboard_filepath,
             f"--host={host}",
             f"--port={port}",
@@ -1447,10 +1507,21 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_address:
-        redis_ip_address, redis_port = redis_address.rsplit(":")
+        parts = redis_address.split("://", 1)
+        enable_redis_ssl = "false"
+        if len(parts) == 1:
+            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+        else:
+            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+                raise ValueError(f"Invalid redis address {redis_address}")
+            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+            if parts[0] == "rediss":
+                enable_redis_ssl = "true"
+
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
+            f"--redis_enable_ssl={enable_redis_ssl}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
@@ -1653,8 +1724,9 @@ def start_raylet(
         max_worker_port = 0
 
     agent_command = [
-        sys.executable,
-        "-u",
+        *_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
+        ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
