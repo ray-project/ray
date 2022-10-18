@@ -111,6 +111,9 @@ MOCK_MODULES = [
     "wandb",
     "zoopt",
     "composer",
+    "composer.trainer",
+    "composer.loggers",
+    "composer.loggers.logger_destination"
 ]
 
 
