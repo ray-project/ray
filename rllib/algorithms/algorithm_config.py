@@ -322,7 +322,8 @@ class AlgorithmConfig:
         # frozenness).
         config_dict.pop("_is_frozen", None)
         config_obj.update_from_dict(config_dict)
-        config_obj._recompile_eval_config(config_obj.evaluation_config)
+        if config_obj.evaluation_config is not None:
+            config_obj._recompile_eval_config(config_obj.evaluation_config)
         return config_obj
 
     def update_from_dict(
