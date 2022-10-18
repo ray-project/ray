@@ -13,7 +13,7 @@ Example use case
 ----------------
 
 You want to quick-sort a large list of numbers.
-By making the recursive calls distributed, we can sort the list distributedly and parallelly.
+By using nested tasks, we can sort the list in a distributed and parallel fashion.
 
 .. figure:: ../images/tree-of-tasks.svg
 
