@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Dict, Optional
 
 import ray
+import ray.cloudpickle
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
@@ -193,7 +194,11 @@ class _TorchBackend(Backend):
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
-        torch.save(data_dict, _buffer)
+        # If a custom torch model contains a function that cannot be pickled normally,
+        # we need to use ray.cloudpickle. This is also consistent with how Ray
+        # serialization works in general and has no downsides
+        # (this can still be unpickled without ray using normal pickle).
+        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
         return _buffer.getvalue()
 
     @staticmethod

@@ -18,6 +18,7 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 
@@ -531,6 +532,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             metric="error",
             mode="min",
             perturbation_interval=5,
+            hyperparam_mutations={"ignored": [1]},
             burn_in_period=50,
             log_config=True,
             synch=True,
@@ -627,6 +629,33 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
 
 class PopulationBasedTrainingLoggingTest(unittest.TestCase):
+    def testFilterHyperparamConfig(self):
+        filtered_params = _filter_mutated_params_from_config(
+            {
+                "training_loop_config": {
+                    "lr": 0.1,
+                    "momentum": 0.9,
+                    "batch_size": 32,
+                    "test_mode": True,
+                    "ignore_nested": {
+                        "b": 0.1,
+                    },
+                },
+                "other_config": {
+                    "a": 0.5,
+                },
+            },
+            {
+                "training_loop_config": {
+                    "lr": tune.uniform(0, 1),
+                    "momentum": tune.uniform(0, 1),
+                }
+            },
+        )
+        assert filtered_params == {
+            "training_loop_config": {"lr": 0.1, "momentum": 0.9}
+        }, filtered_params
+
     def testSummarizeHyperparamChanges(self):
         class DummyTrial:
             def __init__(self, config):
@@ -646,16 +675,24 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
             new_config, operations = scheduler._get_new_config(
                 None, DummyTrial(old_config)
             )
+
+            old_params = _filter_mutated_params_from_config(
+                old_config, hyperparam_mutations
+            )
+            new_params = _filter_mutated_params_from_config(
+                new_config, hyperparam_mutations
+            )
+
             summary = scheduler._summarize_hyperparam_changes(
-                old_config, new_config, operations
+                old_params, new_params, operations
             )
             if print_summary:
                 print(summary)
             return scheduler, new_config, operations
 
-        # 1. Empty (no hyperparams mutated)
-        _, new_config, operations = test_config({}, {})
-        assert not new_config and not operations
+        # 1. Empty hyperparam_mutations (no hyperparams mutated) should raise an error
+        with self.assertRaises(tune.TuneError):
+            _, new_config, operations = test_config({}, {})
 
         # 2. No nesting
         hyperparam_mutations = {
@@ -711,10 +748,34 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
                 {"a": 1, "b": {}},
                 {"a": "noop", "b": {"c": "noop"}},
             )
-        with self.assertRaises(AssertionError):
-            scheduler._summarize_hyperparam_changes(
-                {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
-            )
+        # It's ok to have missing operations (just fill in the ones that are present)
+        scheduler._summarize_hyperparam_changes(
+            {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
+        )
+        scheduler._summarize_hyperparam_changes(
+            {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {}
+        )
+
+        # Make sure that perturbation and logging work with extra keys that aren't
+        # included in hyperparam_mutations (both should ignore the keys)
+        hyperparam_mutations = {
+            "train_loop_config": {
+                "lr": tune.uniform(0, 1),
+                "momentum": tune.uniform(0, 1),
+            }
+        }
+        test_config(
+            hyperparam_mutations,
+            {
+                "train_loop_config": {
+                    "lr": 0.1,
+                    "momentum": 0.9,
+                    "batch_size": 32,
+                    "test_mode": True,
+                }
+            },
+            resample_probability=0,
+        )
 
 
 if __name__ == "__main__":

@@ -2334,7 +2334,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # skip trial complete in this mock setting
 
     def testPBTNanInf(self):
-        scheduler = PopulationBasedTraining(metric="episode_reward_mean", mode="max")
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean",
+            mode="max",
+            hyperparam_mutations={"ignored": [1]},
+        )
         t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2414,7 +2418,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(MedianStoppingRule)
 
     def testAnonymousMetricEndToEndPBT(self):
-        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
+        self._testAnonymousMetricEndToEnd(
+            lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
+        )
 
 
 if __name__ == "__main__":

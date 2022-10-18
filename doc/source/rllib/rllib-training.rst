@@ -292,13 +292,6 @@ The following is a list of the common algorithm hyper-parameters:
     # a) handles window generation and rendering itself (returning True) or
     # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
     "render_env": False,
-    # If True, stores videos in this relative directory inside the default
-    # output dir (~/ray_results/...). Alternatively, you can specify an
-    # absolute path (str), in which the env recordings should be
-    # stored instead.
-    # Set to False for not recording anything.
-    # Note: This setting replaces the deprecated `monitor` key.
-    "record_env": False,
     # Whether to clip rewards during Policy's postprocessing.
     # None (default): Clip for Atari only (r=sign(r)).
     # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
