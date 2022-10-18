@@ -311,7 +311,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",
