@@ -161,7 +161,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   ///    - FailOrRetryPendingTask
-  ///    - MarkTaskReturnObjectsFailed
+  ///    - FailPendingTask
   TaskFinisherInterface &GetTaskFinisherWithoutMu() {
     mu_.AssertNotHeld();
     return task_finisher_;

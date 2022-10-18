@@ -11,7 +11,7 @@ click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
-gpustat == 1.0.0b1
+gpustat >= 1.0.0
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
 jsonschema
@@ -20,7 +20,7 @@ numpy >= 1.16
 opencensus
 packaging; python_version >= '3.10'
 prometheus_client >= 0.7.1, < 0.14.0
-protobuf >= 3.15.3, != 3.19.5, < 4.0.0
+protobuf >= 3.15.3, != 3.19.5
 py-spy >= 0.2.0
 pydantic >= 1.8, < 1.10.0
 pyyaml
@@ -32,7 +32,7 @@ virtualenv>=20.0.24
 dm_tree
 flask
 pygame
-gym>=0.21.0,<0.24.0; python_version >= '3.7'
+gym>=0.21.0,<0.24.1; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
@@ -53,7 +53,6 @@ gradio; platform_system != "Windows"
 async-exit-stack
 async-generator
 asyncmock
-autorom[accept-rom-license]
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -64,12 +63,14 @@ boto3
 cryptography>=3.0.0
 cython >= 0.29.26
 dataclasses; python_version < '3.7'
-fastapi
+# 0.85.0 of fastapi is breaking the ci because
+# requires newer starlette -> newer version typing-extensions
+# conflicting with tensorflow 2.6
+fastapi <= 0.84.0
 feather-format
 google-api-python-client
 google-cloud-storage
 gym-minigrid==1.0.3
-gym[atari]
 kubernetes
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
@@ -102,6 +103,7 @@ tqdm
 testfixtures
 werkzeug<2.2.0
 xlrd
+memray; platform_system != "Windows"
 
 # For doc tests
 myst-parser==0.15.2

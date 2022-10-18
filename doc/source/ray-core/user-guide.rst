@@ -1,3 +1,5 @@
+.. _core-use-guide:
+
 User Guides
 ===========
 
