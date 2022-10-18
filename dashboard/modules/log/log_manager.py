@@ -14,7 +14,7 @@ from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
-WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).out")
+WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\\d+).out")
 
 
 class LogsManager:

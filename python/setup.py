@@ -304,6 +304,7 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
+        "six >= 1.16; python_version >= '3.10'",
         "grpcio >= 1.32.0; python_version < '3.10'",
         "grpcio >= 1.42.0; python_version >= '3.10'",
         "jsonschema",
