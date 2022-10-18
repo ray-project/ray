@@ -166,7 +166,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-        ...   policy_spec=PGTF1Policy) # doctest: +SKIP
+        ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -177,7 +177,8 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policy_spec={ # doctest: +SKIP
+        ...   config=AlgorithmConfig().multi_agent(
+        ...     policies={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1": # doctest: +SKIP
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
@@ -186,10 +187,13 @@ class RolloutWorker(ParallelIteratorWorker):
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
-        ...   },
-        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
-        ...     random.choice(["car_policy1", "car_policy2"])
-        ...     if agent_id.startswith("car_") else "traffic_light_policy")
+        ...     },
+        ...     policy_mapping_fn=(
+        ...       lambda agent_id, episode, **kwargs:
+        ...       random.choice(["car_policy1", "car_policy2"])
+        ...       if agent_id.startswith("car_") else "traffic_light_policy"),
+        ...     ),
+        ..  )
         >>> print(worker.sample()) # doctest: +SKIP
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
@@ -469,7 +473,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.config = config
         # TODO: Remove this backward compatibility.
-        self.policy_config = config
+        #  This property (old-style python config dict) should no longer be used!
+        self.policy_config = config.to_dict()
 
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_workers
@@ -553,6 +558,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(copy.deepcopy(self.env_context))
 
+        clip_rewards = self.config.clip_rewards
+
         if self.env is not None:
             # Validate environment (general validation function).
             if not self.config.disable_env_checking:
@@ -572,14 +579,14 @@ class RolloutWorker(ParallelIteratorWorker):
             elif (
                 is_atari(self.env)
                 and not self.config.model.get("custom_preprocessor")
-                and preprocessor_pref == "deepmind"
+                and self.config.preprocessor_pref == "deepmind"
             ):
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
                 # If clip_rewards not explicitly set to False, switch it
                 # on here (clip between -1.0 and 1.0).
-                if clip_rewards is None:
+                if self.config.clip_rewards is None:
                     clip_rewards = True
 
                 # Framestacking is used.
@@ -593,7 +600,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
             elif (
                 not self.config.model.get("custom_preprocessor")
-                and preprocessor_pref is None
+                and self.config.preprocessor_pref is None
             ):
                 # Only turn off preprocessing
                 self.preprocessing_enabled = False
@@ -764,7 +771,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = AsyncSampler(
                 worker=self,
                 env=self.async_env,
-                clip_rewards=self.config.clip_rewards,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
@@ -784,7 +791,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = SyncSampler(
                 worker=self,
                 env=self.async_env,
-                clip_rewards=self.config.clip_rewards,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
                 callbacks=self.callbacks,
@@ -928,7 +935,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   default_policy_class=PGTFPolicy) # doctest: +SKIP
             >>> print(worker.sample_with_count()) # doctest: +SKIP
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
@@ -954,7 +961,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
@@ -1071,7 +1078,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
@@ -1140,7 +1147,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
             >>> worker.apply_gradients(grads) # doctest: +SKIP

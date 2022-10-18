@@ -27,7 +27,7 @@ from ray.rllib.utils.metrics.learner_info import (
 class TestPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)  # TODO
 
     @classmethod
     def tearDownClass(cls) -> None:

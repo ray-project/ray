@@ -53,9 +53,6 @@ class PGConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # The PG algo fully works with AlgorithmConfig objects under the hood.
-        self._algo_requires_config_obj = True
-
     @override(AlgorithmConfig)
     def training(
         self,
