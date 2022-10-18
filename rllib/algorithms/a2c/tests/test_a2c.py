@@ -27,7 +27,8 @@ class TestA2C(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["CartPole-v0", "Pendulum-v1", "PongDeterministic-v0"]:
-                trainer = config.build(env=env)
+                config.environment(env)
+                trainer = config.build(use_copy=True)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
