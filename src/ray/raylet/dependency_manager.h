@@ -55,7 +55,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
       : object_manager_(object_manager) {
     active_requests_counter_.SetOnChangeCallback([this](std::string task_name,
                                                         int64_t num_total) mutable {
-      RAY_LOG(ERROR) << "Active task requests " << task_name << " " << num_total;
       // Of the waiting tasks of this name, some fraction may be inactive (blocked on
       // object store memory availability). Get this breakdown by querying the pull
       // manager.
