@@ -17,7 +17,7 @@ register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
 class TestEnvRunnerV2(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
