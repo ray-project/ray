@@ -461,7 +461,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - TEST_EXTERNAL_REDIS=1 ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1
 
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
