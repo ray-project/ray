@@ -95,10 +95,6 @@ class Batcher(BatcherInterface):
         """Whether this Batcher has any data."""
         return self._buffer_size > 0
 
-    def buffer_size(self) -> int:
-        """The number of buffered rows in this Batcher"""
-        return self._buffer_size
-
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
 
