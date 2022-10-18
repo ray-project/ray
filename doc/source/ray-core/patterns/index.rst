@@ -8,6 +8,7 @@ This section is a collection of common design patterns and anti-patterns for wri
 .. toctree::
     :maxdepth: 1
 
+    nested-tasks
     generators
     limit-pending-tasks
     limit-running-tasks
