@@ -98,7 +98,7 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
 
 
 def test_mosaic_cifar10(ray_start_4_cpus):
-    result = train_mosaic_cifar10()
+    _ = train_mosaic_cifar10()
 
     # TODO : add asserts once reporting has been integrated
 
