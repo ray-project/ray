@@ -38,7 +38,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         self._view_requirements = ctx.view_requirements
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
-        env_default = defaultdict(
+        self.agent_collectors = defaultdict(lambda: defaultdict(
             lambda: AgentCollector(
                 self._view_requirements,
                 max_seq_len=ctx.config["model"]["max_seq_len"],
@@ -55,8 +55,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                 # that is not useful for inference.
                 is_training=False,
             )
-        )
-        self.agent_collectors = defaultdict(lambda: env_default)
+        ))
 
     def reset(self, env_id: str):
         if env_id in self.agent_collectors:
