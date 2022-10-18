@@ -411,3 +411,28 @@ tuner = tune.Tuner(
     ),
 )
 # __grid_search_2_end__
+
+if not MOCK:
+    import os
+    from pathlib import Path
+
+    # __no_chdir_start__
+    def train_func(config):
+        # Read from relative paths
+        print(open("./read.txt").read())
+
+        # The working directory shouldn't have changed from the original
+        # NOTE: The `TUNE_ORIG_WORKING_DIR` environment variable is deprecated.
+        assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
+
+        # Write to the Tune trial directory, not the shared working dir
+        tune_trial_dir = Path(session.get_trial_dir())
+        with open(tune_trial_dir / "write.txt", "w") as f:
+            f.write("trial saved artifact")
+
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=False),
+    )
+    tuner.fit()
+    # __no_chdir_end__
