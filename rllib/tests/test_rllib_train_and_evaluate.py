@@ -265,7 +265,6 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
 
 class TestCLISmokeTests(unittest.TestCase):
-
     def test_help(self):
         assert os.popen(f"python {rllib_dir}/scripts.py --help").read()
         assert os.popen(f"python {rllib_dir}/train.py --help").read()

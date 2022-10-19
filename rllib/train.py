@@ -63,13 +63,15 @@ def load_experiments_from_file(config_file: str, file_type: SupportedFileType) -
             experiments = json.load(f)
     else:  # Python file case (ensured by file type enum)
         import importlib
+
         module_qualifier = config_file.replace("/", ".").replace(".py", "")
         module = importlib.import_module(module_qualifier)
 
         if not hasattr(module, "config"):
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
-                "that is an AlgorithmConfig object.")
+                "that is an AlgorithmConfig object."
+            )
         algo_config = getattr(module, "config")
 
         # Note: we do this gymnastics to support the old format that
