@@ -352,7 +352,7 @@ class AlgorithmConfig:
             key = self._translate_special_keys(key, warn_deprecated=False)
 
             # Set our multi-agent settings.
-            if key == "multiagent":
+            if key == "_multi_agent_legacy_dict":
                 for k in [
                     "policies",
                     "policy_map_capacity",
@@ -363,7 +363,8 @@ class AlgorithmConfig:
                     "replay_mode",
                     "count_steps_by",
                 ]:
-                    setattr(self, k, value[k])
+                    if k in value:
+                        setattr(self, k, value[k])
             # Special handling of eval config (normally an override dict):
             # Re-compile our `evaluation_config` property (such that it's always a
             # full AlgorithmConfig object itself).
