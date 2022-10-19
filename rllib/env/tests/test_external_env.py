@@ -5,6 +5,7 @@ import unittest
 import uuid
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -125,9 +126,12 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -136,9 +140,11 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -147,9 +153,12 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_off_policy(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -160,10 +169,12 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_bad_actions(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=BadPolicy,
-            sample_async=True,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
+            default_policy_class=BadPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+                sample_async=True,
+            ),
         )
         self.assertRaises(Exception, lambda: ev.sample())
 
@@ -233,10 +244,13 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            episode_horizon=20,
-            rollout_fragment_length=10,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=10,
+                horizon=20,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         self.assertRaises(ValueError, lambda: ev.sample())
 

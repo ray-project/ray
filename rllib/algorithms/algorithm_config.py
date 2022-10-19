@@ -889,6 +889,7 @@ class AlgorithmConfig:
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
+                TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
 
         Returns:
@@ -901,7 +902,7 @@ class AlgorithmConfig:
         if train_batch_size is not None:
             self.train_batch_size = train_batch_size
         if model is not None:
-            self.model = model
+            self.model.update(model)
         if optimizer is not None:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
 
