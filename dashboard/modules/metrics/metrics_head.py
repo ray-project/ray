@@ -19,7 +19,6 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 
@@ -44,6 +43,7 @@ class TaskProgress(BaseModel):
     num_submitted_to_worker: int = 0
     num_running: int = 0
     num_pending_node_assignment: int = 0
+    num_failed: int = 0
     num_unknown: int = 0
 
 
@@ -57,6 +57,7 @@ prometheus_metric_map = {
     "PENDING_NODE_ASSIGNMENT": "num_pending_node_assignment",
     "PENDING_ARGS_FETCH": "num_pending_node_assignment",
     "PENDING_OBJ_STORE_MEM_AVAIL": "num_pending_node_assignment",
+    "FAILED": "num_failed",
 }
 
 
@@ -135,8 +136,37 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         then we will fetch the progress across all jobs.
         """
         job_id = req.query.get("job_id")
-        job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
-        query = f"sum(ray_tasks{job_id_query}) by (State)"
+
+        job_id_filter = f'JobId="{job_id}"' if job_id else None
+        filter_for_terminal_states = ['State=~"FINISHED|FAILED"']
+        filter_for_non_terminal_states = ['State!~"FINISHED|FAILED"']
+        if job_id_filter:
+            filter_for_terminal_states.append(job_id_filter)
+            filter_for_non_terminal_states.append(job_id_filter)
+
+        filter_for_terminal_states_str = ",".join(filter_for_terminal_states)
+        filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)
+
+        # Ray does not currently permanently track worker task metrics.
+        # The metric is cleared after a worker exits. We need to work around
+        # these restrictions when we query metrics.
+
+        # For terminal states (Finished, Failed), we know that the count can
+        # never decrease. We therefore use the get the latest count of tasks
+        # by fetching the max value over the past 14 days.
+        query_for_terminal_states = (
+            "sum(max_over_time("
+            f"ray_tasks{{{filter_for_terminal_states_str}}}[14d])) by (State)"
+        )
+
+        # For non-terminal states, we assume that if a worker has at least
+        # one task in one of these states, the worker has not exited. Therefore,
+        # we fetch the current count.
+        query_for_non_terminal_states = (
+            f"sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State)"
+        )
+        query = f"{query_for_terminal_states} or {query_for_non_terminal_states}"
+
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
         ) as resp:

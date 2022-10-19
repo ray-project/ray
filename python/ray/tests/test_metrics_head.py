@@ -107,6 +107,10 @@ def test_format_prometheus_output():
                     "metric": {"State": "PENDING_OBJ_STORE_MEM_AVAIL"},
                     "value": [1664330796.832, "8"],
                 },
+                {
+                    "metric": {"State": "FAILED"},
+                    "value": [1664330796.832, "6"],
+                },
             ],
         },
     }
@@ -117,6 +121,7 @@ def test_format_prometheus_output():
         num_running=9,
         num_submitted_to_worker=5,
         num_unknown=0,
+        num_failed=6,
     )
 
     # With unknown states from prometheus
@@ -139,6 +144,10 @@ def test_format_prometheus_output():
                     "metric": {"State": "SOME_NEW_VARIABLE"},
                     "value": [1664330796.832, "3"],
                 },
+                {
+                    "metric": {"State": "FAILED"},
+                    "value": [1664330796.832, "3"],
+                },
             ],
         },
     }
@@ -149,6 +158,7 @@ def test_format_prometheus_output():
         num_running=14,
         num_submitted_to_worker=0,
         num_unknown=3,
+        num_failed=3,
     )
 
 
