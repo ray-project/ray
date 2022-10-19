@@ -2578,7 +2578,7 @@ class Dataset(Generic[T]):
 
         .. tip::
             If you don't need the additional flexibility provided by this method,
-            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier 
+            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier
             to use.
 
         Examples:
@@ -2847,15 +2847,15 @@ class Dataset(Generic[T]):
             >>> ds
             Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
 
-            If your model accepts a single tensor as input, specify a single feature column. 
+            If your model accepts a single tensor as input, specify a single feature column.
 
             >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
-            tensor as input, combine features with 
+            tensor as input, combine features with
             :class:`~ray.data.preprocessors.Concatenator`.
-            
+
             >>> from ray.data.preprocessors import Concatenator
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
@@ -2868,7 +2868,7 @@ class Dataset(Generic[T]):
 
             >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
-            
+
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
                 string, the input data is a tensor. If this is a list, the input data
@@ -2901,7 +2901,7 @@ class Dataset(Generic[T]):
             :meth:`~ray.data.Dataset.iter_tf_batches`
                 Call this method if you need more flexibility.
 
-        """
+        """  # noqa: E501
         from ray.air._internal.tensorflow_utils import get_type_spec
 
         try:
