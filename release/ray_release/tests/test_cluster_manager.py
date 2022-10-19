@@ -246,6 +246,16 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
         self.assertEqual(len(self.sdk.call_counter), 2)
 
+        # Test automatic fields
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["idle_termination_minutes"],
+            self.cluster_manager.autosuspend_minutes,
+        )
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["maximum_uptime_minutes"],
+            self.cluster_manager.maximum_uptime_minutes,
+        )
+
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):
         # Find existing env and succeed
