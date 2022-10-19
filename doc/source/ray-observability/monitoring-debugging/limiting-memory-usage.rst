@@ -1,9 +1,9 @@
 Limiting the memory usage
 =========================
 
-The application may consume a large amount of heap space and causes the node to run out of memory. When that happens the operating system will start killing worker or raylet processes, which breaks Ray. It may stall the metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and causes Ray to fail.
+If application tasks or actors consume a large amount of heap space, it can cause the node to run out of memory (OOM). When that happens, the operating system will start killing worker or raylet processes, disrupting the application. OOM may also stall metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and cause the cluster to become unusable.
 
-In this section we will go over
+In this section we will go over:
 
 - What is the memory monitor and how it works
 
@@ -14,13 +14,13 @@ In this section we will go over
 Memory Monitor
 --------------
 
-The memory monitor is a component that runs on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill task or actor to free up memory and prevent Ray from failing.
+The memory monitor is a component that runs within the raylet process on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
 
 .. note::
 
     The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is disabled by default and needs to be enabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to a value greater than zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <limiting-memory-usage-questions>`. 
 
-The memory monitor is controlled by the following environment variables
+The memory monitor is controlled by the following environment variables:
 
 - ``RAY_memory_monitor_interval_ms (default:9)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
@@ -74,7 +74,7 @@ If the memory monitor is not running (the default) it will print something like 
 Memory usage threshold
 ----------------------
 
-The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables
+The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables:
 
 - ``RAY_memory_usage_threshold_fraction`` (default: 0.9)
 - ``RAY_min_memory_free_bytes`` (default: 1 GiB)
@@ -184,7 +184,7 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 Worker killing policy
 ---------------------
 
-The raylet prioritizes killing task that is retriable, i.e. when :ref:`max_retries <task-fault-tolerance>` or :ref:`max_restarts <actor-fault-tolerance>` is > 0. This is done to minimize workload failure. It then looks for the last one submitted and kills that worker process. It selects and kills one process at a time regardless of how frequent the monitor runs as determined by ``RAY_memory_monitor_interval_ms``.
+The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries`` or ``max_restarts`` is > 0. This is done to minimize workload failure. It then looks for the last one to start executing and kills that worker process. It selects and kills at most one process at a time regardless of how frequent the monitor runs as determined by ``RAY_memory_monitor_interval_ms``.
 
 Let's first start ray and specify the memory threshold.
 
