@@ -1,4 +1,3 @@
-from binascii import crc32
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
 import struct
 
@@ -217,6 +216,7 @@ def _write_record(
 def masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
     import crc32c
+
     mask = 0xA282EAD8
     crc = crc32c.crc32(data)
     masked = ((crc >> 15) | (crc << 17)) + mask
