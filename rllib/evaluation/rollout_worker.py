@@ -979,7 +979,10 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if (
+                    self.is_policy_to_train is not None
+                    and not self.is_policy_to_train(pid, samples)
+                ):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -992,7 +995,10 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
-            if self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
+            if (
+                self.is_policy_to_train is None
+                or self.is_policy_to_train(DEFAULT_POLICY_ID, samples)
+            ):
                 info_out.update(
                     {
                         DEFAULT_POLICY_ID: self.policy_map[
@@ -1105,7 +1111,10 @@ class RolloutWorker(ParallelIteratorWorker):
         grad_out, info_out = {}, {}
         if self.config.framework_str == "tf":
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if (
+                    self.is_policy_to_train is not None
+                    and not self.is_policy_to_train(pid, samples)
+                ):
                     continue
                 policy = self.policy_map[pid]
                 builder = _TFRunBuilder(policy.get_session(), "compute_gradients")
@@ -1116,7 +1125,10 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out = {k: builder.get(v) for k, v in info_out.items()}
         else:
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if (
+                    self.is_policy_to_train is not None
+                    and not self.is_policy_to_train(pid, samples)
+                ):
                     continue
                 grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
                     batch
@@ -1160,10 +1172,16 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
+                if (
+                    self.is_policy_to_train is None
+                    or self.is_policy_to_train(pid, None)
+                ):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, None):
+        elif (
+            self.is_policy_to_train is None
+            or self.is_policy_to_train(DEFAULT_POLICY_ID, None)
+        ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
@@ -1453,7 +1471,8 @@ class RolloutWorker(ParallelIteratorWorker):
             `batch`.
         """
         return {
-            pid for pid in self.policy_map.keys() if self.is_policy_to_train(pid, batch)
+            pid for pid in self.policy_map.keys()
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, batch)
         }
 
     @DeveloperAPI
