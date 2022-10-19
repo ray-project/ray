@@ -367,6 +367,10 @@ class AlgorithmConfig:
                 ]:
                     if k in value:
                         setattr(self, k, value[k])
+            # "model" key, must use `.update()` from given model config dict
+            # (to not lose any keys).
+            elif key == "model":
+                self.model.update(value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
