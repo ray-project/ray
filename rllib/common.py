@@ -102,6 +102,8 @@ train_help = dict(
     "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
+    filetype="The file type of the config file. Defaults to 'yaml' and can also be "
+             "'json', or 'py'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -181,6 +183,9 @@ class CLIArguments:
     # Train arguments
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
+    )
+    FileType = typer.Option(
+        SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
     )
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(

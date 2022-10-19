@@ -50,11 +50,17 @@ def _patch_path(path: str):
         return path
 
 
-def load_experiments_from_file(config_file: str, file_type: SupportedFileType = None):
+def load_experiments_from_file(config_file: str, file_type: SupportedFileType):
     """Load experiments from a file. Currently only supports YAML."""
-    # TODO use file type to load JSON and Python files (i.e. from config objects).
-    with open(config_file) as f:
-        experiments = yaml.safe_load(f)
+    if file_type == SupportedFileType.yaml:
+        with open(config_file) as f:
+            experiments = yaml.safe_load(f)
+    elif file_type == SupportedFileType.json:
+        with open(config_file) as f:
+            experiments = json.load(f)
+    else:
+        # TODO load python
+        pass
     return experiments
 
 
@@ -62,6 +68,7 @@ def load_experiments_from_file(config_file: str, file_type: SupportedFileType = 
 def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
+    file_type: SupportedFileType = cli.FileType,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -100,7 +107,7 @@ def file(
     import_backends()
     framework = framework.value if framework else None
 
-    experiments = load_experiments_from_file(config_file)
+    experiments = load_experiments_from_file(config_file, file_type)
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
 
