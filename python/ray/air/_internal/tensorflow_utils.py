@@ -10,21 +10,24 @@ if TYPE_CHECKING:
     from ray.data._internal.pandas_block import PandasBlockSchema
 
 
-def convert_ndarray_to_tf_tensor(
-    ndarray: np.ndarray,
+def convert_ndarray_batch_to_tf_tensor(
+    batch: np.ndarray,
     dtype: Optional[tf.dtypes.DType] = None,
 ) -> tf.Tensor:
     """Convert a NumPy ndarray to a TensorFlow Tensor.
 
     Args:
-        ndarray: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
+        batch: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
         dtype: A TensorFlow dtype for the created tensor; if None, the dtype will be
             inferred from the NumPy ndarray data.
 
     Returns: A TensorFlow Tensor.
     """
-    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
-    return tf.convert_to_tensor(ndarray, dtype=dtype)
+    batch = _unwrap_ndarray_object_type_if_needed(batch)
+    if batch.dtype == object:
+        return tf.ragged.constant(batch)
+    else:
+        return tf.convert_to_tensor(batch, dtype=dtype)
 
 
 def convert_ndarray_batch_to_tf_tensor_batch(
@@ -50,11 +53,11 @@ def convert_ndarray_batch_to_tf_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_to_tf_tensor(ndarrays, dtypes)
+        batch = convert_ndarray_batch_to_tf_tensor(ndarrays, dtypes)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: convert_ndarray_to_tf_tensor(
+            col_name: convert_ndarray_batch_to_tf_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
             )
@@ -92,12 +95,25 @@ def get_type_spec(
             shape += dtype.element_shape
         return shape
 
+    def get_tensor_spec(
+        dtype: Union[np.dtype, pa.DataType], *, name: str
+    ) -> tf.TypeSpec:
+        shape, dtype = get_shape(dtype), get_dtype(dtype)
+        # Batch dimension is always `None`. So, if there's more than one `None`-valued
+        # dimension, then the tensor is ragged.
+        is_ragged = sum(dim is None for dim in shape) > 1
+        if is_ragged:
+            type_spec = tf.RaggedTensorSpec(shape, dtype=dtype)
+        else:
+            type_spec = tf.TensorSpec(shape, dtype=dtype, name=name)
+        return type_spec
+
     if isinstance(columns, str):
         name, dtype = columns, dtypes[columns]
-        return tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
+        return get_tensor_spec(dtype, name=name)
 
     return {
-        name: tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
+        name: get_tensor_spec(dtype, name=name)
         for name, dtype in dtypes.items()
         if name in columns
     }
