@@ -14,8 +14,7 @@ from ray import serve
 @serve.deployment
 class BatchTextGenerator:
     def __init__(self, pipeline_key: str, model_key: str):
-        model = pipeline(pipeline_key, model_key)
-        self.model = model
+        self.model = pipeline(pipeline_key, model_key)
 
     @serve.batch(max_batch_size=4)
     async def handle_batch(self, inputs: List[str]) -> List[str]:
