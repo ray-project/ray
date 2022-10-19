@@ -239,7 +239,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
             data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+                0, 1, {SampleBatch.NEXT_OBS: obs}
             )
             processed = c([data])  # env.reset() for t == -1 else env.step()
             sample_batch = processed[0].data.sample_batch
@@ -276,7 +276,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
             data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+                0, 1, {SampleBatch.NEXT_OBS: obs}
             )
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
@@ -345,7 +345,6 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 SampleBatch.ACTIONS: (
                     np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
                 ),
-                SampleBatch.T: t - 1,
             }
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
@@ -430,7 +429,6 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 SampleBatch.DONES: dones,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
-                SampleBatch.T: t,
                 # state_out
             }
             env_out = AgentConnectorDataType(0, 1, env_out_dict)
