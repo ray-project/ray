@@ -140,7 +140,7 @@ class Concatenator(Preprocessor):
             if self.raise_if_missing:
                 raise ValueError(message)
             else:
-                logger.warn(message)
+                logger.warning(message)
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
