@@ -948,7 +948,6 @@ def _process_observations(
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
-                    SampleBatch.T: episode.length - 1,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
