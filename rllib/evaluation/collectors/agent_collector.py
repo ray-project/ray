@@ -203,6 +203,11 @@ class AgentCollector:
             del values[SampleBatch.UNROLL_ID]
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
+        # Make sure we are not trying to handle T manually
+        assert SampleBatch.T not in input_values
+        # Add next T
+        self.buffers[SampleBatch.T][0].append(self.buffers[SampleBatch.T][0][-1] + 1)
+
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
