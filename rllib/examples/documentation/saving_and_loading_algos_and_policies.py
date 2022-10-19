@@ -68,7 +68,7 @@ my_ma_config = PPOConfig().multi_agent(
     # Let RLlib know, which agents in the environment (we'll have "agent1"
     # and "agent2") map to which policies.
     policy_mapping_fn=(
-        lambda agent_id, worker, episode, **kw: (
+        lambda agent_id, episode, worker, **kw: (
             "pol1" if agent_id == "agent1" else "pol2"
         )
     ),
@@ -118,7 +118,7 @@ my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
     # Make sure to update the mapping function (we must not map to "pol2" anymore
     # to avoid a runtime error). Now both agents ("agent0" and "agent1") map to
     # the same policy.
-    policy_mapping_fn=lambda agent_id, worker, episode, **kw: "pol1",
+    policy_mapping_fn=lambda agent_id, episode, worker, **kw: "pol1",
     # Since we defined this above, we have to de-define it here with the updated
     # PolicyIDs, otherwise, RLlib will throw an error (it will think that there is an
     # unknown PolicyID in this list (pol2)).
@@ -212,7 +212,7 @@ def new_policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
 algo_w_2_policies = Algorithm.from_checkpoint(
     checkpoint=path_to_checkpoint,
-    policies={"pol0", "pol1"},  # <- restore only those policy IDs here.
+    policy_ids={"pol0", "pol1"},  # <- restore only those policy IDs here.
     policy_mapping_fn=new_policy_mapping_fn,  # <- use this new mapping fn.
 )
 
@@ -231,9 +231,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 # Create a new Algorithm (which contains a Policy, which contains a NN Model).
 # Switch on for native models to be included in the Policy checkpoints.
 ppo_config = (
-    PPOConfig()
-    .environment("Pendulum-v1")
-    .checkpointing(export_native_model_files=True)
+    PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
 )
 
 # The default framework is TensorFlow, but if you would like to do this example with
