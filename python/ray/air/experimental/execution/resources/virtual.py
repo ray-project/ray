@@ -4,11 +4,11 @@ from dataclasses import dataclass
 
 import ray
 from ray.air.experimental.execution.resources.fixed import FixedResourceManager
-from ray.air.experimental.execution.resources.request import ReadyResource
+from ray.air.experimental.execution.resources.request import AllocatedResource
 
 
 @dataclass
-class VirtualReadyResource(ReadyResource):
+class VirtualAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
 
     def annotate_remote_objects(
@@ -18,4 +18,4 @@ class VirtualReadyResource(ReadyResource):
 
 
 class VirtualResourceManager(FixedResourceManager):
-    _resource_cls: ReadyResource = VirtualReadyResource
+    _resource_cls: AllocatedResource = VirtualAllocatedResource

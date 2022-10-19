@@ -15,7 +15,7 @@ class ResourceRequest(PlacementGroupFactory):
 
 
 @dataclass
-class ReadyResource:
+class AllocatedResource:
     """Base class for available resources.
 
     Internally this can point e.g. to a placement group, a placement

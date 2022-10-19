@@ -5,7 +5,7 @@ from typing import List, Optional
 import ray
 from ray.air.experimental.execution.resources.request import (
     ResourceRequest,
-    ReadyResource,
+    AllocatedResource,
 )
 
 
@@ -26,12 +26,12 @@ class ResourceManager(abc.ABC):
         """Returns True if resources for the given request are available"""
         raise NotImplementedError
 
-    def acquire_resources(self, resources: ResourceRequest) -> Optional[ReadyResource]:
+    def acquire_resources(self, resources: ResourceRequest) -> Optional[AllocatedResource]:
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 
     def return_resources(
-        self, ready_resources: ReadyResource, cancel_request: bool = True
+        self, ready_resources: AllocatedResource, cancel_request: bool = True
     ):
         """Return resources to resource pool."""
         raise NotImplementedError

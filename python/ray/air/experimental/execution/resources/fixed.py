@@ -6,7 +6,7 @@ import ray
 from ray import SCRIPT_MODE
 from ray.air.experimental.execution.resources.request import (
     ResourceRequest,
-    ReadyResource,
+    AllocatedResource,
 )
 from ray.air.experimental.execution.resources.resource_manager import ResourceManager
 
@@ -26,7 +26,7 @@ def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
 
 
 @dataclass
-class FixedReadyResource(ReadyResource):
+class FixedAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
 
     def annotate_remote_objects(
@@ -62,7 +62,7 @@ class FixedReadyResource(ReadyResource):
 
 
 class FixedResourceManager(ResourceManager):
-    _resource_cls: ReadyResource = FixedReadyResource
+    _resource_cls: AllocatedResource = FixedAllocatedResource
 
     def __init__(self, total_resources: Optional[Dict[str, float]] = None):
         if not total_resources:
@@ -100,7 +100,7 @@ class FixedResourceManager(ResourceManager):
                 return False
         return True
 
-    def acquire_resources(self, resources: ResourceRequest) -> Optional[ReadyResource]:
+    def acquire_resources(self, resources: ResourceRequest) -> Optional[AllocatedResource]:
         if not self.has_resources_ready(resources):
             return None
 
@@ -108,7 +108,7 @@ class FixedResourceManager(ResourceManager):
         return self._resource_cls(bundles=resources.bundles, request=resources)
 
     def return_resources(
-        self, ready_resources: ReadyResource, cancel_request: bool = True
+        self, ready_resources: AllocatedResource, cancel_request: bool = True
     ):
         resources = ready_resources.request
         self._used_resources.remove(resources)

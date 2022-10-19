@@ -4,7 +4,7 @@ from typing import Dict, Type
 
 from ray.air.experimental.execution.resources.request import (
     ResourceRequest,
-    ReadyResource,
+    AllocatedResource,
 )
 
 
@@ -24,7 +24,7 @@ class ActorRequest:
 @dataclass
 class ActorInfo:
     actor_request: ActorRequest
-    used_resource: ReadyResource
+    used_resource: AllocatedResource
 
     def __hash__(self):
         return hash(id(self))
