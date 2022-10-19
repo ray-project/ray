@@ -43,6 +43,7 @@ RUN sudo apt-get update \
     && sudo rm \
         requirements.txt \
         requirements_test.txt \
+        requirements_dl.txt \
         requirements_ml_docker.txt \
         requirements_tune.txt \
         requirements_rllib.txt \

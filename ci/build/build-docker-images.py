@@ -361,6 +361,7 @@ def prep_ray_ml():
         "python/requirements.txt",
         "python/requirements_test.txt",
         "python/requirements/ml/requirements_ml_docker.txt",
+        "python/requirements/ml/requirements_dl.txt",
         "python/requirements/ml/requirements_tune.txt",
         "python/requirements/ml/requirements_rllib.txt",
         "python/requirements/ml/requirements_train.txt",
