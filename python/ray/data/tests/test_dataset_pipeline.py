@@ -645,7 +645,7 @@ def test_random_shuffle_each_window_with_custom_resource(ray_start_cluster):
 
     ray.init(cluster.address)
 
-    # Run dataset in "bar" nodes.
+    # Run pipeline in "bar" nodes.
     pipe = ray.data.read_datasource(
         ray.data.datasource.RangeDatasource(),
         parallelism=10,
