@@ -384,7 +384,7 @@ class EnvRunnerV2:
             for o in outputs:
                 yield o
 
-    def step(self) -> Union[Iterator[SampleBatchType], SampleBatchType]:
+    def step(self) -> List[SampleBatchType]:
         """Samples training episodes by stepping through environments."""
 
         # Before the very first poll (this will reset all vector sub-environments):
