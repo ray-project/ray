@@ -110,7 +110,7 @@ Instructions about that can be found :ref:`here <ray-metrics>`.
 
 You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
 
-There is also a convenient button to launch grafana from the dashboard. The Grafana UI provides additional customizability of the charts.
+There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
     :align: center
