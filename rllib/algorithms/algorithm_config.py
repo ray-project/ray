@@ -154,7 +154,6 @@ class AlgorithmConfig:
         # `self.multi_agent()`
         self.policies = {}
         self.policy_map_capacity = 100
-        self.policy_map_cache = None
         self.policy_mapping_fn = None
         self.policies_to_train = None
         self.observation_fn = None
@@ -224,6 +223,12 @@ class AlgorithmConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        self.min_time_s_per_reporting = DEPRECATED_VALUE
+        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
+        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
+        self.input_evaluation = DEPRECATED_VALUE
+        self.policy_map_cache = DEPRECATED_VALUE
+
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
@@ -235,10 +240,6 @@ class AlgorithmConfig:
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
-        self.min_time_s_per_reporting = DEPRECATED_VALUE
-        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
-        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.input_evaluation = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -1053,12 +1054,15 @@ class AlgorithmConfig:
         *,
         policies=None,
         policy_map_capacity=None,
-        policy_map_cache=None,
         policy_mapping_fn=None,
         policies_to_train=None,
         observation_fn=None,
         count_steps_by=None,
         replay_mode=DEPRECATED_VALUE,
+        # Deprecated args:
+        # Now done via Ray object store, which has its own cloud-supported
+        # spillover mechanism.
+        policy_map_cache=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
@@ -1068,9 +1072,6 @@ class AlgorithmConfig:
                 observation and action spaces of the policies and any extra config.
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
-            policy_map_cache: Where to store overflowing (least-recently used) policies?
-                Could be a directory (str) or an S3 location. None for using the
-                default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
@@ -1098,14 +1099,20 @@ class AlgorithmConfig:
             self.policies = policies
         if policy_map_capacity is not None:
             self.policy_map_capacity = policy_map_capacity
-        if policy_map_cache is not None:
-            self.policy_map_cache = policy_map_cache
         if policy_mapping_fn is not None:
             self.policy_mapping_fn = policy_mapping_fn
         if policies_to_train is not None:
             self.policies_to_train = policies_to_train
         if observation_fn is not None:
             self.observation_fn = observation_fn
+        if count_steps_by is not None:
+            self.count_steps_by = count_steps_by
+
+        if policy_map_cache != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(policy_map_cache=..)",
+                error=True,
+            )
         if replay_mode != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.multi_agent(replay_mode=..)",
@@ -1113,8 +1120,6 @@ class AlgorithmConfig:
                 "replay_buffer_config={'replay_mode': ..})",
                 error=True,
             )
-        if count_steps_by is not None:
-            self.count_steps_by = count_steps_by
 
         return self
 
