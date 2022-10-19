@@ -1016,6 +1016,9 @@ def test_dashboard_module_load(tmpdir):
 def test_dashboard_module_no_warnings(enable_test_module):
     # Disable log_once so we will get all warnings
     from ray.util import debug
+    import six
+
+    print(six.__version__)
 
     old_val = debug._logged
     debug._logged = set()
