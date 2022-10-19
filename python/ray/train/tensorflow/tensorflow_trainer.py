@@ -98,20 +98,20 @@ class TensorflowTrainer(DataParallelTrainer):
 
         input_size = 1
 
-
         def build_model():
             # toy neural network : 1-layer
             return tf.keras.Sequential(
-                [tf.keras.layers.Dense(1, activation="linear", input_shape=(input_size,))]
+                [tf.keras.layers.Dense(
+                    1, activation="linear", input_shape=(input_size,))]
             )
-
 
         def train_loop_per_worker(config):
             dataset_shard = session.get_dataset_shard("train")
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
                 model = build_model()
-                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+                model.compile(
+                    optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             def to_tf_dataset(dataset, batch_size):
                 def to_tensor_iterator():
