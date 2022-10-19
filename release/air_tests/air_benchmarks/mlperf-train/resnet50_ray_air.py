@@ -346,7 +346,15 @@ def append_to_test_output_json(path, metrics):
             output_json = json.load(existing_test_output_file)
     except FileNotFoundError:
         pass
+    
+    #start_time = output_json.get("start_time")
 
+    # Set success to be previous_success && current_success.
+    success = output_json.get("success", "1")
+    success = "1" if (success == "1") and (metrics["tput_images_per_s"] != -1) else "0"
+    output_json["success"] = success
+
+    # Append all metrics to an array of runs.
     runs = output_json.get("runs", [])
     runs.append(metrics)
     output_json["runs"] = runs
@@ -354,6 +362,7 @@ def append_to_test_output_json(path, metrics):
     num_images_per_file = metrics["num_images_per_input_file"]
     data_loader = metrics["data_loader"]
 
+    # Append select performance metrics to perf_metrics.
     perf_metrics = output_json.get("perf_metrics", [])
     perf_metrics.append({
         "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",
@@ -470,6 +479,7 @@ if __name__ == "__main__":
         result = result.metrics
     except Exception as e:
         exc = e
+
     if exc is not None:
         result["tput_images_per_s"] = -1
         result["time_total_s"] = time.perf_counter() - start_time_s
