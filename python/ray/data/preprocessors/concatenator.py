@@ -128,7 +128,7 @@ class Concatenator(Preprocessor):
 
     def _validate(self, df: pd.DataFrame) -> None:
         for parameter in "include", "exclude":
-            columns = getattr(parameter)
+            columns = getattr(self, parameter)
             if columns is None:
                 continue
 
