@@ -258,8 +258,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 self.choose_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
-
-            ray._private.usage.usage_lib.record_library_usage("job_submission")
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
             return Response(
