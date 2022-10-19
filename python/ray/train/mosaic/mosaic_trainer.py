@@ -32,16 +32,46 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
+    >>> import torch.utils.data
+        >>>
+        >>> import torchvision
+        >>> from torchvision import transforms, datasets
+        >>>
+        >>> from composer.models.tasks import ComposerClassifier
+        >>> import composer.optim
+        >>> from composer.algorithms import LabelSmoothing
+        >>>
+        >>> import ray
+        >>> from ray.air.config import ScalingConfig
+        >>> import ray.train as train
+        >>> from ray.air import session
+        >>> from ray.train.mosaic import MosaicTrainer
+        >>>
         >>> def trainer_init_per_worker(config):
         ...     # prepare the model for distributed training and wrap with
         ...     # ComposerClassifier for Composer Trainer compatibility
         ...     model = torchvision.models.resnet18(num_classes=10)
         ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
         ...
+        ...
+        ...     # prepare train/test dataset
+        ...     mean = (0.507, 0.487, 0.441)
+        ...     std = (0.267, 0.256, 0.276)
+        ...     cifar10_transforms = transforms.Compose(
+        ...         [transforms.ToTensor(), transforms.Normalize(mean, std)]
+        ...     )
+        ...     data_directory = "~/data"
+        ...     train_dataset = datasets.CIFAR10(
+        ...         data_directory,
+        ...         train=True,
+        ...         download=True,
+        ...         transform=cifar10_transforms
+        ...     )
+        ...
         ...     # prepare train dataloader
         ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
         ...     train_dataloader = torch.utils.data.DataLoader(
-        ...         config.pop("train_dataset"),
+        ...         train_dataset,
         ...         batch_size=batch_size_per_worker
         ...     )
         ...     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
@@ -64,7 +94,6 @@ class MosaicTrainer(TorchTrainer):
         >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
         >>> trainer_init_config = {
         ...     "max_duration": "1ba",
-        ...     "train_dataset": train_dataset,
         ...     "algorithms": [LabelSmoothing()],
         ... }
         ...
