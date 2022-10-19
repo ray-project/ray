@@ -521,7 +521,9 @@ class RolloutWorker(ParallelIteratorWorker):
         # Setup current policy_mapping_fn. Start with the one from the config, which
         # might be None in older checkpoints (nowadays AlgorithmConfig has a proper
         # default for this); Need to cover this situation via the backup lambda here.
-        self.policy_mapping_fn = lambda **kw: DEFAULT_POLICY_ID
+        self.policy_mapping_fn = (
+            lambda agent_id, episode, worker, **kw: DEFAULT_POLICY_ID
+        )
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator

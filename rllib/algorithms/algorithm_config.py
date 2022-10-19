@@ -355,7 +355,7 @@ class AlgorithmConfig:
 
             # Set our multi-agent settings.
             if key == "_multi_agent_legacy_dict":
-                for k in [
+                kwargs = {k: value[k] for k in [
                     "policies",
                     "policy_map_capacity",
                     "policy_map_cache",
@@ -364,13 +364,12 @@ class AlgorithmConfig:
                     "observation_fn",
                     "replay_mode",
                     "count_steps_by",
-                ]:
-                    if k in value:
-                        setattr(self, k, value[k])
+                ] if k in value}
+                self.multi_agent(**kwargs)
             # "model" key, must use `.update()` from given model config dict
             # (to not lose any keys).
             elif key == "model":
-                self.model.update(value)
+                self.training(model=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
