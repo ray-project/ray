@@ -14,6 +14,7 @@ export const TaskProgressBar = ({
   numPendingArgsAvail = 0,
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
+  numFailed = 0,
   numUnknown = 0,
   showAsComplete = false,
 }: TaskProgressBarProps) => {
@@ -25,14 +26,20 @@ export const TaskProgressBar = ({
       numPendingArgsAvail +
       numPendingNodeAssignment +
       numSubmittedToWorker +
+      numFailed +
       numUnknown;
     return (
       <ProgressBar
         progress={[
           {
             label: "Finished",
-            value: total,
+            value: total - numFailed,
             color: theme.palette.success.main,
+          },
+          {
+            label: "Failed",
+            value: numFailed,
+            color: theme.palette.error.main,
           },
         ]}
       />
@@ -43,6 +50,11 @@ export const TaskProgressBar = ({
         label: "Finished",
         value: numFinished,
         color: theme.palette.success.main,
+      },
+      {
+        label: "Failed",
+        value: numFailed,
+        color: theme.palette.error.main,
       },
       {
         label: "Running",
@@ -88,6 +100,7 @@ export const MiniTaskProgressBar = ({
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
   numUnknown = 0,
+  numFailed = 0,
   showAsComplete = false,
   showTooltip = true,
 }: MiniTaskProgressBarProps) => {
@@ -99,14 +112,20 @@ export const MiniTaskProgressBar = ({
       numPendingArgsAvail +
       numPendingNodeAssignment +
       numSubmittedToWorker +
+      numFailed +
       numUnknown;
     return (
       <ProgressBar
         progress={[
           {
             label: "Finished",
-            value: total,
+            value: total - numFailed,
             color: theme.palette.success.main,
+          },
+          {
+            label: "Failed",
+            value: numFailed,
+            color: theme.palette.error.main,
           },
         ]}
         showLegend={false}
@@ -119,6 +138,11 @@ export const MiniTaskProgressBar = ({
         label: "Finished",
         value: numFinished,
         color: theme.palette.success.main,
+      },
+      {
+        label: "Failed",
+        value: numFailed,
+        color: theme.palette.error.main,
       },
       {
         label: "Running",

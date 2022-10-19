@@ -46,6 +46,10 @@ class _TrainSessionImpl(Session):
         return self._session.trial_info.resources
 
     @property
+    def trial_dir(self) -> str:
+        return self._session.trial_info.logdir
+
+    @property
     def world_size(self) -> int:
         return self._session.world_size
 

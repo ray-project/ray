@@ -146,7 +146,6 @@ else:
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -271,6 +270,8 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
+        "typer",
+        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -309,7 +310,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",
