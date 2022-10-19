@@ -316,9 +316,9 @@ def init_cluster(
         )
     if insufficient_resources:
         if safe_mode:
-            _logger.warning("\n".join(insufficient_resources))
+            raise (ValueError, "\n".join(insufficient_resources))
         else:
-            raise(ValueError, "\n".join(insufficient_resources))
+            _logger.warning("\n".join(insufficient_resources))
 
     ray_head_hostname = get_spark_application_driver_host(spark)
     ray_head_port = get_safe_port()
