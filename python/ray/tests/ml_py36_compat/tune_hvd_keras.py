@@ -54,7 +54,9 @@ def keras_train_loop(config):
         )
 
     for _ in range(epochs):
-        tf_dataset = dataset.to_tf(feature_columns="concat_out", label_columns="target", batch_size=batch_size)
+        tf_dataset = dataset.to_tf(
+            feature_columns="concat_out", label_columns="target", batch_size=batch_size
+        )
         multi_worker_model.fit(
             tf_dataset,
             callbacks=[

@@ -53,7 +53,9 @@ def train_func(config: dict):
 
     results = []
     for _ in range(epochs):
-        tf_dataset = dataset.to_tf(feature_columns="x", label_columns="y", batch_size=batch_size)
+        tf_dataset = dataset.to_tf(
+            feature_columns="x", label_columns="y", batch_size=batch_size
+        )
         history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results
