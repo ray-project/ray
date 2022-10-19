@@ -3,7 +3,7 @@
 from typing import List
 
 from starlette.requests import Request
-from transformers import pipeline, Pipeline
+from transformers import pipeline
 
 from ray import serve
 # __doc_import_end__
@@ -13,7 +13,8 @@ from ray import serve
 # __doc_define_servable_begin__
 @serve.deployment
 class BatchTextGenerator:
-    def __init__(self, model: Pipeline):
+    def __init__(self, pipeline_key: str, model_key: str):
+        model = pipeline(pipeline_key, model_key)
         self.model = model
 
     @serve.batch(max_batch_size=4)
@@ -29,6 +30,5 @@ class BatchTextGenerator:
 
 
 # __doc_deploy_begin__
-model = pipeline("text-generation", "gpt2")
-generator = BatchTextGenerator.bind(model)
+generator = BatchTextGenerator.bind("text-generation", "gpt2")
 # __doc_deploy_end__
