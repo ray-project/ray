@@ -4672,6 +4672,8 @@
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
     test_suite: chaos_test
 
+  stable: false
+
   frequency: nightly
   team: core
   cluster:
