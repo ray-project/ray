@@ -251,7 +251,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
-        print(metric_samples)
         grpc_metrics = [
             "ray_grpc_server_req_process_time_ms",
             "ray_grpc_server_req_new_total",
