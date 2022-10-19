@@ -329,7 +329,8 @@ class TestEnvRunnerV2(unittest.TestCase):
         while not outputs:
             outputs = env_runner.step()
 
-        self.assertEqual(len(outputs), 2)
+        # Get rollout metrics before getting actual SampleBatches.
+        self.assertEqual(len(outputs), 1)
         self.assertTrue(isinstance(outputs[0], RolloutMetrics))
 
 
