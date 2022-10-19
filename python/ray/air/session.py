@@ -243,7 +243,7 @@ def get_dataset_shard(
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    You should call ``iter_torch_batches()`` or ``iter_tf_batches()``
+    You should call ``iter_torch_batches()`` or :meth:`~ray.data.Dataset.to_tf`
     on this shard to convert it to the appropriate
     framework-specific data type.
 

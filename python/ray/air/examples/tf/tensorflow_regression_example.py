@@ -13,7 +13,6 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
     TensorflowPredictor,
     TensorflowTrainer,
-    prepare_dataset_shard,
 )
 from ray.air.config import ScalingConfig
 
@@ -62,25 +61,9 @@ def train_func(config: dict):
 
     dataset = session.get_dataset_shard("train")
 
-    def to_tf_dataset(dataset, batch_size):
-        def to_tensor_iterator():
-            for batch in dataset.iter_tf_batches(
-                batch_size=batch_size, dtypes=tf.float32
-            ):
-                yield batch["x"], batch["y"]
-
-        output_signature = (
-            tf.TensorSpec(shape=(None, 100), dtype=tf.float32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32),
-        )
-        tf_dataset = tf.data.Dataset.from_generator(
-            to_tensor_iterator, output_signature=output_signature
-        )
-        return prepare_dataset_shard(tf_dataset)
-
     results = []
     for _ in range(epochs):
-        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=batch_size)
+        tf_dataset = dataset.to_tf(feature_columns="x", label_columns="y", batch_size=batch_size)
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
         )
