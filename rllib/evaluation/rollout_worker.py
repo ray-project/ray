@@ -1668,7 +1668,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Also restore mapping fn and which policies to train.
         if "policy_mapping_fn" in state:
             self.set_policy_mapping_fn(state["policy_mapping_fn"])
-        if "is_policy_to_train" in state:
+        if state.get("is_policy_to_train") is not None:
             self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
