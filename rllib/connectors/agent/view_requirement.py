@@ -38,25 +38,26 @@ class ViewRequirementAgentConnector(AgentConnector):
         self._view_requirements = ctx.view_requirements
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
-        env_default = defaultdict(
-            lambda: AgentCollector(
-                self._view_requirements,
-                max_seq_len=ctx.config["model"]["max_seq_len"],
-                intial_states=ctx.initial_states,
-                disable_action_flattening=ctx.config.get(
-                    "_disable_action_flattening", False
-                ),
-                is_policy_recurrent=ctx.is_policy_recurrent,
-                # Note(jungong): We only leverage AgentCollector for building sample
-                # batches for computing actions.
-                # So regardless of whether this ViewRequirement connector is in
-                # training or inference mode, we should tell these AgentCollectors
-                # to behave in inference mode, so they don't accumulate episode data
-                # that is not useful for inference.
-                is_training=False,
+        self.agent_collectors = defaultdict(
+            lambda: defaultdict(
+                lambda: AgentCollector(
+                    self._view_requirements,
+                    max_seq_len=ctx.config["model"]["max_seq_len"],
+                    intial_states=ctx.initial_states,
+                    disable_action_flattening=ctx.config.get(
+                        "_disable_action_flattening", False
+                    ),
+                    is_policy_recurrent=ctx.is_policy_recurrent,
+                    # Note(jungong): We only leverage AgentCollector for building sample
+                    # batches for computing actions.
+                    # So regardless of whether this ViewRequirement connector is in
+                    # training or inference mode, we should tell these AgentCollectors
+                    # to behave in inference mode, so they don't accumulate episode data
+                    # that is not useful for inference.
+                    is_training=False,
+                )
             )
         )
-        self.agent_collectors = defaultdict(lambda: env_default)
 
     def reset(self, env_id: str):
         if env_id in self.agent_collectors:
