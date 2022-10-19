@@ -743,7 +743,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
-        "schema={a: TensorDtype(shape=None, dtype=float64)})"
+        "schema={a: TensorDtype(shape=(None, None), dtype=float64)})"
     )
 
 

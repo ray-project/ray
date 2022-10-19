@@ -172,8 +172,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
+        col = row[VALUE_COL_NAME]
+        chunk_idx = 0
+        while True:
+            if chunk_idx >= col.num_chunks:
+                # All empty chunks, return empty ndarray.
+                return np.array([], col.type.storage_type.value_type.to_pandas_dtype())
+            if len(col.chunk(chunk_idx)) > 0:
+                break
+            chunk_idx += 1
         # Getting an item in a tensor column automatically does a NumPy conversion.
-        return row[VALUE_COL_NAME][0]
+        return col.chunk(chunk_idx)[0]
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
