@@ -53,6 +53,7 @@ def test_raylet_gdb(ray_gdb_start):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="memray not supported in win32")
+@pytest.mark.skipif(sys.platform == "darwin", reason="memray not supported in Darwin")
 def test_memory_profiler_command_builder(monkeypatch, tmp_path):
     session_dir = tmp_path
     # When there's no env var, command should be just a regular python command.
