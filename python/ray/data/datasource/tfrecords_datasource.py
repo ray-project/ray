@@ -5,6 +5,7 @@ import struct
 import numpy as np
 
 from ray.util.annotations import PublicAPI
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -45,6 +46,9 @@ class TFRecordDatasource(FileBasedDatasource):
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         **writer_args,
     ) -> None:
+
+        _check_import(self, module="crc32c", package="crc32c")
+
         arrow = block.to_arrow()
 
         # It seems like TFRecords are typically row-based,
@@ -212,9 +216,9 @@ def _write_record(
 
 def masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
+    import crc32c
     mask = 0xA282EAD8
-    # crc = crc32c.crc32(data)
-    crc = crc32(data)
+    crc = crc32c.crc32(data)
     masked = ((crc >> 15) | (crc << 17)) + mask
     masked = np.uint32(masked & np.iinfo(np.uint32).max)
     masked_bytes = struct.pack("<I", masked)
