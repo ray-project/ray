@@ -29,7 +29,7 @@ scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
 @pytest.fixture()
-def ray_start_4_cpus():
+def ray_start_4_cpus_mosaic():
     runtime_env = {"pip": ["mosaicml==0.10.1"]}
 
     address_info = ray.init(num_cpus=4, runtime_env=runtime_env)
@@ -100,13 +100,13 @@ def trainer_init_per_worker(config):
 trainer_init_per_worker.__test__ = False
 
 
-def test_mosaic_cifar10(ray_start_4_cpus):
+def test_mosaic_cifar10(ray_start_4_cpus_mosaic):
     _ = train_mosaic_cifar10()
 
     # TODO : add asserts once reporting has been integrated
 
 
-def test_init_errors(ray_start_4_cpus):
+def test_init_errors(ray_start_4_cpus_mosaic):
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
     be due to bad `trainer_init_per_worker` function or missing requirements in the
     `trainer_init_config` argument.
@@ -147,7 +147,7 @@ def test_init_errors(ray_start_4_cpus):
         )
 
 
-def test_loggers(ray_start_4_cpus):
+def test_loggers(ray_start_4_cpus_mosaic):
     class DummyLogger(LoggerDestination):
         def fit_start(self, state: State, logger: Logger) -> None:
             raise ValueError("Composer Logger object exists.")

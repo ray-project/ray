@@ -32,49 +32,49 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
-    >>> def trainer_init_per_worker(config):
-    ...     # prepare the model for distributed training and wrap with
-    ...     # ComposerClassifier for Composer Trainer compatibility
-    ...     model = torchvision.models.resnet18(num_classes=10)
-    ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
-    ...
-    ...     # prepare train dataloader
-    ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
-    ...     train_dataloader = torch.utils.data.DataLoader(
-    ...         config.pop("train_dataset"),
-    ...         batch_size=batch_size_per_worker
-    ...     )
-    ...     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
-    ...
-    ...     # prepare optimizer
-    ...     optimizer = composer.optim.DecoupledSGDW(
-    ...         model.parameters(),
-    ...         lr=0.05,
-    ...         momentum=0.9,
-    ...         weight_decay=2.0e-3,
-    ...     )
-    ...
-    ...     return composer.trainer.Trainer(
-    ...         model=model,
-    ...         train_dataloader=train_dataloader,
-    ...         optimizers=optimizer,
-    ...         **config
-    ...     )
-    ...
-    >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
-    >>> trainer_init_config = {
-    ...     "max_duration": "1ba",
-    ...     "train_dataset": train_dataset,
-    ...     "algorithms": [LabelSmoothing()],
-    ... }
-    ...
-    >>> trainer = MosaicTrainer(
-    ...     trainer_init_per_worker=trainer_init_per_worker,
-    ...     trainer_init_config=trainer_init_config,
-    ...     scaling_config=scaling_config,
-    ... )
-    ...
-    >>> trainer.fit()
+        >>> def trainer_init_per_worker(config):
+        ...     # prepare the model for distributed training and wrap with
+        ...     # ComposerClassifier for Composer Trainer compatibility
+        ...     model = torchvision.models.resnet18(num_classes=10)
+        ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
+        ...
+        ...     # prepare train dataloader
+        ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+        ...     train_dataloader = torch.utils.data.DataLoader(
+        ...         config.pop("train_dataset"),
+        ...         batch_size=batch_size_per_worker
+        ...     )
+        ...     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
+        ...
+        ...     # prepare optimizer
+        ...     optimizer = composer.optim.DecoupledSGDW(
+        ...         model.parameters(),
+        ...         lr=0.05,
+        ...         momentum=0.9,
+        ...         weight_decay=2.0e-3,
+        ...     )
+        ...
+        ...     return composer.trainer.Trainer(
+        ...         model=model,
+        ...         train_dataloader=train_dataloader,
+        ...         optimizers=optimizer,
+        ...         **config
+        ...     )
+        ...
+        >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+        >>> trainer_init_config = {
+        ...     "max_duration": "1ba",
+        ...     "train_dataset": train_dataset,
+        ...     "algorithms": [LabelSmoothing()],
+        ... }
+        ...
+        >>> trainer = MosaicTrainer(
+        ...     trainer_init_per_worker=trainer_init_per_worker,
+        ...     trainer_init_config=trainer_init_config,
+        ...     scaling_config=scaling_config,
+        ... )
+        ...
+        >>> trainer.fit()
 
 
     Args:
