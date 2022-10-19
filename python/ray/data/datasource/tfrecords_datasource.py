@@ -1,8 +1,11 @@
-from typing import TYPE_CHECKING, Dict, List, Union, Iterable, Iterator
+from binascii import crc32
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
 import struct
 
+import numpy as np
+
 from ray.util.annotations import PublicAPI
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
@@ -35,6 +38,26 @@ class TFRecordDatasource(FileBasedDatasource):
 
             yield pd.DataFrame([_convert_example_to_dict(example)])
 
+    def _write_block(
+        self,
+        f: "pyarrow.NativeFile",
+        block: BlockAccessor,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **writer_args,
+    ) -> None:
+        arrow = block.to_arrow()
+
+        # It seems like TFRecords are typically row-based,
+        # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
+        # so we must iterate through the rows of the block, 
+        # serialize to tf.train.Example proto, and write to file.
+
+        examples = _convert_arrow_to_examples(arrow)
+
+        # Write each example to the arrow file in the TFRecord format.
+        for example in examples:
+            _write_record(f, example)
+
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
@@ -46,6 +69,28 @@ def _convert_example_to_dict(
             value = value[0]
         record[feature_name] = value
     return record
+
+def _convert_arrow_to_examples(
+    arrow: "pyarrow.Table",
+) -> Iterable["tf.train.Example"]:
+    import tensorflow as tf
+
+    # Serialize each row[i] of the block to a tf.train.Example and yield it.
+    for i in range(arrow.num_rows):
+
+        # First, convert row[i] to a dictionary.
+        features: Dict[str, "tf.train.Feature"] = {}
+        for name in arrow.column_names:
+            features[name] = _value_to_feature(arrow[name][i].as_py())
+
+        # Convert the dictionary to an Example proto.
+        proto = tf.train.Example(
+            features=tf.train.Features(
+                feature=features
+            )
+        )
+
+        yield proto
 
 
 def _get_feature_value(
@@ -66,8 +111,22 @@ def _get_feature_value(
     if feature.int64_list.value:
         return list(feature.int64_list.value)
 
+def _value_to_feature(
+    value: Union[bytes, float, int]
+) -> "tf.train.Feature":
+    import tensorflow as tf
+    # From https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample
 
-# Adapted from https://github.com/vahidk/tfrecord/blob/master/tfrecord/reader.py#L16-L96
+    if isinstance(value, bytes):
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+    elif isinstance(value, float):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+    elif isinstance(value, int):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    else:
+        raise ValueError(f"Value is of type {type(value)}, not bytes, float, or int.")
+
+# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/reader.py#L16-L96
 #
 # MIT License
 #
@@ -113,3 +172,51 @@ def _read_records(
         if file.readinto(crc_bytes) != 4:
             raise ValueError("Failed to read the end token.")
         yield datum_bytes_view
+
+
+# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72
+#
+# MIT License
+#
+# Copyright (c) 2020 Vahid Kazemi
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+
+def _write_record(
+    file: "pyarrow.NativeFile", example: "tf.train.Example",
+) -> None:
+    record = example.SerializeToString()
+    length = len(record)
+    length_bytes = struct.pack("<Q", length)
+    file.write(length_bytes)
+    file.write(masked_crc(length_bytes))
+    file.write(record)
+    file.write(masked_crc(record))
+
+def masked_crc(data: bytes) -> bytes:
+    """CRC checksum."""
+    mask = 0xa282ead8
+    # crc = crc32c.crc32(data)
+    crc = crc32(data)
+    masked = ((crc >> 15) | (crc << 17)) + mask
+    masked = np.uint32(masked & np.iinfo(np.uint32).max)
+    masked_bytes = struct.pack("<I", masked)
+    return masked_bytes
