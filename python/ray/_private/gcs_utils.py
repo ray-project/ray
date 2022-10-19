@@ -116,7 +116,7 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     req = gcs_service_pb2.CheckAliveRequest()
     try:
         channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
         traceback.print_exc()
@@ -412,7 +412,7 @@ class GcsAioClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
-        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             self._channel.channel()
         )
         self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
@@ -427,7 +427,7 @@ class GcsAioClient:
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
         req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
-        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+        reply = await self._node_info_stub.CheckAlive(req, timeout=timeout)
 
         if reply.status.code != GcsCode.OK:
             raise RuntimeError(
