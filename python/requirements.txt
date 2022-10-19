@@ -35,7 +35,7 @@ rich
 urllib3
 tabulate
 scikit-image
-kopf
+kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
