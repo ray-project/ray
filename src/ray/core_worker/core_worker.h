@@ -100,6 +100,13 @@ class TaskCounter {
             });
   }
 
+  void BecomeActor(const std::string &actor_name) {
+    absl::MutexLock l(&mu_);
+    actor_name_ = actor_name;
+  }
+
+  bool IsActor() { return actor_name_.size() > 0; }
+
   void RefreshRunningMetric(const std::string func_name, int64_t running_total)
       EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
     // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
@@ -126,11 +133,19 @@ class TaskCounter {
   void MovePendingToRunning(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kPending}, {func_name, kRunning});
+    num_running_++;
+    if (IsActor()) {
+      RefreshActorStateMetric();
+    }
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
+    num_running_--;
+    if (IsActor()) {
+      RefreshActorStateMetric();
+    }
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
@@ -141,6 +156,9 @@ class TaskCounter {
       running_in_wait_counter_.Increment(func_name);
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
+    }
+    if (IsActor()) {
+      RefreshActorStateMetric();
     }
   }
 
@@ -153,6 +171,37 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
+    if (IsActor()) {
+      RefreshActorStateMetric();
+    }
+  }
+
+  void RefreshActorStateMetric() EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+    RAY_CHECK(IsActor());
+    float indicators[4] = {
+        /*idle=*/0.0, /*running=*/0.0, /*in_get=*/0.0, /*in_wait=*/0.0};
+    if (running_in_wait_counter_.Total() > 0) {
+      indicators[3] = 1.0;
+    } else if (running_in_get_counter_.Total() > 0) {
+      indicators[2] = 1.0;
+    } else if (num_running_ > 0) {
+      indicators[1] = 1.0;
+    } else {
+      indicators[0] = 1.0;
+    }
+    ray::stats::STATS_actors.Record(
+        indicators[0],
+        {{"State", "IDLE"}, {"Name", actor_name_}, {"Source", "executor"}});
+    ray::stats::STATS_actors.Record(
+        indicators[1],
+        {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
+    ray::stats::STATS_actors.Record(
+        indicators[2],
+        {{"State", "RUNNING_IN_RAY_GET"}, {"Name", actor_name_}, {"Source", "executor"}});
+    ray::stats::STATS_actors.Record(indicators[3],
+                                    {{"State", "RUNNING_IN_RAY_WAIT"},
+                                     {"Name", actor_name_},
+                                     {"Source", "executor"}});
   }
 
   std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
@@ -186,6 +235,10 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
   CounterMap<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
+
+  // Used for actor state tracking.
+  std::string actor_name_ GUARDED_BY(&mu_) = "";
+  int64_t num_running_ GUARDED_BY(&mu_) = 0;
 };
 
 /// The root class that contains all the core and language-independent functionalities
