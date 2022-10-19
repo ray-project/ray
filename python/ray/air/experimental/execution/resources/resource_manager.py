@@ -26,7 +26,9 @@ class ResourceManager(abc.ABC):
         """Returns True if resources for the given request are available"""
         raise NotImplementedError
 
-    def acquire_resources(self, resources: ResourceRequest) -> Optional[AllocatedResource]:
+    def acquire_resources(
+        self, resources: ResourceRequest
+    ) -> Optional[AllocatedResource]:
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 

@@ -8,6 +8,7 @@ from ray.air.experimental.execution.event import (
     ActorStopped,
     FutureResult,
     MultiFutureResult,
+    ActorFailed,
 )
 
 
@@ -71,15 +72,14 @@ class Controller(abc.ABC):
 
         if isinstance(event, ActorStarted):
             self.actor_started(actor=event.actor, actor_info=event.actor_info)
+        elif isinstance(event, ActorFailed):
+            self.actor_failed(
+                actor=event.actor,
+                actor_info=event.actor_info,
+                exception=event.exception,
+            )
         elif isinstance(event, ActorStopped):
-            if event.exception:
-                self.actor_failed(
-                    actor=event.actor,
-                    actor_info=event.actor_info,
-                    exception=event.exception,
-                )
-            else:
-                self.actor_stopped(actor=event.actor, actor_info=event.actor_info)
+            self.actor_stopped(actor=event.actor, actor_info=event.actor_info)
         elif isinstance(event, FutureResult):
             self.future_result(result=event)
         elif isinstance(event, MultiFutureResult):

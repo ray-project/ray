@@ -13,19 +13,25 @@ from ray.air.experimental.execution.event import (
     _ResourceReady,
     FutureResult,
     MultiFutureResult,
+    ActorFailed,
 )
+from ray.exceptions import RayActorError
 
 
 def _resolve_future(
     actor: ray.actor.ActorHandle,
+    actor_info: ActorInfo,
     future: ray.ObjectRef,
     cls: Optional[Type[FutureResult]] = None,
 ) -> Any:
-    return _resolve_many_futures(actors=[actor], futures=[future], cls=cls)[0]
+    return _resolve_many_futures(
+        actors=[actor], actor_infos=[actor_info], futures=[future], cls=cls
+    )[0]
 
 
 def _resolve_many_futures(
     actors: List[ray.actor.ActorHandle],
+    actor_infos: List[ActorInfo],
     futures: List[ray.ObjectRef],
     cls: Optional[Type[FutureResult]] = None,
 ) -> List[Any]:
@@ -35,6 +41,19 @@ def _resolve_many_futures(
             _convert_result(actor=actor, result=raw_result, cls=cls)
             for actor, raw_result in zip(actors, raw_results)
         ]
+    except RayActorError:
+        # Find out which actor died
+        ready, not_ready = ray.wait(futures, len=len(futures), timeout=0.01)
+        for fut in ready:
+            try:
+                ray.get(fut)
+            except RayActorError as e:
+                idx = futures.index(fut)
+                return [
+                    ActorFailed(
+                        actor=actors[idx], actor_info=actor_infos[idx], exception=e
+                    )
+                ]
     except Exception as e:
         return [FutureFailed(actor=actor, exception=e) for actor in actors]
 
@@ -324,7 +343,7 @@ class ActorManager:
             actor: Actor handle to stop.
             resolve_futures: If True, will resolve associated futures (and emit
                 events) first before stopping the actor.
-            exception: If set, will be passed to the ``ActorStopped`` event.
+            exception: If set, will be passed to the ``ActorFailed`` event.
         """
         if resolve_futures and (
             self._async_futures.has_future_for_actor(actor)
@@ -350,9 +369,12 @@ class ActorManager:
         # Return resources
         self._resource_manager.return_resources(info.used_resource)
 
-        self._next_events.append(
-            ActorStopped(actor=actor, actor_info=info, exception=exception)
-        )
+        if exception:
+            event = ActorFailed(actor=actor, actor_info=info, exception=exception)
+        else:
+            event = ActorStopped(actor=actor, actor_info=info)
+
+        self._next_events.append(event)
 
     def track_future(
         self,
@@ -447,7 +469,9 @@ class ActorManager:
 
         if self._async_futures.has_future(ready_future):
             actor, cls = self._async_futures.pop_future(ready_future)
-            return _resolve_future(actor=actor, future=ready_future, cls=cls)
+            return _resolve_future(
+                actor_info=self._actor_to_info[actor], future=ready_future, cls=cls
+            )
 
         # Else, this is a sync future
         new_sync_futures = []
@@ -463,7 +487,15 @@ class ActorManager:
             actors = sync_futures.get_actors_for_futures(futures=futures)
             cls = sync_futures.future_cls(ready_future)
 
-            results = _resolve_many_futures(actors=actors, futures=futures, cls=cls)
+            results = _resolve_many_futures(
+                actors=actors,
+                actor_infos=[self._actor_to_info[a] for a in actors],
+                futures=futures,
+                cls=cls,
+            )
+            if isinstance(results[0], RayActorError):
+                return results[0]
+
             multi_result = MultiFutureResult(results=results)
 
         self._sync_futures = new_sync_futures

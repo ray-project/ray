@@ -100,7 +100,9 @@ class FixedResourceManager(ResourceManager):
                 return False
         return True
 
-    def acquire_resources(self, resources: ResourceRequest) -> Optional[AllocatedResource]:
+    def acquire_resources(
+        self, resources: ResourceRequest
+    ) -> Optional[AllocatedResource]:
         if not self.has_resources_ready(resources):
             return None
 

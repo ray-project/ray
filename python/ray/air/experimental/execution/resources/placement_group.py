@@ -142,7 +142,9 @@ class PlacementGroupResourceManager(ResourceManager):
         return self._resource_cls(placement_group=pg, request=resources)
 
     def return_resources(
-        self, ready_resources: PlacementGroupAllocatedResource, cancel_request: bool = True
+        self,
+        ready_resources: PlacementGroupAllocatedResource,
+        cancel_request: bool = True,
     ):
         pg = ready_resources.placement_group
         request = self._pg_to_request[pg]

@@ -41,4 +41,8 @@ class ActorStarted(ExecutionEvent):
 class ActorStopped(ExecutionEvent):
     actor: ray.actor.ActorHandle
     actor_info: ActorInfo
+
+
+@dataclass
+class ActorFailed(ActorStopped):
     exception: Optional[Exception] = None
