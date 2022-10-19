@@ -72,8 +72,11 @@ my_ma_config = PPOConfig().multi_agent(
             "pol1" if agent_id == "agent1" else "pol2"
         )
     ),
-    # Setting these is not necessary. All policies will be trained anyways by default.
-    policies_to_train=["pol1", "pol2"],
+    # Setting these is not necessary. All policies will always be trained by default.
+    # However, since we do provide a list of IDs here, we need to remain in charge of
+    # changing this `policies_to_train` list, should we ever alter the Algorithm
+    # (e.g. remove one of the policies or add a new one).
+    policies_to_train=["pol1", "pol2"],  # Again, `None` would be totally fine here.
 )
 
 # Add the MultiAgentCartPole env to our config and build our Algorithm.
@@ -116,6 +119,10 @@ my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
     # to avoid a runtime error). Now both agents ("agent0" and "agent1") map to
     # the same policy.
     policy_mapping_fn=lambda agent_id, worker, episode, **kw: "pol1",
+    # Since we defined this above, we have to de-define it here with the updated
+    # PolicyIDs, otherwise, RLlib will throw an error (it will think that there is an
+    # unknown PolicyID in this list (pol2)).
+    policies_to_train=["pol1"],
 )
 
 # Make sure, pol2 is NOT in this Algorithm anymore.
