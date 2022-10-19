@@ -640,18 +640,11 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.spaces = spaces
         self.default_policy_class = default_policy_class
-        self.policy_dict = _determine_spaces_for_multi_agent_dict(
-            multi_agent_policies_dict=self.config.policies,
+        self.policy_dict, self.is_policy_to_train = self.config.get_multi_agent_setup(
             env=self.env,
             spaces=self.spaces,
-            config=self.config,
             default_policy_class=self.default_policy_class,
         )
-
-        # Set of IDs of those policies, which should be trained. This property
-        # is optional and mainly used for backward compatibility.
-        self.is_policy_to_train: Callable[[PolicyID, SampleBatchType], bool] = None
-        self.set_is_policy_to_train(self.config.policies_to_train)
 
         self.policy_map: PolicyMap = None
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
@@ -986,7 +979,7 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -999,7 +992,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
-            if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
+            if self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
                 info_out.update(
                     {
                         DEFAULT_POLICY_ID: self.policy_map[
@@ -1112,7 +1105,7 @@ class RolloutWorker(ParallelIteratorWorker):
         grad_out, info_out = {}, {}
         if self.config.framework_str == "tf":
             for pid, batch in samples.policy_batches.items():
-                if not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
                     continue
                 policy = self.policy_map[pid]
                 builder = _TFRunBuilder(policy.get_session(), "compute_gradients")
@@ -1123,7 +1116,7 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out = {k: builder.get(v) for k, v in info_out.items()}
         else:
             for pid, batch in samples.policy_batches.items():
-                if not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
                     continue
                 grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
                     batch
@@ -1167,10 +1160,10 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if self.is_policy_to_train(pid, None):
+                if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif self.is_policy_to_train(DEFAULT_POLICY_ID, None):
+        elif self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, None):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
@@ -1321,15 +1314,14 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
         if policy is None:
-            policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
-                multi_agent_policies_dict={
+            policy_dict_to_add, _ = self.config.get_multi_agent_setup(
+                policies={
                     policy_id: PolicySpec(
-                        policy_cls, observation_space, action_space, config or {}
+                        policy_cls, observation_space, action_space, config
                     )
                 },
                 env=self.env,
                 spaces=self.spaces,
-                config=self.config,
                 default_policy_class=self.default_policy_class,
             )
         else:
@@ -1431,8 +1423,8 @@ class RolloutWorker(ParallelIteratorWorker):
         # If container given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if not callable(is_policy_to_train):
-            assert isinstance(is_policy_to_train, Container), (
-                "ERROR: `is_policy_to_train`must be a container or a "
+            assert isinstance(is_policy_to_train, (list, set, tuple)), (
+                "ERROR: `is_policy_to_train`must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
             )
@@ -1535,7 +1527,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # unnecessary, making subsequent disk access unnecessary.
             func(self.policy_map[pid], pid, **kwargs)
             for pid in self.policy_map.keys()
-            if self.is_policy_to_train(pid, None)
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, None)
         ]
 
     @DeveloperAPI
@@ -2160,162 +2152,3 @@ class RolloutWorker(ParallelIteratorWorker):
     def restore(self, objs):
         state_dict = pickle.loads(objs)
         self.set_state(state_dict)
-
-
-def _determine_spaces_for_multi_agent_dict(
-    multi_agent_policies_dict: MultiAgentPolicyConfigDict,
-    env: Optional[EnvType] = None,
-    spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
-    config: Optional["AlgorithmConfig"] = None,
-    default_policy_class: Optional[Type[Policy]] = None,
-) -> MultiAgentPolicyConfigDict:
-    """Infers the observation- and action spaces in a multi-agent policy dict.
-
-    Args:
-        multi_agent_policies_dict: The multi-agent `policies` dict mapping policy IDs
-            to PolicySpec objects. Note that the `observation_space` and `action_space`
-            properties in these PolicySpecs may be None and must therefore be inferred
-            here.
-        env: An optional env instance, from which to infer the different spaces for
-            the different policies.
-        spaces: Optional dict mapping policy IDs to tuples of 1) observation space
-            and 2) action space that should be used for the respective policy.
-            These spaces were usually provided by an already instantiated remote worker.
-        config: Optional config object of the Algorithm.
-
-    Returns:
-        The updated MultiAgentPolicyConfigDict (changed in-place from the incoming
-        `multi_agent_policies_dict` arg).
-    """
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
-    config = config or AlgorithmConfig()
-
-    # Try extracting spaces from env or from given spaces dict.
-    env_obs_space = None
-    env_act_space = None
-
-    # Env is a ray.remote: Get spaces via its (automatically added)
-    # `_get_spaces()` method.
-    if isinstance(env, ray.actor.ActorHandle):
-        env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
-    # Normal env (gym.Env or MultiAgentEnv): These should have the
-    # `observation_space` and `action_space` properties.
-    elif env is not None:
-        if hasattr(env, "observation_space") and isinstance(
-            env.observation_space, gym.Space
-        ):
-            env_obs_space = env.observation_space
-
-        if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
-            env_act_space = env.action_space
-    # Last resort: Try getting the env's spaces from the spaces
-    # dict's special __env__ key.
-    if spaces is not None:
-        if env_obs_space is None:
-            env_obs_space = spaces.get("__env__", [None])[0]
-        if env_act_space is None:
-            env_act_space = spaces.get("__env__", [None, None])[1]
-
-    for pid, policy_spec in multi_agent_policies_dict.copy().items():
-
-        assert isinstance(policy_spec, PolicySpec)
-
-        # Infer policy classes for policies dict, if not provided (None).
-        if policy_spec.policy_class is None and default_policy_class is not None:
-            multi_agent_policies_dict[pid].policy_class = default_policy_class
-
-        # Infer observation space.
-        if policy_spec.observation_space is None:
-            if spaces is not None and pid in spaces:
-                obs_space = spaces[pid][0]
-            elif env_obs_space is not None:
-                # Multi-agent case AND different agents have different spaces:
-                # Need to reverse map spaces (for the different agents) to certain
-                # policy IDs.
-                if (
-                    isinstance(env, MultiAgentEnv)
-                    and hasattr(env, "_spaces_in_preferred_format")
-                    and env._spaces_in_preferred_format
-                ):
-                    obs_space = None
-                    mapping_fn = config.policy_mapping_fn
-                    if mapping_fn:
-                        for aid in env.get_agent_ids():
-                            # Match: Assign spaces for this agentID to the policy ID.
-                            if mapping_fn(aid, None, None) == pid:
-                                # Make sure, different agents that map to the same
-                                # policy don't have different spaces.
-                                if (
-                                    obs_space is not None
-                                    and env_obs_space[aid] != obs_space
-                                ):
-                                    raise ValueError(
-                                        "Two agents in your environment map to the same"
-                                        " policyID (as per your `policy_mapping_fn`), "
-                                        "however, these agents also have different "
-                                        "observation spaces!"
-                                    )
-                                obs_space = env_obs_space[aid]
-                # Otherwise, just use env's obs space as-is.
-                else:
-                    obs_space = env_obs_space
-            # Space given directly in config.
-            elif config.observation_space:
-                obs_space = config.observation_space
-            else:
-                raise ValueError(
-                    "`observation_space` not provided in PolicySpec for "
-                    f"{pid} and env does not have an observation space OR "
-                    "no spaces received from other workers' env(s) OR no "
-                    "`observation_space` specified in config!"
-                )
-
-            multi_agent_policies_dict[pid].observation_space = obs_space
-
-        # Infer action space.
-        if policy_spec.action_space is None:
-            if spaces is not None and pid in spaces:
-                act_space = spaces[pid][1]
-            elif env_act_space is not None:
-                # Multi-agent case AND different agents have different spaces:
-                # Need to reverse map spaces (for the different agents) to certain
-                # policy IDs.
-                if (
-                    isinstance(env, MultiAgentEnv)
-                    and hasattr(env, "_spaces_in_preferred_format")
-                    and env._spaces_in_preferred_format
-                ):
-                    act_space = None
-                    mapping_fn = config.policy_mapping_fn
-                    if mapping_fn:
-                        for aid in env.get_agent_ids():
-                            # Match: Assign spaces for this agentID to the policy ID.
-                            if mapping_fn(aid, None, None) == pid:
-                                # Make sure, different agents that map to the same
-                                # policy don't have different spaces.
-                                if (
-                                    act_space is not None
-                                    and env_act_space[aid] != act_space
-                                ):
-                                    raise ValueError(
-                                        "Two agents in your environment map to the same"
-                                        " policyID (as per your `policy_mapping_fn`), "
-                                        "however, these agents also have different "
-                                        "action spaces!"
-                                    )
-                                act_space = env_act_space[aid]
-                # Otherwise, just use env's action space as-is.
-                else:
-                    act_space = env_act_space
-            elif config.action_space:
-                act_space = config.action_space
-            else:
-                raise ValueError(
-                    "`action_space` not provided in PolicySpec for "
-                    f"{pid} and env does not have an action space OR "
-                    "no spaces received from other workers' env(s) OR no "
-                    "`action_space` specified in config!"
-                )
-            multi_agent_policies_dict[pid].action_space = act_space
-    return multi_agent_policies_dict

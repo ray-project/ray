@@ -991,8 +991,8 @@ class TestRolloutWorker(unittest.TestCase):
             .debugging(seed=1),
         )
         # The fact that this RolloutWorker can be created without throwing
-        # exceptions means _determine_spaces_for_multi_agent_dict() is
-        # handling multiagent user environments properly.
+        # exceptions means AlgorithmConfig.get_multi_agent_setup() is
+        # handling multi-agent user environments properly.
         self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):

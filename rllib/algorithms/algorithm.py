@@ -201,7 +201,7 @@ class Algorithm(Trainable):
     ]
 
     # List of keys that are always fully overridden if present in any dict or sub-dict
-    _override_all_key_list = ["off_policy_estimation_methods"]
+    _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = [
         "episode_reward_mean",
@@ -400,6 +400,9 @@ class Algorithm(Trainable):
         self._episodes_to_be_collected = []
         self._remote_workers_for_metrics = []
 
+        # The fully qualified AlgorithmConfig used for evaluation
+        # (or None if evaluation not setup).
+        self.evaluation_config: Optional[AlgorithmConfig] = None
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
         # If evaluation duration is "auto", use a AsyncRequestsManager to be more
@@ -499,10 +502,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new='config["evaluation_config"]'
-                '["off_policy_estimation_methods"]={}'.format(
-                    ope_dict,
-                ),
+                new="config.evaluation(evaluation_config={"
+                f"'off_policy_estimation_methods'={ope_dict}"
+                "})",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
@@ -593,10 +595,11 @@ class Algorithm(Trainable):
         # User would like to setup a separate evaluation worker set.
         if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
             # Validate evaluation config.
-            self.validate_config(self.config.evaluation_config)
+            self.evaluation_config = self.config.get_evaluation_config_object()
+            self.validate_config(self.evaluation_config)
 
             _, env_creator = self._get_env_id_and_creator(
-                self.config.evaluation_config.env, self.config.evaluation_config
+                self.evaluation_config.env, self.evaluation_config
             )
 
             # Create a separate evaluation worker set for evaluation.
@@ -607,7 +610,7 @@ class Algorithm(Trainable):
                 env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.config.evaluation_config,
+                trainer_config=self.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -856,7 +859,7 @@ class Algorithm(Trainable):
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
             unit = self.config["evaluation_duration_unit"]
-            eval_cfg = self.config["evaluation_config"]
+            eval_cfg = self.evaluation_config
             rollout = eval_cfg["rollout_fragment_length"]
             num_envs = eval_cfg["num_envs_per_worker"]
             auto = self.config["evaluation_duration"] == "auto"
@@ -1056,7 +1059,7 @@ class Algorithm(Trainable):
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
         unit = self.config["evaluation_duration_unit"]
-        eval_cfg = self.config["evaluation_config"]
+        eval_cfg = self.evaluation_config
         rollout = eval_cfg["rollout_fragment_length"]
         num_envs = eval_cfg["num_envs_per_worker"]
         auto = self.config["evaluation_duration"] == "auto"
@@ -2822,7 +2825,7 @@ class Algorithm(Trainable):
                         self._automatic_evaluation_duration_fn,
                         unit,
                         self.config["evaluation_num_workers"],
-                        self.config["evaluation_config"],
+                        self.evaluation_config,
                         train_future,
                     )
                 )
@@ -2835,10 +2838,8 @@ class Algorithm(Trainable):
             num_recreated = self.try_recover_from_step_attempt(
                 error=e,
                 worker_set=self.evaluation_workers,
-                ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
-                recreate=self.config["evaluation_config"].get(
-                    "recreate_failed_workers"
-                ),
+                ignore=self.evaluation_config.get("ignore_worker_failures"),
+                recreate=self.evaluation_config.get("recreate_failed_workers"),
             )
         # `self._evaluate_async` handles its own worker failures and already adds
         # this metric, but `self.evaluate` doesn't.
