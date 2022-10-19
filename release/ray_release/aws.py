@@ -10,15 +10,6 @@ RELEASE_AWS_BUCKET = DeferredEnvVar(
 RELEASE_AWS_DB_NAME = DeferredEnvVar("RELEASE_AWS_DB_NAME", "ray_ci")
 RELEASE_AWS_DB_TABLE = DeferredEnvVar("RELEASE_AWS_DB_TABLE", "release_test_result")
 
-RELEASE_AWS_DB_SECRET_ARN = DeferredEnvVar(
-    "RELEASE_AWS_DB_SECRET_ARN",
-    "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
-    "rds-db-credentials/cluster-7RB7EYTTBK2EUC3MMTONYRBJLE/ray_ci-MQN2hh",
-)
-RELEASE_AWS_DB_RESOURCE_ARN = DeferredEnvVar(
-    "RELEASE_AWS_DB_RESOURCE_ARN",
-    "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
-)
 RELEASE_AWS_ANYSCALE_SECRET_ARN = DeferredEnvVar(
     "RELEASE_AWS_ANYSCALE_SECRET_ARN",
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
