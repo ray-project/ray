@@ -4,7 +4,6 @@ Download or generate a fake dataset for training resnet50 in TensorFlow.
 """
 
 from typing import Union, Iterable, Tuple, Optional
-import io
 import os
 import requests
 import shutil
@@ -12,6 +11,7 @@ import sys
 import tensorflow.compat.v1 as tf
 
 DEFAULT_IMAGE_URL = "https://air-example-data-2.s3.us-west-2.amazonaws.com/1G-image-data-synthetic-raw/dog.jpg"
+
 
 def parse_args() -> None:
     import argparse
@@ -159,10 +159,12 @@ class ImageCoder(object):
         assert image.shape[2] == 3
         return image
 
+
 def get_single_image(image_url: str) -> bytes:
     r = requests.get(image_url)
     assert r.ok, "Downloading image failed"
     return r.content
+
 
 def parse_single_image(image_url: str) -> Tuple[bytes, int, int]:
     image_buffer = get_single_image(image_url)

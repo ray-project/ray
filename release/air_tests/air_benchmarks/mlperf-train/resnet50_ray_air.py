@@ -23,7 +23,7 @@ from tf_utils import (
 from metric_utils import (
     determine_if_memory_monitor_is_enabled_in_latest_session,
     get_ray_spilled_and_restored_mb,
-    MaxMemoryUtilizationTracker
+    MaxMemoryUtilizationTracker,
 )
 
 IMAGE_DIMS = (None, DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE, NUM_CHANNELS)
@@ -61,6 +61,7 @@ def print_dataset_stats(ds):
     print(ds.stats())
     print("")
 
+
 def train_loop_for_worker(config):
     if config["train_sleep_time_ms"] >= 0:
         model = None
@@ -78,21 +79,25 @@ def train_loop_for_worker(config):
         assert dataset_shard is None
         logger.info("Building tf.dataset...")
         filenames = get_tfrecords_filenames(
-                config["data_root"],
-                config["num_images_per_epoch"],
-                config["num_images_per_input_file"])
+            config["data_root"],
+            config["num_images_per_epoch"],
+            config["num_images_per_input_file"],
+        )
         _tf_dataset = build_tf_dataset(
-                filenames,
-                config["batch_size"],
-                config["num_images_per_epoch"],
-                config["num_epochs"],
-                config["online_processing"],
-                shuffle_buffer=config["shuffle_buffer_size"])
+            filenames,
+            config["batch_size"],
+            config["num_images_per_epoch"],
+            config["num_epochs"],
+            config["online_processing"],
+            shuffle_buffer=config["shuffle_buffer_size"],
+        )
     elif config["data_loader"] == SYNTHETIC:
         # Build an empty batch and repeat it.
         synthetic_dataset = build_synthetic_dataset(config["batch_size"])
 
-    def ray_dataset_to_tf_dataset(dataset, batch_size, num_steps_per_epoch, online_processing):
+    def ray_dataset_to_tf_dataset(
+        dataset, batch_size, num_steps_per_epoch, online_processing
+    ):
         if online_processing:
             # Apply online preprocessing on the decoded images, cropping and
             # flipping.
@@ -104,17 +109,20 @@ def train_loop_for_worker(config):
             # pass the same one to build_tf_dataset to match the tf.data
             # implementation.
             for batch in dataset.iter_tf_batches(
-                batch_size=batch_size, dtypes=tf.float32,
+                batch_size=batch_size,
+                dtypes=tf.float32,
                 local_shuffle_buffer_size=config["shuffle_buffer_size"],
             ):
                 yield batch["image"], batch["label"]
                 num_steps += 1
-            assert num_steps == num_steps_per_epoch, f"expected {num_steps} to equal {num_steps_per_epoch}"
+            assert (
+                num_steps == num_steps_per_epoch
+            ), f"expected {num_steps} to equal {num_steps_per_epoch}"
             print_dataset_stats(dataset)
 
         output_signature = (
             tf.TensorSpec(shape=IMAGE_DIMS, dtype=tf.uint8),
-            tf.TensorSpec(shape=(None, ), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
         )
         tf_dataset = tf.data.Dataset.from_generator(
             to_tensor_iterator, output_signature=output_signature
@@ -122,9 +130,9 @@ def train_loop_for_worker(config):
         return prepare_dataset_shard(tf_dataset)
 
     def build_synthetic_tf_dataset(dataset, batch_size, num_steps_per_epoch):
-        batch = list(dataset.iter_tf_batches(
-            batch_size=batch_size, dtypes=tf.float32
-        ))[0]
+        batch = list(dataset.iter_tf_batches(batch_size=batch_size, dtypes=tf.float32))[
+            0
+        ]
         batch = (batch["image"], batch["label"])
 
         # TODO(swang): Might generate a few more records than expected if
@@ -135,7 +143,7 @@ def train_loop_for_worker(config):
 
         output_signature = (
             tf.TensorSpec(shape=IMAGE_DIMS, dtype=tf.uint8),
-            tf.TensorSpec(shape=(None, ), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
         )
         tf_dataset = tf.data.Dataset.from_generator(
             to_tensor_iterator, output_signature=output_signature
@@ -156,15 +164,17 @@ def train_loop_for_worker(config):
         elif config["data_loader"] == RAY_DATA:
             assert dataset_shard is not None
             tf_dataset = ray_dataset_to_tf_dataset(
-                    dataset=dataset_shard,
-                    batch_size=config["batch_size"],
-                    num_steps_per_epoch=num_steps_per_epoch,
-                    online_processing=config["online_processing"])
+                dataset=dataset_shard,
+                batch_size=config["batch_size"],
+                num_steps_per_epoch=num_steps_per_epoch,
+                online_processing=config["online_processing"],
+            )
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
-                    synthetic_dataset,
-                    batch_size=config["batch_size"],
-                    num_steps_per_epoch=num_steps_per_epoch)
+                synthetic_dataset,
+                batch_size=config["batch_size"],
+                num_steps_per_epoch=num_steps_per_epoch,
+            )
 
         if model:
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
@@ -177,24 +187,31 @@ def train_loop_for_worker(config):
                     print("Step", i)
 
         epoch_time_s = time.perf_counter() - epoch_start_time_s
-        logger.info(f"Epoch time: {epoch_time_s}s, images/s: {config['num_images_per_epoch'] / epoch_time_s}")
+        logger.info(
+            f"Epoch time: {epoch_time_s}s, images/s: {config['num_images_per_epoch'] / epoch_time_s}"
+        )
 
         # You can also use ray.air.callbacks.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
-        session.report({
-            # f"epoch_{epoch}_time_s": epoch_time_s,
-            })
+        session.report(
+            {
+                # f"epoch_{epoch}_time_s": epoch_time_s,
+            }
+        )
 
 
 def crop_and_flip_image_batch(image_batch):
-    image_batch["image"] = [preprocess_image(
-        image_buffer=image_buffer,
-        output_height=DEFAULT_IMAGE_SIZE,
-        output_width=DEFAULT_IMAGE_SIZE,
-        num_channels=NUM_CHANNELS,
-        # TODO(swang): Also load validation set.
-        is_training=True,
-    ).numpy() for image_buffer in image_batch["image"]]
+    image_batch["image"] = [
+        preprocess_image(
+            image_buffer=image_buffer,
+            output_height=DEFAULT_IMAGE_SIZE,
+            output_width=DEFAULT_IMAGE_SIZE,
+            num_channels=NUM_CHANNELS,
+            # TODO(swang): Also load validation set.
+            is_training=True,
+        ).numpy()
+        for image_buffer in image_batch["image"]
+    ]
     return image_batch
 
 
@@ -209,12 +226,7 @@ def decode_tf_record_batch(tf_record_batch):
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
     labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict(
-        {
-            "image": process_images(),
-            "label": labels,
-        }
-    )
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels,})
 
     return df
 
@@ -227,6 +239,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch):
     - the reference tf.data implementation can use the fused decode_and_crop op
     - ray.data doesn't have to materialize the intermediate decoded batch.
     """
+
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
             yield preprocess_image(
@@ -242,12 +255,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch):
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
     labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict(
-        {
-            "image": process_images(),
-            "label": labels,
-        }
-    )
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels,})
 
     return df
 
@@ -256,13 +264,7 @@ def build_synthetic_dataset(batch_size):
     image_dims = IMAGE_DIMS[1:]
     empty = np.empty(image_dims, dtype=np.uint8)
     ds = ray.data.from_items(
-        [
-            {
-                "image": empty,
-                "label": 1,
-            }
-            for _ in range(int(batch_size))
-        ], parallelism=1
+        [{"image": empty, "label": 1,} for _ in range(int(batch_size))], parallelism=1
     )
     return ds
 
@@ -272,14 +274,18 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
     if num_images_per_epoch % num_images_per_input_file:
         num_files += 1
     filenames = [
-        os.path.join(data_root, filename)
-        for filename in os.listdir(data_root)
+        os.path.join(data_root, filename) for filename in os.listdir(data_root)
     ][:num_files]
-    assert len(filenames) == num_files, (f"Need {num_files} input files, only found {len(filenames)}")
+    assert (
+        len(filenames) == num_files
+    ), f"Need {num_files} input files, only found {len(filenames)}"
     return filenames
 
+
 def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
-    filenames = get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_input_file)
+    filenames = get_tfrecords_filenames(
+        data_root, num_images_per_epoch, num_images_per_input_file
+    )
     ds = ray.data.read_tfrecords(filenames)
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
@@ -292,20 +298,21 @@ def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
 
 
 FIELDS = [
-        "data_loader",
-        "train_sleep_time_ms",
-        "num_epochs",
-        "num_images_per_epoch",
-        "num_images_per_input_file",
-        "batch_size",
-        "shuffle_buffer_size",
-        "ray_mem_monitor_enabled",
-        "ray_spilled_mb",
-        "ray_restored_mb",
-        "min_available_mb",
-        "time_total_s",
-        "tput_images_per_s",
-    ]
+    "data_loader",
+    "train_sleep_time_ms",
+    "num_epochs",
+    "num_images_per_epoch",
+    "num_images_per_input_file",
+    "batch_size",
+    "shuffle_buffer_size",
+    "ray_mem_monitor_enabled",
+    "ray_spilled_mb",
+    "ray_restored_mb",
+    "min_available_mb",
+    "time_total_s",
+    "tput_images_per_s",
+]
+
 
 def write_metrics(data_loader, command_args, metrics, output_file):
     row = {key: val for key, val in metrics.items() if key in FIELDS}
@@ -318,13 +325,15 @@ def write_metrics(data_loader, command_args, metrics, output_file):
     if "tput_images_per_s" in metrics:
         row["tput_images_per_s"] = metrics["tput_images_per_s"]
     else:
-        row["tput_images_per_s"] = args.num_images_per_epoch * args.num_epochs / metrics["time_total_s"]
+        row["tput_images_per_s"] = (
+            args.num_images_per_epoch * args.num_epochs / metrics["time_total_s"]
+        )
 
     for field in FIELDS:
         print(f"{field}: {row[field]}")
 
     write_header = not os.path.exists(output_file)
-    with open(output_file, 'a+', newline='') as csvfile:
+    with open(output_file, "a+", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=FIELDS)
         if write_header:
             writer.writeheader()
@@ -333,21 +342,24 @@ def write_metrics(data_loader, command_args, metrics, output_file):
     test_output_json_envvar = "TEST_OUTPUT_JSON"
     test_output_json_path = os.environ.get(test_output_json_envvar)
     if not test_output_json_path:
-        print(f"Environment variable {test_output_json_envvar} not set, will not write test output json.")
+        print(
+            f"Environment variable {test_output_json_envvar} not set, will not write test output json."
+        )
     else:
-        print(f"Environment variable {test_output_json_envvar} set to '{test_output_json_path}'. Will write test output json.")
+        print(
+            f"Environment variable {test_output_json_envvar} set to '{test_output_json_path}'. Will write test output json."
+        )
         append_to_test_output_json(test_output_json_path, row)
 
+
 def append_to_test_output_json(path, metrics):
-    
+
     output_json = {}
     try:
-        with open(path, 'r') as existing_test_output_file:
+        with open(path, "r") as existing_test_output_file:
             output_json = json.load(existing_test_output_file)
     except FileNotFoundError:
         pass
-    
-    #start_time = output_json.get("start_time")
 
     # Set success to be previous_success && current_success.
     success = output_json.get("success", "1")
@@ -358,27 +370,30 @@ def append_to_test_output_json(path, metrics):
     runs = output_json.get("runs", [])
     runs.append(metrics)
     output_json["runs"] = runs
-    
+
     num_images_per_file = metrics["num_images_per_input_file"]
     data_loader = metrics["data_loader"]
 
     # Append select performance metrics to perf_metrics.
     perf_metrics = output_json.get("perf_metrics", [])
-    perf_metrics.append({
-        "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",
-        "perf_metric_value": metrics["tput_images_per_s"],
-        "perf_metric_type": "THROUGHPUT",
-    })
+    perf_metrics.append(
+        {
+            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",
+            "perf_metric_value": metrics["tput_images_per_s"],
+            "perf_metric_type": "THROUGHPUT",
+        }
+    )
     output_json["perf_metrics"] = perf_metrics
-    
-    with open(path, 'w') as test_output_file:
+
+    with open(path, "w") as test_output_file:
         json.dump(output_json, test_output_file)
+
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    
+
     parser.add_argument(
         "--data-root",
         default=None,
@@ -389,7 +404,7 @@ if __name__ == "__main__":
     data_ingest_group = parser.add_mutually_exclusive_group(required=True)
     data_ingest_group.add_argument("--use-tf-data", action="store_true")
     data_ingest_group.add_argument("--use-ray-data", action="store_true")
-    data_ingest_group.add_argument('--synthetic-data', action='store_true')
+    data_ingest_group.add_argument("--synthetic-data", action="store_true")
 
     parser.add_argument(
         "--num-images-per-input-file",
@@ -425,7 +440,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.use_tf_data or args.use_ray_data:
-        assert args.data_root is not None, "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"
+        assert (
+            args.data_root is not None
+        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"
     elif args.synthetic_data:
         assert args.data_root is None, "--synthetic-data doesn't use --data-root"
 
@@ -434,15 +451,17 @@ if __name__ == "__main__":
 
     datasets = {}
     train_loop_config = {
-            "num_epochs": args.num_epochs,
-            "batch_size": args.batch_size,
-            "train_sleep_time_ms": args.train_sleep_time_ms,
-            "data_root": args.data_root,
-            "num_images_per_epoch": args.num_images_per_epoch,
-            "num_images_per_input_file": args.num_images_per_input_file,
-            "shuffle_buffer_size": None if args.shuffle_buffer_size == 0 else args.shuffle_buffer_size,
-            "online_processing": args.online_processing,
-            }
+        "num_epochs": args.num_epochs,
+        "batch_size": args.batch_size,
+        "train_sleep_time_ms": args.train_sleep_time_ms,
+        "data_root": args.data_root,
+        "num_images_per_epoch": args.num_images_per_epoch,
+        "num_images_per_input_file": args.num_images_per_input_file,
+        "shuffle_buffer_size": None
+        if args.shuffle_buffer_size == 0
+        else args.shuffle_buffer_size,
+        "online_processing": args.online_processing,
+    }
     if args.synthetic_data:
         logger.info("Using synthetic data loader...")
         preprocessor = None
@@ -455,7 +474,9 @@ if __name__ == "__main__":
         else:
             logger.info("Using Ray Datasets loader")
             datasets["train"] = build_dataset(
-                args.data_root, args.num_images_per_epoch, args.num_images_per_input_file
+                args.data_root,
+                args.num_images_per_epoch,
+                args.num_images_per_input_file,
             )
             if args.online_processing:
                 preprocessor = BatchMapper(decode_tf_record_batch)
@@ -484,9 +505,14 @@ if __name__ == "__main__":
         result["tput_images_per_s"] = -1
         result["time_total_s"] = time.perf_counter() - start_time_s
 
-    result['ray_spilled_mb'], result['ray_restored_mb'] = tuple(end - start for start, end in zip(ray_spill_stats_start, get_ray_spilled_and_restored_mb()))
-    result['min_available_mb'] = memory_utilization_tracker.stop() / (1 << 20)
-    result['ray_mem_monitor_enabled'] = determine_if_memory_monitor_is_enabled_in_latest_session()
+    result["ray_spilled_mb"], result["ray_restored_mb"] = tuple(
+        end - start
+        for start, end in zip(ray_spill_stats_start, get_ray_spilled_and_restored_mb())
+    )
+    result["min_available_mb"] = memory_utilization_tracker.stop() / (1 << 20)
+    result[
+        "ray_mem_monitor_enabled"
+    ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
     write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
 

@@ -22,18 +22,21 @@ _RESIZE_MIN = 256
 # TODO(swang): Set num_classes from main script?
 NUM_CLASSES = 1000
 
-def process_record_dataset(dataset,
-                           is_training,
-                           batch_size,
-                           num_epochs,
-                           online_processing,
-                           shuffle_buffer=None,
-                           dtype=tf.float32,
-                           datasets_num_private_threads=None,
-                           drop_remainder=False,
-                           tf_data_experimental_slack=False,
-                           prefetch_batchs=tf.data.experimental.AUTOTUNE):
-  """Given a Dataset with raw records, return an iterator over the records.
+
+def process_record_dataset(
+    dataset,
+    is_training,
+    batch_size,
+    num_epochs,
+    online_processing,
+    shuffle_buffer=None,
+    dtype=tf.float32,
+    datasets_num_private_threads=None,
+    drop_remainder=False,
+    tf_data_experimental_slack=False,
+    prefetch_batchs=tf.data.experimental.AUTOTUNE,
+):
+    """Given a Dataset with raw records, return an iterator over the records.
 
   Args:
     dataset: A Dataset representing raw records
@@ -54,61 +57,60 @@ def process_record_dataset(dataset,
   Returns:
     Dataset of (image, label) pairs ready for iteration.
   """
-  # Defines a specific size thread pool for tf.data operations.
-  if datasets_num_private_threads:
+    # Defines a specific size thread pool for tf.data operations.
+    if datasets_num_private_threads:
+        options = tf.data.Options()
+        options.experimental_threading.private_threadpool_size = (
+            datasets_num_private_threads
+        )
+        dataset = dataset.with_options(options)
+        logging.info("datasets_num_private_threads: %s", datasets_num_private_threads)
+
+    if is_training:
+        # Shuffles records before repeating to respect epoch boundaries.
+        if shuffle_buffer is not None:
+            dataset = dataset.shuffle(buffer_size=shuffle_buffer)
+        # Repeats the dataset for the number of epochs to train.
+        dataset = dataset.repeat(num_epochs)
+
+    one_hot = False
+    # TODO(swang): Support one-hot encoding?
+    # num_classes = FLAGS.num_classes
+    # if FLAGS.label_smoothing and FLAGS.label_smoothing > 0:
+    #  one_hot = True
+
+    num_classes = NUM_CLASSES
+
+    if online_processing:
+        map_fn = functools.partial(
+            preprocess_parsed_example,
+            is_training=is_training,
+            dtype=dtype,
+            num_classes=num_classes,
+            one_hot=one_hot,
+        )
+
+        # Parses the raw records into images and labels.
+        dataset = dataset.map(map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+
+    # Operations between the final prefetch and the get_next call to the iterator
+    # will happen synchronously during run time. We prefetch here again to
+    # background all of the above processing work and keep it out of the
+    # critical training path. Setting buffer_size to tf.data.experimental.AUTOTUNE
+    # allows DistributionStrategies to adjust how many batches to fetch based
+    # on how many devices are present.
+    dataset = dataset.prefetch(buffer_size=prefetch_batchs)
+
     options = tf.data.Options()
-    options.experimental_threading.private_threadpool_size = (
-        datasets_num_private_threads)
+    options.experimental_slack = tf_data_experimental_slack
     dataset = dataset.with_options(options)
-    logging.info(
-        'datasets_num_private_threads: %s', datasets_num_private_threads)
 
-  if is_training:
-    # Shuffles records before repeating to respect epoch boundaries.
-    if shuffle_buffer is not None:
-        dataset = dataset.shuffle(buffer_size=shuffle_buffer)
-    # Repeats the dataset for the number of epochs to train.
-    dataset = dataset.repeat(num_epochs)
-
-  one_hot = False
-  # TODO(swang): Support one-hot encoding?
-  #num_classes = FLAGS.num_classes
-  #if FLAGS.label_smoothing and FLAGS.label_smoothing > 0:
-  #  one_hot = True
-
-  num_classes = NUM_CLASSES
-
-  if online_processing:
-    map_fn = functools.partial(
-        preprocess_parsed_example,
-        is_training=is_training,
-        dtype=dtype,
-        num_classes=num_classes,
-        one_hot=one_hot)
-
-    # Parses the raw records into images and labels.
-    dataset = dataset.map(
-        map_fn,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
-  dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
-
-  # Operations between the final prefetch and the get_next call to the iterator
-  # will happen synchronously during run time. We prefetch here again to
-  # background all of the above processing work and keep it out of the
-  # critical training path. Setting buffer_size to tf.data.experimental.AUTOTUNE
-  # allows DistributionStrategies to adjust how many batches to fetch based
-  # on how many devices are present.
-  dataset = dataset.prefetch(buffer_size=prefetch_batchs)
-
-  options = tf.data.Options()
-  options.experimental_slack = tf_data_experimental_slack
-  dataset = dataset.with_options(options)
-
-  return dataset
+    return dataset
 
 
 def _parse_example_proto(example_serialized):
-  """Parses an Example proto containing a training example of an image.
+    """Parses an Example proto containing a training example of an image.
 
   The output of the build_image_data.py image preprocessing script is a dataset
   containing serialized Example protocol buffers. Each Example proto contains
@@ -141,111 +143,117 @@ def _parse_example_proto(example_serialized):
       where each coordinate is [0, 1) and the coordinates are arranged as
       [ymin, xmin, ymax, xmax].
   """
-  # Dense features in Example proto.
-  feature_map = {
-      'image/encoded': tf.io.FixedLenFeature([], dtype=tf.string,
-                                          default_value=''),
-      'image/class/label': tf.io.FixedLenFeature([], dtype=tf.int64,
-                                              default_value=-1),
-      'image/class/text': tf.io.FixedLenFeature([], dtype=tf.string,
-                                             default_value=''),
-  }
-  # NOTE(swang): bbox from dataset is not actually used by the reference
-  # implementation.
-  # https://github.com/mlcommons/training/pull/170
-  # sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
-  # # Sparse features in Example proto.
-  # feature_map.update(
-  #     {k: sparse_float32 for k in ['image/object/bbox/xmin',
-  #                                  'image/object/bbox/ymin',
-  #                                  'image/object/bbox/xmax',
-  #                                  'image/object/bbox/ymax']})
+    # Dense features in Example proto.
+    feature_map = {
+        "image/encoded": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
+        "image/class/label": tf.io.FixedLenFeature(
+            [], dtype=tf.int64, default_value=-1
+        ),
+        "image/class/text": tf.io.FixedLenFeature(
+            [], dtype=tf.string, default_value=""
+        ),
+    }
+    # NOTE(swang): bbox from dataset is not actually used by the reference
+    # implementation.
+    # https://github.com/mlcommons/training/pull/170
+    # sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
+    # # Sparse features in Example proto.
+    # feature_map.update(
+    #     {k: sparse_float32 for k in ['image/object/bbox/xmin',
+    #                                  'image/object/bbox/ymin',
+    #                                  'image/object/bbox/xmax',
+    #                                  'image/object/bbox/ymax']})
 
-  features = tf.io.parse_single_example(example_serialized, feature_map)
-  label = tf.cast(features['image/class/label'], dtype=tf.int32)
+    features = tf.io.parse_single_example(example_serialized, feature_map)
+    label = tf.cast(features["image/class/label"], dtype=tf.int32)
 
-  return features['image/encoded'], label
+    return features["image/encoded"], label
 
 
 def parse_example_proto_and_decode(example_serialized):
-  """Parses an example and decodes the image to prepare for caching."""
-  image_buffer, label = _parse_example_proto(example_serialized)
-  image_buffer = tf.reshape(image_buffer, shape=[])
-  image_buffer = tf.io.decode_jpeg(image_buffer, channels=NUM_CHANNELS)
-  return image_buffer, label
+    """Parses an example and decodes the image to prepare for caching."""
+    image_buffer, label = _parse_example_proto(example_serialized)
+    image_buffer = tf.reshape(image_buffer, shape=[])
+    image_buffer = tf.io.decode_jpeg(image_buffer, channels=NUM_CHANNELS)
+    return image_buffer, label
 
 
 def preprocess_parsed_example(
-    image_buffer, label, is_training, dtype, num_classes, one_hot=False):
-  """Applies preprocessing steps to the input parsed example."""
-  image = preprocess_image(
-      image_buffer=image_buffer,
-      output_height=DEFAULT_IMAGE_SIZE,
-      output_width=DEFAULT_IMAGE_SIZE,
-      num_channels=NUM_CHANNELS,
-      is_training=is_training)
-  image = tf.cast(image, dtype)
+    image_buffer, label, is_training, dtype, num_classes, one_hot=False
+):
+    """Applies preprocessing steps to the input parsed example."""
+    image = preprocess_image(
+        image_buffer=image_buffer,
+        output_height=DEFAULT_IMAGE_SIZE,
+        output_width=DEFAULT_IMAGE_SIZE,
+        num_channels=NUM_CHANNELS,
+        is_training=is_training,
+    )
+    image = tf.cast(image, dtype)
 
-  # Subtract one so that labels are in [0, 1000), and cast to float32 for
-  # Keras model.
-  label = tf.reshape(label, shape=[1])
-  label = tf.cast(label, tf.int32)
-  label -= 1
+    # Subtract one so that labels are in [0, 1000), and cast to float32 for
+    # Keras model.
+    label = tf.reshape(label, shape=[1])
+    label = tf.cast(label, tf.int32)
+    label -= 1
 
-  if one_hot:
-    label = tf.one_hot(label, num_classes)
-    label = tf.reshape(label, [num_classes])
-  else:
-    label = tf.cast(label, tf.float32)
+    if one_hot:
+        label = tf.one_hot(label, num_classes)
+        label = tf.reshape(label, [num_classes])
+    else:
+        label = tf.cast(label, tf.float32)
 
-  return image, label
+    return image, label
 
 
 def preprocess_example(
-    example_serialized, is_training, dtype, num_classes, one_hot=False):
-  """Applies preprocessing steps to the input parsed example."""
-  image, label = parse_example_proto_and_decode(example_serialized)
-  image = preprocess_image(
-      image_buffer=image,
-      output_height=DEFAULT_IMAGE_SIZE,
-      output_width=DEFAULT_IMAGE_SIZE,
-      num_channels=NUM_CHANNELS,
-      is_training=is_training)
-  image = tf.cast(image, dtype)
+    example_serialized, is_training, dtype, num_classes, one_hot=False
+):
+    """Applies preprocessing steps to the input parsed example."""
+    image, label = parse_example_proto_and_decode(example_serialized)
+    image = preprocess_image(
+        image_buffer=image,
+        output_height=DEFAULT_IMAGE_SIZE,
+        output_width=DEFAULT_IMAGE_SIZE,
+        num_channels=NUM_CHANNELS,
+        is_training=is_training,
+    )
+    image = tf.cast(image, dtype)
 
-  # Subtract one so that labels are in [0, 1000), and cast to float32 for
-  # Keras model.
-  label = tf.reshape(label, shape=[1])
-  label = tf.cast(label, tf.int32)
-  label -= 1
+    # Subtract one so that labels are in [0, 1000), and cast to float32 for
+    # Keras model.
+    label = tf.reshape(label, shape=[1])
+    label = tf.cast(label, tf.int32)
+    label -= 1
 
-  if one_hot:
-    label = tf.one_hot(label, num_classes)
-    label = tf.reshape(label, [num_classes])
-  else:
-    label = tf.cast(label, tf.float32)
+    if one_hot:
+        label = tf.one_hot(label, num_classes)
+        label = tf.reshape(label, [num_classes])
+    else:
+        label = tf.cast(label, tf.float32)
 
-  return image, label
+    return image, label
 
 
 def build_tf_dataset(
-             filenames,
-             batch_size,
-             num_images_per_epoch,
-             num_epochs,
-             online_processing,
-             shuffle_buffer=None,
-             is_training=True,
-             dtype=tf.float32,
-             datasets_num_private_threads=None,
-             input_context=None,
-             drop_remainder=False,
-             tf_data_experimental_slack=False,
-             # NOTE(swang): MLPerf sets this to False by default, but we should
-             # cache decoded images for parity with AIR bulk ingest.
-             dataset_cache=True,
-             prefetch_batchs=tf.data.experimental.AUTOTUNE):
-  """Input function which provides batches for train or eval.
+    filenames,
+    batch_size,
+    num_images_per_epoch,
+    num_epochs,
+    online_processing,
+    shuffle_buffer=None,
+    is_training=True,
+    dtype=tf.float32,
+    datasets_num_private_threads=None,
+    input_context=None,
+    drop_remainder=False,
+    tf_data_experimental_slack=False,
+    # NOTE(swang): MLPerf sets this to False by default, but we should
+    # cache decoded images for parity with AIR bulk ingest.
+    dataset_cache=True,
+    prefetch_batchs=tf.data.experimental.AUTOTUNE,
+):
+    """Input function which provides batches for train or eval.
 
   Args:
     is_training: A boolean denoting whether the input is for training.
@@ -268,66 +276,72 @@ def build_tf_dataset(
   Returns:
     A dataset that can be used for iteration.
   """
-  dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    dataset = tf.data.Dataset.from_tensor_slices(filenames)
 
-  if input_context:
-    # TODO(swang): Shard and set shard index based on TF session.
-    logging.info(
-        'Sharding the dataset: input_pipeline_id=%d num_input_pipelines=%d',
-        input_context.input_pipeline_id, input_context.num_input_pipelines)
-    dataset = dataset.shard(input_context.num_input_pipelines,
-                            input_context.input_pipeline_id)
+    if input_context:
+        # TODO(swang): Shard and set shard index based on TF session.
+        logging.info(
+            "Sharding the dataset: input_pipeline_id=%d num_input_pipelines=%d",
+            input_context.input_pipeline_id,
+            input_context.num_input_pipelines,
+        )
+        dataset = dataset.shard(
+            input_context.num_input_pipelines, input_context.input_pipeline_id
+        )
 
-  if is_training:
-    # Shuffle the input files
-    dataset = dataset.shuffle(buffer_size=len(filenames))
+    if is_training:
+        # Shuffle the input files
+        dataset = dataset.shuffle(buffer_size=len(filenames))
 
-  # Convert to individual records.
-  # cycle_length = 10 means that up to 10 files will be read and deserialized in
-  # parallel. You may want to increase this number if you have a large number of
-  # CPU cores.
-  dataset = dataset.interleave(
-      tf.data.TFRecordDataset,
-      cycle_length=10,
-      num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # Convert to individual records.
+    # cycle_length = 10 means that up to 10 files will be read and deserialized in
+    # parallel. You may want to increase this number if you have a large number of
+    # CPU cores.
+    dataset = dataset.interleave(
+        tf.data.TFRecordDataset,
+        cycle_length=10,
+        num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    )
 
-  if is_training:
-    if online_processing:
-        dataset = dataset.map(
-            parse_example_proto_and_decode,
-            num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    else:
-        # We're just applying random transforms a single time and loading these
-        # all into memory. NOTE(swang): this doesn't follow the reference
-        # implementation and should only be used for debugging purposes.
-        map_fn = functools.partial(
-            preprocess_example,
-            is_training=is_training,
-            dtype=dtype,
-            num_classes=NUM_CLASSES)
+    if is_training:
+        if online_processing:
+            dataset = dataset.map(
+                parse_example_proto_and_decode,
+                num_parallel_calls=tf.data.experimental.AUTOTUNE,
+            )
+        else:
+            # We're just applying random transforms a single time and loading these
+            # all into memory. NOTE(swang): this doesn't follow the reference
+            # implementation and should only be used for debugging purposes.
+            map_fn = functools.partial(
+                preprocess_example,
+                is_training=is_training,
+                dtype=dtype,
+                num_classes=NUM_CLASSES,
+            )
 
-        dataset = dataset.map(
-            map_fn,
-            num_parallel_calls=tf.data.experimental.AUTOTUNE)
-  dataset = dataset.take(num_images_per_epoch)
-  if dataset_cache:
-    # Improve training / eval performance when data is in remote storage and
-    # can fit into worker memory.
-    dataset = dataset.cache()
+            dataset = dataset.map(
+                map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE
+            )
+    dataset = dataset.take(num_images_per_epoch)
+    if dataset_cache:
+        # Improve training / eval performance when data is in remote storage and
+        # can fit into worker memory.
+        dataset = dataset.cache()
 
-  return process_record_dataset(
-      dataset=dataset,
-      is_training=is_training,
-      batch_size=batch_size,
-      num_epochs=num_epochs,
-      online_processing=online_processing,
-      shuffle_buffer=shuffle_buffer,
-      dtype=dtype,
-      datasets_num_private_threads=datasets_num_private_threads,
-      drop_remainder=drop_remainder,
-      tf_data_experimental_slack=tf_data_experimental_slack,
-      prefetch_batchs=prefetch_batchs,
-  )
+    return process_record_dataset(
+        dataset=dataset,
+        is_training=is_training,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        online_processing=online_processing,
+        shuffle_buffer=shuffle_buffer,
+        dtype=dtype,
+        datasets_num_private_threads=datasets_num_private_threads,
+        drop_remainder=drop_remainder,
+        tf_data_experimental_slack=tf_data_experimental_slack,
+        prefetch_batchs=prefetch_batchs,
+    )
 
 
 def _decode_crop_and_flip(image_buffer, num_channels):
@@ -357,12 +371,11 @@ def _decode_crop_and_flip(image_buffer, num_channels):
     # the entire image.
     decoded = not isinstance(image_buffer, bytes)
     shape = (
-        tf.shape(image_buffer)
-        if decoded
-        else tf.image.extract_jpeg_shape(image_buffer)
+        tf.shape(image_buffer) if decoded else tf.image.extract_jpeg_shape(image_buffer)
     )
-    bbox = tf.constant([0.0, 0.0, 1.0, 1.0],
-                       dtype=tf.float32, shape=[1, 1, 4])   #From the entire image
+    bbox = tf.constant(
+        [0.0, 0.0, 1.0, 1.0], dtype=tf.float32, shape=[1, 1, 4]
+    )  # From the entire image
     sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
         shape,
         bounding_boxes=bbox,
