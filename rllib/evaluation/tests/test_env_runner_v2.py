@@ -9,6 +9,7 @@ from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+from ray.rllib.evaluation.metrics import RolloutMetrics
 
 
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
