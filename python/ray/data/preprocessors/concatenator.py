@@ -132,7 +132,7 @@ class Concatenator(Preprocessor):
             if columns is None:
                 continue
 
-            missing_columns = set(columns) - (set(df) & set(columns))
+            missing_columns = set(columns) - set(df)
             if not missing_columns:
                 continue
 
