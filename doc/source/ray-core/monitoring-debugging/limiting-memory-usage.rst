@@ -3,6 +3,14 @@ Limiting the memory usage
 
 The application may consume a large amount of heap space and causes the node to run out of memory. When that happens the operating system will start killing worker or raylet processes, which breaks Ray. It may stall the metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and causes Ray to fail.
 
+In this section we will go over
+
+- What is the memory monitor and how it works
+
+- How to enable and configure it
+
+- How to use the memory monitor to detect and resolve memory issues
+
 Memory Monitor
 --------------
 
@@ -12,34 +20,40 @@ The memory monitor is a component that runs on each node. It periodically checks
 
     The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is disabled by default and needs to be enabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to a value greater than zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <limiting-memory-usage-questions>`. 
 
+The memory monitor is controlled by the following environment variables
+
+- ``RAY_memory_monitor_interval_ms (default:9)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
+
+- ``RAY_memory_usage_threshold_fraction (default:0.9)`` is the threshold when the node is beyond the memory
+  capacity. If the memory usage is above this value and the free space is
+  below min_memory_free_bytes then it will start killing processes to free up space.
+  Ranges from [0, 1]
+
+- ``RAY_min_memory_free_bytes (default:1 GiB)`` is the minimum amount of free space. If the memory usage is above
+  memory_usage_threshold_fraction and the free space is below this value then it
+  will start killing processes to free up space. This setting is unused if it is set to -1.
+
+  This value is useful for larger hosts where the memory_usage_threshold_fraction could
+  represent a large chunk of memory, e.g. a host with 64GB of memory and a 0.9 threshold
+  means 6.4 GB of the memory will not be usable.
+
+- ``RAY_task_oom_retries (default:15):`` The number of retries for the task or actor when
+  it fails due to the process being killed by the memory monitor.
+  If the task or actor is not retriable then this value is zero. This value is used
+  only when the process is killed by the memory monitor, and the retry counter of the
+  task or actor is used when it fails in other ways. If the process is killed by the operating system OOM killer it will use the task retry and not this value.
+  Note infinite retry (setting this value to -1) is not supported.
+
 Enabling the Memory Monitor
 ---------------------------
 
-Verify the memory monitor is disabled by default:
+Enable the memory monitor by setting the environment variable when Ray starts.
 
 .. code-block:: bash
 
-    ray stop; ray start --head
+    RAY_memory_monitor_interval_ms=100 ray start --head
 
-The raylet logs will contain a line that tells us whether the monitor is running or not:
-
-.. code-block:: bash
-
-    grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
-
-Which should print
-
-.. code-block:: bash
-
-    (raylet) memory_monitor.cc:65: MemoryMonitor disabled. Specify `memory_monitor_interval_ms` > 0 to enable the monitor.
-
-Now enable the memory monitor:
-
-.. code-block:: bash
-
-    ray stop; RAY_memory_monitor_interval_ms=250 ray start --head
-
-Check the logs again to see the monitor is now running:
+Check the logs to see the monitor is now running:
 
 .. code-block:: bash
 
@@ -49,57 +63,65 @@ Which should print
 
 .. code-block:: bash
 
-    (raylet) memory_monitor.cc:45: MemoryMonitor initialized with usage threshold at 34664513536 bytes (0.97 system memory), total system memory bytes: 35738255360
+    (raylet) memory_monitor.cc MemoryMonitor initialized with usage threshold at 34664513536 bytes (0.97 system memory), total system memory bytes: 35738255360
+
+If the memory monitor is not running (the default) it will print something like this:
+
+.. code-block:: bash
+
+    (raylet) memory_monitor.cc: MemoryMonitor disabled. Specify `memory_monitor_interval_ms` > 0 to enable the monitor.
 
 Memory usage threshold
 ----------------------
 
-The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by two environment variables ``RAY_memory_usage_threshold_fraction`` (default: 0.9) and ``RAY_min_memory_free_bytes`` (default: 1 GiB). When the node starts it computes the usage threshold as follows:
+The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables
+
+- ``RAY_memory_usage_threshold_fraction`` (default: 0.9)
+- ``RAY_min_memory_free_bytes`` (default: 1 GiB)
+
+When the node starts it computes the usage threshold as follows:
 
 .. code-block:: bash
 
     usage_threshold = max(system_memory * RAY_memory_usage_threshold_fraction, system_memory - RAY_min_memory_free_bytes)
 
-``RAY_min_memory_free_bytes`` can be disabled by setting its value to -1. In that case it only uses ``RAY_memory_usage_threshold_fraction`` to determine the usage threshold. Here we set the memory threshold to be 0.9 of system memory:
+``RAY_min_memory_free_bytes`` can be disabled by setting its value to -1. In that case it only uses ``RAY_memory_usage_threshold_fraction`` to determine the usage threshold.
+
+Utilizing the thresholds
+------------------------
+
+Here we set the memory threshold to be 0.9 of system memory:
 
 .. code-block:: bash
 
-    ray stop; RAY_memory_monitor_interval_ms=250 RAY_memory_usage_threshold_fraction=0.9 RAY_min_memory_free_bytes=-1 ray start --head
-
-Now fetch the raylet logs:
-
-.. code-block:: bash
-
-    grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
+    RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.9 RAY_min_memory_free_bytes=-1 ray start --head    
 
 For a node with ~33 GiB of RAM the raylet log prints:
 
 .. code-block:: bash
 
-    (raylet) memory_monitor.cc:45: MemoryMonitor initialized with usage threshold at 32164429824 bytes (0.90 system memory), total system memory bytes: 35738255360
+    $ grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
+    
+    (raylet) memory_monitor.cc: MemoryMonitor initialized with usage threshold at 32164429824 bytes (0.90 system memory), total system memory bytes: 35738255360
 
-On the other hand, if we set ``RAY_min_memory_free_bytes`` to a low value it will limit the amount of free memory reserved by the memory monitor. This helps limit the free memory for node with large amounts of RAM.
-
-.. code-block:: bash
-
-    ray stop; RAY_memory_monitor_interval_ms=250 RAY_memory_usage_threshold_fraction=0.5 RAY_min_memory_free_bytes=1000000000 ray start --head
-
-Now fetch the raylet logs again:
+On the other hand, if we set ``RAY_min_memory_free_bytes`` to a low value it will limit the amount of free memory reserved by the memory monitor. This helps limit the free memory for a node with large amounts of RAM.
 
 .. code-block:: bash
 
-    grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
+    RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.9 RAY_min_memory_free_bytes=1000000000 ray start --head
 
 For a node with ~33 GiB of RAM it should have a threshold close to 32GiB by leaving only 1000000000 bytes of free memory.
 
 .. code-block:: bash
 
-    (raylet) memory_monitor.cc:45: MemoryMonitor initialized with usage threshold at 34738255360 bytes (0.97 system memory), total system memory bytes: 35738255360
+    $ grep memory_monitor.cc /tmp/ray/session_latest/logs/raylet.out
+
+    (raylet) memory_monitor.cc: MemoryMonitor initialized with usage threshold at 34738255360 bytes (0.97 system memory), total system memory bytes: 35738255360
 
 Retry policy
 ------------
 
-When a task or actor is killed by the memory monitor it will retry using a separate retry counter called the task oom retry instead of the typical retry that is :ref:`max_retries <task-fault-tolerance>` for Tasks and :ref:`max_restarts <actor-fault-tolerance>` for Actors. The number of oom retries is shared between tasks and actors and the default number is 15. It is configured by passing the environment variable ``RAY_task_oom_retries`` when starting Ray as well as the application.
+When a task or actor is killed by the memory monitor, it will retry using a separate retry counter based off of ``RAY_task_oom_retries`` instead of the typical retry that is :ref:`max_retries <task-fault-tolerance>` for Tasks and :ref:`max_restarts <actor-fault-tolerance>` for Actors. The number of memory monitor retries is the same between tasks and actors and the defaults is ``15``. The value should be passed as the environment variable ``RAY_task_oom_retries`` when starting Ray as well as the application.
 
 Let's create an application oom.py that will trigger the out-of-memory condition.
 
@@ -113,7 +135,7 @@ To speed up the example, set ``RAY_task_oom_retries=1`` on the application so th
 
 .. code-block:: bash
 
-    RAY_task_oom_retries=1 python oom.py 
+    $ RAY_task_oom_retries=1 python oom.py 
 
     INFO worker.py:1342 -- Connecting to existing Ray cluster at address: 172.17.0.2:6379...
     INFO worker.py:1525 -- Connected to Ray cluster. View the dashboard at http://127.0.0.1:8265 
@@ -141,7 +163,7 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 
 .. code-block:: bash
 
-    grep -r "retries left" /tmp/ray/session_latest/logs/
+    $ grep -r "retries left" /tmp/ray/session_latest/logs/
 
     /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_60002.log:[2022-10-12 16:14:07,723 I 60002 60031] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 1, task failed due to oom: 1
     
@@ -151,24 +173,24 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 
 .. note::
 
-    task retries are executed immediately. If there is a long running process it is possible for a task to keep retrying and fail and exhaust the oom retries. Consider increasing ``RAY_task_oom_retries``, :ref:`increase num_cpus per task to reduce the parallelism <limiting-memory-usage-increase-num-cpus>`, or :ref:`estimate the memory requirement and use memory aware scheduling <limiting-memory-usage-memory-scheduling>`.
+    Task retries are executed immediately. If there is a long running process it is possible for a task to keep retrying and fail and exhaust the oom retries. Consider increasing ``RAY_task_oom_retries``, :ref:`increase num_cpus per task to reduce the parallelism <limiting-memory-usage-increase-num-cpus>`, or :ref:`estimate the memory requirement and use memory aware scheduling <limiting-memory-usage-memory-scheduling>`.
 
 .. note::
 
-    actors by default are non-retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0, therefore tasks are preferred to actors when it comes to what gets killed first. Actor right now doesn't use ``RAY_task_oom_retries`` and instead uses :ref:`max_restarts <actor-fault-tolerance>` when it is killed by the memory monitor. This is to be changed very soon.
+    Actors by default are non-retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0, therefore tasks are preferred to actors when it comes to what gets killed first. Actor right now doesn't use ``RAY_task_oom_retries`` and instead uses :ref:`max_restarts <actor-fault-tolerance>` when it is killed by the memory monitor. This is to be changed very soon.
 
 .. _limiting-memory-usage-worker-killing-policy:
 
 Worker killing policy
 ---------------------
 
-The raylet prioritizes killing task that is retriable, i.e. when ``max_retries`` or ``max_restarts`` is > 0. This is done to minimize workload failure. It then looks for the last one submitted and kills that worker process. It selects and kills one process at a time regardless of how frequent the monitor runs as determined by ``RAY_memory_monitor_interval_ms``.
+The raylet prioritizes killing task that is retriable, i.e. when :ref:`max_retries <task-fault-tolerance>` or :ref:`max_restarts <actor-fault-tolerance>` is > 0. This is done to minimize workload failure. It then looks for the last one submitted and kills that worker process. It selects and kills one process at a time regardless of how frequent the monitor runs as determined by ``RAY_memory_monitor_interval_ms``.
 
 Let's first start ray and specify the memory threshold.
 
 .. code-block:: bash
 
-    ray stop; RAY_memory_monitor_interval_ms=250 RAY_memory_usage_threshold_fraction=0.4 RAY_min_memory_free_bytes=-1 ray start --head
+    RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.4 RAY_min_memory_free_bytes=-1 ray start --head
 
 
 Let's create an application two_actors.py that submits two actors, where the first one is retriable and the second one is non-retriable.
@@ -183,15 +205,15 @@ Run the application to see that only the first actor was killed.
 
 .. code-block:: bash
 
-    python two_actors.py
+    $ python two_actors.py
     
     first actor was killed by memory monitor
     finished second actor
 
 .. _limiting-memory-usage-increase-num-cpus:
 
-Increasing num_cpus of each task
---------------------------------
+Increasing `num_cpus` of each task
+----------------------------------
 
 Looking at the :ref:`previous example <limiting-memory-usage-worker-killing-policy>`, it should be possible to complete both tasks if they were executed serially. To do that we modify the previous example to give 2 cpus to Ray, and specify each actor to request 2 cpus - Ray will schedule one actor at a time and allow the application to finish successfully.
 
@@ -200,7 +222,7 @@ First we start Ray and specify the cpu resources to be 2 cpus.
 
 .. code-block:: bash
 
-    ray stop; RAY_memory_monitor_interval_ms=250 RAY_memory_usage_threshold_fraction=0.4 RAY_min_memory_free_bytes=-1 ray start --head --num-cpus=2
+    ray stop; RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.4 RAY_min_memory_free_bytes=-1 ray start --head --num-cpus=2
 
 Modify the application to request 2 cpus for each actor and rename it to num_cpus.py:
 
@@ -222,7 +244,7 @@ Run the application to see that both actors complete successfully:
 
 .. code-block:: bash
 
-    python num_cpus.py
+    $ python num_cpus.py
     
     finished first actor
     finished second actor
@@ -238,7 +260,7 @@ First we start Ray and specify the memory threshold to be 0.8.
 
 .. code-block:: bash
 
-    ray stop; RAY_memory_monitor_interval_ms=250 RAY_memory_usage_threshold_fraction=0.8 RAY_min_memory_free_bytes=-1 ray start --head
+    RAY_memory_monitor_interval_ms=100 RAY_memory_usage_threshold_fraction=0.8 RAY_min_memory_free_bytes=-1 ray start --head
 
 Now we give a memory requirement for each actor. The value is set so it can only execute one actor at a time.
 
@@ -260,7 +282,7 @@ Let's run the modified application with the name memory.py:
 
 .. code-block:: bash
 
-    python memory.py
+    $ python memory.py
     
     finished first actor
     finished second actor

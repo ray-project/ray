@@ -11,6 +11,7 @@ See :ref:`Getting Help <ray-troubleshoot-getting-help>` if your problem is not s
     troubleshoot-failures
     troubleshoot-hangs
     troubleshoot-performance
+    limiting-memory-usage
     tools
     gotchas
     profiling
