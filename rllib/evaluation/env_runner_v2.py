@@ -819,13 +819,6 @@ class EnvRunnerV2:
                         env_id,
                         agent_id,
                         {
-                            # Pass dummy data into this together with obs since view
-                            # requirements connector may need these
-                            SampleBatch.ENV_ID: env_id,
-                            SampleBatch.AGENT_INDEX: new_episode.agent_index(agent_id),
-                            SampleBatch.REWARDS: 0.0,
-                            SampleBatch.DONES: False,
-                            SampleBatch.INFOS: {},
                             SampleBatch.NEXT_OBS: obs,
                         },
                     )
