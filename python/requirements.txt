@@ -60,6 +60,7 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 boto3
+crc32c
 cryptography>=3.0.0
 cython >= 0.29.26
 dataclasses; python_version < '3.7'
