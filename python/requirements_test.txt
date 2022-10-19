@@ -5,7 +5,7 @@
 async-exit-stack==1.0.1
 async-generator==1.10
 asyncmock==0.4.2
-azure-cli-core==2.41.0
+azure-cli-core==2.40.0
 azure-identity==1.11.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-network==19.0.0
@@ -46,6 +46,7 @@ pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
 pyarrow==6.0.1
+pydantic==1.9.2
 PyOpenSSL==22.1.0
 Pygments==2.13.0
 pyspark==3.1.2
