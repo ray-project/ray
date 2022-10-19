@@ -1601,6 +1601,7 @@ class AlgorithmConfig:
 
         # Update with evaluation settings:
         eval_config_obj = copy.deepcopy(self)
+        eval_config_obj._is_frozen = False
         # Switch on the `in_evaluation` flag.
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
