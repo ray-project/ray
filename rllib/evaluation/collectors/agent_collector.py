@@ -206,7 +206,7 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         # Make sure we are not trying to handle T manually
-        assert SampleBatch.T not in input_values, "T is calculated by AgentCollector."
+        assert SampleBatch.T not in input_values
         # Add next T
         self.buffers[SampleBatch.T][0].append(self.buffers[SampleBatch.T][0][-1] + 1)
 
