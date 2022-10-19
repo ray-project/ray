@@ -83,7 +83,7 @@ class SampleCollector(metaclass=ABCMeta):
 
         Examples:
             >>> obs = env.reset()
-            >>> collector.add_init_obs(my_episode, 0, "pol0", obs)
+            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs)
             >>> obs, r, done, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
