@@ -242,8 +242,6 @@ message GetGcsSchedulingStatsReply {
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Check alive.
-  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message AddProfileDataRequest {
@@ -632,5 +630,7 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 ///////////////////////////////////////////////////////////////////////////////
