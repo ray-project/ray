@@ -305,6 +305,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           self_node_id_,
           config.node_manager_address,
           config.node_manager_port,
+          io_service_,
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(),
           worker_pool_,
@@ -337,6 +338,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_interval_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -2974,7 +2976,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                  "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
+          RAY_LOG_EVERY_MS(INFO, 10000) << worker_exit_message;
 
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
@@ -2985,7 +2987,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
-                        rpc::WorkerExitType::USER_ERROR,
+                        rpc::WorkerExitType::SYSTEM_ERROR,
                         worker_exit_message,
                         true /* force */);
 

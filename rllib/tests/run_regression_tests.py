@@ -39,7 +39,7 @@ parser.add_argument(
     required=True,
     help="The directory in which to find all yamls to test.",
 )
-parser.add_argument("--num-cpus", type=int, default=8)
+parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
     "--local-mode",
     action="store_true",

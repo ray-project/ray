@@ -3,6 +3,7 @@ package io.ray.serve.docdemo;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.deployment.Deployment;
+import io.ray.serve.generated.DeploymentLanguage;
 import java.io.File;
 
 public class ManagePythonDeployment {
@@ -17,7 +18,7 @@ public class ManagePythonDeployment {
 
     Deployment deployment =
         Serve.deployment()
-            // .setDeploymentLanguage(DeploymentLanguage.PYTHON)
+            .setLanguage(DeploymentLanguage.PYTHON)
             .setName("counter")
             .setDeploymentDef("counter.Counter")
             .setNumReplicas(1)
