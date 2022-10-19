@@ -7,7 +7,9 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.torch.torch_action_dist_v2 import (
-    TorchCategorical, TorchDeterministic, TorchDiagGaussian
+    TorchCategorical,
+    TorchDeterministic,
+    TorchDiagGaussian,
 )
 
 import torch
@@ -16,26 +18,29 @@ import gym
 
 from typing import List, Mapping, Any
 
+
 @dataclass
 class FCConfig:
     """Configuration for a fully connected network.
-    
+
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would  
+        output_dim: The output dimension of the network. if None, the last layer would
             be the last hidden layer.
         hidden_layers: The sizes of the hidden layers.
         activation: The activation function to use after each layer.
     """
+
     input_dim: int = None
     output_dim: int = None
     hidden_layers: List[int] = field(default_factory=lambda: [256, 256])
     activation: str = "relu"
 
+
 @dataclass
 class PPOModuleConfig:
     """Configuration for the PPO module.
-    
+
     Attributes:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
@@ -43,22 +48,25 @@ class PPOModuleConfig:
         vf_config: The configuration for the value network.
         encoder_config: The configuration for the encoder network.
     """
+
     observation_space: gym.Space = None
     action_space: gym.Space = None
     pi_config: FCConfig = None
     vf_config: FCConfig = None
     encoder_config: FCConfig = None
 
+
 class FCNet(nn.Module):
     """A simple fully connected network.
-    
+
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would  
+        output_dim: The output dimension of the network. if None, the last layer would
             be the last hidden layer.
         hidden_layers: The sizes of the hidden layers.
         activation: The activation function to use after each layer.
     """
+
     def __init__(self, config: FCConfig):
         super().__init__()
         self.input_dim = config.input_dim
@@ -68,7 +76,9 @@ class FCNet(nn.Module):
         self.layers = []
         self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
         for i in range(len(self.hidden_layers) - 1):
-            self.layers.append(nn.Linear(self.hidden_layers[i], self.hidden_layers[i + 1]))
+            self.layers.append(
+                nn.Linear(self.hidden_layers[i], self.hidden_layers[i + 1])
+            )
         if config.output_dim is not None:
             self.layers.append(nn.Linear(self.hidden_layers[-1], config.output_dim))
 
@@ -86,24 +96,24 @@ class FCNet(nn.Module):
         x = self.layers[-1](x)
         return x
 
-class SimplePPOModule(TorchRLModule):
 
+class SimplePPOModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__(config)
 
         assert (
             isinstance(self.config.observation_space, gym.spaces.Box),
-            "This simple PPOModule only supports Box observation space."
+            "This simple PPOModule only supports Box observation space.",
         )
 
         assert (
             self.config.observation_space.shape[0] == 1,
-            "This simple PPOModule only supports 1D observation space."
+            "This simple PPOModule only supports 1D observation space.",
         )
 
         assert (
-            isinstance(self.config.action_space, (gym.spaces.Discrete, gym.spaces.Box)), 
-            "This simple PPOModule only supports Discrete and Box action space."
+            isinstance(self.config.action_space, (gym.spaces.Discrete, gym.spaces.Box)),
+            "This simple PPOModule only supports Discrete and Box action space.",
         )
 
         assert self.config.pi_config, "pi_config must be provided."
@@ -121,13 +131,13 @@ class SimplePPOModule(TorchRLModule):
             pi_config.input_dim = self.config.observation_space.shape[0]
         else:
             pi_config.input_dim = self.encoder.output_dim
-        
+
         if isinstance(self.config.action_space, gym.spaces.Discrete):
             pi_config.output_dim = self.config.action_space.n
         else:
             pi_config.output_dim = self.config.action_space.shape[0] * 2
         self.pi = FCNet(pi_config)
-        
+
         # build vf network
         vf_config = self.config.vf_config
         if not self.encoder:
@@ -146,10 +156,12 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
-        return ModelSpecDict({
-            "action_dist": TorchDeterministic,
-        })
-    
+        return ModelSpecDict(
+            {
+                "action_dist": TorchDeterministic,
+            }
+        )
+
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
@@ -157,28 +169,34 @@ class SimplePPOModule(TorchRLModule):
             pi_out = self.pi(encoded_state)
         else:
             pi_out = self.pi(batch["obs"])
-        
+
         if self._is_discrete:
             action = torch.argmax(pi_out, dim=-1)
         else:
             action, _ = pi_out.chunk(2, dim=-1)
 
         action_dist = TorchDeterministic(action)
-        return {
-            "action_dist": action_dist
-        }
+        return {"action_dist": action_dist}
 
     @override(RLModule)
     def input_specs_exploration(self) -> ModelSpecDict:
-        return ModelSpecDict({
-            "obs": self.encoder.input_specs if self.encoder else self.pi.input_specs,
-        })
-    
+        return ModelSpecDict(
+            {
+                "obs": self.encoder.input_specs
+                if self.encoder
+                else self.pi.input_specs,
+            }
+        )
+
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpecDict:
-        return ModelSpecDict({
-            "action_dist": TorchCategorical if self._is_discrete else TorchDiagGaussian,
-        })
+        return ModelSpecDict(
+            {
+                "action_dist": TorchCategorical
+                if self._is_discrete
+                else TorchDiagGaussian,
+            }
+        )
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -187,16 +205,14 @@ class SimplePPOModule(TorchRLModule):
             pi_out = self.pi(encoded_state)
         else:
             pi_out = self.pi(batch["obs"])
-        
+
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)
         else:
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
-        
-        return {
-            "action_dist": action_dist
-        }
+
+        return {"action_dist": action_dist}
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpecDict:
@@ -205,21 +221,28 @@ class SimplePPOModule(TorchRLModule):
         else:
             action_dim = self.config.action_space.shape[0]
 
-        return ModelSpecDict({
-            "obs": self.encoder.input_specs if self.encoder else self.pi.input_specs,
-            "actions": TorchSpecs("b, da", da=action_dim)
-        })
+        return ModelSpecDict(
+            {
+                "obs": self.encoder.input_specs
+                if self.encoder
+                else self.pi.input_specs,
+                "actions": TorchSpecs("b, da", da=action_dim),
+            }
+        )
 
     @override(RLModule)
     def output_specs_train(self) -> ModelSpecDict:
-        return ModelSpecDict({
-            "action_dist": TorchCategorical if self._is_discrete else TorchDiagGaussian,
-            "logp": TorchSpecs("b", dtype=torch.float32),
-            "entropy": TorchSpecs("b", dtype=torch.float32),
-            "vf": TorchSpecs("b", dtype=torch.float32),
-        })
+        return ModelSpecDict(
+            {
+                "action_dist": TorchCategorical
+                if self._is_discrete
+                else TorchDiagGaussian,
+                "logp": TorchSpecs("b", dtype=torch.float32),
+                "entropy": TorchSpecs("b", dtype=torch.float32),
+                "vf": TorchSpecs("b", dtype=torch.float32),
+            }
+        )
 
-    
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
@@ -229,7 +252,7 @@ class SimplePPOModule(TorchRLModule):
         else:
             pi_out = self.pi(batch["obs"])
             vf = self.vf(batch["obs"])
-        
+
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)
         else:

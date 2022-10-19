@@ -213,13 +213,13 @@ class MultiAgentRLModule(RLModule):
         self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
-    
+
     @override(RLModule)
     def _forward_exploration(
         self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
-    
+
     def _run_forward_pass(
         self,
         forward_fn_name: str,

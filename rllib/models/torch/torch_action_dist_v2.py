@@ -19,6 +19,7 @@ import torch
 from typing import Mapping
 import abc
 
+
 @DeveloperAPI
 class TorchDistribution(ActionDistributionV2, abc.ABC):
     """Wrapper class for torch.distributions."""
@@ -44,7 +45,9 @@ class TorchDistribution(ActionDistributionV2, abc.ABC):
         return torch.distributions.kl.kl_divergence(self.dist, other.dist)
 
     @override(ActionDistributionV2)
-    def sample(self, *, sample_shape=None, return_logp: bool = False) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+    def sample(
+        self, *, sample_shape=None, return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self.dist.rsample(sample_shape)
         if return_logp:
             return sample, self.logp(sample)
@@ -55,11 +58,21 @@ class TorchDistribution(ActionDistributionV2, abc.ABC):
 class TorchCategorical(TorchDistribution):
     """Wrapper class for PyTorch Categorical distribution."""
 
-    def __init__(self, probs: torch.Tensor = None, logits: torch.Tensor = None, temperature: float = 1.0) -> None:
+    def __init__(
+        self,
+        probs: torch.Tensor = None,
+        logits: torch.Tensor = None,
+        temperature: float = 1.0,
+    ) -> None:
         super().__init__(probs=probs, logits=logits, temperature=temperature)
 
     @override(TorchDistribution)
-    def _get_distribution(self, probs: torch.Tensor = None, logits: torch.Tensor = None, temperature: float = 1.0) -> torch.distributions.Distribution:
+    def _get_distribution(
+        self,
+        probs: torch.Tensor = None,
+        logits: torch.Tensor = None,
+        temperature: float = 1.0,
+    ) -> torch.distributions.Distribution:
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -111,7 +124,6 @@ class TorchDiagGaussian(TorchDistribution):
         return tuple(np.prod(action_space.shape, dtype=np.int32) * 2)
 
 
-
 @DeveloperAPI
 class TorchDeterministic(ActionDistributionV2):
     """Action distribution that returns the input values directly.
@@ -119,20 +131,27 @@ class TorchDeterministic(ActionDistributionV2):
     This is similar to DiagGaussian with standard deviation zero (thus only
     requiring the "mean" values as NN output).
     """
+
     def __init__(self, loc: torch.Tensor) -> None:
         super().__init__()
         self.loc = loc
 
     @override(ActionDistributionV2)
-    def sample(self, *, sample_shape: Tuple[int, ...] = None, return_logp: bool = False, **kwargs) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+    def sample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         if return_logp:
             raise ValueError("Cannot return logp for TorchDeterministic.")
         return self.loc
-    
+
     @override(ActionDistributionV2)
     def logp(self, action: TensorType, **kwargs) -> TensorType:
         raise ValueError("Cannot return logp for TorchDeterministic.")
-    
+
     @override(ActionDistributionV2)
     def entropy(self, **kwargs) -> TensorType:
         raise torch.zeros_like(self.loc)
@@ -140,15 +159,10 @@ class TorchDeterministic(ActionDistributionV2):
     @override(ActionDistributionV2)
     def kl(self, other: "ActionDistributionV2", **kwargs) -> TensorType:
         raise ValueError("Cannot return kl for TorchDeterministic.")
-    
+
     @staticmethod
     @override(ActionDistributionV2)
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         return tuple(np.prod(action_space.shape, dtype=np.int32))
-    
-    
-
-
-

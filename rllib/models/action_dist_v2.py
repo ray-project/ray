@@ -26,7 +26,11 @@ class ActionDistributionV2(abc.ABC):
 
     @abc.abstractmethod
     def sample(
-        self, *, sample_shape: Tuple[int, ...] = None, return_logp: bool = False, **kwargs
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Draw a sample from the action distribution.
 

@@ -4,6 +4,7 @@ from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
+
 class TorchRLModule(RLModule, nn.Module):
     def __init__(self, config) -> None:
         RLModule.__init__(self, config)
@@ -19,4 +20,3 @@ class TorchRLModule(RLModule, nn.Module):
 
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
-    
