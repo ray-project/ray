@@ -6,6 +6,8 @@ import time
 import threading
 import logging
 import uuid
+import warnings
+
 from packaging.version import Version
 
 from .utils import (
@@ -13,7 +15,7 @@ from .utils import (
     check_port_open,
     get_safe_port,
     get_spark_session,
-    get_spark_driver_hostname,
+    get_spark_application_driver_host,
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
     get_avail_mem_per_ray_worker,
@@ -183,10 +185,12 @@ def init_cluster(
     worker_options=None,
     ray_temp_root_dir="/tmp",
     ray_log_root_dir="/tmp",
+    safe_mode=True,
 ):
     """
-    Initialize a ray cluster on the spark cluster by starting a ray head node in the spark driver
-    side node. After creating the head node, a background spark barrier mode job is created that
+    Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
+    application's driver side node.
+    After creating the head node, a background spark barrier mode job is created that
     generates an instance of `RayClusterOnSpark` that contains configuration for the ray cluster
     that will run on the Spark cluster's worker nodes.
     The returned instance can be used to connect to, disconnect from and shutdown the ray cluster.
@@ -200,7 +204,8 @@ def init_cluster(
             ray cluster. The ray cluster's total available resources (memory, CPU and/or GPU)
             is equal to the quantity of resources allocated within these spark tasks.
             Specifying the `num_spark_tasks` as `-1` represents a ray cluster configuration that
-            will use all available spark tasks slots on the spark cluster.
+            will use all available spark tasks slots (and resources allocated to the spark
+            application) on the spark cluster.
             To create a spark cluster that is intended to be used exclusively as a shared ray
             cluster, it is recommended to set this argument to `-1`.
         total_cpus: The total cpu core count for the ray cluster to utilize.
@@ -218,6 +223,12 @@ def init_cluster(
             will create a subdirectory "ray-temp-{head_port}_{random_suffix}" beneath this path.
         ray_log_root_dir: A local disk path to store "ray start" script logs. The created cluster
             will create a subdirectory "ray-logs-{head_port}_{random_suffix}" beneath this path.
+        safe_mode: Boolean flag to fast-fail initialization of the ray cluster if the available
+            spark cluster does not have sufficient resources to fulfill the resource allocation
+            for both memory and (cpu or gpu). When set to true, if the requested resources are
+            not available for minimum recommended functionality, an exception will be raised that
+            details the inadequate spark cluster configuration settings. If overridden as `False`,
+            a warning is raised.
     """
     from pyspark.util import inheritable_thread_target
 
@@ -279,24 +290,37 @@ def init_cluster(
         total_object_store_memory_bytes,
     )
 
+    insufficient_resources = []
+
     if num_spark_task_cpus < 4:
-        _logger.warning(
-            f"Each ray worker node will be assigned with {num_spark_task_cpus} CPU cores. This is "
-            "less than the recommended value of `4` CPUs. Increasing the spark configuration "
-            "'spark.task.cpus' to a minimum of `4` is recommended."
+        insufficient_resources.append(
+            f"The provided CPU resources for each ray worker are inadequate to start a ray "
+            f"cluster. Based on the total cpu resources available and the configured task sizing, "
+            f"each ray worker would start with {num_spark_task_cpus} CPU cores. This is "
+            "less than the recommended value of `4` CPUs per worker. Either Increasing the spark "
+            "configuration 'spark.task.cpus' to a minimum of `4` or starting more "
+            "spark worker nodes is recommended."
         )
 
     if ray_worker_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
-        _logger.warning(
-            f"Each ray worker node will be assigned with {ray_worker_heap_mem_bytes} bytes heap "
+        insufficient_resources.append(
+            f"The provided memory resources for each ray worker are inadequate. Based on the total "
+            f"memory available on the spark cluster and the configured task sizing, each ray "
+            f"worker would start with {ray_worker_heap_mem_bytes} bytes heap "
             "memory. This is less than the recommended value of 10GB. The ray worker node heap "
             "memory size is calculated by (SPARK_WORKER_NODE_PHYSICAL_MEMORY - SHARED_MEMORY) / "
-            "num_local_spark_task_slots * 0.8. To increase the heap space available, either "
-            "increase the memory in the spark cluster, reduce the target `num_spark_tasks`, or "
-            "apply a lower `heap_to_object_store_memory_ratio`."
+            "num_local_spark_task_slots * 0.8. To increase the heap space available, "
+            "increase the memory in the spark cluster by changing instance types or worker count, "
+            "reduce the target `num_spark_tasks`, or apply a lower "
+            "`heap_to_object_store_memory_ratio`."
         )
+    if insufficient_resources:
+        if safe_mode:
+            _logger.warning("\n".join(insufficient_resources))
+        else:
+            raise(ValueError, "\n".join(insufficient_resources))
 
-    ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
+    ray_head_hostname = get_spark_application_driver_host(spark)
     ray_head_port = get_safe_port()
 
     ray_head_node_manager_port = get_safe_port()

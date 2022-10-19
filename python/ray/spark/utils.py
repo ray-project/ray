@@ -168,20 +168,17 @@ def check_port_open(host, port):
 def get_spark_session():
     from pyspark.sql import SparkSession
 
-    return SparkSession.builder.getOrCreate()
+    spark_session = SparkSession.getActiveSession()
+    if spark_session is None:
+        raise RuntimeError(
+            "Spark session haven't been initiated yet. Please use `SparkSession.builder` to "
+            "create a spark session and connect to a spark cluster."
+        )
+    return spark_session
 
 
-def get_spark_driver_hostname(spark_master_url):
-    if spark_master_url.lower().startswith("local"):
-        return "127.0.0.1"
-    else:
-        parsed_spark_master_url = urlparse(spark_master_url)
-        if (
-            parsed_spark_master_url.scheme.lower() != "spark"
-            or not parsed_spark_master_url.hostname
-        ):
-            raise ValueError(f"Unsupported spark.master URL: {spark_master_url}")
-        return parsed_spark_master_url.hostname
+def get_spark_application_driver_host(spark):
+    return spark.conf.get("spark.driver.host")
 
 
 def get_max_num_concurrent_tasks(spark_context):
