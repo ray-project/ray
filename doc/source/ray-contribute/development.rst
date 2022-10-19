@@ -233,6 +233,10 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
+  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # See https://github.com/grpc/grpc/issues/25082 for more details.
+  # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+  # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 The ``-e`` means "editable", so changes you make to files in the Ray
