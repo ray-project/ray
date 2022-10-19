@@ -278,11 +278,12 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         env_runner = local_worker.sampler._env_runner_obj
 
-        output = []
-        while not output:
-            output = env_runner.step()
+        outputs = []
+        while not outputs:
+            outputs = env_runner.step()
 
-        self.assertTrue(isinstance(output, RolloutMetrics))
+        self.assertEqual(len(outputs), 2)
+        self.assertTrue(isinstance(outputs[0], RolloutMetrics))
 
 
 if __name__ == "__main__":
