@@ -178,7 +178,7 @@ bool DependencyManager::RequestTaskDependencies(
   auto inserted = queued_task_requests_.emplace(
       task_id,
       std::make_unique<TaskDependencies>(
-          std::move(deduped_ids), active_requests_counter_, task_name));
+          std::move(deduped_ids), waiting_tasks_counter_, task_name));
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
                              << task_id;
   auto &task_entry = inserted.first->second;

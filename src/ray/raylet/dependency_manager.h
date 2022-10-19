@@ -53,13 +53,13 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
-    active_requests_counter_.SetOnChangeCallback([this](std::string task_name,
-                                                        int64_t num_total) mutable {
+    waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name,
+                                                      int64_t num_total) mutable {
       // Of the waiting tasks of this name, some fraction may be inactive (blocked on
       // object store memory availability). Get this breakdown by querying the pull
       // manager.
-      int64_t num_inactive =
-          std::min(num_total, object_manager_.PullManagerNumInactivePulls(task_name));
+      int64_t num_inactive = std::min(
+          num_total, object_manager_.PullManagerNumInactivePullsByTaskName(task_name));
       // Offset the metric values recorded from the owner process.
       ray::stats::STATS_tasks.Record(
           -num_total,
@@ -224,10 +224,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
                      const std::string &task_name)
         : dependencies(std::move(deps)),
           num_missing_dependencies(dependencies.size()),
-          counter_map(counter_map),
+          waiting_task_counter_map(counter_map),
           task_name(task_name) {
       if (num_missing_dependencies > 0) {
-        counter_map.Increment(task_name);
+        waiting_task_counter_map.Increment(task_name);
       }
     }
     /// The objects that the task depends on. These are the arguments to the
@@ -242,13 +242,13 @@ class DependencyManager : public TaskDependencyManagerInterface {
     /// manager.
     uint64_t pull_request_id = 0;
     /// Reference to the counter map for metrics tracking.
-    CounterMap<std::string> &counter_map;
+    CounterMap<std::string> &waiting_task_counter_map;
     /// The task name used for metrics tracking.
     const std::string task_name;
 
     void IncrementMissingDependencies() {
       if (num_missing_dependencies == 0) {
-        counter_map.Increment(task_name);
+        waiting_task_counter_map.Increment(task_name);
       }
       num_missing_dependencies++;
     }
@@ -256,7 +256,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
     void DecrementMissingDependencies() {
       num_missing_dependencies--;
       if (num_missing_dependencies == 0) {
-        counter_map.Decrement(task_name);
+        waiting_task_counter_map.Decrement(task_name);
       }
     }
   };
@@ -300,7 +300,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// Counts the number of active task dependency fetches by task name. The counter
   /// total will be less than or equal to the size of queued_task_requests_.
-  CounterMap<std::string> active_requests_counter_;
+  CounterMap<std::string> waiting_tasks_counter_;
 
   friend class DependencyManagerTest;
 };
