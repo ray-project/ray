@@ -5,7 +5,12 @@ import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
-import { NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
+import {
+  Help,
+  NightsStay,
+  VerticalAlignTop,
+  WbSunny,
+} from "@material-ui/icons";
 import classnames from "classnames";
 import React, { PropsWithChildren, useContext } from "react";
 
@@ -162,6 +167,15 @@ const BasicLayout = (
             >
               <Tooltip title={`Theme - ${theme}`}>
                 {theme === "dark" ? <NightsStay /> : <WbSunny />}
+              </Tooltip>
+            </IconButton>
+            <IconButton
+              href="https://docs.ray.io/en/master/ray-core/ray-dashboard.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Tooltip title="Doc">
+                <Help />
               </Tooltip>
             </IconButton>
           </ListItem>
