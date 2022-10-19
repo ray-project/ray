@@ -5,9 +5,6 @@ import os
 from pydantic import BaseModel
 import shutil
 from urllib.parse import quote
-from ray.dashboard.modules.job.common import JobStatus
-from ray.dashboard.modules.job.job_manager import JobManager
-from ray.dashboard.modules.job.utils import find_job_by_ids
 
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -81,7 +78,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
         )
         self._session = aiohttp.ClientSession()
-        self._job_manager = None
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -141,21 +137,35 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         job_id = req.query.get("job_id")
 
-        job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client, self._job_manager, job_id
-        )
-        job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
+        job_id_filter = f'JobId="{job_id}"' if job_id else None
+        filter_for_terminal_states = ['State=~"FINISHED|FAILED"']
+        filter_for_non_terminal_states = ['State!~"FINISHED|FAILED"']
+        if job_id_filter:
+            filter_for_terminal_states.append(job_id_filter)
+            filter_for_non_terminal_states.append(job_id_filter)
 
-        if job and job.status in [
-            JobStatus.STOPPED,
-            JobStatus.SUCCEEDED,
-            JobStatus.FAILED,
-        ]:
-            # Because ray does not keep metrics after a job dies,
-            # we fetch the max_over_time over last 14 days
-            query = f"sum(max_over_time(ray_tasks{job_id_query}[14d])) by (State)"
-        else:
-            query = f"sum(ray_tasks{job_id_query}) by (State)"
+        filter_for_terminal_states_str = ",".join(filter_for_terminal_states)
+        filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)
+
+        # Ray does not currently permanently track worker task metrics.
+        # The metric is cleared after a worker exits. We need to work around
+        # these restrictions when we query metrics.
+
+        # For terminal states (Finished, Failed), we know that the count can
+        # never decrease. We therefore use the get the latest count of tasks
+        # by fetching the max value over the past 14 days.
+        query_for_terminal_states = (
+            "sum(max_over_time("
+            f"ray_tasks{{{filter_for_terminal_states_str}}}[14d])) by (State)"
+        )
+
+        # For non-terminal states, we assume that if a worker has at least
+        # one task in one of these states, the worker has not exited. Therefore,
+        # we fetch the current count.
+        query_for_non_terminal_states = (
+            f"sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State)"
+        )
+        query = f"{query_for_terminal_states} or {query_for_non_terminal_states}"
 
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
@@ -238,11 +248,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
     async def run(self, server):
-        if not self._job_manager:
-            self._job_manager = JobManager(
-                self._dashboard_head.gcs_aio_client, self._dashboard_head.log_dir
-            )
-
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 
