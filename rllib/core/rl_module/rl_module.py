@@ -64,7 +64,6 @@ class RLModule(abc.ABC):
 
     Args:
         config: The config object for the module.
-        **kwargs: Foward compatibility kwargs.
 
     Abstract Methods:
         forward_train: Forward pass during training.
@@ -72,7 +71,8 @@ class RLModule(abc.ABC):
         forward_inference: Forward pass during inference.
     """
 
-    def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def __init__(self, config: Mapping[str, Any]) -> None:
         self.config = config
 
     @property
@@ -99,9 +99,9 @@ class RLModule(abc.ABC):
         return ModelSpecDict({"action_dist": ActionDistributionV2})
 
     @property
-    @abc.abstractmethod
     def output_specs_train(self) -> ModelSpecDict:
         """Returns the output specs of the forward_train method."""
+        return ModelSpecDict()
 
     @property
     def input_specs_inference(self) -> ModelSpecDict:

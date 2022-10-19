@@ -24,16 +24,14 @@ class ActionDistributionV2(abc.ABC):
 
     """
 
-    def __init__(self, inputs: Union[List[TensorType], Mapping[str, TensorType]]):
-        self.inputs = inputs
-
     @abc.abstractmethod
     def sample(
-        self, return_logp: bool = False, **kwargs
+        self, *, sample_shape: Tuple[int, ...] = None, return_logp: bool = False, **kwargs
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Draw a sample from the action distribution.
 
         Args:
+            sample_shape: The shape of the sample to draw.
             return_logp: Whether to return the logp of the sampled action.
             **kwargs: Forward compatibility placeholder.
 
