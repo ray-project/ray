@@ -320,9 +320,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])  # env.reset() for t == -1 else env.step()
             sample_batch = processed[0].data.sample_batch
             # add cur obs to the list
@@ -357,9 +355,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
 

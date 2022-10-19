@@ -31,9 +31,7 @@ class TestAgentCollector(unittest.TestCase):
 
         for t in range(n_steps):
             obses.append(np.random.rand(4))
-            ac.add_action_reward_next_obs(
-                {SampleBatch.NEXT_OBS: obses[-1]}
-            )
+            ac.add_action_reward_next_obs({SampleBatch.NEXT_OBS: obses[-1]})
 
         return obses
 
@@ -72,9 +70,7 @@ class TestAgentCollector(unittest.TestCase):
                     obses_ctx.extend([obs for _ in range(ctx_len)])
                 else:
                     # e.g. next_state = env.step()
-                    ac.add_action_reward_next_obs(
-                        {SampleBatch.NEXT_OBS: obs}
-                    )
+                    ac.add_action_reward_next_obs({SampleBatch.NEXT_OBS: obs})
                     # pop from front and add to the end
                     obses_ctx.pop(0)
                     obses_ctx.append(obs)
