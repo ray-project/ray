@@ -31,10 +31,10 @@ class AlgorithmConfig:
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)\
-        ...              .environment(env="CartPole-v1")\
-        ...              .resources(num_gpus=0)\
-        ...              .rollouts(num_rollout_workers=4)\
+        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)
+        ...              .environment(env="CartPole-v1")
+        ...              .resources(num_gpus=0)
+        ...              .rollouts(num_rollout_workers=4)
         ...              .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
         >>> rllib_trainer = config.build()
