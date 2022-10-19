@@ -41,25 +41,26 @@ class GcsActor {
   /// Create a GcsActor by actor_table_data.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
-  explicit GcsActor(rpc::ActorTableData actor_table_data)
-      : actor_table_data_(std::move(actor_table_data)) {}
+  explicit GcsActor(rpc::ActorTableData actor_table_data, CounterMap<rpc::ActorTableData::ActorState>& counter)
+      : actor_table_data_(std::move(actor_table_data)), counter_(counter) {}
 
   /// Create a GcsActor by actor_table_data and task_spec.
   /// This is only for ALIVE actors.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   /// \param task_spec Task spec of the actor.
-  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
+  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec, CounterMap<rpc::ActorTableData::ActorState>& counter)
       : actor_table_data_(std::move(actor_table_data)),
-        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
+        counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
   }
 
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace)
-      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace, CounterMap<rpc::ActorTableData::ActorState>& counter)
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -575,6 +576,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
+  /// Counter of actors broken down by their state.
+  CounterMap<std::string> actor_state_counter_;
 
   // Debug info.
   enum CountType {
