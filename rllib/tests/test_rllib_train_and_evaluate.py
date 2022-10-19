@@ -292,6 +292,12 @@ class TestCLISmokeTests(unittest.TestCase):
             f"cartpole-simpleq-test.json --type=json"
         ).read()
 
+    def test_python_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole_simpleq_test.py --type=python"
+        ).read()
+
     def test_all_example_files_exist(self):
         """ "The 'example' command now knows about example files,
         so we check that they exist."""

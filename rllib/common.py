@@ -25,7 +25,7 @@ class SupportedFileType(str, Enum):
 
     yaml = "yaml"
     json = "json"
-    py = "py"
+    python = "python"
 
 
 def _create_tune_parser_help():
@@ -241,9 +241,9 @@ EXAMPLES = {
         "description": "Runs grid search over several Atari games on A2C.",
     },
     "cartpole-a2c": {
-        "file": "tuned_examples/a2c/cartpole-a2c.json",
-        "file_type": SupportedFileType.json,
-        "description": "Runs A2C on the CartPole-v0 environment.",
+        "file": "tuned_examples/a2c/cartpole_a2c.py",
+        "file_type": SupportedFileType.python,
+        "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
         "file": "tuned_examples/a2c/cartpole-a2c-microbatch.yaml",

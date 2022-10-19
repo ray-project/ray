@@ -27,18 +27,20 @@ class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)
-        ...              .environment(env="CartPole-v1")
-        ...              .resources(num_gpus=0)
-        ...              .rollouts(num_rollout_workers=4)
+        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)\
+        ...              .environment(env="CartPole-v1")\
+        ...              .resources(num_gpus=0)\
+        ...              .rollouts(num_rollout_workers=4)\
         ...              .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
         >>> rllib_trainer = config.build()
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()
