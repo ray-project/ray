@@ -823,6 +823,12 @@ def start(
                 )
             )
             cli_logger.newline()
+            dashboard_url = node.address_info["webui_url"]
+            if dashboard_url:
+                cli_logger.print("To monitor and debug Ray, view the dashboard at {}".format(
+                    cf.yellow(dashboard_url),
+                ))
+            cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
         ray_params.gcs_address = bootstrap_address
