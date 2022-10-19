@@ -21,6 +21,13 @@
 
 namespace plasma {
 
+enum class ObjectStoreCounterType : int8_t {
+  MMAPPED_SHM_SEAL = 0,
+  MMAPPED_DISK_SEAL = 1,
+  MMAPPED_SHM_UNSEAL = 2,
+  MMAPPED_DISK_UNSEAL = 3,
+};
+
 // ObjectStatsCollector subscribes to plasma store state changes
 // and calculate the store statistics.
 //
@@ -62,6 +69,7 @@ class ObjectStatsCollector {
 
   int64_t GetNumBytesCreatedCurrent() const;
 
+  CounterMap<ObjectStoreCounterType> bytes_by_loc_seal_;
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;
   int64_t num_objects_unsealed_ = 0;

@@ -207,7 +207,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
   }
 
-  bool stored_in_direct_memory = true;
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
   {
@@ -261,7 +260,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     cb(object_entry);
   }
 
-  return stored_in_direct_memory;
+  return true;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
@@ -576,6 +575,10 @@ inline void CoreWorkerMemoryStore::EmplaceObjectAndUpdateStats(
   }
   RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
             used_object_store_memory_ >= 0);
+
+  ray::stats::STATS_object_store_memory.Record(
+      used_object_store_memory_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocWorkerHeap}});
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {

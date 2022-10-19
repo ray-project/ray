@@ -24,10 +24,15 @@ namespace plasma {
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
+
+  if (kAllocation.fallback_allocated) {
+    bytes_by_loc_seal.Increment(ObjectStoreCounterType::MMAPPED_DISK_UNSEAL, kObjectSize);
+  } else {
+    bytes_by_loc_seal.Increment(ObjectStoreCounterType::MMAPPED_SHM_UNSEAL, kObjectSize);
+  }
 
   num_bytes_created_total_ += kObjectSize;
-  // TODO(rickyx):
-  // Add fallback memory accounting here.
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -52,6 +57,17 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   RAY_CHECK(obj.Sealed());
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
+  const auto &kAllocation = obj.GetAllocation();
+  if (kAllocation.fallback_allocated) {
+    bytes_by_loc_seal.Swap(ObjectStoreCounterType::MMAPPED_DISK_UNSEAL,
+                           ObjectStoreCounterType::MMAPPED_DISK_SEAL,
+                           kObjectSize);
+  } else {
+    bytes_by_loc_seal.Swap(ObjectStoreCounterType::MMAPPED_SHM_UNSEAL,
+                           ObjectStoreCounterType::MMAPPED_SHM_SEAL,
+                           kObjectSize);
+  }
+
   num_objects_unsealed_--;
   num_bytes_unsealed_ -= kObjectSize;
 
@@ -72,6 +88,13 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
+
+  if (kAllocation.fallback_allocated) {
+    bytes_by_loc_seal.Decrement(ObjectStoreCounterType::MMAPPED_DISK_SEAL, kObjectSize);
+  } else {
+    bytes_by_loc_seal.Decrement(ObjectStoreCounterType::MMAPPED_SHM_SEAL, kObjectSize);
+  }
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
@@ -176,16 +199,29 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
+  // Shared memory sealed
   ray::stats::STATS_object_store_memory.Record(
-      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocInMemory}});
+      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAPPED_SHM_SEAL),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
+       {ray::stats::ObjectSealedKey.name(), ray::stats::kMemorySealed}});
 
+  // Shared memory unsealed
   ray::stats::STATS_object_store_memory.Record(
-      num_bytes_unsealed_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocUnsealed}});
+      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAPPED_SHM_UNSEAL),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
+       {ray::stats::ObjectSealedKey.name(), ray::stats::kMemoryUnsealed}});
 
-  // TODO(rickyx):
-  // Add fallback memory recording here.
+  // Fallback memory sealed
+  ray::stats::STATS_object_store_memory.Record(
+      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAPPED_DISK_SEAL),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
+       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectSealed}});
+
+  // Fallback memory unsealed
+  ray::stats::STATS_object_store_memory.RecordMemory(
+      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAPPED_DISK_UNSEAL),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
+       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectUnsealed}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
