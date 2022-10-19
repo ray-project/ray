@@ -49,7 +49,7 @@ class TFRecordDatasource(FileBasedDatasource):
 
         # It seems like TFRecords are typically row-based,
         # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
-        # so we must iterate through the rows of the block, 
+        # so we must iterate through the rows of the block,
         # serialize to tf.train.Example proto, and write to file.
 
         examples = _convert_arrow_to_examples(arrow)
@@ -70,6 +70,7 @@ def _convert_example_to_dict(
         record[feature_name] = value
     return record
 
+
 def _convert_arrow_to_examples(
     arrow: "pyarrow.Table",
 ) -> Iterable["tf.train.Example"]:
@@ -84,11 +85,7 @@ def _convert_arrow_to_examples(
             features[name] = _value_to_feature(arrow[name][i].as_py())
 
         # Convert the dictionary to an Example proto.
-        proto = tf.train.Example(
-            features=tf.train.Features(
-                feature=features
-            )
-        )
+        proto = tf.train.Example(features=tf.train.Features(feature=features))
 
         yield proto
 
@@ -111,10 +108,10 @@ def _get_feature_value(
     if feature.int64_list.value:
         return list(feature.int64_list.value)
 
-def _value_to_feature(
-    value: Union[bytes, float, int]
-) -> "tf.train.Feature":
+
+def _value_to_feature(value: Union[bytes, float, int]) -> "tf.train.Feature":
     import tensorflow as tf
+
     # From https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample
 
     if isinstance(value, bytes):
@@ -126,7 +123,8 @@ def _value_to_feature(
     else:
         raise ValueError(f"Value is of type {type(value)}, not bytes, float, or int.")
 
-# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/reader.py#L16-L96
+
+# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/reader.py#L16-L96  # noqa: E501
 #
 # MIT License
 #
@@ -174,7 +172,7 @@ def _read_records(
         yield datum_bytes_view
 
 
-# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72
+# Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/writer.py#L57-L72  # noqa: E501
 #
 # MIT License
 #
@@ -199,9 +197,9 @@ def _read_records(
 # SOFTWARE.
 
 
-
 def _write_record(
-    file: "pyarrow.NativeFile", example: "tf.train.Example",
+    file: "pyarrow.NativeFile",
+    example: "tf.train.Example",
 ) -> None:
     record = example.SerializeToString()
     length = len(record)
@@ -211,9 +209,10 @@ def _write_record(
     file.write(record)
     file.write(masked_crc(record))
 
+
 def masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
-    mask = 0xa282ead8
+    mask = 0xA282EAD8
     # crc = crc32c.crc32(data)
     crc = crc32(data)
     masked = ((crc >> 15) | (crc << 17)) + mask
