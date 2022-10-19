@@ -307,24 +307,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
-        config = {
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_fn,
-            },
-            "model": {
-                "max_seq_len": max_seq_len,
-            },
-        }
+        config = ppo.PPOConfig().multi_agent(
+            policies=policies, policy_mapping_fn=policy_fn
+        ).training(model={"max_seq_len": max_seq_len}).rollouts(
+            num_rollout_workers=0,
+            rollout_fragment_length=rollout_fragment_length,
+        ).environment(normalize_actions=False)
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=config,
-            rollout_fragment_length=rollout_fragment_length,
-            policy_spec=policies,
-            policy_mapping_fn=policy_fn,
-            normalize_actions=False,
-            num_envs=1,
+            config=config,
         )
         batch = rollout_worker_w_api.sample()  # noqa: F841
 

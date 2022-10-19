@@ -2348,7 +2348,14 @@ class Algorithm(Trainable):
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
                 default_policy_cls = self.get_default_policy_class(config)
-                if any(
+                if not isinstance(config["multiagent"]["policies"], dict) and (
+                    default_policy_cls is None
+                    or not issubclass(
+                        default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                    ),
+                ):
+                    config["simple_optimizer"] = True
+                elif any(
                     (p.policy_class or default_policy_cls) is None
                     or not issubclass(
                         p.policy_class or default_policy_cls,
