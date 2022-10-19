@@ -42,8 +42,8 @@ if __name__ == "__main__":
     }
 
     # Actual env timesteps per `train()` call will be
-    # 100 * min_sample_timesteps_per_iteration (100 by default) = 10,000
-    training_iterations = 100
+    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1000
+    training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
