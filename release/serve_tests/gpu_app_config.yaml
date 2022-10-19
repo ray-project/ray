@@ -7,10 +7,6 @@ debian_packages:
 python:
   pip_packages:
     - "validators"
-    # ray-ml image is not able to reflect the requirements.txt
-    # So install the starlette here temporary.
-    # https://github.com/ray-project/ray/issues/29396
-    - starlette==0.20.4
   conda_packages: []
 
 post_build_cmds:

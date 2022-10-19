@@ -10,6 +10,7 @@ COPY requirements_rllib.txt ./
 COPY requirements_tune.txt ./requirements_tune.txt
 COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
+COPY requirements_extra.txt ./
 
 RUN sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
 RUN sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
@@ -29,6 +30,7 @@ RUN sudo apt-get update \
            -r requirements_train.txt \
            -r requirements_tune.txt \
            -r requirements_upstream.txt \
+           -r requirements_extra.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements_ml_docker.txt \

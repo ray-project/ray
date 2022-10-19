@@ -1,0 +1,3 @@
+# TODO: Remove this file and move to requirements.txt once https://github.com/ray-project/ray/pull/29375 is merged.
+
+fastapi==0.75.0
