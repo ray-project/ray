@@ -9,6 +9,7 @@ from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+from ray.rllib.evaluation.metrics import RolloutMetrics
 
 
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
@@ -19,8 +20,9 @@ class TestEnvRunnerV2(unittest.TestCase):
     def setUpClass(cls):
         ray.init()
 
-        # Simply alternate between the 2 policies to make sure we have
-        # data for inference for both policies for each step.
+        # When dealing with two policies in these tests, simply alternate between the 2
+        # policies to make sure we have data for inference for both policies for each
+        # step.
         class AlternatePolicyMapper:
             def __init__(self):
                 self.policies = ["one", "two"]
@@ -104,8 +106,6 @@ class TestEnvRunnerV2(unittest.TestCase):
                 self.view_requirements["rewards"].used_for_compute_actions = False
                 self.view_requirements["dones"].used_for_compute_actions = False
 
-        mapper = self.AlternatePolicyMapper()
-
         config = (
             PPOConfig()
             .framework("torch")
@@ -129,7 +129,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicyTwo,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
@@ -194,7 +194,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
 
-    def test_build_episode(self):
+    def test_start_episode(self):
         config = (
             PPOConfig()
             .framework("torch")
@@ -240,6 +240,49 @@ class TestEnvRunnerV2(unittest.TestCase):
         # First recorded step, add_action_reward_done_next_obs called
         self.assertEqual(env_runner._active_episodes[0].total_env_steps, 1)
         self.assertEqual(env_runner._active_episodes[0].total_agent_steps, 2)
+
+    def test_env_runner_output(self):
+        # Test if we can produce RolloutMetrics just by stepping
+        config = (
+            PPOConfig()
+            .framework("torch")
+            .training(
+                # Specifically ask for a batch of 200 samples.
+                train_batch_size=200,
+            )
+            .rollouts(
+                num_envs_per_worker=1,
+                horizon=4,
+                num_rollout_workers=0,
+                # Enable EnvRunnerV2.
+                enable_connectors=True,
+            )
+            .multi_agent(
+                policies={
+                    "one": PolicySpec(
+                        policy_class=RandomPolicy,
+                    ),
+                    "two": PolicySpec(
+                        policy_class=RandomPolicy,
+                    ),
+                },
+                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policies_to_train=["one"],
+                count_steps_by="agent_steps",
+            )
+        )
+
+        algo = PPO(config, env="basic_multiagent")
+
+        local_worker = algo.workers.local_worker()
+
+        env_runner = local_worker.sampler._env_runner_obj
+
+        output = []
+        while not output:
+            output = env_runner.step()
+
+        self.assertTrue(isinstance(output, RolloutMetrics))
 
 
 if __name__ == "__main__":
