@@ -60,7 +60,10 @@ class MaxMemoryUtilizationTracker:
             if memory_stats.available < min_available:
                 if print_updates:
                     print(
-                        f"{min_available / (1 << 30):.02f} -> {memory_stats.available / (1 << 30):.02f}"
+                        "{before:.02f} -> {after:.02f}".format(
+                            before=min_available / (1 << 30),
+                            after=memory_stats.available / (1 << 30),
+                        )
                     )
                 min_available = memory_stats.available
 

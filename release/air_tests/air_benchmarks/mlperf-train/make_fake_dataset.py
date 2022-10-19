@@ -10,14 +10,14 @@ import shutil
 import sys
 import tensorflow.compat.v1 as tf
 
-DEFAULT_IMAGE_URL = "https://air-example-data-2.s3.us-west-2.amazonaws.com/1G-image-data-synthetic-raw/dog.jpg"
+DEFAULT_IMAGE_URL = "https://air-example-data-2.s3.us-west-2.amazonaws.com/1G-image-data-synthetic-raw/dog.jpg"  # noqa: E501
 
 
 def parse_args() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Download or generate a fake dataset for training resnet50 in TensorFlow."
+        description="Download or generate a fake dataset for training resnet50 in TensorFlow."  # noqa: E501
     )
     parser.add_argument(
         "--num-shards",
@@ -36,7 +36,7 @@ def parse_args() -> None:
         "--single-image-url",
         type=str,
         default=DEFAULT_IMAGE_URL,
-        help="If --shard-url is not provided, use the image found at this URL to generate a fake dataset.",
+        help="If --shard-url is not provided, use the image found at this URL to generate a fake dataset.",  # noqa: E501
     )
 
     input_data_group = parser.add_mutually_exclusive_group(required=True)
@@ -49,7 +49,7 @@ def parse_args() -> None:
     input_data_group.add_argument(
         "--num-images-per-shard",
         type=int,
-        help="Copy the image at --single-image-url this many times and store in each tfrecord shard.",
+        help="Copy the image at --single-image-url this many times and store in each tfrecord shard.",  # noqa: E501
     )
 
     args = parser.parse_args()
@@ -64,12 +64,13 @@ def main(
     output_directory: str,
 ) -> None:
     print(
-        f"Creating a tfrecord dataset with {num_shards} shards, {num_images_per_shard} images per shard, in the output directory {output_directory}"
+        f"Creating a tfrecord dataset with {num_shards} shards, {num_images_per_shard} images per shard, in the output directory {output_directory}"  # noqa: E501
     )
 
-    gen_filename = lambda i, total: os.path.join(
-        output_directory, f"single-image-repeated-{i:05d}-of-{total:05d}"
-    )
+    def gen_filename(i: int, total: int) -> str:
+        return os.path.join(
+            output_directory, f"single-image-repeated-{i:05d}-of-{total:05d}"
+        )
 
     filenames = [gen_filename(i, num_shards) for i in range(num_shards)]
 

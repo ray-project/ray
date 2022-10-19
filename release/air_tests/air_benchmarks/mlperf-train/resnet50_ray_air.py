@@ -188,7 +188,10 @@ def train_loop_for_worker(config):
 
         epoch_time_s = time.perf_counter() - epoch_start_time_s
         logger.info(
-            f"Epoch time: {epoch_time_s}s, images/s: {config['num_images_per_epoch'] / epoch_time_s}"
+            "Epoch time: {epoch_time_s}s, images/s: {throughput}".format(
+                epoch_time_s=epoch_time_s,
+                throughput=config["num_images_per_epoch"] / epoch_time_s,
+            )
         )
 
         # You can also use ray.air.callbacks.keras.Callback
@@ -226,7 +229,7 @@ def decode_tf_record_batch(tf_record_batch):
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
     labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels,})
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels})
 
     return df
 
@@ -255,7 +258,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch):
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
     labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels,})
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels})
 
     return df
 
@@ -264,7 +267,8 @@ def build_synthetic_dataset(batch_size):
     image_dims = IMAGE_DIMS[1:]
     empty = np.empty(image_dims, dtype=np.uint8)
     ds = ray.data.from_items(
-        [{"image": empty, "label": 1,} for _ in range(int(batch_size))], parallelism=1
+        [{"image": empty, "label": 1} for _ in range(int(batch_size))],
+        parallelism=1,
     )
     return ds
 
@@ -343,11 +347,15 @@ def write_metrics(data_loader, command_args, metrics, output_file):
     test_output_json_path = os.environ.get(test_output_json_envvar)
     if not test_output_json_path:
         print(
-            f"Environment variable {test_output_json_envvar} not set, will not write test output json."
+            "Env var {env_var} not set, will not write test output json.".format(
+                env_var=test_output_json_envvar
+            )
         )
     else:
         print(
-            f"Environment variable {test_output_json_envvar} set to '{test_output_json_path}'. Will write test output json."
+            "Env var {env_var} set to '{path}'. Will write test output json.".format(
+                env_var=test_output_json_envvar, path=test_output_json_path
+            )
         )
         append_to_test_output_json(test_output_json_path, row)
 
@@ -378,7 +386,7 @@ def append_to_test_output_json(path, metrics):
     perf_metrics = output_json.get("perf_metrics", [])
     perf_metrics.append(
         {
-            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",
+            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",  # noqa: E501
             "perf_metric_value": metrics["tput_images_per_s"],
             "perf_metric_type": "THROUGHPUT",
         }
@@ -442,7 +450,7 @@ if __name__ == "__main__":
     if args.use_tf_data or args.use_ray_data:
         assert (
             args.data_root is not None
-        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"
+        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"  # noqa: E501
     elif args.synthetic_data:
         assert args.data_root is None, "--synthetic-data doesn't use --data-root"
 

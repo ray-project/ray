@@ -11,7 +11,7 @@ SHUFFLE_BUFFER_SIZE=0
 DATA_DIR=/home/ray/data
 
 MAX_IMAGES_PER_FILE=$( \
-    echo $NUM_IMAGES_PER_FILE \
+    echo "$NUM_IMAGES_PER_FILE" \
         | sed 's/ /\n/g' \
         | python -c "import sys; print(max([int(line) for line in sys.stdin]))")
 NUM_IMAGES_PER_EPOCH=$((MIN_PARALLELISM * MAX_IMAGES_PER_FILE))
@@ -24,12 +24,12 @@ for num_images_per_file in $NUM_IMAGES_PER_FILE; do
     rm -rf $DATA_DIR
     mkdir -p $DATA_DIR
     python make_fake_dataset.py \
-        --num-shards $num_files \
-        --shard-url $SHARD_URL_PREFIX/single-image-repeated-$num_images_per_file-times \
+        --num-shards "$num_files" \
+        --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$num_images_per_file-times" \
         --output-directory $DATA_DIR
     
     python resnet50_ray_air.py \
-        --num-images-per-input-file $num_images_per_file \
+        --num-images-per-input-file "$num_images_per_file" \
         --num-epochs $NUM_EPOCHS \
         --batch-size $BATCH_SIZE \
         --shuffle-buffer-size $SHUFFLE_BUFFER_SIZE \

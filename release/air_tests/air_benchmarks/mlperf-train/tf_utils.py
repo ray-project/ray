@@ -5,6 +5,7 @@ https://github.com/mlcommons/training/blob/master/image_classification/tensorflo
 """
 import tensorflow as tf
 import functools
+import logging
 
 DEFAULT_IMAGE_SIZE = 224
 NUM_CHANNELS = 3
@@ -38,25 +39,25 @@ def process_record_dataset(
 ):
     """Given a Dataset with raw records, return an iterator over the records.
 
-  Args:
-    dataset: A Dataset representing raw records
-    is_training: A boolean denoting whether the input is for training.
-    batch_size: The number of samples per batch.
-    shuffle_buffer: The buffer size to use when shuffling records. A larger
-      value results in better randomness, but smaller values reduce startup
-      time and use less memory.
-    dtype: Data type to use for images/features.
-    datasets_num_private_threads: Number of threads for a private
-      threadpool created for all datasets computation.
-    drop_remainder: A boolean indicates whether to drop the remainder of the
-      batches. If True, the batch dimension will be static.
-    tf_data_experimental_slack: Whether to enable tf.data's
-      `experimental_slack` option.
-    prefetch_batchs: The number of batchs to prefetch.
+    Args:
+      dataset: A Dataset representing raw records
+      is_training: A boolean denoting whether the input is for training.
+      batch_size: The number of samples per batch.
+      shuffle_buffer: The buffer size to use when shuffling records. A larger
+        value results in better randomness, but smaller values reduce startup
+        time and use less memory.
+      dtype: Data type to use for images/features.
+      datasets_num_private_threads: Number of threads for a private
+        threadpool created for all datasets computation.
+      drop_remainder: A boolean indicates whether to drop the remainder of the
+        batches. If True, the batch dimension will be static.
+      tf_data_experimental_slack: Whether to enable tf.data's
+        `experimental_slack` option.
+      prefetch_batchs: The number of batchs to prefetch.
 
-  Returns:
-    Dataset of (image, label) pairs ready for iteration.
-  """
+    Returns:
+      Dataset of (image, label) pairs ready for iteration.
+    """
     # Defines a specific size thread pool for tf.data operations.
     if datasets_num_private_threads:
         options = tf.data.Options()
@@ -112,37 +113,37 @@ def process_record_dataset(
 def _parse_example_proto(example_serialized):
     """Parses an Example proto containing a training example of an image.
 
-  The output of the build_image_data.py image preprocessing script is a dataset
-  containing serialized Example protocol buffers. Each Example proto contains
-  the following fields (values are included as examples):
+    The output of the build_image_data.py image preprocessing script is a dataset
+    containing serialized Example protocol buffers. Each Example proto contains
+    the following fields (values are included as examples):
 
-    image/height: 462
-    image/width: 581
-    image/colorspace: 'RGB'
-    image/channels: 3
-    image/class/label: 615
-    image/class/synset: 'n03623198'
-    image/class/text: 'knee pad'
-    image/object/bbox/xmin: 0.1
-    image/object/bbox/xmax: 0.9
-    image/object/bbox/ymin: 0.2
-    image/object/bbox/ymax: 0.6
-    image/object/bbox/label: 615
-    image/format: 'JPEG'
-    image/filename: 'ILSVRC2012_val_00041207.JPEG'
-    image/encoded: <JPEG encoded string>
+      image/height: 462
+      image/width: 581
+      image/colorspace: 'RGB'
+      image/channels: 3
+      image/class/label: 615
+      image/class/synset: 'n03623198'
+      image/class/text: 'knee pad'
+      image/object/bbox/xmin: 0.1
+      image/object/bbox/xmax: 0.9
+      image/object/bbox/ymin: 0.2
+      image/object/bbox/ymax: 0.6
+      image/object/bbox/label: 615
+      image/format: 'JPEG'
+      image/filename: 'ILSVRC2012_val_00041207.JPEG'
+      image/encoded: <JPEG encoded string>
 
-  Args:
-    example_serialized: scalar Tensor tf.string containing a serialized
-      Example protocol buffer.
+    Args:
+      example_serialized: scalar Tensor tf.string containing a serialized
+        Example protocol buffer.
 
-  Returns:
-    image_buffer: Tensor tf.string containing the contents of a JPEG file.
-    label: Tensor tf.int32 containing the label.
-    bbox: 3-D float Tensor of bounding boxes arranged [1, num_boxes, coords]
-      where each coordinate is [0, 1) and the coordinates are arranged as
-      [ymin, xmin, ymax, xmax].
-  """
+    Returns:
+      image_buffer: Tensor tf.string containing the contents of a JPEG file.
+      label: Tensor tf.int32 containing the label.
+      bbox: 3-D float Tensor of bounding boxes arranged [1, num_boxes, coords]
+        where each coordinate is [0, 1) and the coordinates are arranged as
+        [ymin, xmin, ymax, xmax].
+    """
     # Dense features in Example proto.
     feature_map = {
         "image/encoded": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
@@ -255,27 +256,27 @@ def build_tf_dataset(
 ):
     """Input function which provides batches for train or eval.
 
-  Args:
-    is_training: A boolean denoting whether the input is for training.
-    data_dir: The directory containing the input data.
-    batch_size: The number of samples per batch.
-    dtype: Data type to use for images/features
-    datasets_num_private_threads: Number of private threads for tf.data.
-    input_context: A `tf.distribute.InputContext` object passed in by
-      `tf.distribute.Strategy`.
-    drop_remainder: A boolean indicates whether to drop the remainder of the
-      batches. If True, the batch dimension will be static.
-    tf_data_experimental_slack: Whether to enable tf.data's
-      `experimental_slack` option.
-    dataset_cache: Whether to cache the dataset on workers.
-       Typically used to improve training performance when training data is in
-       remote storage and can fit into worker memory.
-    filenames: Optional field for providing the file names of the TFRecords.
-    prefetch_batchs: The number of batchs to prefetch.
+    Args:
+      is_training: A boolean denoting whether the input is for training.
+      data_dir: The directory containing the input data.
+      batch_size: The number of samples per batch.
+      dtype: Data type to use for images/features
+      datasets_num_private_threads: Number of private threads for tf.data.
+      input_context: A `tf.distribute.InputContext` object passed in by
+        `tf.distribute.Strategy`.
+      drop_remainder: A boolean indicates whether to drop the remainder of the
+        batches. If True, the batch dimension will be static.
+      tf_data_experimental_slack: Whether to enable tf.data's
+        `experimental_slack` option.
+      dataset_cache: Whether to cache the dataset on workers.
+         Typically used to improve training performance when training data is in
+         remote storage and can fit into worker memory.
+      filenames: Optional field for providing the file names of the TFRecords.
+      prefetch_batchs: The number of batchs to prefetch.
 
-  Returns:
-    A dataset that can be used for iteration.
-  """
+    Returns:
+      A dataset that can be used for iteration.
+    """
     dataset = tf.data.Dataset.from_tensor_slices(filenames)
 
     if input_context:
