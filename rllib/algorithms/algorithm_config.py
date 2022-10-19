@@ -380,6 +380,25 @@ class AlgorithmConfig:
 
         return self
 
+    def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
+        """Creates a deep copy of this config and (un)freezes if necessary.
+
+        Args:
+            copy_frozen: Whether the created deep copy will be frozen or not. If None,
+                keep the same frozen status that `self` currently has.
+
+        Returns:
+            A deep copy of `self` that is (un)frozen.
+        """
+        cp = copy.deepcopy(self)
+        if copy_frozen is True:
+            cp.freeze()
+        elif copy_frozen is False:
+            cp._is_frozen = False
+            if isinstance(cp.evaluation_config, AlgorithmConfig):
+                cp.evaluation_config._is_frozen = False
+        return cp
+
     def freeze(self) -> None:
         """Freezes this config object, such that no attributes can be set anymore.
 
@@ -1599,12 +1618,14 @@ class AlgorithmConfig:
         if isinstance(evaluation_config, AlgorithmConfig):
             evaluation_config = evaluation_config.to_dict()
 
-        # Update with evaluation settings:
-        eval_config_obj = copy.deepcopy(self)
-        eval_config_obj._is_frozen = False
-        # Switch on the `in_evaluation` flag.
+        # Create unfrozen copy of self to be used as the to-be-returned eval
+        # AlgorithmConfig.
+        eval_config_obj = self.copy(copy_frozen=False)
+        # Switch on the `in_evaluation` flag and remove `evaluation_config`
+        # (set to None).
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
+        # Update with evaluation settings:
         eval_config_obj.update_from_dict(evaluation_config or {})
 
         # Evaluation duration unit: episodes.

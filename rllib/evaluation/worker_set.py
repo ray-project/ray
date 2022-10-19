@@ -123,9 +123,9 @@ class WorkerSet:
         self._policy_class = default_policy_class
         self._remote_config = config
         self._remote_args = {
-            "num_cpus": self._remote_config["num_cpus_per_worker"],
-            "num_gpus": self._remote_config["num_gpus_per_worker"],
-            "resources": self._remote_config["custom_resources_per_worker"],
+            "num_cpus": self._remote_config.num_cpus_per_worker,
+            "num_gpus": self._remote_config.num_gpus_per_worker,
+            "resources": self._remote_config.custom_resources_per_worker,
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
@@ -135,9 +135,8 @@ class WorkerSet:
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-            self._local_config = merge_dicts(
-                config,
-                {"tf_session_args": config.local_tf_session_args},
+            self._local_config = config.copy(copy_frozen=False).framework(
+                tf_session_args=config.local_tf_session_args
             )
 
             if config.input_ == "dataset":
@@ -552,19 +551,12 @@ class WorkerSet:
                 worker.__ray_terminate__.remote()
             except Exception:
                 logger.exception("Error terminating faulty worker.")
+
             # Try to recreate the failed worker (start a new one).
             new_worker = self._make_worker(
                 cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
-                policy_cls=self._policy_class,
-                # For recreated remote workers, we need to sync the entire
-                # policy specs dict from local_worker_for_synching.
-                # We can not let self._make_worker() infer policy specs
-                # from self._remote_config dict because custom policies
-                # may be added to both rollout and evaluation workers
-                # while the training job progresses.
-                # policy_specs=local_worker_for_synching.policy_dict,
                 worker_index=worker_index,
                 num_workers=len(self._remote_workers),
                 recreated_worker=True,
@@ -573,9 +565,8 @@ class WorkerSet:
 
             # Sync new worker from provided one (or local one).
             # Restore weights and global variables.
-            new_worker.set_weights.remote(
-                weights=local_worker_for_synching.get_weights(),
-                global_vars=local_worker_for_synching.get_global_vars(),
+            new_worker.set_state.remote(
+                state=local_worker_for_synching.get_state(),
             )
 
             # Add new worker to list of remote workers.
