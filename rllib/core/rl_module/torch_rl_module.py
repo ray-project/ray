@@ -4,7 +4,6 @@ from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
-
 class TorchRLModule(RLModule, nn.Module):
     def __init__(self, config) -> None:
         RLModule.__init__(self, config)
@@ -14,3 +13,10 @@ class TorchRLModule(RLModule, nn.Module):
         """This is only done because Torch DDP requires a forward method to be
         implemented for backpropagation to work."""
         return self.forward_train(batch, **kwargs)
+
+    def get_state(self) -> Mapping[str, Any]:
+        return self.state_dict()
+
+    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+        self.load_state_dict(state_dict)
+    

@@ -3,7 +3,7 @@ import gym
 import abc
 
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.typing import TensorType, List, Union, ModelConfigDict, Mapping
+from ray.rllib.utils.typing import TensorType, Union, ModelConfigDict
 
 
 @ExperimentalAPI
