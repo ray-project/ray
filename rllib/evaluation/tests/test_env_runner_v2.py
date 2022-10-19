@@ -194,7 +194,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
 
-    def test_build_episode(self):
+    def test_start_episode(self):
         config = (
             PPOConfig()
             .framework("torch")
