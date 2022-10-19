@@ -111,11 +111,11 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   if (RayConfig::instance().event_stats_metrics()) {
     // Update event-specific stats.
     ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
-                                                  handle->event_name);
+                                                   handle->event_name);
     ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
     // Update global stats.
     ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
-                                                    handle->event_name);
+                                                     handle->event_name);
   }
 
   {
