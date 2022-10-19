@@ -179,10 +179,12 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
+
         # Next obs -> obs.
         # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
         values = deepcopy(input_values)
-        assert SampleBatch.OBS not in values
+        assert SampleBatch.OBS not in values, "AgentColletor only uses NEXT_OBS to " \
+                                              "build trajectories."
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
@@ -197,7 +199,7 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         # Make sure we are not trying to handle T manually
-        assert SampleBatch.T not in input_values
+        assert SampleBatch.T not in input_values, "T is calculated by AgentCollector."
         # Add next T
         self.buffers[SampleBatch.T][0].append(self.buffers[SampleBatch.T][0][-1] + 1)
 
@@ -233,7 +235,7 @@ class AgentCollector:
     def build_for_inference(self) -> SampleBatch:
         """During inference, we will build a SampleBatch with a batch size of 1 that
         can then be used to run the forward pass of a policy. This data will only
-        include the enviornment context for running the policy at the last timestep.
+        include the environment context for running the policy at the last timestep.
 
         Returns:
             A SampleBatch with a batch size of 1.
