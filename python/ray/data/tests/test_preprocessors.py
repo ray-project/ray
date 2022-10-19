@@ -1,6 +1,5 @@
 import warnings
 from collections import Counter
-import logging
 import re
 from unittest.mock import patch
 from typing import Dict, Union
@@ -1198,13 +1197,13 @@ def test_power_transformer():
 
 
 class TestConcatenator:
-
     def test_basic(self):
         df = pd.DataFrame(
-        {
-            "a": [1, 2, 3, 4],
-            "b": [5, 6, 7, 8],
-        })
+            {
+                "a": [1, 2, 3, 4],
+                "b": [5, 6, 7, 8],
+            }
+        )
         ds = ray.data.from_pandas(df)
         prep = Concatenator(output_column_name="c")
         new_ds = prep.transform(ds)
@@ -1214,7 +1213,9 @@ class TestConcatenator:
     def test_raise_if_missing(self):
         df = pd.DataFrame({"a": [1, 2, 3, 4]})
         ds = ray.data.from_pandas(df)
-        prep = Concatenator(output_column_name="c", exclude=["b"], raise_if_missing=True)
+        prep = Concatenator(
+            output_column_name="c", exclude=["b"], raise_if_missing=True
+        )
 
         with pytest.raises(ValueError, match="'b'"):
             prep.transform(ds)
@@ -1250,7 +1251,7 @@ class TestConcatenator:
         prep = Concatenator(output_column_name="huh")
         new_ds = prep.transform(ds)
         assert "huh" in set(new_ds.schema().names)
-    
+
 
 @pytest.mark.parametrize("bins", (3, {"A": 4, "B": 3}))
 @pytest.mark.parametrize(
