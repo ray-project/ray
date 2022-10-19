@@ -28,7 +28,7 @@ RUN sudo apt-get update \
            -r requirements.txt \
     # Then, keep requirements bounds as constraints and install remaining test dependencies
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -U \
-           -c requirements.txt
+           -c requirements.txt \
            -r requirements_test.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
