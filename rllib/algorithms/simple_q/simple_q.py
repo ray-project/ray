@@ -142,7 +142,7 @@ class SimpleQConfig(AlgorithmConfig):
         }
 
         # `evaluation()`
-        self.evaluation_config = {"explore": False}
+        self.evaluation(evaluation_config={"explore": False})
 
         # `reporting()`
         self.min_time_s_per_iteration = None

@@ -110,8 +110,6 @@ class SlateQConfig(AlgorithmConfig):
             "epsilon_timesteps": 250000,
             "final_epsilon": 0.01,
         }
-        # Switch to greedy actions in evaluation workers.
-        self.evaluation_config = {"explore": False}
         self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
@@ -120,6 +118,8 @@ class SlateQConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation(evaluation_config={"explore": False})
         # __sphinx_doc_end__
         # fmt: on
 
