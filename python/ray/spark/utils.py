@@ -164,15 +164,8 @@ def get_spark_session():
     return SparkSession.builder.getOrCreate()
 
 
-def get_spark_driver_hostname(spark_master_url):
-    if spark_master_url.lower().startswith("local"):
-        return "127.0.0.1"
-    else:
-        parsed_spark_master_url = urlparse(spark_master_url)
-        if parsed_spark_master_url.scheme.lower() != "spark" or \
-                not parsed_spark_master_url.hostname:
-            raise ValueError(f"Unsupported spark.master URL: {spark_master_url}")
-        return parsed_spark_master_url.hostname
+def get_spark_application_driver_host(spark):
+    return spark.conf.get("spark.driver.host")
 
 
 def get_max_num_concurrent_tasks(spark_context):

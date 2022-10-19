@@ -13,7 +13,7 @@ from .utils import (
     check_port_open,
     get_safe_port,
     get_spark_session,
-    get_spark_driver_hostname,
+    get_spark_application_driver_host,
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
     get_avail_mem_per_ray_worker,
@@ -168,7 +168,7 @@ def init_cluster(
 ):
     """
     Initialize a ray cluster on the spark cluster, via starting a ray head node
-    in spark drive side and creating a background spark barrier mode job and each
+    in spark application drive side and creating a background spark barrier mode job and each
     spark task running a ray worker node, returns an instance of `RayClusterOnSpark` type.
     The returned instance can be used to connect / disconnect / shut down the ray cluster.
     We can also use `with` statement like `with init_cluster(...):` , when entering
@@ -182,7 +182,7 @@ def init_cluster(
             equals to the resources allocated to these spark tasks.
             You can specify num_spark_tasks to -1, representing the ray cluster uses all
             available spark tasks slots, if you want to create a shared ray cluster
-            and use the whole spark cluster resources, simply set it to -1.
+            and use all the resources allocated to the spark application, simply set it to -1.
         total_cpus: Specify the total cpus resources the ray cluster requests.
         total_gpus: Specify the total gpus resources the ray cluster requests.
         total_heap_memory_bytes: Specify the total heap memory resources (in bytes)
@@ -292,7 +292,7 @@ def init_cluster(
             "address it."
         )
 
-    ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
+    ray_head_hostname = get_spark_application_driver_host(spark)
     ray_head_port = get_safe_port()
 
     ray_head_node_manager_port = get_safe_port()
