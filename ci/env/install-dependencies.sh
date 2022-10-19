@@ -316,6 +316,18 @@ install_pip_packages() {
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
+
+    # Repeat for requirements_test.txt
+    local status="0";
+    local errmsg="";
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
+
   fi
 
   # Default requirements

@@ -23,16 +23,18 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
+    # First, install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements.txt \
-    && cat \
+    # Then, keep requirements bounds as constraints and install remaining test dependencies
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -c requirements.txt
+           -r requirements_test.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
            -r requirements_tune.txt \
            -r requirements_dl.txt \
-           -r requirements_upstream.txt | tee /dev/df/2 | sort -n | uniq | tee /dev/df/2 > _requirements_combined.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -r _requirements_combined.txt \
+           -r requirements_upstream.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements_ml_docker.txt \
@@ -41,13 +43,13 @@ RUN sudo apt-get update \
         $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \
     && sudo rm \
         requirements.txt \
+        requirements_test.txt \
         requirements_ml_docker.txt \
         requirements_dl.txt \
         requirements_tune.txt \
         requirements_rllib.txt \
         requirements_train.txt \
         requirements_upstream.txt \
-        _requirements_combined.txt \
     && sudo apt-get clean
 
 # Make sure tfp is installed correctly and matches tf version.
