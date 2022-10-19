@@ -819,7 +819,8 @@ For older RLlib checkpoint versions (v0.1), you can still restore an algorithm v
 
 .. code-block:: python
 
-    algo = ppo.PPO(config=config, env=env_class)
+    from ray.rllib.algorithms.ppo import PPO
+    algo = PPO(config=config, env=env_class)
     algo.restore(checkpoint_path)
 
 
