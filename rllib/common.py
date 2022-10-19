@@ -4,6 +4,7 @@ from enum import Enum
 import os.path
 import tempfile
 import typer
+from typing import Optional
 import requests
 
 
@@ -41,7 +42,8 @@ PARSER_HELP = _create_tune_parser_help()
 
 def download_example_file(
     example_file: str,
-    base_url: str = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/",
+    base_url: Optional[str] = "https://raw.githubusercontent.com/" +
+                              "ray-project/ray/master/rllib/",
 ):
     """Download the example file (e.g. from GitHub) if it doesn't exist locally.
     If the provided example file exists locally, we return it directly.
@@ -239,7 +241,8 @@ EXAMPLES = {
         "description": "Runs grid search over several Atari games on A2C.",
     },
     "cartpole-a2c": {
-        "file": "tuned_examples/a2c/cartpole-a2c.yaml",
+        "file": "tuned_examples/a2c/cartpole-a2c.json",
+        "file_type": SupportedFileType.json,
         "description": "Runs A2C on the CartPole-v0 environment.",
     },
     "cartpole-a2c-micro": {

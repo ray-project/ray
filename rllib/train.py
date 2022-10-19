@@ -50,7 +50,7 @@ def _patch_path(path: str):
         return path
 
 
-def load_experiments_from_file(config_file: str, file_type: SupportedFileType):
+def load_experiments_from_file(config_file: str, file_type: SupportedFileType) -> dict:
     """Load experiments from a file. Currently only supports YAML."""
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
@@ -59,7 +59,7 @@ def load_experiments_from_file(config_file: str, file_type: SupportedFileType):
         with open(config_file) as f:
             experiments = json.load(f)
     else:
-        # TODO load python
+        # TODO load python (AlgoConfig.to_dict())
         pass
     return experiments
 
@@ -237,7 +237,7 @@ def run(
 
 
 def run_rllib_experiments(
-    experiments,
+    experiments: dict,
     v: cli.V,
     vv: cli.VV,
     framework: str,
