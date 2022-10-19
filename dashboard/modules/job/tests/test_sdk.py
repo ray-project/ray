@@ -8,6 +8,7 @@ import psutil
 import sys
 from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
+from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -186,6 +187,7 @@ def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_
             _check_job_succeeded, client=client, job_id=submission_id, timeout=30
         )
 
+    head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
     worker_1_http_port = 52366
     cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
     wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
@@ -222,9 +224,12 @@ def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_
         client.submit_job(entrypoint="sleep 3600")
         return False
 
-    # Make list(cluster.worker_nodes)[0] called at least once
+    # Make `list(cluster.worker_nodes)[0]` and head node called at least once
     wait_for_condition(
         lambda: make_sure_worker_node_run_job(worker_1_http_port), timeout=60
+    )
+    wait_for_condition(
+        lambda: make_sure_worker_node_run_job(head_http_port), timeout=60
     )
 
     worker_2_http_port = 52367
