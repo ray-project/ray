@@ -26,7 +26,7 @@ feather-format==0.4.1
 flask==2.1.3
 google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
-gradio==3.6; platform_system != "Windows"
+gradio==3.5; platform_system != "Windows"
 gym-minigrid==1.0.3
 kubernetes==24.2.0
 # higher version of llvmlite breaks windows
@@ -36,7 +36,8 @@ lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.3
+numba==0.56.3; platform_system != "Windows"
+numba==0.51.2; platform_system == "Windows"
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0

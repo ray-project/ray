@@ -326,11 +326,6 @@ install_pip_packages() {
 
   fi
 
-  # Default requirements
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
-  fi
-
   if [ "${LINT-}" = 1 ]; then
     install_linters
     # readthedocs has an antiquated build env.
