@@ -1,14 +1,24 @@
-from typing import Mapping, Any
 import abc
-from ray.rllib.models.specs.specs_base import TensorSpecs
+from collections import defaultdict
+from typing import Iterator, List, Mapping, Any, Union, Dict
+
+
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
+    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.core.base_module import Module
 
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import SampleBatchType
+
+
+ModuleID = str
 
 
 @ExperimentalAPI
@@ -94,60 +104,54 @@ class RLModule(abc.ABC):
         """Returns the output specs of the forward_train method."""
 
     @property
-    @abc.abstractmethod
     def input_specs_inference(self) -> ModelSpecDict:
         """Returns the input specs of the forward_inference method."""
+        return ModelSpecDict()
 
     @property
-    @abc.abstractmethod
     def input_specs_exploration(self) -> ModelSpecDict:
         """Returns the input specs of the forward_exploration method."""
+        return ModelSpecDict()
 
     @property
-    @abc.abstractmethod
     def input_specs_train(self) -> ModelSpecDict:
         """Returns the input specs of the forward_train method."""
+        return ModelSpecDict()
 
     @check_specs(
         input_spec="input_specs_inference", output_spec="output_specs_inference"
     )
-    def forward_inference(
-        self, batch: Mapping[str, Any], **kwargs
-    ) -> Mapping[str, Any]:
+    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method."""
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_inference(
-        self, batch: Mapping[str, Any], **kwargs
-    ) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation"""
 
     @check_specs(
         input_spec="input_specs_exploration", output_spec="output_specs_exploration"
     )
     def forward_exploration(
-        self, batch: Mapping[str, Any], **kwargs
+        self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
         """Forward-pass during exploration, called from the sampler. This method should
         not be overriden. Instead, override the _forward_exploration method."""
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_exploration(
-        self, batch: Mapping[str, Any], **kwargs
-    ) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration"""
 
     @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method."""
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_train(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training"""
 
     @abc.abstractmethod
@@ -160,4 +164,131 @@ class RLModule(abc.ABC):
 
 
 class MultiAgentRLModule(RLModule):
-    pass
+    def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
+        super().__init__(config, **kwargs)
+
+        self._shared_module_infos = self._make_shared_module_infos()
+        self._modules: Mapping[ModuleID, RLModule] = self._make_modules()
+
+    @override(RLModule)
+    def output_specs_train(self) -> ModelSpecDict:
+        return self._get_specs_for_modules(self._modules, "output_specs_train")
+
+    @override(RLModule)
+    def output_specs_inference(self) -> ModelSpecDict:
+        return self._get_specs_for_modules(self._modules, "output_specs_inference")
+
+    @override(RLModule)
+    def output_specs_exploration(self) -> ModelSpecDict:
+        return self._get_specs_for_modules("output_specs_exploration")
+
+    @override(RLModule)
+    def input_specs_train(self) -> ModelSpecDict:
+        return self._get_specs_for_modules(self._modules, "input_specs_train")
+
+    @override(RLModule)
+    def input_specs_inference(self) -> ModelSpecDict:
+        return self._get_specs_for_modules(self._modules, "input_specs_inference")
+
+    @override(RLModule)
+    def input_specs_exploration(self) -> ModelSpecDict:
+        return self._get_specs_for_modules(self._modules, "input_specs_exploration")
+
+    def _get_specs_for_modules(self, property_name: str) -> ModelSpecDict:
+        return ModelSpecDict(
+            {
+                module_id: getattr(module, property_name)
+                for module_id, module in self._modules.items()
+            }
+        )
+
+    @override(RLModule)
+    def _forward_train(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        self._run_forward_pass("forward_train", batch, module_id, **kwargs)
+
+    @override(RLModule)
+    def _forward_inference(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
+    
+    @override(RLModule)
+    def _forward_exploration(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
+    
+    def _run_forward_pass(
+        self,
+        forward_fn_name: str,
+        batch: MultiAgentBatch,
+        module_id: ModuleID = "",
+        **kwargs,
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        if module_id:
+            self._check_module_exists(module_id)
+            module_ids = [module_id]
+        else:
+            module_ids = self.keys()
+
+        return {
+            module_id: getattr(self._modules[module_id], forward_fn_name)(
+                batch[module_id], **kwargs
+            )
+            for module_id in module_ids
+        }
+
+    def keys(self) -> Iterator[ModuleID]:
+        """Returns the list of agent ids."""
+        return self._modules.keys()
+
+    def __getitem__(self, module_id: ModuleID) -> RLModule:
+        self._check_module_exists(module_id)
+        return self._modules[module_id]
+
+    def _make_shared_module_infos(self):
+        config = self.configs
+        shared_config = config["shared_submodules"]
+
+        shared_mod_infos = defaultdict({})  # mapping from module_id to kwarg and value
+        for mod_info in shared_config.values():
+            mod_class = mod_info["class"]
+            mod_config = mod_info["config"]
+            mod_obj = mod_class(mod_config)
+
+            for module_id, kw in mod_info["shared_between"].items():
+                shared_mod_infos[module_id][kw] = mod_obj
+
+        """
+        shared_mod_infos = 'policy_kwargs'{
+            'A': {'encoder': encoder, 'dynamics': dyna},
+            'B': {'encoder': encoder, 'dynamics': dyna},
+            '__all__': {'mixer': mixer}
+        }
+        """
+        return shared_mod_infos
+
+    def _make_modules(self):
+        shared_mod_info = self.shared_module_infos
+        policies = self.config["multi_agent"]["modules"]
+        modules = {}
+        for pid, pid_info in policies.items():
+            # prepare the module parameters and class type
+            rl_mod_class = pid_info["module_class"]
+            rl_mod_config = pid_info["module_config"]
+            kwargs = shared_mod_info[pid]
+            rl_mod_config.update(**kwargs)
+
+            # create the module instance
+            rl_mod_obj = rl_mod_class(config=rl_mod_config)
+            modules[pid] = rl_mod_obj
+
+        return modules
+
+    def _check_module_exists(self, module_id: ModuleID) -> None:
+        if module_id not in self._modules:
+            raise ValueError(
+                f"Module with module_id {module_id} not found in ModuleDict"
+            )
