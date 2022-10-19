@@ -1,3 +1,8 @@
+import ray
+from ray.data._internal.arrow_serialization import (
+    _register_arrow_json_parseoptions_serializer,
+    _register_arrow_json_readoptions_serializer,
+)
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
@@ -24,6 +29,7 @@ from ray.data.read_api import (  # noqa: F401
     read_binary_files,
     read_csv,
     read_datasource,
+    read_images,
     read_json,
     read_numpy,
     read_parquet,
@@ -31,6 +37,15 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
     read_tfrecords,
 )
+
+# Register custom Arrow JSON ReadOptions and ParseOptions serializer after worker has
+# initialized.
+if ray.is_initialized():
+    _register_arrow_json_readoptions_serializer()
+    _register_arrow_json_parseoptions_serializer()
+else:
+    pass
+#    ray._internal.worker._post_init_hooks.append(_register_arrow_json_readoptions_serializer)
 
 __all__ = [
     "ActorPoolStrategy",
@@ -57,6 +72,7 @@ __all__ = [
     "read_binary_files",
     "read_csv",
     "read_datasource",
+    "read_images",
     "read_json",
     "read_numpy",
     "read_parquet",
