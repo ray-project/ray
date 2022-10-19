@@ -4,10 +4,11 @@ ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
+COPY requirements_test.txt ./
 COPY requirements_dl.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
-COPY requirements_tune.txt ./requirements_tune.txt
+COPY requirements_tune.txt ./
 COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
 
