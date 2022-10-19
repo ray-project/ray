@@ -518,14 +518,11 @@ class RolloutWorker(ParallelIteratorWorker):
         self.callbacks: DefaultCallbacks = self.config.callbacks_class()
         self.recreated_worker: bool = recreated_worker
 
-        # Setup current policy_mapping_fn (start with the one from the config).
-        self.policy_mapping_fn = None
-        self.set_policy_mapping_fn(
-            # This might be None in older checkpoints (nowadays AlgorithmConfig has a
-            # proper default for this);
-            # Need to cover this situation via the backup lambda here.
-            self.config.policy_mapping_fn or (lambda **kw: DEFAULT_POLICY_ID)
-        )
+        # Setup current policy_mapping_fn. Start with the one from the config, which
+        # might be None in older checkpoints (nowadays AlgorithmConfig has a proper
+        # default for this); Need to cover this situation via the backup lambda here.
+        self.policy_mapping_fn = lambda **kw: DEFAULT_POLICY_ID
+        self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
         self.total_rollout_fragment_length: int = (
