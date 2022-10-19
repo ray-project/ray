@@ -51,7 +51,7 @@ In order to save checkpoints from which to evaluate policies,
 set ``--checkpoint-freq`` (number of training iterations between checkpoints)
 when running ``rllib train``.
 When working with RLlib Algorithms directly (not via ``rllib train``), you can refer to
-`this guide here <rllib-saving-and-loading-algos-and-policies.html>`__ on how to produce checkpoints and
+:ref:`this guide here <rllib-saving-and-loading-algos-and-policies-docs>` on how to produce checkpoints and
 restore Algorithms and Policies from them for evaluation.
 
 

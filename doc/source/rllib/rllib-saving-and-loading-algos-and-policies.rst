@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. _saving-and-loading-algos-and-policies-docs:
+.. _rllib-saving-and-loading-algos-and-policies-docs:
 
 ##################################################
 Saving and Loading your RL Algorithms and Policies

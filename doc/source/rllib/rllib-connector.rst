@@ -6,7 +6,7 @@ Connectors (Alpha)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
-the durability and maintainability of `RLlib's Policy checkpoints <rllib-saving-and-loading-algos-and-policies.html>`__.
+the durability and maintainability of :ref:`RLlib's Policy checkpoints <rllib-saving-and-loading-algos-and-policies-docs>`.
 
 RLlib algorithms usually require one or more *user environments* and *policies* (usually a neural network).
 
@@ -223,7 +223,7 @@ policy states.
 These connectors, together with the specific transformations they represent,
 can be easily recovered (by RLlib-provided utils) to simplify deployment and inference use cases.
 
-You can read more on `Policy Checkpoints here <rllib-saving-and-loading-algos-and-policies.html>`__.
+You can read more on :ref:`Policy checkpoints here <rllib-saving-and-loading-algos-and-policies-docs>`.
 
 Serving and Inference
 ---------------------
