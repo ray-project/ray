@@ -1591,7 +1591,7 @@ py_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole", "8810"],
@@ -1600,7 +1600,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_lstm",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole_lstm", "8820"],
@@ -1609,7 +1609,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
@@ -1618,7 +1618,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "unity3d", "8860"],
