@@ -3,7 +3,6 @@ from ray import tune
 from ray.air import ScalingConfig, session
 from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 from ray.train.horovod import HorovodTrainer
-from ray.train.tensorflow import prepare_dataset_shard
 from ray.tune import Tuner, TuneConfig
 import numpy as np
 

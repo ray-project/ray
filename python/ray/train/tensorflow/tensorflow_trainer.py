@@ -102,7 +102,11 @@ class TensorflowTrainer(DataParallelTrainer):
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             for epoch in range(config["num_epochs"]):
-                tf_dataset = dataset_shard.to_tf(feature_columns="x", label_columns="y", batch_size=1)
+                tf_dataset = dataset_shard.to_tf(
+                    feature_columns="x",
+                    label_columns="y",
+                    batch_size=1
+                )
                 model.fit(tf_dataset)
                 # You can also use ray.air.callbacks.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
