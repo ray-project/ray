@@ -71,13 +71,11 @@ class DependencyManagerTest : public ::testing::Test {
   DependencyManagerTest()
       : object_manager_mock_(), dependency_manager_(object_manager_mock_) {}
 
-  int64_t NumWaiting(const std::string& task_name) {
+  int64_t NumWaiting(const std::string &task_name) {
     return dependency_manager_.waiting_tasks_counter_.Get(task_name);
   }
 
-  int64_t NumWaitingTotal() {
-    return dependency_manager_.waiting_tasks_counter_.Total();
-  }
+  int64_t NumWaitingTotal() { return dependency_manager_.waiting_tasks_counter_.Total(); }
 
   void AssertNoLeaks() {
     ASSERT_TRUE(dependency_manager_.required_objects_.empty());
@@ -142,11 +140,14 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     bool ready = dependency_manager_.RequestTaskDependencies(
-        task_id, ObjectIdsToRefs({argument_id}), "");
+        task_id, ObjectIdsToRefs({argument_id}), "foo");
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each task.
     ASSERT_EQ(object_manager_mock_.active_task_requests.size(), i + 1);
   }
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 3);
+  ASSERT_EQ(NumWaitingTotal(), 3);
 
   // Tell the task dependency manager that the object is local.
   auto ready_task_ids = dependency_manager_.HandleObjectLocal(argument_id);
