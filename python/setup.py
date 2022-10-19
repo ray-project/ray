@@ -303,6 +303,9 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
+        # Below this version will use six < 1.16
+        "urllib3 >= 1.26.5; python_version >= '3.10'",
+        # six <= 1.16 prints warning when `find_spec` is called.
         "six >= 1.16; python_version >= '3.10'",
         "grpcio >= 1.32.0; python_version < '3.10'",
         "grpcio >= 1.42.0; python_version >= '3.10'",
