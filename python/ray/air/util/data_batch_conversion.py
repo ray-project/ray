@@ -9,6 +9,10 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 
 @DeveloperAPI
@@ -33,11 +37,6 @@ def convert_batch_type_to_pandas(
         A pandas Dataframe representation of the input data.
 
     """
-    try:
-        import pyarrow
-    except ImportError:
-        pyarrow = None
-
     if isinstance(data, np.ndarray):
         data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
     elif isinstance(data, dict):
@@ -80,11 +79,6 @@ def convert_pandas_to_batch_type(
     Returns:
         The input data represented with the provided type.
     """
-    try:
-        import pyarrow
-    except ImportError:
-        pyarrow = None
-
     if cast_tensor_columns:
         data = _cast_ndarray_columns_to_tensor_extension(data)
     if type == DataType.PANDAS:
@@ -127,11 +121,6 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
-    try:
-        import pyarrow
-    except ImportError:
-        pyarrow = None
-
     if isinstance(data, np.ndarray):
         return data
     elif isinstance(data, dict):

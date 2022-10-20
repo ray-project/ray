@@ -1,17 +1,13 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+try:
     import pyarrow
+except ImportError:
+    pyarrow = None
 
 
 def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
     """Whether the provided Arrow Table column is an extension array, using an Arrow
     extension type.
     """
-    try:
-        import pyarrow
-    except ImportError:
-        pyarrow = None
     return isinstance(ca.type, pyarrow.ExtensionType)
 
 
@@ -22,11 +18,6 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
     extension arrays.
     See https://issues.apache.org/jira/browse/ARROW-16503.
     """
-    try:
-        import pyarrow
-    except ImportError:
-        pyarrow = None
-
     if not _is_column_extension_type(ca):
         raise ValueError("Chunked array isn't an extension array: {ca}")
 
