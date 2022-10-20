@@ -356,11 +356,36 @@ def build_or_pull_base_images(
 
 def prep_ray_ml():
     root_dir = _get_root_dir()
-    requirement_files = glob.glob(
-        f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True
-    )
-    for fl in requirement_files:
-        shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+
+    requirements_files = ["python/requirements.txt"]
+    ml_requirements_files = [
+        "python/requirements/ml/requirements_ml_docker.txt",
+        "python/requirements/ml/requirements_dl.txt",
+        "python/requirements/ml/requirements_py36_compat.txt",
+        "python/requirements/ml/requirements_tune.txt",
+        "python/requirements/ml/requirements_rllib.txt",
+        "python/requirements/ml/requirements_train.txt",
+        "python/requirements/ml/requirements_upstream.txt",
+    ]
+
+    files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
+    for file_on_disk in files_on_disk:
+        rel = os.path.relpath(file_on_disk, start=root_dir)
+        print(rel)
+        if not rel.startswith("python/requirements/ml"):
+            continue
+        elif rel not in ml_requirements_files:
+            raise RuntimeError(
+                f"A new requirements file was found in the repository, but it has "
+                f"not been added to `build-docker-images.py` "
+                f"(and the `ray-ml/Dockerfile`): {rel}"
+            )
+
+    for requirement_file in requirements_files + ml_requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray-ml/"),
+        )
 
 
 def _get_docker_creds() -> Tuple[str, str]:
