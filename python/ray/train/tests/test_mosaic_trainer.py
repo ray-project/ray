@@ -6,17 +6,6 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-from torchmetrics.classification.accuracy import Accuracy
-from composer.core.evaluator import Evaluator
-from composer.models.tasks import ComposerClassifier
-import composer.optim
-from composer.algorithms import LabelSmoothing
-from composer.loggers.logger_destination import LoggerDestination
-from composer.core.state import State
-from composer.loggers import Logger
-from composer.core.callback import Callback
-
-
 import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
@@ -39,6 +28,11 @@ def ray_start_4_cpus_mosaic():
 
 
 def trainer_init_per_worker(config):
+    from torchmetrics.classification.accuracy import Accuracy
+    from composer.core.evaluator import Evaluator
+    from composer.models.tasks import ComposerClassifier
+    import composer.optim
+
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
@@ -148,6 +142,11 @@ def test_init_errors(ray_start_4_cpus_mosaic):
 
 
 def test_loggers(ray_start_4_cpus_mosaic):
+    from composer.loggers.logger_destination import LoggerDestination
+    from composer.core.state import State
+    from composer.loggers import Logger
+    from composer.core.callback import Callback
+
     class DummyLogger(LoggerDestination):
         def fit_start(self, state: State, logger: Logger) -> None:
             raise ValueError("Composer Logger object exists.")
@@ -160,7 +159,6 @@ def test_loggers(ray_start_4_cpus_mosaic):
     trainer_init_config = {
         "max_duration": "1ep",
         "loggers": DummyLogger(),
-        "algorithms": [LabelSmoothing()],
     }
 
     trainer = MosaicTrainer(
