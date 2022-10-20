@@ -4359,42 +4359,6 @@
     type: sdk_command
     file_manager: sdk
 
-- name: datasets_ingest_train_infer
-  group: core-dataset-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_ingest_train_infer
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: ray_sgd_training_compute.yaml
-
-  run:
-    timeout: 14400
-    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
-      --large-dataset
-
-    wait_for_nodes:
-      num_nodes: 66
-
-    type: sdk_command
-    file_manager: sdk
-
-  smoke_test:
-    frequency: nightly
-    cluster:
-      app_config: ray_sgd_training_app.yaml
-      cluster_compute: ray_sgd_training_smoke_compute.yaml
-
-    run:
-      timeout: 3600
-      script: python ray_sgd_training.py --address auto --use-s3 --num-workers 8 --use-gpu
-      wait_for_nodes:
-        num_nodes: 8
-
 - name: datasets_preprocess_ingest
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
@@ -4414,7 +4378,7 @@
       --large-dataset --debug
 
     wait_for_nodes:
-      num_nodes: 21
+      num_nodes: 17
 
     type: sdk_command
     file_manager: sdk
