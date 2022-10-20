@@ -178,7 +178,9 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Add "is_head_node" field
-        node_info["raylet"]["is_head_node"] = cls.head_node_ip == node_physical_stats["ip"]
+        node_info["raylet"]["is_head_node"] = node_physical_stats.get(
+            "ip"
+        ) and cls.head_node_ip == node_physical_stats.get("ip")
         # Merge actors to node physical stats
         node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
@@ -210,7 +212,9 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
         # Add "is_head_node" field
-        node_summary["raylet"]["is_head_node"] = cls.head_node_ip == node_physical_stats["ip"]
+        node_summary["raylet"]["is_head_node"] = node_physical_stats.get(
+            "ip"
+        ) and cls.head_node_ip == node_physical_stats.get("ip")
 
         await GlobalSignals.node_summary_fetched.send(node_summary)
 
