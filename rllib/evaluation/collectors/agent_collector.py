@@ -190,9 +190,10 @@ class AgentCollector:
         del values[SampleBatch.NEXT_OBS]
 
         # Default to next timestep but also accept it in input_values
-        t = input_values.get(SampleBatch.T, self.buffers[SampleBatch.T][0][-1] + 1)
-        # Add next T
-        self.buffers[SampleBatch.T][0].append(t)
+        if SampleBatch.T not in input_values:
+            self.buffers[SampleBatch.T][0].append(
+                self.buffers[SampleBatch.T][0][-1] + 1
+            )
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
