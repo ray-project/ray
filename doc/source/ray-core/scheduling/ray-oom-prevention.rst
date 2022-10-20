@@ -130,7 +130,7 @@ Using the Memory Monitor
 Retry policy
 ~~~~~~~~~~~~
 
-When a task or actor is killed by the memory monitor, it will retry using a separate retry counter based off of ``RAY_task_oom_retries`` instead of the typical retry that is :ref:`max_retries <task-fault-tolerance>` for Tasks and :ref:`max_restarts <actor-fault-tolerance>` for Actors. The number of memory monitor retries is the same between tasks and actors and the defaults is ``15``. The value should be passed as the environment variable ``RAY_task_oom_retries`` when starting Ray as well as the application.
+When a task or actor is killed by the memory monitor, it will retry using a separate retry counter based off of ``RAY_task_oom_retries`` instead of the typical number of retries specified by :ref:`max_retries <task-fault-tolerance>` for tasks and :ref:`max_restarts <actor-fault-tolerance>` for actors. The number of memory monitor retries is the same for tasks and actors and defaults to ``15``. To override this value, the environment variable ``RAY_task_oom_retries`` should be set when starting Ray as well as the application.
 
 Let's create an application oom.py that will trigger the out-of-memory condition.
 
