@@ -188,8 +188,6 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 
     Actors by default are non-retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0, therefore tasks are preferred to actors when it comes to what gets killed first. Actor right now doesn't use ``RAY_task_oom_retries`` and instead uses :ref:`max_restarts <actor-fault-tolerance>` when it is killed by the memory monitor. This is to be changed very soon.
 
-.. _ray-oom-prevention-worker-killing-policy:
-
 Worker killing policy
 ~~~~~~~~~~~~~~~~~~~~~
 
