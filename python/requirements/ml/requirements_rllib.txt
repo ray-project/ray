@@ -20,7 +20,6 @@ pymunk==6.0.0
 supersuit==3.3.3; python_version >= '3.7'
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet==3.2.0
-pygame==2.1.2
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.6.0

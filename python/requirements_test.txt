@@ -11,7 +11,7 @@ azure-mgmt-compute==23.1.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
-boto3==1.24.93
+boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 cryptography==38.0.1
@@ -26,7 +26,8 @@ feather-format==0.4.1
 flask==2.1.3
 google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
-gradio==3.5; platform_system != "Windows"
+gradio==3.5; platform_system == "Linux"
+gradio==3.0.12; platform_system == "Darwin"
 gym-minigrid==1.0.3
 kubernetes==24.2.0
 # higher version of llvmlite breaks windows
@@ -48,6 +49,7 @@ proxy.py==2.4.3
 pyarrow==6.0.1
 pydantic==1.9.2
 PyOpenSSL==22.1.0
+pygame==2.1.2
 Pygments==2.13.0
 pyspark==3.1.2
 pytest==7.0.1
