@@ -178,27 +178,26 @@ class TaskCounter {
 
   void RefreshActorStateMetric() EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
     RAY_CHECK(IsActor());
-    float indicators[4] = {
-        /*idle=*/0.0, /*running=*/0.0, /*in_get=*/0.0, /*in_wait=*/0.0};
+    float running = 0.0;
+    float in_get = 0.0;
+    float in_wait = 0.0;
     if (running_in_wait_counter_.Total() > 0) {
-      indicators[3] = 1.0;
+      in_wait = 1.0;
     } else if (running_in_get_counter_.Total() > 0) {
-      indicators[2] = 1.0;
+      in_get = 1.0;
     } else if (num_running_ > 0) {
-      indicators[1] = 1.0;
-    } else {
-      indicators[0] = 1.0;
+      running = 1.0;
     }
     ray::stats::STATS_actors.Record(
-        indicators[0],
-        {{"State", "IDLE"}, {"Name", actor_name_}, {"Source", "executor"}});
+        -(running + in_get + in_wait),
+        {{"State", "ALIVE"}, {"Name", actor_name_}, {"Source", "executor"}});
     ray::stats::STATS_actors.Record(
-        indicators[1],
+        running,
         {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
     ray::stats::STATS_actors.Record(
-        indicators[2],
+        in_get,
         {{"State", "RUNNING_IN_RAY_GET"}, {"Name", actor_name_}, {"Source", "executor"}});
-    ray::stats::STATS_actors.Record(indicators[3],
+    ray::stats::STATS_actors.Record(in_wait,
                                     {{"State", "RUNNING_IN_RAY_WAIT"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"}});

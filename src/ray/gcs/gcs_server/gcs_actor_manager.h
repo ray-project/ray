@@ -124,6 +124,15 @@ class GcsActor {
     RefreshMetrics();
   }
 
+  ~GcsActor() {
+    if (last_metric_state_) {
+      RAY_LOG(ERROR) << "Decrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value());
+      counter_.Decrement(
+          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()));
+    }
+  }
+
   /// Get the node id on which this actor is created.
   NodeID GetNodeID() const;
   /// Get the id of the worker on which this actor is created.
@@ -173,11 +182,16 @@ class GcsActor {
   void RefreshMetrics() {
     auto cur_state = GetState();
     if (last_metric_state_) {
+      RAY_LOG(ERROR) << "Swapping state from "
+                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
+                     << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
       counter_.Swap(
           std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
           std::make_pair(cur_state, GetActorTableData().class_name()));
     } else {
-      counter_.Increment(std::make_pair(GetState(), GetActorTableData().class_name()));
+      RAY_LOG(ERROR) << "Incrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(cur_state);
+      counter_.Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
     }
     last_metric_state_ = cur_state;
   }
