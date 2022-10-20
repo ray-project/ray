@@ -635,6 +635,7 @@ def test_drop_columns(ray_start_regular_shared):
 
 
 def test_random_shuffle_each_window_with_custom_resource(ray_start_cluster):
+    ray.shutdown()
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(
