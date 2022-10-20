@@ -8,4 +8,4 @@ This section is an overview of how tasks and actors are scheduled
 
     placement-group
     memory-management
-    limiting-memory-usage
+    ray-oom-prevention
