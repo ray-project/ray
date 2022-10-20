@@ -195,7 +195,7 @@ class ActionConnectorDataType:
         input_dict: Input data that was passed into the policy.
             Sometimes output must be adapted based on the input, for example
             action masking. So the entire input data structure is provided here.
-        output: An object of PolicyOutputType. It is is composed of the
+        output: An object of PolicyOutputType. It is composed of the
             action output, the internal state output, and additional data fetches.
 
     """
