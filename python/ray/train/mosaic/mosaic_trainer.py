@@ -32,9 +32,9 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
-        >>> import torch.utils.data
-        >>> import torchvision
-        >>> from torchvision import transforms, datasets
+        >>> import torch.utils.data  # doctest: +SKIP
+        >>> import torchvision  # doctest: +SKIP
+        >>> from torchvision import transforms, datasets  # doctest: +SKIP
         >>>
         >>> from composer.models.tasks import ComposerClassifier # doctest: +SKIP
         >>> import composer.optim # doctest: +SKIP
