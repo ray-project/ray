@@ -1,6 +1,6 @@
 # Requirements to run release tests from the local machine (including client tests)
 click
-anyscale!=0.5.52
+anyscale==0.5.51
 slackclient
 boto3
 jinja2

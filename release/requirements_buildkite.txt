@@ -1,5 +1,5 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
-anyscale!=0.5.52
+anyscale==0.5.51
 click
 boto3
 jinja2
