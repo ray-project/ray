@@ -14,7 +14,7 @@ from typing import (
 
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
-from ray.widgets import Template  # , make_table_html_repr
+from ray.widgets import Template#, make_table_html_repr
 
 if TYPE_CHECKING:
     from ray.data import Dataset
