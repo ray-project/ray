@@ -103,46 +103,44 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   }
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
-  {
-    std::condition_variable callback_ran;
-    std::mutex callback_ran_mutex;
+TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted) {
+  std::condition_variable callback_ran;
+  std::mutex callback_ran_mutex;
 
-    MemoryMonitor monitor(MemoryMonitorTest::io_context_,
-                          1 /*usage_threshold*/,
-                          -1 /*min_memory_free_bytes*/,
-                          1 /*refresh_interval_ms*/,
-                          [&callback_ran](bool is_usage_above_threshold,
-                                          MemorySnapshot system_memory,
-                                          float usage_threshold) {
-                            ASSERT_EQ(1.0f, usage_threshold);
-                            ASSERT_GT(system_memory.total_bytes, 0);
-                            ASSERT_GT(system_memory.used_bytes, 0);
-                            callback_ran.notify_all();
-                          });
-    std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
-    callback_ran.wait(callback_ran_mutex_lock);
-  }
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        1 /*usage_threshold*/,
+                        -1 /*min_memory_free_bytes*/,
+                        1 /*refresh_interval_ms*/,
+                        [&callback_ran](bool is_usage_above_threshold,
+                                        MemorySnapshot system_memory,
+                                        float usage_threshold) {
+                          ASSERT_EQ(1.0f, usage_threshold);
+                          ASSERT_GT(system_memory.total_bytes, 0);
+                          ASSERT_GT(system_memory.used_bytes, 0);
+                          callback_ran.notify_all();
+                        });
+  std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
+  callback_ran.wait(callback_ran_mutex_lock);
+}
 
-  {
-    std::condition_variable callback_ran;
-    std::mutex callback_ran_mutex;
+TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxMinMemoryCallbackExecuted) {
+  std::condition_variable callback_ran;
+  std::mutex callback_ran_mutex;
 
-    MemoryMonitor monitor(MemoryMonitorTest::io_context_,
-                          0.4 /*usage_threshold*/,
-                          -1 /*min_memory_free_bytes*/,
-                          1 /*refresh_interval_ms*/,
-                          [&callback_ran](bool is_usage_above_threshold,
-                                          MemorySnapshot system_memory,
-                                          float usage_threshold) {
-                            ASSERT_EQ(0.4f, usage_threshold);
-                            ASSERT_GT(system_memory.total_bytes, 0);
-                            ASSERT_GT(system_memory.used_bytes, 0);
-                            callback_ran.notify_all();
-                          });
-    std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
-    callback_ran.wait(callback_ran_mutex_lock);
-  }
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        0.4 /*usage_threshold*/,
+                        -1 /*min_memory_free_bytes*/,
+                        1 /*refresh_interval_ms*/,
+                        [&callback_ran](bool is_usage_above_threshold,
+                                        MemorySnapshot system_memory,
+                                        float usage_threshold) {
+                          ASSERT_EQ(0.4f, usage_threshold);
+                          ASSERT_GT(system_memory.total_bytes, 0);
+                          ASSERT_GT(system_memory.used_bytes, 0);
+                          callback_ran.notify_all();
+                        });
+  std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
+  callback_ran.wait(callback_ran_mutex_lock);
 }
 
 TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
