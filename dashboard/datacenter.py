@@ -178,6 +178,7 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
         node_info["raylet"]["is_head_node"] = (
             cls.head_node_ip == node_physical_stats.get("ip")
             if node_physical_stats.get("ip")
@@ -214,6 +215,7 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
         # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
         node_summary["raylet"]["is_head_node"] = (
             cls.head_node_ip == node_physical_stats.get("ip")
             if node_physical_stats.get("ip")
