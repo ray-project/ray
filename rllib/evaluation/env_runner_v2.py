@@ -640,7 +640,7 @@ class EnvRunnerV2:
                         episode.add_init_obs(
                             agent_id=d.agent_id,
                             init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
-                            t= d.data.raw_dict[SampleBatch.T],
+                            t=d.data.raw_dict[SampleBatch.T],
                         )
                     else:
                         episode.add_action_reward_done_next_obs(
