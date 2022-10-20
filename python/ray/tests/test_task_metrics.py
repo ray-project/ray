@@ -456,19 +456,22 @@ def f(x):
 ray.get([f.remote(x) for x in buf])"""
 
     proc = run_string_as_driver_nonblocking(driver)
-    expected = {
-        "RUNNING": 2.0,
-        "PENDING_ARGS_FETCH": 7.0,
-        "PENDING_OBJ_STORE_MEM_AVAIL": 91.0,
-    }
+
+    # This test is non-deterministic since pull bundles can sometimes end up fallback
+    # allocated. This leads to slightly more objects pulled than you'd expect.
+    def close_to_expected(stats):
+        assert len(stats) == 3, stats
+        assert stats["RUNNING"] == 2, stats
+        assert 7 <= stats["PENDING_NODE_ASSIGNMENT"] <= 17, stats
+        assert 81 <= stats["PENDING_OBJ_STORE_MEM_AVAIL"] <= 91, stats
+        assert sum(stats.values()) == 100, stats
+        return True
+
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: close_to_expected(tasks_by_state(info)),
+        timeout=20,
+        retry_interval_ms=500,
     )
-    assert tasks_by_name_and_state(info) == {
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_ARGS_FETCH"): 7.0,
-        ("f", "PENDING_OBJ_STORE_MEM_AVAIL"): 91.0,
-    }
     proc.kill()
 
 

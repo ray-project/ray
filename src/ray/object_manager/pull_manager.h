@@ -170,6 +170,10 @@ class PullManager {
 
   void SetOutOfDisk(const ObjectID &object_id);
 
+  int64_t NumInactivePulls(const std::string &task_name) const {
+    return task_argument_bundles_.inactive_by_name.Get(task_name);
+  }
+
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
@@ -245,17 +249,6 @@ class PullManager {
   /// priority.
   class BundlePullRequestQueue {
    public:
-    BundlePullRequestQueue() {
-      active_by_name.SetOnChangeCallback(
-          [this](std::string task_name, int64_t value) mutable {
-            RefreshMetrics(task_name);
-          });
-      inactive_by_name.SetOnChangeCallback(
-          [this](std::string task_name, int64_t value) mutable {
-            RefreshMetrics(task_name);
-          });
-    }
-
     // Key is the request id assigned to each bundle pull request.
     absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
     // A bundle pull request can be in one of the three stats:
@@ -282,31 +275,7 @@ class PullManager {
     // order of pull).
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
-    CounterMap<std::string> active_by_name;
     CounterMap<std::string> inactive_by_name;
-
-    void RefreshMetrics(const std::string &task_name) const {
-      if (task_name.empty()) {
-        return;  // Don't record stats for non-task requests.
-      }
-      auto num_active = active_by_name.Get(task_name);
-      auto num_inactive = inactive_by_name.Get(task_name);
-      ray::stats::STATS_tasks.Record(
-          -static_cast<int64_t>(num_active + num_inactive),
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-           {"Name", task_name},
-           {"Source", "pull_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_inactive,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", task_name},
-           {"Source", "pull_manager"}});
-      ray::stats::STATS_tasks.Record(
-          num_active,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-           {"Name", task_name},
-           {"Source", "pull_manager"}});
-    }
 
     bool Empty() const { return requests.empty(); }
 
@@ -326,9 +295,7 @@ class PullManager {
       active_requests.emplace(request_id);
       auto task_name = map_find_or_die(requests, request_id).task_name;
       inactive_by_name.Decrement(task_name);
-      active_by_name.Increment(task_name);
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
-      RAY_CHECK_EQ(active_requests.size(), active_by_name.Total());
     }
 
     void DeactivateBundlePullRequest(uint64_t request_id) {
@@ -336,8 +303,6 @@ class PullManager {
       inactive_requests.emplace(request_id);
       auto task_name = map_find_or_die(requests, request_id).task_name;
       inactive_by_name.Increment(task_name);
-      active_by_name.Decrement(task_name);
-      RAY_CHECK_EQ(active_requests.size(), active_by_name.Total());
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
     }
 
@@ -369,14 +334,12 @@ class PullManager {
       requests.erase(request_id);
       if (active_requests.find(request_id) != active_requests.end()) {
         active_requests.erase(request_id);
-        active_by_name.Decrement(task_name);
       }
       if (inactive_requests.find(request_id) != inactive_requests.end()) {
         inactive_requests.erase(request_id);
         inactive_by_name.Decrement(task_name);
       }
       RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
-      RAY_CHECK_EQ(active_requests.size(), active_by_name.Total());
     }
 
     std::string DebugString() const {
