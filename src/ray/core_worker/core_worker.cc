@@ -706,14 +706,13 @@ void CoreWorker::Exit(
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
-  RAY_LOG(WARNING) << "Hacked non-Force exit the process. "
+  RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  Exit(exit_type, detail);
-  // Disconnect(exit_type, detail);
-  // // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-  // // `exit()` will destruct static objects in an incorrect order, which will lead to
-  // // core dumps.
-  // QuickExit();
+  Disconnect(exit_type, detail);
+  // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
+  // `exit()` will destruct static objects in an incorrect order, which will lead to
+  // core dumps.
+  QuickExit();
 }
 
 void CoreWorker::RunIOService() {
