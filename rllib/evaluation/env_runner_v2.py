@@ -561,6 +561,7 @@ class EnvRunnerV2:
                     continue
 
                 values_dict = {
+                    SampleBatch.T: episode.length - 1,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                     # Last action (SampleBatch.ACTIONS) column will be populated by
@@ -601,6 +602,7 @@ class EnvRunnerV2:
                     obs_space = policy.observation_space
                     obs_space = getattr(obs_space, "original_space", obs_space)
                     values_dict = {
+                        SampleBatch.T: episode.length - 1,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                         SampleBatch.REWARDS: 0.0,
