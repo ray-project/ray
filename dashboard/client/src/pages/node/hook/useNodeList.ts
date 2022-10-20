@@ -54,6 +54,10 @@ export const useNodeList = () => {
     nodeList: nodeList
       .map((e) => ({ ...e, state: e.raylet.state }))
       .sort((a, b) => (a.raylet.nodeId > b.raylet.nodeId ? 1 : -1))
+      .sort((a, b) => (a.raylet.state > b.raylet.state ? 1 : -1))
+      .sort(
+        (a, b) => (a.raylet.isHeadNode ? 1 : 0) - (b.raylet.isHeadNode ? 1 : 0),
+      )
       .sort(sorterFunc)
       .filter((node) =>
         filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
