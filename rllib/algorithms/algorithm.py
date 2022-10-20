@@ -2785,7 +2785,7 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
-        else:
+        elif "counters" in state:
             self._counters = state["counters"]
 
     @staticmethod
