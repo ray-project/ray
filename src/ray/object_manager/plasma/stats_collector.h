@@ -18,14 +18,15 @@
 #pragma once
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/counter_map.h"  // CounterMap
 
 namespace plasma {
 
 enum class ObjectStoreCounterType : int8_t {
-  MMAPPED_SHM_SEAL = 0,
-  MMAPPED_DISK_SEAL = 1,
-  MMAPPED_SHM_UNSEAL = 2,
-  MMAPPED_DISK_UNSEAL = 3,
+  MMAP_SHM_SEAL = 0,
+  MMAP_DISK_SEAL = 1,
+  MMAP_SHM_UNSEAL = 2,
+  MMAP_DISK_UNSEAL = 3,
 };
 
 // ObjectStatsCollector subscribes to plasma store state changes

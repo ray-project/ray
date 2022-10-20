@@ -575,10 +575,6 @@ inline void CoreWorkerMemoryStore::EmplaceObjectAndUpdateStats(
   }
   RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
             used_object_store_memory_ >= 0);
-
-  ray::stats::STATS_object_store_memory.Record(
-      used_object_store_memory_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocWorkerHeap}});
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
