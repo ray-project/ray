@@ -36,6 +36,9 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
+PROXY_FORWARD_ATTEMPT_TIMEOUT_S = (
+    float(os.environ.get("PROXY_FORWARD_ATTEMPT_TIMEOUT", 0)) or None
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -58,9 +61,19 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     while retries < MAX_REPLICA_FAILURE_RETRIES:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
+            [assignment_task, client_disconnection_task],
+            return_when=FIRST_COMPLETED,
+            timeout=PROXY_FORWARD_ATTEMPT_TIMEOUT_S,
         )
-        if client_disconnection_task in done:
+        if len(done) == 0:
+            logger.debug(
+                "HTTPProxy couldn't reach target replica in "
+                f"{PROXY_FORWARD_ATTEMPT_TIMEOUT_S} seconds. Retrying with "
+                "another replica. You can modify this timeout by setting the "
+                '"PROXY_FORWARD_ATTEMPT_TIMEOUT" env var.'
+            )
+            retries += 1
+        elif client_disconnection_task in done:
             message = await client_disconnection_task
             assert message["type"] == "http.disconnect", (
                 "Received additional request payload that's not disconnect. "
@@ -99,7 +112,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             backoff_time_s *= 1.5
             retries += 1
     else:
-        error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
