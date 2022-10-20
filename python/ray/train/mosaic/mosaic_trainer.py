@@ -36,22 +36,21 @@ class MosaicTrainer(TorchTrainer):
         >>> import torchvision
         >>> from torchvision import transforms, datasets
         >>>
-        >>> from composer.models.tasks import ComposerClassifier
-        >>> import composer.optim
-        >>> from composer.algorithms import LabelSmoothing
+        >>> from composer.models.tasks import ComposerClassifier # doctest: +SKIP
+        >>> import composer.optim # doctest: +SKIP
+        >>> from composer.algorithms import LabelSmoothing # doctest: +SKIP
         >>>
         >>> import ray
         >>> from ray.air.config import ScalingConfig
         >>> import ray.train as train
         >>> from ray.air import session
-        >>> from ray.train.mosaic import MosaicTrainer
+        >>> from ray.train.mosaic import MosaicTrainer # doctest: +SKIP
         >>>
         >>> def trainer_init_per_worker(config):
         ...     # prepare the model for distributed training and wrap with
         ...     # ComposerClassifier for Composer Trainer compatibility
         ...     model = torchvision.models.resnet18(num_classes=10)
         ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
-        ...
         ...
         ...     # prepare train/test dataset
         ...     mean = (0.507, 0.487, 0.441)
@@ -94,15 +93,15 @@ class MosaicTrainer(TorchTrainer):
         >>> trainer_init_config = {
         ...     "max_duration": "1ba",
         ...     "algorithms": [LabelSmoothing()],
-        ... }
+        ... } # doctest: +SKIP
         ...
         >>> trainer = MosaicTrainer(
         ...     trainer_init_per_worker=trainer_init_per_worker,
         ...     trainer_init_config=trainer_init_config,
         ...     scaling_config=scaling_config,
-        ... )
+        ... ) # doctest: +SKIP
         ...
-        >>> trainer.fit()
+        >>> trainer.fit() # doctest: +SKIP
 
 
     Args:

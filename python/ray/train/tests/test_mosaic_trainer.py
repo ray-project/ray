@@ -10,7 +10,6 @@ import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-from ray.train.mosaic import MosaicTrainer
 from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
 
@@ -101,6 +100,8 @@ def test_mosaic_cifar10(ray_start_4_cpus_mosaic):
 
 
 def test_init_errors(ray_start_4_cpus_mosaic):
+    from ray.train.mosaic import MosaicTrainer
+
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
     be due to bad `trainer_init_per_worker` function or missing requirements in the
     `trainer_init_config` argument.
@@ -142,6 +143,8 @@ def test_init_errors(ray_start_4_cpus_mosaic):
 
 
 def test_loggers(ray_start_4_cpus_mosaic):
+    from ray.train.mosaic import MosaicTrainer
+
     from composer.loggers.logger_destination import LoggerDestination
     from composer.core.state import State
     from composer.loggers import Logger
