@@ -1,5 +1,5 @@
-Ray Out-Of-Memory Prevention
-============================
+Out-Of-Memory Prevention
+========================
 
 If application tasks or actors consume a large amount of heap space, it can cause the node to run out of memory (OOM). When that happens, the operating system will start killing worker or raylet processes, disrupting the application. OOM may also stall metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and cause the cluster to become unusable.
 
@@ -14,11 +14,7 @@ In this section we will go over:
 What is the memory monitor?
 ---------------------------
 
-The memory monitor is a component that runs on each node in your Ray cluster and is instantiated with a configured threshold.
-The memory monitor periodically checks the memory usage of the different Ray processes on the node,
-which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`.
-
-The memory monitor is a component that runs within the raylet process on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
+The memory monitor is a component that runs within the :ref:`raylet <whitepaper>` process on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
 
 .. note::
 
@@ -223,7 +219,7 @@ The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries
 Addressing memory issues
 ------------------------
 
-When the application fails due to OOM, consider increasing the memory capacity of the node or :ref:`limit the number of concurrently running tasks <core-patterns-limit-running-tasks>`.
+When the application fails due to OOM, consider reducing the memory usage of the tasks and actors, increasing the memory capacity of the node, or :ref:`limit the number of concurrently running tasks <core-patterns-limit-running-tasks>`.
 
 
 .. _oom-questions:
