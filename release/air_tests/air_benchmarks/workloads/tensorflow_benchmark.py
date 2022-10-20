@@ -236,6 +236,7 @@ def cli():
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--batch-size", type=int, default=64)
 @click.option("--smoke-test", is_flag=True, default=False)
+@click.option("--local", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
@@ -244,6 +245,7 @@ def run(
     use_gpu: bool = False,
     batch_size: int = 64,
     smoke_test: bool = False,
+    local: bool = False,
 ):
     # Note: smoke_test is ignored as we just adjust the batch size.
     # The parameter is passed by the release test pipeline.
@@ -254,7 +256,11 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    ray.init("auto")
+    if local:
+        ray.init(num_cpus=4)
+    else:
+        ray.init("auto")
+
     print("Preparing Tensorflow benchmark: Downloading MNIST")
 
     path = os.path.abspath("workloads/_tensorflow_prepare.py")
