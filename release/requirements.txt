@@ -1,5 +1,5 @@
 click
-anyscale>0.5.0
+anyscale==0.5.51
 slackclient
 boto3
 jinja2
