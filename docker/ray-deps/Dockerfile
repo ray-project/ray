@@ -18,8 +18,8 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH
         "google-api-python-client==1.7.8" \
         "google-oauth" \
         "kubernetes" \
-        "azure-cli-core==2.29.1" \
-        "azure-identity==1.7.0" \
+        "azure-cli-core==2.40.0" \
+        "azure-identity==1.10.0" \
         "azure-mgmt-compute==23.1.0" \
         "azure-mgmt-network==19.0.0" \
         "azure-mgmt-resource==20.0.0" \

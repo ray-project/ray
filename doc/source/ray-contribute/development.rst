@@ -347,7 +347,7 @@ Dependencies for running Ray unit tests under ``python/ray/tests`` can be instal
 
 .. code-block:: shell
 
- pip install -r python/requirements.txt
+ pip install -c python/requirements.txt -r python/requirements_test.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 
