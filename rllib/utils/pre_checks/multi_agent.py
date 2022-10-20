@@ -126,7 +126,7 @@ def check_multi_agent(
             )
         for pid in multiagent_config["policies_to_train"]:
             if pid not in policies:
-                raise ValueError(
+                logger.warning(
                     "`config.multiagent.policies_to_train` contains policy "
                     f"ID ({pid}) that was not defined in `config.multiagent.policies!"
                 )

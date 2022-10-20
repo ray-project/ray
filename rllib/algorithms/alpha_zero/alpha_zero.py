@@ -70,7 +70,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")

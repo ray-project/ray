@@ -51,7 +51,7 @@ class PPOConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.ppo import PPOConfig
         >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")

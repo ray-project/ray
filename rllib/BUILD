@@ -3580,19 +3580,27 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "examples/documentation/replay_buffer_demo",
-    main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
-
-py_test(
     name = "examples/documentation/custom_gym_env",
     main = "examples/documentation/custom_gym_env.py",
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/custom_gym_env.py"],
+)
+
+py_test(
+    name = "examples/documentation/saving_and_loading_algos_and_policies",
+    main = "examples/documentation/saving_and_loading_algos_and_policies.py",
+    tags = ["team:rllib", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
+)
+
+py_test(
+    name = "examples/documentation/replay_buffer_demo",
+    main = "examples/documentation/replay_buffer_demo.py",
+    tags = ["team:rllib", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/documentation/replay_buffer_demo.py"],
 )
 
 py_test(
