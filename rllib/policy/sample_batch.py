@@ -48,6 +48,8 @@ class SampleBatch(dict):
     # This is only computed and used when RE3 exploration strategy is enabled
     OBS_EMBEDS = "obs_embeds"
     T = "t"
+    EPISODE_STEP = T
+    AGENT_STEP = "t_agent"
 
     # decision transformer
     RETURNS_TO_GO = "returns_to_go"

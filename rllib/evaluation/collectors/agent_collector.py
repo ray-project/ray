@@ -126,6 +126,7 @@ class AgentCollector:
         agent_index: int,
         env_id: EnvID,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -137,6 +138,8 @@ class AgentCollector:
             env_id: The environment index (in a vectorized setup).
             init_obs: The initial observation tensor (after
             `env.reset()`).
+            t: The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
         """
         # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
@@ -151,7 +154,7 @@ class AgentCollector:
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
                     SampleBatch.ENV_ID: env_id,
-                    SampleBatch.T: -1,
+                    SampleBatch.T: t,
                     SampleBatch.EPS_ID: self.episode_id,
                     SampleBatch.UNROLL_ID: self.unroll_id,
                 }
@@ -163,7 +166,7 @@ class AgentCollector:
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
-        self.buffers[SampleBatch.T][0].append(-1)
+        self.buffers[SampleBatch.T][0].append(t)
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
@@ -186,6 +189,11 @@ class AgentCollector:
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
+        # Default to next timestep but also accept it in input_values
+        t = input_values.get(SampleBatch.T, self.buffers[SampleBatch.T][0][-1] + 1)
+        # Add next T
+        self.buffers[SampleBatch.T][0].append(t)
+
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
             assert values[SampleBatch.EPS_ID] == self.episode_id
@@ -195,11 +203,6 @@ class AgentCollector:
             assert values[SampleBatch.UNROLL_ID] == self.unroll_id
             del values[SampleBatch.UNROLL_ID]
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
-
-        # Make sure we are not trying to handle T manually
-        assert SampleBatch.T not in input_values
-        # Add next T
-        self.buffers[SampleBatch.T][0].append(self.buffers[SampleBatch.T][0][-1] + 1)
 
         for k, v in values.items():
             if k not in self.buffers:
