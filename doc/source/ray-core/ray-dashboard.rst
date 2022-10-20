@@ -7,7 +7,7 @@ Ray users to understand Ray clusters and libraries.
 
 The dashboard lets you:
 
-- View cluster metrics.
+- View cluster metrics including time-series visualizations.
 - See errors and exceptions at a glance.
 - View logs across many machines.
 - See all your ray jobs and the logs for those jobs.
@@ -101,6 +101,18 @@ The logs view lets you view all the ray logs that are in your cluster. It is org
 The log viewer provides various search functionality to help find the log messages you are looking for.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs-content.png
+    :align: center
+
+Metrics View
+~~~~~~~~~~~~~
+The metrics view lets you view visualizations of the time series metrics emitted by Ray. It requires that prometheus and grafana is running for your cluster.
+Instructions about that can be found :ref:`here <ray-metrics>`.
+
+You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
+
+There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
     :align: center
 
 Advanced Usage
