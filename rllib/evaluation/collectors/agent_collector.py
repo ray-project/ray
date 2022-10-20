@@ -154,7 +154,7 @@ class AgentCollector:
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
                     SampleBatch.ENV_ID: env_id,
-                    SampleBatch.T: -1,
+                    SampleBatch.T: t,
                     SampleBatch.EPS_ID: self.episode_id,
                     SampleBatch.UNROLL_ID: self.unroll_id,
                 }
@@ -166,7 +166,7 @@ class AgentCollector:
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
-        self.buffers[SampleBatch.T][0].append(-1)
+        self.buffers[SampleBatch.T][0].append(t)
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
