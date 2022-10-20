@@ -123,7 +123,7 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted)
   callback_ran.wait(callback_ran_mutex_lock);
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxMinMemoryCallbackExecuted) {
+TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
   std::condition_variable callback_ran;
   std::mutex callback_ran_mutex;
 
