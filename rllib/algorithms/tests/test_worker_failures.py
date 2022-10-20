@@ -637,6 +637,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PGConfig()
+            .environment("fault_env")
             .rollouts(
                 num_rollout_workers=2,
                 ignore_worker_failures=True,  # Ignore failure.
@@ -677,7 +678,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Reset interaciton counter.
             ray.wait([counter.reset.remote()])
 
-            a = PG(config=config, env="fault_env")
+            a = config.build()
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(

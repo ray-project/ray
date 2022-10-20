@@ -106,12 +106,12 @@ class PG(Algorithm):
         return PGConfig()
 
     @override(Algorithm)
-    def get_default_policy_class(self, config) -> Type[Policy]:
-        if config.framework_str == "torch":
+    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+        if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 
             return PGTorchPolicy
-        elif config.framework_str == "tf":
+        elif config["framework"] == "tf":
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
             return PGTF1Policy

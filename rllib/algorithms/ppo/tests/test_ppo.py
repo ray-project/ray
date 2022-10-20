@@ -159,7 +159,7 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .environment(
-                env_config={"is_slippery": False, "map_name": "4x4"},
+                "FrozenLake-v1", env_config={"is_slippery": False, "map_name": "4x4"},
             )
             .rollouts(
                 # Run locally.
@@ -171,7 +171,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
@@ -207,6 +207,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v0")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -222,7 +223,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -265,6 +266,7 @@ class TestPPO(unittest.TestCase):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v0")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -279,7 +281,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check no free log std var by default.

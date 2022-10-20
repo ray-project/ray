@@ -591,13 +591,13 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
+        # Validate evaluation config.
+        self.evaluation_config = self.config.get_evaluation_config_object()
+        self.validate_config(self.evaluation_config)
+
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
         if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
-            # Validate evaluation config.
-            self.evaluation_config = self.config.get_evaluation_config_object()
-            self.validate_config(self.evaluation_config)
-
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
             )

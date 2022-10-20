@@ -23,6 +23,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v0")
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
@@ -38,7 +39,7 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
             results = algo.train()
             check_train_results(results)
             print(results)
@@ -48,6 +49,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v0")
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
@@ -63,7 +65,7 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
 
             # Test per-worker epsilon distribution.
             infos = algo.workers.foreach_policy(lambda p, _: p.get_exploration_state())
@@ -87,6 +89,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_lr_schedule(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v0")
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,
@@ -139,7 +142,7 @@ class TestApexDQN(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
 
             lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2

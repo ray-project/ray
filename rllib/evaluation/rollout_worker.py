@@ -1657,7 +1657,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     )
                 else:
                     policy_spec = (
-                        PolicySpec.deserialize(spec) if connector_enabled else spec
+                        PolicySpec.deserialize(spec) if connector_enabled or isinstance(spec, dict) else spec
                     )
                     self.add_policy(
                         policy_id=pid,
@@ -1901,6 +1901,8 @@ class RolloutWorker(ParallelIteratorWorker):
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
             worker_index=self.worker_index,
@@ -1919,9 +1921,12 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.debug("Creating policy for {}".format(name))
             # Update the general config with the specific config
             # for this particular policy.
-            merged_conf: "AlgorithmConfig" = copy.deepcopy(config)
-            merged_conf._is_frozen = False
-            merged_conf.update_from_dict(policy_spec.config or {})
+            merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+            update_dict = (
+                policy_spec.config.to_dict() if isinstance(policy_spec.config, AlgorithmConfig)
+                else policy_spec.config
+            )
+            merged_conf.update_from_dict(update_dict or {})
 
             # Update num_workers and worker_index.
             merged_conf.worker_index = self.worker_index

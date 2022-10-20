@@ -132,6 +132,7 @@ class TestSAC(unittest.TestCase):
                 "CartPole-v0",
             ]:
                 print("Env={}".format(env))
+                config.environment(env)
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config.q_model_config["custom_model"] = (
@@ -139,7 +140,7 @@ class TestSAC(unittest.TestCase):
                     if env == "CartPole-v0"
                     else None
                 )
-                algo = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
                     check_train_results(results)
@@ -151,7 +152,7 @@ class TestSAC(unittest.TestCase):
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
                     checkpoint = algo.save()
-                    new_algo = sac.SAC(config, env=env)
+                    new_algo = config.build()
                     new_algo.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = algo.local_replay_buffer.replay_buffers[
