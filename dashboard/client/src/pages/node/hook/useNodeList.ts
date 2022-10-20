@@ -56,7 +56,7 @@ export const useNodeList = () => {
       .sort((a, b) => (a.raylet.nodeId > b.raylet.nodeId ? 1 : -1))
       .sort((a, b) => (a.raylet.state > b.raylet.state ? 1 : -1))
       .sort(
-        (a, b) => (a.raylet.isHeadNode ? 1 : 0) - (b.raylet.isHeadNode ? 1 : 0),
+        (a, b) => (a.raylet.isHeadNode ? 0 : 1) - (b.raylet.isHeadNode ? 0 : 1),
       )
       .sort(sorterFunc)
       .filter((node) =>
