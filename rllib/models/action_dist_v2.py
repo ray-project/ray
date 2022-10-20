@@ -44,6 +44,27 @@ class ActionDistributionV2(abc.ABC):
             sampled action and its logp.
         """
 
+    
+    @abc.abstractmethod
+    def rsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        """Draw a re-parameterized sample from the action distribution.
+
+        Args:
+            sample_shape: The shape of the sample to draw.
+            return_logp: Whether to return the logp of the sampled action.
+            **kwargs: Forward compatibility placeholder.
+
+        Returns:
+            The sampled action. If return_logp is True, returns a tuple of the
+            sampled action and its logp.
+        """
+
     @abc.abstractmethod
     def logp(self, action: TensorType, **kwargs) -> TensorType:
         """The log-likelihood of the action distribution.

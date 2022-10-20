@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
+from tabnanny import check
 
 from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_dict import ModelSpecDict
+from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.torch.torch_action_dist_v2 import (
     TorchCategorical,
@@ -35,6 +36,7 @@ class FCConfig:
     output_dim: int = None
     hidden_layers: List[int] = field(default_factory=lambda: [256, 256])
     activation: str = "relu"
+    output_activation: str = None
 
 
 @dataclass
@@ -72,6 +74,7 @@ class FCNet(nn.Module):
         self.input_dim = config.input_dim
         self.hidden_layers = config.hidden_layers
         self.activation = config.activation
+        self.output_activation = config.output_activation
 
         self.layers = []
         self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
@@ -89,11 +92,25 @@ class FCNet(nn.Module):
 
         self.layers = nn.ModuleList(self.layers)
         self.activation = getattr(nn, self.activation)()
+        if self.output_activation is not None:
+            self.output_activation = getattr(nn, self.output_activation)()
 
+
+    def input_specs(self):
+        return ModelSpecDict(
+            {
+                "input": TorchSpecs("b, h", h=self.input_dim)
+            }
+        )
+
+    @check_specs(input_spec="input_specs")
     def forward(self, x):
+        x = x["input"]
         for layer in self.layers[:-1]:
             x = self.activation(layer(x))
         x = self.layers[-1](x)
+        if self.output_activation is not None:
+            x = self.output_activation(x)
         return x
 
 
@@ -134,6 +151,7 @@ class SimplePPOModule(TorchRLModule):
 
         if isinstance(self.config.action_space, gym.spaces.Discrete):
             pi_config.output_dim = self.config.action_space.n
+            pi_config.output_activation = "Softmax"
         else:
             pi_config.output_dim = self.config.action_space.shape[0] * 2
         self.pi = FCNet(pi_config)
@@ -152,8 +170,8 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpecDict:
-        return self.input_specs_exploration()
-
+        return self.input_specs_exploration
+    
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
         return ModelSpecDict(
@@ -165,10 +183,11 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            encoded_state = self.encoder(batch["obs"])
-            pi_out = self.pi(encoded_state)
+            # TODO (kourosh): This {"input": xxx} is very verbose.
+            encoded_state = self.encoder({"input": batch["obs"]})
+            pi_out = self.pi({"input": encoded_state})
         else:
-            pi_out = self.pi(batch["obs"])
+            pi_out = self.pi({"input": batch["obs"]})
 
         if self._is_discrete:
             action = torch.argmax(pi_out, dim=-1)
@@ -178,13 +197,14 @@ class SimplePPOModule(TorchRLModule):
         action_dist = TorchDeterministic(action)
         return {"action_dist": action_dist}
 
+
     @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpecDict:
+    def input_specs_exploration(self):
         return ModelSpecDict(
             {
-                "obs": self.encoder.input_specs
+                "obs": self.encoder.input_specs()["input"]
                 if self.encoder
-                else self.pi.input_specs,
+                else self.pi.input_specs()["input"],
             }
         )
 
@@ -198,13 +218,14 @@ class SimplePPOModule(TorchRLModule):
             }
         )
 
+    
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            encoded_state = self.encoder(batch["obs"])
-            pi_out = self.pi(encoded_state)
+            encoded_state = self.encoder({"input": batch["obs"]})
+            pi_out = self.pi({"input": encoded_state})
         else:
-            pi_out = self.pi(batch["obs"])
+            pi_out = self.pi({"input": batch["obs"]})
 
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)
@@ -246,12 +267,12 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            encoded_state = self.encoder(batch["obs"])
-            pi_out = self.pi(encoded_state)
-            vf = self.vf(encoded_state)
+            encoded_state = self.encoder({"input": batch["obs"]})
+            pi_out = self.pi({"input": encoded_state})
+            vf = self.vf({"input": encoded_state})
         else:
-            pi_out = self.pi(batch["obs"])
-            vf = self.vf(batch["obs"])
+            pi_out = self.pi({"input": batch["obs"]})
+            vf = self.vf({"input": batch["obs"]})
 
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)

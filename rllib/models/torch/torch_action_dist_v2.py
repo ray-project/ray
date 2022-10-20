@@ -46,7 +46,16 @@ class TorchDistribution(ActionDistributionV2, abc.ABC):
 
     @override(ActionDistributionV2)
     def sample(
-        self, *, sample_shape=None, return_logp: bool = False
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        sample = self.dist.sample(sample_shape)
+        if return_logp:
+            return sample, self.logp(sample)
+        return sample
+
+    @override(ActionDistributionV2)
+    def rsample(
+        self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self.dist.rsample(sample_shape)
         if return_logp:

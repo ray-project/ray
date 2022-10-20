@@ -1,11 +1,10 @@
 import abc
 from collections import defaultdict
-from typing import Iterator, List, Mapping, Any, Union, Dict
+from typing import Iterator, Mapping, Any, Union, Dict
 
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
-    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     override,
 )
@@ -69,13 +68,20 @@ class RLModule(abc.ABC):
         forward_train: Forward pass during training.
         forward_exploration: Forward pass during training for exploration.
         forward_inference: Forward pass during inference.
+
+    Note: There is a reason that the specs are not written as abstract properties. 
+        The reason is that torch overrides `__getattr__` and `__setattr__`. This means 
+        that if we define the specs as properties, then any error in the property will 
+        be interpreted as a failure to retrieve the attribute and will invoke 
+        `__getattr__` which will give a confusing error about the attribute not found. 
+        More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: Mapping[str, Any]) -> None:
         self.config = config
 
-    @property
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpecDict:
         """Returns the output specs of the forward_inference method.
@@ -86,7 +92,7 @@ class RLModule(abc.ABC):
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
 
-    @property
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> ModelSpecDict:
         """Returns the output specs of the forward_exploration method.
@@ -98,22 +104,18 @@ class RLModule(abc.ABC):
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
 
-    @property
     def output_specs_train(self) -> ModelSpecDict:
         """Returns the output specs of the forward_train method."""
         return ModelSpecDict()
 
-    @property
     def input_specs_inference(self) -> ModelSpecDict:
         """Returns the input specs of the forward_inference method."""
         return ModelSpecDict()
 
-    @property
     def input_specs_exploration(self) -> ModelSpecDict:
         """Returns the input specs of the forward_exploration method."""
         return ModelSpecDict()
 
-    @property
     def input_specs_train(self) -> ModelSpecDict:
         """Returns the input specs of the forward_train method."""
         return ModelSpecDict()

@@ -1,5 +1,5 @@
 import functools
-from typing import Union, Type, Mapping, Any
+from typing import Callable, Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -21,6 +21,8 @@ _TYPE_MISMATCH = (
 
 SPEC_LEAF_TYPE = Union[Type, TensorSpecs]
 DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
+
+IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
 class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
@@ -185,6 +187,11 @@ def check_specs(
         @functools.wraps(func)
         def wrapper(self, input_dict, **kwargs):
 
+            if not isinstance(input_dict, Mapping):
+                raise ValueError(
+                    f"input_dict must be a Mapping, got {type(input_dict).__name__}"
+                )
+                
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
 
@@ -194,7 +201,7 @@ def check_specs(
             input_dict_ = NestedDict(input_dict)
 
             if input_spec:
-                input_spec_ = getattr(self, input_spec)
+                input_spec_ = getattr(self, input_spec)()
                 if should_validate():
                     input_spec_.validate(input_dict_, exact_match=input_exact_match)
                 if filter:
@@ -202,7 +209,7 @@ def check_specs(
 
             output_dict_ = func(self, input_dict_, **kwargs)
             if output_spec and should_validate():
-                output_spec_ = getattr(self, output_spec)
+                output_spec_ = getattr(self, output_spec)()
                 output_spec_.validate(output_dict_, exact_match=output_exact_match)
 
             if cache:
