@@ -10,8 +10,6 @@ import ray
 from ray.data.context import DatasetContext
 
 import itertools
-from ray.remote_function import DEFAULT_REMOTE_FUNCTION_CPUS
-import ray.ray_constants as ray_constants
 
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
@@ -222,18 +220,9 @@ def _get_resource_request_labels(ray_remote_args: Dict[str, Any]):
     task resource request defaults.
     """
     resource_request_labels = set(ray_remote_args.get("resources", {}).keys())
-    if DEFAULT_REMOTE_FUNCTION_CPUS > 0:
-        resource_request_labels.add("CPU")
+    resource_request_labels.add("CPU")
     if "num_gpus" in ray_remote_args:
         resource_request_labels.add("GPU")
-    try:
-        accelerator_type = ray_remote_args["accelerator_type"]
-    except KeyError:
-        pass
-    else:
-        resource_request_labels.add(
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{accelerator_type}"
-        )
     return resource_request_labels
 
 

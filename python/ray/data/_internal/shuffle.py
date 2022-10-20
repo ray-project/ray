@@ -91,7 +91,7 @@ class SimpleShufflePlan(ShuffleOp):
             shuffle_map.options(
                 **map_ray_remote_args,
                 num_returns=1 + output_num_blocks,
-                resource=next(map_resource_iter),
+                resources=next(map_resource_iter),
             ).remote(i, block, output_num_blocks, *self._map_args)
             for i, block in enumerate(input_blocks_list)
         ]
