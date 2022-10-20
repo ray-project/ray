@@ -61,7 +61,7 @@ def setup(config):
     # Horovod: limit # of CPU threads to be used per worker.
     torch.set_num_threads(1)
 
-    kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
+    kwargs = {"pin_memory": True} if use_cuda else {}
     data_dir = data_dir or "~/data"
     with FileLock(os.path.expanduser("~/.horovod_lock")):
         train_dataset = datasets.MNIST(
@@ -76,6 +76,9 @@ def setup(config):
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         train_dataset, num_replicas=hvd.size(), rank=hvd.rank()
     )
+    # Note, don't set `num_workers` in DataLoader (not even 1),
+    # as that will separately start multiple processes (each corresponding to 1 worker)
+    # to load the data. This is known to cause issues with Ray.
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler, **kwargs
     )

@@ -16,9 +16,17 @@ import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import create_scheduler
-
-
 from ray.tune.utils.release_test_util import ProgressCallback
+
+# The long running version starts 4 trials while only 2 can be run at a time.
+# Thus trials are paused and restored at all times so that every trial can make
+# progress. The PBT scheduler also applies perturbation and mutation,
+# which also involves pausing and restoring.
+# The intention is to stress test the pausing and restoring of trials,
+# especially that there should be no GPU memory leak.
+
+# TODO(ml-team): This test is very low signal at the moment.
+#  We should further trim it down.
 
 CIFAR10_STATS = {
     "mean": (0.4914, 0.4822, 0.4465),
@@ -43,7 +51,7 @@ def train_loop_per_worker(config):
         checkpoint_dict = checkpoint.to_dict()
         model_state = checkpoint_dict["model_state"]
         optimizer_state = checkpoint_dict["optimizer_state"]
-        epoch = checkpoint_dict["epoch"]
+        epoch = checkpoint_dict["epoch"] + 1
 
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -57,8 +65,16 @@ def train_loop_per_worker(config):
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     trainset = ray.get(config["data"])
+
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        trainset, num_replicas=hvd.size(), rank=hvd.rank()
+    )
+
+    # Note, don't set `num_workers` in DataLoader (not even 1),
+    # as that will separately start multiple processes (each corresponding to 1 worker)
+    # to load the data. This is known to cause issues with Ray.
     trainloader = DataLoader(
-        trainset, batch_size=int(config["batch_size"]), shuffle=True, num_workers=4
+        trainset, batch_size=int(config["batch_size"]), sampler=train_sampler
     )
 
     for epoch in range(epoch, 40):  # loop over the dataset multiple times
@@ -132,7 +148,7 @@ if __name__ == "__main__":
         train_loop_per_worker=train_loop_per_worker,
         scaling_config=ScalingConfig(
             use_gpu=False if args.smoke_test else True,
-            num_workers=2 if args.smoke_test else 4,
+            num_workers=2,
         ),
         train_loop_config={"batch_size": 64, "data": ray.put(dataset)},
     )
@@ -140,7 +156,7 @@ if __name__ == "__main__":
     # ensure that checkpointing works.
     pbt = create_scheduler(
         "pbt",
-        perturbation_interval=2,
+        perturbation_interval=1,  # To make perturb more often.
         hyperparam_mutations={
             "train_loop_config": {"lr": tune.uniform(0.001, 0.1)},
         },
@@ -152,7 +168,7 @@ if __name__ == "__main__":
             "train_loop_config": {
                 "lr": 0.1
                 if args.smoke_test
-                else tune.grid_search([0.1 * i for i in range(1, 10)]),
+                else tune.grid_search([0.1 * i for i in range(1, 5)]),  # 4 trials
                 "smoke_test": args.smoke_test,
             }
         },
