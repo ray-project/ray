@@ -168,6 +168,7 @@ from ray.actor import method  # noqa: E402,F401
 # TODO(qwang): We should remove this exporting in Ray2.0.
 from ray.cross_language import java_function, java_actor_class  # noqa: E402,F401
 from ray.runtime_context import get_runtime_context  # noqa: E402,F401
+from ray import autoscaler  # noqa: E402,F401
 from ray import internal  # noqa: E402,F401
 from ray import util  # noqa: E402,F401
 from ray import _private  # noqa: E402,F401
@@ -201,7 +202,6 @@ state = _DeprecationWrapper("state", ray._private.state)
 
 
 _subpackages = [
-    "autoscaler",
     "data",
     "workflow",
 ]
@@ -211,6 +211,7 @@ __all__ = [
     "_config",
     "get_runtime_context",
     "actor",
+    "autoscaler",
     "available_resources",
     "cancel",
     "client",
@@ -260,7 +261,6 @@ __all__ += [
 
 if sys.version_info < (3, 7):
     # TODO(Clark): Remove this one we drop Python 3.6 support.
-    from ray import autoscaler  # noqa: F401
     from ray import data  # noqa: F401
     from ray import workflow  # noqa: F401
 else:
