@@ -6,7 +6,8 @@ Metrics
 To help monitor Ray applications, Ray
 
 - Collects system-level metrics.
-- Provides the default Grafana dashboard.
+- Provides a default configuration for prometheus.
+- Provides a default Grafana dashboard.
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
 - Supports custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
