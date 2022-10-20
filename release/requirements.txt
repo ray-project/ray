@@ -1,4 +1,6 @@
+# Requirements to run release tests from the local machine (including client tests)
 click
+# Copy anyscale pin to requirements_buildkite.txt and util.py
 anyscale==0.5.51
 slackclient
 boto3
