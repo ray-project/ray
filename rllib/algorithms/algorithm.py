@@ -2082,7 +2082,7 @@ class Algorithm(Trainable):
         elif isinstance(env_specifier, type):
             env_id = env_specifier  # .__name__
 
-            if config.remote_worker_envs:
+            if config["remote_worker_envs"]:
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.

@@ -113,11 +113,10 @@ class DreamerConfig(AlgorithmConfig):
         self.num_steps_sampled_before_learning_starts = 0
 
         # .environment()
-        self.env_config = {
+        self.env_config.update({
             # Repeats action send by policy for frame_skip times in env
             "frame_skip": 2,
-        }
-
+        })
         # __sphinx_doc_end__
         # fmt: on
 

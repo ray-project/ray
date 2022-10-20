@@ -111,7 +111,6 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        optimizer: Optional[dict] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_replay_worker: Optional[int] = None,
         timeout_s_sampler_manager: Optional[float] = None,
@@ -121,9 +120,6 @@ class ApexDDPGConfig(DDPGConfig):
         """Sets the training related configuration.
 
         Args:
-            optimizer: Apex-DDPG optimizer settings (dict). Set the number of reply
-                buffer shards in here via the `num_replay_buffer_shards` key
-                (default=4).
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the AsyncRequestsManager class for more
                 details. Tuning these values is important when running experimens with
@@ -158,8 +154,6 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if optimizer is not None:
-            self.optimizer = optimizer
         if max_requests_in_flight_per_sampler_worker is not None:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
