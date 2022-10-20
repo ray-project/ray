@@ -280,8 +280,9 @@ if __name__ == "__main__":
     num_gpus = 1 if use_gpu else 0
     num_cpus = 0 if use_gpu else 1
 
-    # each file is 2GBs
-    stream_window_size = 2 * 1024 * 1024 * 1024
+    # Each file is around 4GB after reading into memory.
+    # Read 4 files in each window.
+    stream_window_size = 16 * 1024 * 1024 * 1024
 
     trainer = TorchTrainer(
         train_func,
