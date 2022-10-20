@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { DurationText } from "../../common/DurationText";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
@@ -75,6 +76,13 @@ export const JobRow = ({
         {end_time && end_time > 0
           ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
           : "-"}
+      </TableCell>
+      <TableCell align="center">
+        {start_time && start_time > 0 ? (
+          <DurationText startTime={start_time} endTime={end_time} />
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>
