@@ -124,6 +124,13 @@ class _ClientContext:
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
         local_major_minor_patch = f"{local_major_minor}.{sys.version_info[2]}"
+        local_patch_version = sys.version_info[0]
+
+        server_versions = conn_info["python_version"].split(".")
+        server_patch_version = ""
+        if len(server_versions) >= 3:
+            server_patch_version = server_versions[2]
+
         if not conn_info["python_version"].startswith(local_major_minor):
             msg = (
                 "Python minor versions differ between client and server:"
@@ -134,7 +141,7 @@ class _ClientContext:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
-        elif not conn_info["python_version"].startswith(local_major_minor_patch):
+        elif local_patch_version != server_patch_version:
             msg = (
                 "Python patch version differs between client and server. This "
                 "may cause serialization errors when transferring objects to and "
