@@ -208,6 +208,38 @@ py_test(
     args = ["--smoke-test"]
 )
 
+py_test(
+    name = "air_benchmark_data_smoke_test",
+    size = "small",
+    srcs = test_srcs,
+    main = "air_tests/air_benchmarks/workloads/data_benchmark.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/air:ml_lib",
+    ],
+    args = ["--dataset-size-gb=1", "--num-workers=1"]
+)
+
+# py_test(
+#     name = "air_benchmark_gpu_batch_prediction_smoke_test",
+#     size = "small",
+#     srcs = test_srcs,
+#     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
+#     tags = [
+#         "exclusive",
+#         "team:ml",
+#     ],
+#     deps = [
+#         "//:ray_lib",
+#         "//python/ray/air:ml_lib",
+#     ],
+#     args = ["--dataset-size-gb=1", "--smoke-test"]
+# )
+
 
 
 ####
