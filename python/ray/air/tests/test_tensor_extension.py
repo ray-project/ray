@@ -409,6 +409,18 @@ def test_tensor_array_concat(shape1, shape2):
             np.testing.assert_array_equal(arr, expected)
 
 
+def test_variable_shaped_tensor_array_uniform_dim():
+    shape1 = (3, 2, 2)
+    shape2 = (3, 4, 4)
+    a1 = np.arange(np.prod(shape1)).reshape(shape1)
+    a2 = np.arange(np.prod(shape2)).reshape(shape2)
+    ta = TensorArray([a1, a2])
+    assert len(ta) == 2
+    assert ta.is_variable_shaped
+    for a, expected in zip(ta.to_numpy(), [a1, a2]):
+        np.testing.assert_array_equal(a, expected)
+
+
 if __name__ == "__main__":
     import sys
 
