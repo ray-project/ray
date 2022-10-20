@@ -6,7 +6,7 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
-sleep_time = 5
+sleep_time = 300
 
 
 def test_max_running_tasks(num_tasks):
@@ -62,7 +62,7 @@ def no_resource_leaks():
     help="If set, it's a smoke test",
 )
 def test(num_tasks, smoke_test):
-    ray.init(address="auto", log_to_driver=True)
+    ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
