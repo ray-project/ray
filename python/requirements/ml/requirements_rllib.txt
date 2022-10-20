@@ -20,6 +20,7 @@ pymunk==6.0.0
 supersuit==3.3.3; python_version >= '3.7'
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet==3.2.0
+pygame==2.1.2
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.6.0
@@ -33,8 +34,6 @@ higher==0.2.1
 # For auto-generating an env-rendering Window.
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
-# Ray Serve example
-starlette==0.17.1
 # ONNX
 onnx==1.9.0
 onnxruntime==1.9.0
