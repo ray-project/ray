@@ -194,6 +194,7 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
               - file: serve/migration
+              - file: serve/direct-ingress
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -214,6 +215,7 @@ parts:
           - file: rllib/user-guides
             sections:
               - file: rllib/rllib-models
+              - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
@@ -312,7 +314,14 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
 
+  - caption: Monitoring and Debugging
+    chapters:
+      - file: ray-observability/monitoring-debugging/monitoring-debugging
+        title: User Guides
+      - file: ray-observability/index
+        title: Tools
 
   - caption: References
     chapters:
@@ -329,6 +338,5 @@ parts:
           - file: ray-contribute/fake-autoscaler
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
-      - file: ray-observability/index
       - file: ray-contribute/whitepaper
       - file: ray-use-cases/overview
