@@ -1,10 +1,16 @@
 # flake8: noqa
+import ray
 
-
+ray.init(
+    _system_config={
+        "memory_monitor_interval_ms": 100,
+        "memory_usage_threshold_fraction": 0.4,
+        "min_memory_free_bytes": -1,
+    },
+)
 # fmt: off
 # __oom_start__
 import ray
-
 
 @ray.remote
 def allocate_memory():
