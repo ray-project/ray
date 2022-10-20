@@ -43,6 +43,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -150,6 +151,7 @@
         "overrides": []
       },
       "fill": 10,
+      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
@@ -269,6 +271,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -389,6 +392,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -523,6 +527,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -641,6 +646,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -763,6 +769,7 @@
         },
         "overrides": []
       },
+      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -887,6 +894,7 @@
         },
         "overrides": []
       },
+      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -1005,6 +1013,7 @@
         },
         "overrides": []
       },
+      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -1125,6 +1134,7 @@
         },
         "overrides": []
       },
+      "description": "Network speed per node.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -1234,6 +1244,7 @@
         "defaults": {},
         "overrides": []
       },
+      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
