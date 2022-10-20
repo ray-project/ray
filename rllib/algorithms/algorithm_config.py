@@ -442,7 +442,7 @@ class AlgorithmConfig:
         if env is not None:
             self.env = env
             if self.evaluation_config is not None:
-                self.evaluation_config.env = env
+                self.evaluation_config["env"] = env
         if logger_creator is not None:
             self.logger_creator = logger_creator
 
