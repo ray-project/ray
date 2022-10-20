@@ -28,6 +28,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -41,7 +42,8 @@ class GcsActor {
   /// Create a GcsActor by actor_table_data.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
-  explicit GcsActor(rpc::ActorTableData actor_table_data, CounterMap<rpc::ActorTableData::ActorState>& counter)
+  explicit GcsActor(rpc::ActorTableData actor_table_data,
+                    CounterMap<rpc::ActorTableData::ActorState> &counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {}
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -49,7 +51,9 @@ class GcsActor {
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   /// \param task_spec Task spec of the actor.
-  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec, CounterMap<rpc::ActorTableData::ActorState>& counter)
+  explicit GcsActor(rpc::ActorTableData actor_table_data,
+                    rpc::TaskSpec task_spec,
+                    CounterMap<rpc::ActorTableData::ActorState> &counter)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
         counter_(counter) {
@@ -59,7 +63,9 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace, CounterMap<rpc::ActorTableData::ActorState>& counter)
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec,
+                    std::string ray_namespace,
+                    CounterMap<rpc::ActorTableData::ActorState> &counter)
       : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
@@ -161,6 +167,8 @@ class GcsActor {
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
+  /// Reference to the counter to use for actor state metrics tracking.
+  CounterMap<rpc::ActorTableData::ActorState> &counter_;
   /// Whether the actor's target node only grants or rejects the lease request.
   bool grant_or_reject_ = false;
 };
@@ -577,7 +585,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
   /// Counter of actors broken down by their state.
-  CounterMap<std::string> actor_state_counter_;
+  CounterMap<rpc::ActorTableData::ActorState> actor_state_counter_;
 
   // Debug info.
   enum CountType {

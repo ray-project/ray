@@ -479,7 +479,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   RAY_CHECK(!ray_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace, actor_state_counter_);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -624,7 +624,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), actor_namespace);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), actor_namespace, actor_state_counter_);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
@@ -1242,7 +1242,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         (!is_job_dead || actor_table_data.is_detached())) {
       const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
-      auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second);
+      auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second, actor_state_counter_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1274,7 +1274,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(actor_table_data);
+      auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(actor_id,
                                                 (int64_t)actor_table_data.timestamp());
