@@ -1,10 +1,9 @@
+from collections import OrderedDict
+import gym
 import logging
 import re
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
-
-import gym
 import tree  # pip install dm_tree
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -129,7 +128,7 @@ class DynamicTFPolicyV2(TFPolicy):
             prev_action_input=prev_action_input,
             prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
             explore=explore,
             timestep=timestep,
@@ -514,7 +513,7 @@ class DynamicTFPolicyV2(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).

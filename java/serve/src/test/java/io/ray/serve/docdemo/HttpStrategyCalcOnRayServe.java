@@ -33,7 +33,7 @@ public class HttpStrategyCalcOnRayServe {
   // docs-http-start
   private Gson gson = new Gson();
 
-  public String httpCalc(long time, String bank, String indicator) {
+  public String httpCalc(Long time, String bank, String indicator) {
     Map<String, Object> data = new HashMap<>();
     data.put("time", time);
     data.put("bank", bank);
@@ -42,7 +42,7 @@ public class HttpStrategyCalcOnRayServe {
     String result;
     try {
       result =
-          Request.post("http://127.0.0.1:8000/strategy")
+          Request.post("http://127.0.0.1:8000/http-strategy")
               .bodyString(gson.toJson(data), null)
               .execute()
               .returnContent()
@@ -56,7 +56,7 @@ public class HttpStrategyCalcOnRayServe {
   // docs-http-end
 
   // docs-calc-start
-  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+  public List<String> calc(Long time, Map<String, List<List<String>>> banksAndIndicators) {
 
     List<String> results = new ArrayList<>();
     for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
@@ -74,7 +74,7 @@ public class HttpStrategyCalcOnRayServe {
   // docs-parallel-calc-start
   private ExecutorService executorService = Executors.newFixedThreadPool(4);
 
-  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+  public List<String> parallelCalc(Long time, Map<String, List<List<String>>> banksAndIndicators) {
 
     List<String> results = new ArrayList<>();
     List<Future<String>> futures = new ArrayList<>();
@@ -99,6 +99,7 @@ public class HttpStrategyCalcOnRayServe {
 
   // docs-main-start
   public static void main(String[] args) {
+
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";
     String bank2 = "demo_bank_2";

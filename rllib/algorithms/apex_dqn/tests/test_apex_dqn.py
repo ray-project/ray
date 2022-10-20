@@ -147,7 +147,7 @@ class TestApexDQN(unittest.TestCase):
 
             lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2
-            self.assertGreaterEqual(lr, 0.1)
+            self.assertLessEqual(lr, 0.2)
 
             lr = _step_n_times(algo, 20)  # 200 timesteps
             # LR Annealed to 0.001

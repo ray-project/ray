@@ -18,6 +18,9 @@ from prometheus_client.core import (
 from opencensus.common.transports import sync
 from opencensus.stats import aggregation_data as aggregation_data_module
 from opencensus.stats import base_exporter
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Options(object):
@@ -144,7 +147,7 @@ class Collector(object):
         metric_description = desc["documentation"]
         label_keys = desc["labels"]
         metric_units = desc["units"]
-        assert len(tag_values) == len(label_keys)
+        assert len(tag_values) == len(label_keys), (tag_values, label_keys)
         # Prometheus requires that all tag values be strings hence
         # the need to cast none to the empty string before exporting. See
         # https://github.com/census-instrumentation/opencensus-python/issues/480
@@ -293,8 +296,10 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         """
 
         for v_data in view_data:
-            if v_data.tag_value_aggregation_data_map:
-                self.collector.add_view_data(v_data)
+            if v_data.tag_value_aggregation_data_map is None:
+                v_data.tag_value_aggregation_data_map = {}
+
+            self.collector.add_view_data(v_data)
 
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""

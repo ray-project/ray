@@ -186,13 +186,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        arr = np.zeros(self._init_shape(self._obs_space, {}), dtype=np.float32)
-        if isinstance(self._obs_space, gym.spaces.Discrete):
-            arr[observation] = 1
-        else:
-            for i, o in enumerate(observation):
-                arr[np.sum(self._obs_space.nvec[:i]) + o] = 1
-        return arr
+        return gym.spaces.utils.flatten(self._obs_space, observation).astype(np.float32)
 
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
@@ -359,8 +353,23 @@ def get_preprocessor(space: gym.Space) -> type:
     if isinstance(space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's GenericPixelPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind'` or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's AtariRamPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind' or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`."
+            "`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor

@@ -103,19 +103,17 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
-            )
-            .rollouts(
-                num_rollout_workers=1,
-                # Test with compression.
-                compress_observations=True,
-            )
-            .training(
                 train_batch_size=128,
                 model=dict(
                     # Settings in case we use an LSTM.
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
@@ -125,7 +123,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -262,15 +260,6 @@ class TestPPO(unittest.TestCase):
             post_std = get_value()
             assert post_std != 0.0, post_std
             trainer.stop()
-
-    def test_ppo_legacy_config(self):
-        """Tests, whether the old PPO config dict is still functional."""
-        ppo_config = ppo.DEFAULT_CONFIG
-        # Expect warning.
-        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Algorithm.
-        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
-        print(ppo_trainer.train())
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""

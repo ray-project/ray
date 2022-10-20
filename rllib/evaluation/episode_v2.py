@@ -43,7 +43,7 @@ class EpisodeV2:
             worker: The RolloutWorker instance, in which this episode runs.
         """
         # Unique id identifying this trajectory.
-        self.episode_id: int = random.randrange(2e9)
+        self.episode_id: int = random.randrange(int(1e18))
         # ID of the environment this episode is tracking.
         self.env_id = env_id
         # Summed reward across all agents in this episode.
@@ -333,8 +333,16 @@ class EpisodeV2:
         self.active_agent_steps = 0
         self.active_env_steps = 0
 
-    def has_init_obs(self, agent_id: AgentID) -> bool:
-        return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
+    def has_init_obs(self, agent_id: AgentID = None) -> bool:
+        """Returns whether this episode has initial obs for an agent.
+
+        If agent_id is None, return whether we have received any initial obs,
+        in other words, whether this episode is completely fresh.
+        """
+        if agent_id:
+            return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
+        else:
+            return any(list(self._has_init_obs.values()))
 
     def is_done(self, agent_id: AgentID) -> bool:
         return self._last_dones.get(agent_id, False)

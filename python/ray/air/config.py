@@ -160,7 +160,25 @@ class ScalingConfig:
     @property
     def _trainer_resources_not_none(self):
         if self.trainer_resources is None:
-            return {"CPU": 1}
+            if self.num_workers:
+                # For Google Colab, don't allocate resources to the base Trainer.
+                # Colab only has 2 CPUs, and because of this resource scarcity,
+                # we have to be careful on where we allocate resources. Since Colab
+                # is not distributed, the concern about many parallel Ray Tune trials
+                # leading to all Trainers being scheduled on the head node if we set
+                # `trainer_resources` to 0 is no longer applicable.
+                try:
+                    import google.colab  # noqa: F401
+
+                    trainer_resources = 0
+                except ImportError:
+                    trainer_resources = 1
+            else:
+                # If there are no additional workers, then always reserve 1 CPU for
+                # the Trainer.
+                trainer_resources = 1
+
+            return {"CPU": trainer_resources}
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
 
     @property
@@ -266,6 +284,9 @@ class ScalingConfig:
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
+    See :ref:`the AIR Dataset configuration guide <air-configure-ingest>` for
+    usage examples.
+
     This config defines how the Dataset should be read into the DataParallelTrainer.
     It configures the preprocessing, splitting, and ingest strategy per-dataset.
 
@@ -273,52 +294,48 @@ class DatasetConfig:
     ``datasets`` argument. Users have the opportunity to selectively override these
     configs by passing the ``dataset_config`` argument. Trainers can also define user
     customizable values (e.g., XGBoostTrainer doesn't support streaming ingest).
+
+    Args:
+        fit: Whether to fit preprocessors on this dataset. This can be set on at most
+            one dataset at a time. True by default for the "train" dataset only.
+        split: Whether the dataset should be split across multiple workers.
+            True by default for the "train" dataset only.
+        required: Whether to raise an error if the Dataset isn't provided by the user.
+            False by default.
+        transform: Whether to transform the dataset with the fitted preprocessor.
+            This must be enabled at least for the dataset that is fit.
+            True by default.
+        use_stream_api: Whether the dataset should be streamed into memory using
+            pipelined reads. When enabled, get_dataset_shard() returns DatasetPipeline
+            instead of Dataset. The amount of memory to use is controlled
+            by `stream_window_size`. False by default.
+        stream_window_size: Configure the streaming window size in bytes.
+            A good value is something like 20% of object store memory.
+            If set to -1, then an infinite window size will be used (similar to
+            bulk ingest). This only has an effect if use_stream_api is set.
+            Set to 1.0 GiB by default.
+        global_shuffle: Whether to enable global shuffle (per pipeline window
+            in streaming mode). Note that this is an expensive all-to-all operation,
+            and most likely you want to use local shuffle instead.
+            See https://docs.ray.io/en/master/data/faq.html and
+            https://docs.ray.io/en/master/ray-air/check-ingest.html.
+            False by default.
+        randomize_block_order: Whether to randomize the iteration order over blocks.
+            The main purpose of this is to prevent data fetching hotspots in the
+            cluster when running many parallel workers / trials on the same data.
+            We recommend enabling it always. True by default.
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
     # strategy applies to all Trainers?
 
-    # Whether to fit preprocessors on this dataset. This can be set on at most one
-    # dataset at a time.
-    # True by default for the "train" dataset only.
     fit: Optional[bool] = None
-
-    # Whether the dataset should be split across multiple workers.
-    # True by default for the "train" dataset only.
     split: Optional[bool] = None
-
-    # Whether to raise an error if the Dataset isn't provided by the user.
-    # False by default.
     required: Optional[bool] = None
-
-    # Whether to transform the dataset with the fitted preprocessor. This must be
-    # enabled at least for the dataset that is fit.
-    # True by default.
     transform: Optional[bool] = None
-
-    # Whether the dataset should be streamed into memory using pipelined reads.
-    # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
-    # The amount of memory to use is controlled by `stream_window_size`.
-    # False by default.
     use_stream_api: Optional[bool] = None
-
-    # Configure the streaming window size in bytes. A good value is something like
-    # 20% of object store memory. If set to -1, then an infinite window size will be
-    # used (similar to bulk ingest). This only has an effect if use_stream_api is set.
-    # Set to 1.0 GiB by default.
     stream_window_size: Optional[float] = None
-
-    # Whether to enable global shuffle (per pipeline window in streaming mode). Note
-    # that this is an expensive all-to-all operation, and most likely you want to use
-    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html and
-    # https://docs.ray.io/en/master/air/check-ingest.html.
-    # False by default.
     global_shuffle: Optional[bool] = None
-
-    # Whether to randomize the iteration order over blocks. The main purpose of this
-    # is to prevent data fetching hotspots in the cluster when running many parallel
-    # workers / trials on the same data. We recommend enabling it always.
-    # True by default.
     randomize_block_order: Optional[bool] = None
 
     def __repr__(self):
@@ -353,7 +370,7 @@ class DatasetConfig:
         """Merge two given DatasetConfigs, the second taking precedence.
 
         Raises:
-            ValueError if validation fails on the merged configs.
+            ValueError: if validation fails on the merged configs.
         """
         has_wildcard = WILDCARD_KEY in a
         result = a.copy()
