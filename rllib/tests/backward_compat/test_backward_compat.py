@@ -8,6 +8,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -97,7 +98,7 @@ class TestBackwardCompatibility(unittest.TestCase):
             )
 
             policies = Policy.from_checkpoint(path_to_checkpoint)
-            self.assertTrue("default_policy", policies)
+            self.assertTrue(DEFAULT_POLICY_ID in policies)
 
 
 if __name__ == "__main__":
