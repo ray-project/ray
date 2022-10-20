@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 import time
 
 from ray.actor import ActorHandle
+from ray.tune.result import TIMESTEPS_THIS_ITER
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.execution.common import (
@@ -147,7 +148,7 @@ class CollectMetrics:
                 ),
                 # tune.Trainable uses timesteps_this_iter for tracking
                 # total timesteps.
-                "timesteps_this_iter": metrics.counters[
+                TIMESTEPS_THIS_ITER: metrics.counters[
                     STEPS_TRAINED_THIS_ITER_COUNTER
                 ],
                 "agent_timesteps_total": metrics.counters.get(

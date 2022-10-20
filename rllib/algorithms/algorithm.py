@@ -118,7 +118,7 @@ from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_THIS_ITER
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
@@ -3142,17 +3142,22 @@ class Algorithm(Trainable):
         if self._by_agent_steps:
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-            # TODO: For CQL and other algos, count by trained steps.
-            results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
             # TODO: Backward compatibility.
             results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+            # This makes it so that tune counts our timesteps_total and we therefore
+            # keep track of it
+            results[TIMESTEPS_THIS_ITER] = step_ctx.trained
+            results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_TRAINED]
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-            # TODO: For CQL and other algos, count by trained steps.
-            results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
             # TODO: Backward compatibility.
             results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+            # This makes it so that tune counts our timesteps_total and we therefore
+            # keep track of it
+            results[TIMESTEPS_THIS_ITER] = step_ctx.trained
+            results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_TRAINED]
+
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
