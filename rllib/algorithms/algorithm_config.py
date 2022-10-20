@@ -1334,9 +1334,9 @@ class AlgorithmConfig:
                             )
                     # TODO: Switch from dict to AlgorithmConfigOverride, once available.
                     # Config not a dict.
-                    elif not isinstance(policy_spec.config, dict) and policy_spec.config is not None:
+                    elif not isinstance(policy_spec.config, (AlgorithmConfig, dict)) and policy_spec.config is not None:
                         raise ValueError(
-                            f"Multi-agent policy config for {pid} must be a dict, "
+                            f"Multi-agent policy config for {pid} must be a dict or AlgorithmConfig object, "
                             f"but got {type(policy_spec.config)}!"
                         )
             self.policies = policies
