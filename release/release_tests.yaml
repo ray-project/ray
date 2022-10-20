@@ -4764,22 +4764,20 @@
 #####################
 - name: agent_stress_test
   group: core-observability-test
-  working_dir: nightly_tests
+  working_dir: dashboard
 
   stable: false
 
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+    cluster_env: agent_stress_app_config.yaml
+    cluster_compute: agent_stress_compute.yaml
 
   run:
-    timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
+    timeout: 14400
+    prepare: rllib train file atari.yaml
+    script: python mem_check.py
     type: sdk_command
     file_manager: sdk
 
