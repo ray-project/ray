@@ -436,9 +436,7 @@ class TestAlgorithm(unittest.TestCase):
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = (
-            pg.PGConfig().environment(env="CartPole-v0")
-        )
+        config = pg.PGConfig().environment(env="CartPole-v0")
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))
