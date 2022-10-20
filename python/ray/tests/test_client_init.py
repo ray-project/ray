@@ -188,7 +188,7 @@ def test_python_patch_version(init_and_serve, monkeypatch):
     monkeypatch.setattr("ray.util.client.logger", logger_mock)
 
     server_handle = init_and_serve
-    mock_python_version = f"{sys.version_info[0]}.{sys.version_info[1]}.ASDF"
+    mock_python_version = f"{sys.version_info[0]}.{sys.version_info[1]}.54321"
 
     def mock_connection_response():
         return ray_client_pb2.ConnectionInfoResponse(
@@ -210,7 +210,7 @@ def test_python_patch_version(init_and_serve, monkeypatch):
     ray.disconnect()
 
     for call_args in logger_mock.warning.call_args_list:
-        if f"server is {mock_python_version}" in call_args.args[0]:
+        if f"server is {mock_python_version}" in call_args[0][0]:
             return
     raise RuntimeError("Patch version warning was not found")
 
