@@ -1,9 +1,11 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import Block, BlockMetadata
+from ray.data._internal.util import _get_spread_resources_iter
 
 
 class ShuffleOp:
@@ -76,12 +78,20 @@ class SimpleShufflePlan(ShuffleOp):
         shuffle_map = cached_remote_fn(self.map)
         shuffle_reduce = cached_remote_fn(self.reduce)
 
+        map_resource_iter = _get_spread_resources_iter(
+            ray.nodes(), "node:", map_ray_remote_args
+        )
+        reduce_resource_iter = _get_spread_resources_iter(
+            ray.nodes(), "node:", reduce_ray_remote_args
+        )
+
         map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
 
         shuffle_map_out = [
             shuffle_map.options(
                 **map_ray_remote_args,
                 num_returns=1 + output_num_blocks,
+                resource=next(map_resource_iter),
             ).remote(i, block, output_num_blocks, *self._map_args)
             for i, block in enumerate(input_blocks_list)
         ]
@@ -104,7 +114,11 @@ class SimpleShufflePlan(ShuffleOp):
 
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         shuffle_reduce_out = [
-            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
+            shuffle_reduce.options(
+                **reduce_ray_remote_args,
+                num_returns=2,
+                resources=next(reduce_resource_iter),
+            ).remote(
                 *self._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )

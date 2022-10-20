@@ -9,6 +9,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.data._internal.util import _get_spread_resources_iter
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -96,6 +97,9 @@ class LazyBlockList(BlockList):
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
         self._stats_actor = _get_or_create_stats_actor()
+        self._resource_iter = _get_spread_resources_iter(
+            ray.nodes(), "node:", self._remote_args
+        )
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -590,7 +594,11 @@ class LazyBlockList(BlockList):
         if context.block_splitting_enabled:
             return (
                 cached_remote_fn(_execute_read_task_split)
-                .options(num_returns="dynamic", **self._remote_args)
+                .options(
+                    num_returns="dynamic",
+                    **self._remote_args,
+                    resources=next(self._resource_iter),
+                )
                 .remote(
                     i=task_idx,
                     task=task,
@@ -603,7 +611,11 @@ class LazyBlockList(BlockList):
         else:
             return (
                 cached_remote_fn(_execute_read_task_nosplit)
-                .options(num_returns=2, **self._remote_args)
+                .options(
+                    num_returns=2,
+                    **self._remote_args,
+                    resources=next(self._resource_iter),
+                )
                 .remote(
                     i=task_idx,
                     task=task,
