@@ -3714,6 +3714,9 @@
 
   run:
     timeout: 7200
+    wait_for_nodes:
+      num_nodes: 101
+
     script: python stress_tests/test_dead_actors.py
     type: sdk_command
     file_manager: sdk
@@ -3726,6 +3729,8 @@
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
         --num-children=3
 
