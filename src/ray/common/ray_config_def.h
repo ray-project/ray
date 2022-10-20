@@ -22,8 +22,12 @@
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, true)
+
+/// Whether to enbale Ray event stats metrics export.
+/// Note that enabling this adds high overhead to
+/// Ray metrics agent.
+RAY_CONFIG(bool, event_stats_metrics, false)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -485,7 +489,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 5000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.

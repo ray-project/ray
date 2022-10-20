@@ -28,21 +28,30 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(   \
-      new ServerCallFactoryImpl<SERVICE,                       \
-                                SERVICE##Handler,              \
-                                HANDLER##Request,              \
-                                HANDLER##Reply>(               \
-          service_,                                            \
-          &SERVICE::AsyncService::Request##HANDLER,            \
-          service_handler_,                                    \
-          &SERVICE##Handler::Handle##HANDLER,                  \
-          cq,                                                  \
-          main_service_,                                       \
-          #SERVICE ".grpc_server." #HANDLER,                   \
-          MAX_ACTIVE_RPCS));                                   \
+#define _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, RECORD_METRICS) \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
+      new ServerCallFactoryImpl<SERVICE,                                        \
+                                SERVICE##Handler,                               \
+                                HANDLER##Request,                               \
+                                HANDLER##Reply>(                                \
+          service_,                                                             \
+          &SERVICE::AsyncService::Request##HANDLER,                             \
+          service_handler_,                                                     \
+          &SERVICE##Handler::Handle##HANDLER,                                   \
+          cq,                                                                   \
+          main_service_,                                                        \
+          #SERVICE ".grpc_server." #HANDLER,                                    \
+          MAX_ACTIVE_RPCS,                                                      \
+          RECORD_METRICS));                                                     \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
+
+/// Define a RPC service handler with gRPC server metrics enabled.
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
+
+/// Define a RPC service handler with gRPC server metrics disabled.
+#define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
