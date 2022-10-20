@@ -36,14 +36,19 @@ enum class ObjectStoreCounterType : int8_t {
 // ObjectLifeCycleManager into this class.
 class ObjectStatsCollector {
  public:
+  virtual ~ObjectStatsCollector() = default;
+
   // Called after a new object is created.
-  void OnObjectCreated(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectCreated(const LocalObject &object);
 
   // Called after an object is sealed.
-  void OnObjectSealed(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectSealed(const LocalObject &object);
 
   // Called BEFORE an object is deleted.
-  void OnObjectDeleting(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectDeleting(const LocalObject &object);
 
   // Called after an object's ref count is bumped by 1.
   void OnObjectRefIncreased(const LocalObject &object);

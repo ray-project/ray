@@ -90,11 +90,16 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
   const auto &kAllocation = obj.GetAllocation();
 
+  auto counter_type = ObjectStoreCounterType::MMAP_DISK_SEAL;
   if (kAllocation.fallback_allocated) {
-    bytes_by_loc_seal_.Decrement(ObjectStoreCounterType::MMAP_DISK_SEAL, kObjectSize);
+    counter_type = obj.Sealed() ? ObjectStoreCounterType::MMAP_DISK_SEAL
+                                : ObjectStoreCounterType::MMAP_DISK_UNSEAL;
   } else {
-    bytes_by_loc_seal_.Decrement(ObjectStoreCounterType::MMAP_SHM_SEAL, kObjectSize);
+    counter_type = obj.Sealed() ? ObjectStoreCounterType::MMAP_SHM_SEAL
+                                : ObjectStoreCounterType::MMAP_SHM_UNSEAL;
   }
+
+  bytes_by_loc_seal_.Decrement(counter_type, kObjectSize);
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
