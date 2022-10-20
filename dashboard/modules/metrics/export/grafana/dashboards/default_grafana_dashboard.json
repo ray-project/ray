@@ -769,7 +769,7 @@
         },
         "overrides": []
       },
-      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, it indicates the disk usage from the host machine. ",
+      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
