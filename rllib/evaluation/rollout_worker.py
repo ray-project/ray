@@ -1909,7 +1909,6 @@ class RolloutWorker(ParallelIteratorWorker):
             num_workers=self.num_workers,
             capacity=config.policy_map_capacity,
             path=config.policy_map_cache,
-            policy_config=config,
             session_creator=session_creator,
             seed=seed,
         )
