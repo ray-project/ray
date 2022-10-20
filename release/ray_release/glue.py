@@ -175,17 +175,21 @@ def run_release_test(
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
         if autosuspend_mins:
             cluster_manager.autosuspend_minutes = autosuspend_mins
+            autosuspend_base = autosuspend_mins
         else:
             cluster_manager.autosuspend_minutes = min(
                 DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
             )
+            # Maximum uptime should be based on the command timeout, not the
+            # DEFAULT_AUTOSUSPEND_MINS
+            autosuspend_base = int(command_timeout / 60) + 10
 
         maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
         if maximum_uptime_minutes:
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                cluster_manager.autosuspend_minutes + wait_timeout + 10
+                autosuspend_base + wait_timeout + 10
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
