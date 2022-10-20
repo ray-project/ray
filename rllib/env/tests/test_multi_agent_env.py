@@ -339,7 +339,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                         agent_id=agent_id,
                         policy_id=policy_id,
                         env_id=env_id,
-                        t=0,
                         init_obs=obs_batch[0],
                     )
                     for t in range(4):

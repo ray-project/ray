@@ -938,15 +938,17 @@ def _process_observations(
             # Record transition info if applicable.
             if last_observation is None:
                 sample_collector.add_init_obs(
-                    episode,
-                    agent_id,
-                    env_id,
-                    policy_id,
-                    filtered_obs,
+                    episode=episode,
+                    agent_id=agent_id,
+                    env_id=env_id,
+                    policy_id=policy_id,
+                    init_obs=filtered_obs,
+                    t=episode.length - 1,
                 )
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
+                    SampleBatch.T: episode.length - 1,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
@@ -1128,11 +1130,12 @@ def _process_observations(
 
                     # Add initial obs to buffer.
                     sample_collector.add_init_obs(
-                        new_episode,
-                        agent_id,
-                        env_id,
-                        policy_id,
-                        filtered_obs,
+                        episode=new_episode,
+                        agent_id=agent_id,
+                        env_id=env_id,
+                        policy_id=policy_id,
+                        init_obs=filtered_obs,
+                        t=new_episode.length - 1,
                     )
 
                     item = _PolicyEvalData(

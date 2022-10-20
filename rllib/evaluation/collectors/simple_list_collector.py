@@ -221,6 +221,7 @@ class SimpleListCollector(SampleCollector):
         env_id: EnvID,
         policy_id: PolicyID,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -251,6 +252,7 @@ class SimpleListCollector(SampleCollector):
             agent_index=episode._agent_index(agent_id),
             env_id=env_id,
             init_obs=init_obs,
+            t=t,
         )
 
         self.episodes[episode.episode_id] = episode
