@@ -207,6 +207,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
   }
 
+  bool stored_in_direct_memory = true;
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
   {
@@ -260,7 +261,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     cb(object_entry);
   }
 
-  return true;
+  return stored_in_direct_memory;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
