@@ -200,23 +200,22 @@ class StateApiClient(SubmissionClient):
                 )
 
                 response.raise_for_status()
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 err_str = f"Failed to make request to {self._address}{endpoint}. "
 
                 # Best-effort to give hints to users on potential reasons of connection
                 # failure.
-                if isinstance(e, requests.exceptions.ConnectionError):
-                    err_str += (
-                        "Failed to connect to API server. Please check the API server "
-                        "log for details. Make sure dependencies are installed with "
-                        "`pip install ray[default]`."
-                    )
+                err_str += (
+                    "Failed to connect to API server. Please check the API server "
+                    "log for details. Make sure dependencies are installed with "
+                    "`pip install ray[default]`. Please also check dashboard is "
+                    "available, and included when starting ray cluster, "
+                    "i.e. `ray start --include-dashboard=True --head`. "
+                )
+                if response is None:
                     raise ServerUnavailable(err_str)
 
-                if response is not None:
-                    err_str += (
-                        f"Response(url={response.url},status={response.status_code})"
-                    )
+                err_str += f"Response(url={response.url},status={response.status_code})"
                 raise RayStateApiException(err_str) from e
 
         # Process the response.
