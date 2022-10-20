@@ -49,6 +49,7 @@ proxy.py==2.4.3
 pyarrow==6.0.1
 pydantic==1.9.2
 PyOpenSSL==22.1.0
+pygame==2.1.2
 Pygments==2.13.0
 pyspark==3.1.2
 pytest==7.0.1
