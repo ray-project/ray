@@ -10,7 +10,6 @@ import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -94,6 +93,8 @@ trainer_init_per_worker.__test__ = False
 
 
 def test_mosaic_cifar10(ray_start_4_cpus_mosaic):
+    from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
+
     _ = train_mosaic_cifar10()
 
     # TODO : add asserts once reporting has been integrated
