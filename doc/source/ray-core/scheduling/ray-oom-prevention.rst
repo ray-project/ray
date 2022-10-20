@@ -1,5 +1,5 @@
 Ray Out-Of-Memory Prevention
-=========================
+============================
 
 If application tasks or actors consume a large amount of heap space, it can cause the node to run out of memory (OOM). When that happens, the operating system will start killing worker or raylet processes, disrupting the application. OOM may also stall metrics and if this happens on the head node, it may stall the :ref:`dashboard <ray-dashboard>` or other control processes and cause the cluster to become unusable.
 
@@ -22,7 +22,7 @@ The memory monitor is a component that runs within the raylet process on each no
 
 .. note::
 
-    The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is disabled by default and needs to be enabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to a value greater than zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <limiting-memory-usage-questions>`.
+    The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is disabled by default and needs to be enabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to a value greater than zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
 
 How do I configure the memory monitor?
 --------------------------------------
@@ -134,7 +134,7 @@ When a task or actor is killed by the memory monitor, it will retry using a sepa
 
 Let's create an application oom.py that will trigger the out-of-memory condition.
 
-.. literalinclude:: ../doc_code/limiting_memory_usage.py
+.. literalinclude:: ../doc_code/ray_oom_prevention.py
       :language: python
       :start-after: __oom_start__
       :end-before: __oom_end__
@@ -188,7 +188,7 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 
     Actors by default are non-retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0, therefore tasks are preferred to actors when it comes to what gets killed first. Actor right now doesn't use ``RAY_task_oom_retries`` and instead uses :ref:`max_restarts <actor-fault-tolerance>` when it is killed by the memory monitor. This is to be changed very soon.
 
-.. _limiting-memory-usage-worker-killing-policy:
+.. _ray-oom-prevention-worker-killing-policy:
 
 Worker killing policy
 ~~~~~~~~~~~~~~~~~~~~~
@@ -206,7 +206,7 @@ The raylet prioritizes killing tasks that are retriable, i.e. when ``max_retries
 
     Let's create an application two_actors.py that submits two actors, where the first one is retriable and the second one is non-retriable.
 
-    .. literalinclude:: ../doc_code/limiting_memory_usage.py
+    .. literalinclude:: ../doc_code/ray_oom_prevention.py
           :language: python
           :start-after: __two_actors_start__
           :end-before: __two_actors_end__
@@ -228,7 +228,7 @@ Addressing memory issues
 When the application fails due to OOM, consider increasing the memory capacity of the node or :ref:`limit the number of concurrently running tasks <core-patterns-limit-running-tasks>`.
 
 
-.. _limiting-memory-usage-questions:
+.. _oom-questions:
 
 Questions or Issues?
 --------------------
