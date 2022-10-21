@@ -66,13 +66,12 @@ tuner = tune.Tuner(train_func)
 results = tuner.fit()
 # __function_api_checkpointing_end__
 
-
+# fmt: off
 # __example_objective_start__
 def objective(x, a, b):
     return a * (x ** 0.5) + b
-
-
 # __example_objective_end__
+# fmt: on
 
 # __function_api_report_intermediate_metrics_start__
 from ray import tune
