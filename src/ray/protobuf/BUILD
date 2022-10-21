@@ -243,7 +243,7 @@ python_grpc_compile(
 proto_library(
     name = "agent_manager_proto",
     srcs = ["agent_manager.proto"],
-    deps = [":common_proto"],
+    deps = [],
 )
 
 python_grpc_compile(

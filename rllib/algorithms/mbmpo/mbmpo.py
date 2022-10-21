@@ -50,6 +50,7 @@ class MBMPOConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MBMPOConfig()
         >>> # Print out some default values.
@@ -60,11 +61,11 @@ class MBMPOConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaStar",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -460,7 +461,7 @@ class MBMPO(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfigDict:
-        return DEFAULT_CONFIG
+        return MBMPOConfig().to_dict()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -603,7 +604,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

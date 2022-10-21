@@ -40,7 +40,7 @@ SCHEDULER_IMPORT = {
 }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def create_scheduler(
     scheduler,
     **kwargs,

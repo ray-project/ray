@@ -22,13 +22,23 @@ _TRAINING_TIME_THRESHOLD = 1000
 _PREDICTION_TIME_THRESHOLD = 450
 
 _EXPERIMENT_PARAMS = {
+    "smoke_test": {
+        "data": (
+            "https://air-example-data-2.s3.us-west-2.amazonaws.com/"
+            "10G-xgboost-data.parquet/8034b2644a1d426d9be3bbfa78673dfa_000000.parquet"
+        ),
+        "num_workers": 1,
+        "cpus_per_worker": 1,
+    },
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
         "num_workers": 1,
+        "cpus_per_worker": 12,
     },
     "100G": {
         "data": "s3://air-example-data-2/100G-xgboost-data.parquet/",
         "num_workers": 10,
+        "cpus_per_worker": 12,
     },
 }
 
@@ -72,7 +82,7 @@ def run_and_time_it(f):
 
 
 @run_and_time_it
-def run_xgboost_training(data_path: str, num_workers: int):
+def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int):
     ds = data.read_parquet(data_path)
     params = {
         "objective": "binary:logistic",
@@ -82,7 +92,7 @@ def run_xgboost_training(data_path: str, num_workers: int):
     trainer = XGBoostTrainer(
         scaling_config=ScalingConfig(
             num_workers=num_workers,
-            resources_per_worker={"CPU": 12},
+            resources_per_worker={"CPU": cpus_per_worker},
         ),
         label_column="labels",
         params=params,
@@ -102,15 +112,26 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = data.read_parquet(data_path)
     ckpt = XGBoostCheckpoint.from_model(booster=model)
     batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
-    result = batch_predictor.predict(ds.drop_columns(["labels"]))
+    result = batch_predictor.predict(
+        ds.drop_columns(["labels"]),
+        # Improve prediction throughput for xgboost with larger
+        # batch size than default 4096
+        batch_size=8192,
+    )
     return result
 
 
 def main(args):
-    experiment_params = _EXPERIMENT_PARAMS[args.size]
-    data_path, num_workers = experiment_params["data"], experiment_params["num_workers"]
+    experiment = args.size if not args.smoke_test else "smoke_test"
+    experiment_params = _EXPERIMENT_PARAMS[experiment]
+
+    data_path, num_workers, cpus_per_worker = (
+        experiment_params["data"],
+        experiment_params["num_workers"],
+        experiment_params["cpus_per_worker"],
+    )
     print("Running xgboost training benchmark...")
-    training_time = run_xgboost_training(data_path, num_workers)
+    training_time = run_xgboost_training(data_path, num_workers, cpus_per_worker)
     print("Running xgboost prediction benchmark...")
     prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH, data_path)
     result = {
@@ -122,17 +143,18 @@ def main(args):
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if training_time > _TRAINING_TIME_THRESHOLD:
-        raise RuntimeError(
-            f"Training on XGBoost is taking {training_time} seconds, "
-            f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
-        )
+    if not args.disable_check:
+        if training_time > _TRAINING_TIME_THRESHOLD:
+            raise RuntimeError(
+                f"Training on XGBoost is taking {training_time} seconds, "
+                f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
+            )
 
-    if prediction_time > _PREDICTION_TIME_THRESHOLD:
-        raise RuntimeError(
-            f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
-            f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
-        )
+        if prediction_time > _PREDICTION_TIME_THRESHOLD:
+            raise RuntimeError(
+                f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
+                f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
+            )
 
 
 if __name__ == "__main__":
@@ -140,5 +162,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=str, choices=["10G", "100G"], default="100G")
+    # Add a flag for disabling the timeout error.
+    # Use case: running the benchmark as a documented example, in infra settings
+    # different from the formal benchmark's EC2 setup.
+    parser.add_argument(
+        "--disable-check",
+        action="store_true",
+        help="disable runtime error on benchmark timeout",
+    )
+    parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args()
     main(args)

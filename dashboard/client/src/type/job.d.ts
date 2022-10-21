@@ -55,14 +55,6 @@ export type JobDetail = {
   jobWorkers: Worker[];
 };
 
-export type JobDetailRsp = {
-  data: {
-    detail: JobDetail;
-  };
-  msg: string;
-  result: boolean;
-};
-
 export type JobListRsp = UnifiedJob[];
 
 export type UnifiedJob = {
@@ -85,4 +77,22 @@ export type DriverInfo = {
   node_ip_address: string;
   node_id: string;
   pid: string;
+};
+
+export type TaskProgress = {
+  numFinished?: number;
+  numPendingArgsAvail?: number;
+  numSubmittedToWorker?: number;
+  numRunning?: number;
+  numPendingNodeAssignment?: number;
+  numFailed?: number;
+  numUnknown?: number;
+};
+
+export type JobProgressRsp = {
+  data: {
+    detail: TaskProgress;
+  };
+  msg: string;
+  result: boolean;
 };

@@ -25,6 +25,8 @@ class RayBackend(MultiprocessingBackend):
     ):
         """``ray_remote_args`` will be used to configure Ray Actors
         making up the pool."""
+        ray._private.usage.usage_lib.record_library_usage("util.joblib")
+
         self.ray_remote_args = ray_remote_args
         super().__init__(
             nesting_level=nesting_level,

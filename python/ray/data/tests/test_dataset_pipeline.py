@@ -52,7 +52,7 @@ def test_warnings(shutdown_only):
     assert dataset.logger.infos == [
         "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
         "Blocks per window: 1 min, 1 max, 1 mean",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
@@ -117,7 +117,7 @@ def test_warnings(shutdown_only):
         "Blocks per window: 10 min, 10 max, 10 mean",
         f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
         "utilize the cluster.",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
@@ -632,6 +632,33 @@ def test_drop_columns(ray_start_regular_shared):
     ds = ray.data.from_pandas(df)
     pipe = ds.repeat()
     assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+
+
+def test_random_shuffle_each_window_with_custom_resource(ray_start_cluster):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    # Create two nodes which have different custom resources.
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    # Run pipeline in "bar" nodes.
+    pipe = ray.data.read_datasource(
+        ray.data.datasource.RangeDatasource(),
+        parallelism=10,
+        n=1000,
+        block_format="list",
+        ray_remote_args={"resources": {"bar": 1}},
+    ).repeat(3)
+    pipe = pipe.random_shuffle_each_window(resources={"bar": 1})
+    for batch in pipe.iter_batches():
+        pass
+    assert "1 nodes used" in pipe.stats()
+    assert "2 nodes used" not in pipe.stats()
 
 
 def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):

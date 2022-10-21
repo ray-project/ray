@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <ray/api/ray_exception.h>
+
 #include <cmath>
 
 namespace ray {

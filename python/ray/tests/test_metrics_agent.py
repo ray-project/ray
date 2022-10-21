@@ -2,6 +2,7 @@ import json
 import os
 import pathlib
 from pprint import pformat
+import requests
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +15,10 @@ from ray._private.test_utils import (
     fetch_prometheus,
     get_log_batch,
     wait_for_condition,
+    raw_metrics,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram
 
 os.environ["RAY_event_stats"] = "1"
@@ -29,9 +32,12 @@ except ImportError:
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
+    # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
+    # , e.g. need to see how users currently depend on them.
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
+    "ray_object_store_memory",
     "ray_object_manager_num_pull_requests",
     "ray_object_directory_subscriptions",
     "ray_object_directory_updates",
@@ -44,10 +50,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_operation_count",
-    "ray_operation_run_time_ms",
-    "ray_operation_queue_time_ms",
-    "ray_operation_active_count",
     "ray_grpc_server_req_process_time_ms",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
@@ -101,6 +103,14 @@ _AUTOSCALER_METRICS = [
 ]
 
 
+# This list of metrics should be kept in sync with
+# ray/python/ray/autoscaler/_private/prom_metrics.py
+_DASHBOARD_METRICS = [
+    "dashboard_api_requests_duration_seconds",
+    "dashboard_api_requests_count",
+]
+
+
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
     enable_metrics_collection = request.param
@@ -118,7 +128,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+    ray_context = ray.init(address=cluster.address)
 
     worker_should_exit = SignalActor.remote()
 
@@ -156,6 +166,9 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Infeasible task
     b = f.options(resources={"a": 1})  # noqa
 
+    # Make a request to the dashboard to produce some dashboard metrics
+    requests.get(f"http://{ray_context.dashboard_url}/nodes")
+
     node_info_list = ray.nodes()
     prom_addresses = []
     for node_info in node_info_list:
@@ -165,7 +178,10 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     autoscaler_export_addr = "{}:{}".format(
         cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
     )
-    yield prom_addresses, autoscaler_export_addr
+    dashboard_export_addr = "{}:{}".format(
+        cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
+    )
+    yield prom_addresses, autoscaler_export_addr, dashboard_export_addr
 
     ray.get(worker_should_exit.send.remote())
     ray.get(obj_refs)
@@ -177,7 +193,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
-    prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
+    (
+        prom_addresses,
+        autoscaler_export_addr,
+        dashboard_export_addr,
+    ) = _setup_cluster_for_test
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
@@ -229,6 +249,19 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert hist_count == 1
         assert hist_sum == 1.5
 
+        # Make sure the gRPC stats are not reported from workers. We disabled
+        # it there because it has too high cardinality.
+        grpc_metrics = [
+            "ray_grpc_server_req_process_time_ms",
+            "ray_grpc_server_req_new_total",
+            "ray_grpc_server_req_handling_total",
+            "ray_grpc_server_req_finished_total",
+        ]
+        for grpc_metric in grpc_metrics:
+            grpc_samples = [m for m in metric_samples if grpc_metric in m.name]
+            for grpc_sample in grpc_samples:
+                assert grpc_sample.labels["Component"] != "core_worker"
+
         # Autoscaler metrics
         _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
         for metric in _AUTOSCALER_METRICS:
@@ -237,6 +270,15 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert any(
                 name.startswith(metric) for name in autoscaler_metric_names
             ), f"{metric} not in {autoscaler_metric_names}"
+
+        # Dashboard metrics
+        _, dashboard_metric_names, _ = fetch_prometheus([dashboard_export_addr])
+        for metric in _DASHBOARD_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(
+                name.startswith(metric) for name in dashboard_metric_names
+            ), f"{metric} not in {dashboard_metric_names}"
 
     def wrap_test_case_for_retry():
         try:
@@ -254,6 +296,39 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     except RuntimeError:
         print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+def test_operation_stats(monkeypatch, shutdown_only):
+    # Test operation stats are available when flag is on.
+    operation_metrics = [
+        "ray_operation_count",
+        "ray_operation_run_time_ms",
+        "ray_operation_queue_time_ms",
+        "ray_operation_active_count",
+    ]
+    with monkeypatch.context() as m:
+        m.setenv("RAY_event_stats_metrics", "1")
+        addr = ray.init()
+
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        def verify():
+            metrics = raw_metrics(addr)
+            metric_names = set(metrics.keys())
+            for op_metric in operation_metrics:
+                assert op_metric in metric_names
+                samples = metrics[op_metric]
+                components = set()
+                for sample in samples:
+                    components.add(sample.labels["Component"])
+            assert {"raylet", "gcs_server", "core_worker"} == components
+            return True
+
+        wait_for_condition(verify, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
@@ -278,7 +353,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         autoscaler_export_addr = "{}:{}".format(
             cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
         )
-        return node_export_addrs + [autoscaler_export_addr]
+        dashboard_export_addr = "{}:{}".format(
+            cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
+        )
+        return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert set(get_metrics_export_address_from_node(nodes)) == set(
@@ -470,7 +548,7 @@ def test_custom_metrics_validation(shutdown_only):
 @pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
-    prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
+    prom_addresses, autoscaler_export_addr, _ = _setup_cluster_for_test
 
     def verify_metrics_not_collected():
         components_dict, metric_names, _ = fetch_prometheus(prom_addresses)
@@ -481,7 +559,7 @@ def test_metrics_disablement(_setup_cluster_for_test):
                 return False
 
         # Make sure metrics are not there.
-        for metric in _METRICS + _AUTOSCALER_METRICS:
+        for metric in _METRICS + _AUTOSCALER_METRICS + _DASHBOARD_METRICS:
             if metric in metric_names:
                 print("f{metric} exists although it should not.")
                 return False

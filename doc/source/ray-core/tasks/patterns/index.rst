@@ -13,15 +13,4 @@ You may also be interested in visiting the design patterns section for :ref:`act
 .. toctree::
     :maxdepth: -1
 
-    tree-of-tasks
     map-reduce
-    limit-tasks
-    generators
-    closure-capture
-    fine-grained-tasks
-    global-variables
-    ray-get-loop
-    submission-order
-    too-many-results
-    redefine-task-actor-loop
-    unnecessary-ray-get

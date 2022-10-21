@@ -6,7 +6,7 @@ from ray import workflow
 from ray.tests.conftest import *  # noqa
 
 
-def test_step_failure(workflow_start_regular_shared, tmp_path):
+def test_task_failure(workflow_start_regular_shared, tmp_path):
     @ray.remote(max_retries=10, retry_exceptions=True)
     def unstable_task_exception(n):
         v = int((tmp_path / "test").read_text())

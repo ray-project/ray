@@ -4,6 +4,8 @@ import pytest
 
 import ray
 
+import time
+
 
 def main():
     """Submits custom resource request.
@@ -22,6 +24,12 @@ def main():
     ray.autoscaler.sdk.request_resources(
         bundles=[{"Custom2": 3}, {"Custom2": 3}, {"Custom2": 3}]
     )
+
+    while (
+        ray.cluster_resources().get("Custom2", 0) < 3
+        and ray.cluster_resources().get("Custom2", 0) < 6
+    ):
+        time.sleep(0.1)
 
     # Output something to validate the job logs.
     print("Submitted custom scale request!")

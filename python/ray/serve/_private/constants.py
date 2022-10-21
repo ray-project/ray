@@ -25,6 +25,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: gRPC Port
+DEFAULT_GRPC_PORT = 9000
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
@@ -96,7 +99,29 @@ HANDLE_METRIC_PUSH_INTERVAL_S = 10
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
+# Don't pin controller on the headnode
+# By default it's true.
+RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE = (
+    os.environ.get("RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE") != "0"
+)
+
+# Timeout for GCS RPC request
+RAY_GCS_RPC_TIMEOUT_S = 3.0
+
+# Env var to control legacy sync deployment handle behavior in DAG.
+SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
+
 
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"
+
+
+# Deprecation message for V1 migrations.
+MIGRATION_MESSAGE = (
+    "See https://docs.ray.io/en/latest/serve/index.html for more information."
+)
+
+
+# [EXPERIMENTAL] Disable the http actor
+SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"

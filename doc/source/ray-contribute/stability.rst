@@ -13,6 +13,8 @@ An API can be labeled:
 
 Ray's PublicAPI stability definitions are based off the `Google stability level guidelines <https://google.aip.dev/181>`_, with minor differences:
 
+.. _api-stability-alpha:
+
 Alpha
 ~~~~~
 

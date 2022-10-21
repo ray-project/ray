@@ -66,7 +66,7 @@ def test_np_in_composed_model(serve_instance):
 
         async def __call__(self):
             data = np.ones((10, 10))
-            return await self.model.remote(data)
+            return await (await self.model.remote(data))
 
     sum_d = Sum.bind()
     cm_d = ComposedModel.bind(sum_d)
@@ -190,8 +190,8 @@ def test_out_of_order_chaining(serve_instance):
             self.m2 = m2
 
         async def run(self, _id):
-            r1_ref = self.m1.compute.remote(_id)
-            r2_ref = self.m2.compute.remote(r1_ref)
+            r1_task: asyncio.Task = self.m1.compute.remote(_id)
+            r2_ref = await self.m2.compute.remote(r1_task)
             await r2_ref
 
     @serve.deployment

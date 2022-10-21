@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
 from ray.serve._private.common import RunningReplicaInfo
@@ -17,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -43,6 +43,20 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
+
+    async def resolve_async_tasks(self):
+        """Find all unresolved asyncio.Task and gather them all at once."""
+        scanner = _PyObjScanner(source_type=asyncio.Task)
+        tasks = scanner.find_nodes((self.args, self.kwargs))
+
+        if len(tasks) > 0:
+            resolved = await asyncio.gather(*tasks)
+            replacement_table = dict(zip(tasks, resolved))
+            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+
+        # Make the scanner GCable to avoid memory leak
+        scanner.clear()
 
 
 class ReplicaSet:
@@ -87,6 +101,17 @@ class ReplicaSet:
             {"deployment": self.deployment_name}
         )
 
+    def _reset_replica_iterator(self):
+        """Reset the iterator used to load balance replicas.
+
+        This call is expected to be called after the replica membership has
+        been updated. It will shuffle the replicas randomly to avoid multiple
+        handle sending requests in the same order.
+        """
+        replicas = list(self.in_flight_queries.keys())
+        random.shuffle(replicas)
+        self.replica_iterator = itertools.cycle(replicas)
+
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
             self.in_flight_queries.keys(), running_replicas
@@ -97,14 +122,13 @@ class ReplicaSet:
 
         for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
-            del self.in_flight_queries[removed_replica]
+            # Replicas might already been deleted due to early detection of
+            # actor error.
+            self.in_flight_queries.pop(removed_replica, None)
 
         if len(added) > 0 or len(removed) > 0:
-            # Shuffle the keys to avoid synchronization across clients.
-            replicas = list(self.in_flight_queries.keys())
-            random.shuffle(replicas)
-            self.replica_iterator = itertools.cycle(replicas)
             logger.debug(f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
+            self._reset_replica_iterator()
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -138,11 +162,11 @@ class ReplicaSet:
                     RequestMetadataProto(
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method,
+                        call_method=query.metadata.call_method
+                        if query.metadata.call_method != "__call__"
+                        else "call",
                     ).SerializeToString(),
-                    RequestWrapperProto(
-                        body=msgpack_serialize(arg)
-                    ).SerializeToString(),
+                    [arg],
                 )
                 self.in_flight_queries[replica].add(user_ref)
             else:
@@ -160,9 +184,38 @@ class ReplicaSet:
 
     def _drain_completed_object_refs(self) -> int:
         refs = self._all_query_refs
+        # NOTE(simon): even though the timeout is 0, a large number of refs can still
+        # cause some blocking delay in the event loop. Consider moving this to async?
         done, _ = ray.wait(refs, num_returns=len(refs), timeout=0)
-        for replica_in_flight_queries in self.in_flight_queries.values():
-            replica_in_flight_queries.difference_update(done)
+        replicas_to_remove = []
+        for replica_info, replica_in_flight_queries in self.in_flight_queries.items():
+            completed_queries = replica_in_flight_queries.intersection(done)
+            if len(completed_queries):
+                try:
+                    # NOTE(simon): this ray.get call should be cheap because all these
+                    # refs are ready as indicated by previous `ray.wait` call.
+                    ray.get(list(completed_queries))
+                except RayActorError:
+                    logger.debug(
+                        f"Removing {replica_info.replica_tag} from replica set "
+                        "because the actor exited."
+                    )
+                    replicas_to_remove.append(replica_info)
+                except RayTaskError:
+                    # Ignore application error.
+                    pass
+                except Exception:
+                    logger.exception(
+                        "Handle received unexpected error when processing request."
+                    )
+
+                replica_in_flight_queries.difference_update(completed_queries)
+
+        if len(replicas_to_remove) > 0:
+            for replica_info in replicas_to_remove:
+                self.in_flight_queries.pop(replica_info, None)
+            self._reset_replica_iterator()
+
         return len(done)
 
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
@@ -176,6 +229,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
+        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(

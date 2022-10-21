@@ -54,9 +54,15 @@ class DataSource:
     # {node ip (str): error entries by pid
     # (dict from pid to list of latest err entries)}
     ip_and_pid_to_errors = Dict()
+    # The current scheduling stats (e.g., pending actor creation tasks)
+    # of gcs.
+    # {task type(str): task list}
+    gcs_scheduling_stats = Dict()
 
 
 class DataOrganizer:
+    head_node_ip = None
+
     @staticmethod
     @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
     async def purge():
@@ -171,6 +177,13 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_info["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
         # Merge actors to node physical stats
         node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
@@ -201,6 +214,13 @@ class DataOrganizer:
         node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_summary["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
 
         await GlobalSignals.node_summary_fetched.send(node_summary)
 
@@ -275,12 +295,17 @@ class DataOrganizer:
 
     @classmethod
     async def get_actor_creation_tasks(cls):
+        # Collect infeasible tasks in worker nodes.
         infeasible_tasks = sum(
             (
                 list(node_stats.get("infeasibleTasks", []))
                 for node_stats in DataSource.node_stats.values()
             ),
             [],
+        )
+        # Collect infeasible actor creation tasks in gcs.
+        infeasible_tasks.extend(
+            list(DataSource.gcs_scheduling_stats.get("infeasibleTasks", []))
         )
         new_infeasible_tasks = []
         for task in infeasible_tasks:
@@ -289,12 +314,17 @@ class DataOrganizer:
             task["state"] = "INFEASIBLE"
             new_infeasible_tasks.append(task)
 
+        # Collect pending tasks in worker nodes.
         resource_pending_tasks = sum(
             (
                 list(data.get("readyTasks", []))
                 for data in DataSource.node_stats.values()
             ),
             [],
+        )
+        # Collect pending actor creation tasks in gcs.
+        resource_pending_tasks.extend(
+            list(DataSource.gcs_scheduling_stats.get("readyTasks", []))
         )
         new_resource_pending_tasks = []
         for task in resource_pending_tasks:

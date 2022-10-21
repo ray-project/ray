@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-models-walkthrough:
+
 Models, Preprocessors, and Action Distributions
 ===============================================
 
@@ -149,7 +151,7 @@ Custom Preprocessors and Environment Filters
 
 .. warning::
 
-    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
+    Custom preprocessors have been fully deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
     Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
     Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
 

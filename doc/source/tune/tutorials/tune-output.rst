@@ -1,5 +1,5 @@
-A Guide To Logging & Outputs in Tune
-====================================
+Logging & Outputs in Tune
+=========================
 
 Tune by default will log results for TensorBoard, CSV, and JSON formats.
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
@@ -33,27 +33,6 @@ You can specify the ``local_dir`` and ``trainable_name``:
         run_config=air.RunConfig(local_dir="./results", name="test_experiment"))
     results = tuner.fit()
 
-To specify custom trial folder names, you can pass use the ``trial_name_creator`` argument to `tune.run`.
-This takes a function with the following signature:
-
-.. code-block:: python
-
-    def trial_name_string(trial):
-        """
-        Args:
-            trial (Trial): A generated trial object.
-
-        Returns:
-            trial_name (str): String representation of Trial.
-        """
-        return str(trial)
-
-    tune.run(
-        MyTrainableClass,
-        name="example-experiment",
-        num_samples=1,
-        trial_name_creator=trial_name_string
-    )
 
 To learn more about Trials, see its detailed API documentation: :ref:`trial-docstring`.
 
@@ -62,7 +41,7 @@ To learn more about Trials, see its detailed API documentation: :ref:`trial-docs
 How to log to TensorBoard?
 --------------------------
 
-Tune automatically outputs TensorBoard files during ``tune.run``.
+Tune automatically outputs TensorBoard files during ``Tuner.fit()``.
 To visualize learning in tensorboard, install tensorboardX:
 
 .. code-block:: bash

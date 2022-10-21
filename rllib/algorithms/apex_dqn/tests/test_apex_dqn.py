@@ -26,9 +26,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
-                replay_buffer_config={
-                    "learning_starts": 1000,
-                },
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -53,9 +51,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
-                replay_buffer_config={
-                    "learning_starts": 1000,
-                },
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -110,7 +106,6 @@ class TestApexDQN(unittest.TestCase):
                 replay_buffer_config={
                     "no_local_replay_buffer": True,
                     "type": "MultiAgentPrioritizedReplayBuffer",
-                    "learning_starts": 10,
                     "capacity": 100,
                     "prioritized_replay_alpha": 0.6,
                     # Beta parameter for sampling from prioritized replay buffer.
@@ -121,9 +116,14 @@ class TestApexDQN(unittest.TestCase):
                 # Initial lr, doesn't really matter because of the schedule below.
                 lr=0.2,
                 lr_schedule=[[0, 0.2], [100, 0.001]],
+                # Number of timesteps to collect from rollout workers before we start
+                # sampling from replay buffers for learning.
+                num_steps_sampled_before_learning_starts=10,
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
                 # 0 metrics reporting delay, this makes sure timestep,
                 # which lr depends on, is updated after each worker rollout.
                 min_time_s_per_iteration=0,
@@ -147,7 +147,7 @@ class TestApexDQN(unittest.TestCase):
 
             lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2
-            self.assertGreaterEqual(lr, 0.1)
+            self.assertLessEqual(lr, 0.2)
 
             lr = _step_n_times(algo, 20)  # 200 timesteps
             # LR Annealed to 0.001

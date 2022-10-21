@@ -5,6 +5,8 @@ from ray.train._internal.utils import Singleton
 from ray.train._internal.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 
+from ray.widgets import make_table_html_repr
+
 EncodedData = TypeVar("EncodedData")
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,9 @@ class BackendConfig:
     @property
     def backend_cls(self):
         return Backend
+
+    def _repr_html_(self) -> str:
+        return make_table_html_repr(obj=self, title=type(self).__name__)
 
 
 @DeveloperAPI

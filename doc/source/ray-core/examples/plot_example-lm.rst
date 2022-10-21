@@ -16,7 +16,7 @@ You can view the `code for this example`_.
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm
 
 
-To use Ray cluster launcher on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on the  :ref:`Automatic Cluster Setup page <cluster-cloud>`.
+To use Ray cluster launcher on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on the  :ref:`Automatic Cluster Setup page <cluster-index>`.
 We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
 
 In the example config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.

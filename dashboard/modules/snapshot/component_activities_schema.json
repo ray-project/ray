@@ -15,6 +15,9 @@
         },
         "timestamp": {
           "type": ["number"]
+        },
+        "last_activity_at": {
+          "type": ["number", "null"]
         }
       },
       "required": ["is_active"]

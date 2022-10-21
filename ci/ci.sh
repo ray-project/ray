@@ -133,11 +133,14 @@ test_core() {
 }
 
 prepare_docker() {
+    rm "${WORKSPACE_DIR}"/python/dist/* ||:
     pushd "${WORKSPACE_DIR}/python"
+    pip install -e . --verbose
     python setup.py bdist_wheel
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
     cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
     base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
     echo "
     FROM $base_image
@@ -147,7 +150,7 @@ prepare_docker() {
     COPY ./*.whl /
     EXPOSE 8000
     EXPOSE 10001
-    RUN pip install ray[serve] --find-links=/ && pip install redis
+    RUN pip install /${wheel}[serve]
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
@@ -170,6 +173,9 @@ test_python() {
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_gradio
+      -python/ray/serve:test_gradio_visualization
+      -python/ray/serve:test_air_integrations_gpu
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -193,6 +199,7 @@ test_python() {
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -201,7 +208,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/run/bazel-sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
@@ -300,7 +307,8 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make doctest
+      pip install datasets==2.0.0
+      RAY_MOCK_MODULES=0 make doctest
     fi
   )
 }
@@ -748,10 +756,7 @@ build() {
   fi
 }
 
-test_minimal() {
-  ./ci/env/install-minimal.sh "$1"
-  ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py
+run_minimal_test() {
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
   # bazel test cannot recognize the option.
@@ -783,8 +788,13 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+
+  # Todo: Make compatible with python 3.9/3.10
+  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
+    # shellcheck disable=SC2086
+    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+  fi
+
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
@@ -793,6 +803,23 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+}
+
+test_minimal() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  run_minimal_test "$1"
+}
+
+
+test_latest_core_dependencies() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  ./ci/env/install-core-prerelease-dependencies.sh
+  run_minimal_test "$1"
 }
 
 _main() {

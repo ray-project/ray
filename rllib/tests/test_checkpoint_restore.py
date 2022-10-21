@@ -28,6 +28,7 @@ CONFIGS = {
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ARS": {
         "explore": False,
@@ -39,9 +40,11 @@ CONFIGS = {
     "DDPG": {
         "explore": False,
         "min_sample_timesteps_per_iteration": 100,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "DQN": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ES": {
         "explore": False,
@@ -59,9 +62,11 @@ CONFIGS = {
     },
     "SimpleQ": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "SAC": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
 }
 

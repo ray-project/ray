@@ -95,7 +95,7 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].split(":")
+            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -333,6 +333,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
+        self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -1472,3 +1473,17 @@ class Node:
 
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()
+
+    def _record_stats(self):
+        # Initialize the internal kv so that the metrics can be put
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        if self.head:
+            # record head node stats
+            gcs_storage_type = (
+                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
+            )
+            record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)

@@ -1,6 +1,7 @@
 from ray._private.ray_constants import env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
+DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
 DASHBOARD_AGENT_LOG_FILENAME = "dashboard_agent.log"
 DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS = 2
 RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME = "RAY_STATE_SERVER_MAX_HTTP_REQUEST"
@@ -26,6 +27,7 @@ GCS_CHECK_ALIVE_RPC_TIMEOUT = env_integer("GCS_CHECK_ALIVE_RPC_TIMEOUT", 10)
 GCS_RETRY_CONNECT_INTERVAL_SECONDS = env_integer(
     "GCS_RETRY_CONNECT_INTERVAL_SECONDS", 2
 )
+GCS_RPC_TIMEOUT_SECONDS = 3
 # aiohttp_cache
 AIOHTTP_CACHE_TTL_SECONDS = 2
 AIOHTTP_CACHE_MAX_SIZE = 128
@@ -50,3 +52,6 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
+
+# Port that dashboard prometheus metrics will be exported to
+DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)

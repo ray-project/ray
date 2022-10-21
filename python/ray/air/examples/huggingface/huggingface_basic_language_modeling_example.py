@@ -1,6 +1,8 @@
 # Based on
 # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
 
+# This example is tested with transformers==4.19.1
+
 import argparse
 import tempfile
 
@@ -88,11 +90,12 @@ def main(
         training_args = TrainingArguments(
             training_dir,
             evaluation_strategy="epoch",
+            save_strategy="epoch",
+            logging_strategy="epoch",
             num_train_epochs=num_epochs,
             learning_rate=2e-5,
             weight_decay=0.01,
             disable_tqdm=True,
-            save_strategy="epoch",
             # Required to avoid an exception
             no_cuda=not torch.cuda.is_available(),
         )

@@ -9,7 +9,7 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, TypeVar, Union
 
 import fastapi.encoders
 import numpy as np
@@ -21,9 +21,10 @@ import ray
 import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT
+from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, RAY_GCS_RPC_TIMEOUT_S
 from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
+from ray._raylet import MessagePackSerializer
 
 import __main__
 
@@ -33,12 +34,18 @@ except ImportError:
     pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+MESSAGE_PACK_OFFSET = 9
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
 # for those option because None is a valid new value.
 class DEFAULT(Enum):
     VALUE = 1
+
+
+# Type alias: objects that can be DEFAULT.VALUE have type Default[T]
+T = TypeVar("T")
+Default = Union[DEFAULT, T]
 
 
 def parse_request_item(request_item):
@@ -145,19 +152,21 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_all_node_ids() -> List[Tuple[str, str]]:
+def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
     """Get IDs for all live nodes in the cluster.
 
     Returns a list of (node_id: str, ip_address: str). The node_id can be
     passed into the Ray SchedulingPolicy API.
     """
-    node_ids = []
-    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-    for node in sorted(ray.nodes(), key=lambda entry: entry["NodeID"]):
-        # print(node)
-        if node["Alive"]:
-            node_ids.append((node["NodeID"], node["NodeName"]))
+    nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
+    node_ids = [
+        (ray.NodeID.from_binary(node.node_id).hex(), node.node_name)
+        for node in nodes.node_info_list
+        if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
+    ]
 
+    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
+    sorted(node_ids)
     return node_ids
 
 
@@ -237,6 +246,28 @@ def msgpack_serialize(obj):
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
+
+
+def msgpack_deserialize(data):
+    # todo: Ray does not provide a msgpack deserialization api.
+    try:
+        obj = MessagePackSerializer.loads(data[MESSAGE_PACK_OFFSET:], None)
+    except Exception:
+        raise
+    return obj
+
+
+def merge_dict(dict1, dict2):
+    if dict1 is None and dict2 is None:
+        return None
+    if dict1 is None:
+        dict1 = dict()
+    if dict2 is None:
+        dict2 = dict()
+    result = dict()
+    for key in dict1.keys() | dict2.keys():
+        result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
+    return result
 
 
 def get_deployment_import_path(
@@ -428,3 +459,41 @@ def in_interactive_shell():
     import __main__ as main
 
     return not hasattr(main, "__file__")
+
+
+def guarded_deprecation_warning(*args, **kwargs):
+    """Wrapper for deprecation warnings, guarded by a flag."""
+    if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
+        from ray._private.utils import deprecated
+
+        return deprecated(*args, **kwargs)
+    else:
+
+        def noop_decorator(func):
+            return func
+
+        return noop_decorator
+
+
+def snake_to_camel_case(snake_str: str) -> str:
+    """Convert a snake case string to camel case."""
+
+    words = snake_str.strip("_").split("_")
+    return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
+
+
+def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
+    """Converts dictionary's keys from snake case to camel case.
+
+    Does not modify original dictionary.
+    """
+
+    camel_dict = dict()
+
+    for key, val in snake_dict.items():
+        if isinstance(key, str):
+            camel_dict[snake_to_camel_case(key)] = val
+        else:
+            camel_dict[key] = val
+
+    return camel_dict

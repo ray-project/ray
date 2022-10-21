@@ -32,21 +32,21 @@ def clear_marks():
 
 def assert_task_checkpoints(wf_storage, task_id, mode: str):
     """Assert the checkpoint status of a workflow task."""
-    result = wf_storage.inspect_step(task_id)
+    result = wf_storage.inspect_task(task_id)
     if mode == "all_skipped":
         assert not result.output_object_valid
-        assert result.output_step_id is None
+        assert result.output_task_id is None
         assert not result.args_valid
         assert not result.func_body_valid
-        assert not result.step_options
+        assert not result.task_options
     elif mode == "output_skipped":
         assert not result.output_object_valid
-        assert result.output_step_id is None
+        assert result.output_task_id is None
         assert result.args_valid
         assert result.func_body_valid
-        assert result.step_options is not None
+        assert result.task_options is not None
     elif mode == "checkpointed":
-        assert result.output_object_valid or result.output_step_id is not None
+        assert result.output_object_valid or result.output_task_id is not None
     else:
         raise ValueError("Unknown mode.")
 

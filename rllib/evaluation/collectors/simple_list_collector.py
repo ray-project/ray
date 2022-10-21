@@ -623,7 +623,7 @@ class SimpleListCollector(SampleCollector):
 
             # Reached the fragment-len -> We should build an MA-Batch.
             if built_steps + ongoing_steps >= self.rollout_fragment_length:
-                if self.count_steps_by != "agent_steps":
+                if self.count_steps_by == "env_steps":
                     assert built_steps + ongoing_steps == self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.

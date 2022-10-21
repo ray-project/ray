@@ -86,7 +86,7 @@ lazy operations that are compatible:
 
 * Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
 * Same compute strategy: Ray tasks vs Ray actors
-* Same resource specification, e.g. ``num_cpus`` or ``num_cpus`` requests
+* Same resource specification, e.g. ``num_cpus`` or ``num_gpus`` requests
 
 Read stages and subsequent map-like transformations will usually be fused together.
 All-to-all transformations such as
@@ -135,9 +135,10 @@ as either `Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.
 or `Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
 
 Different ways of creating Datasets leads to a different starting internal format:
+
 * Reading tabular files (Parquet, CSV, JSON) creates Arrow blocks initially.
 * Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
-* Reading NumPy files or converting from NumPy ndarrays creaates Arrow blocks.
+* Reading NumPy files or converting from NumPy ndarrays creates Arrow blocks.
 
 However, this internal format is not exposed to the user. Datasets converts between formats
 as needed internally depending on the specified ``batch_format`` of transformations.

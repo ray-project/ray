@@ -126,6 +126,9 @@ import ray
 ray.init(address="auto", namespace="{namespace}")
     """
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
+    # Wait for above driver to start and finish
+    time.sleep(2)
+
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(
         driver_template.format(namespace="_ray_internal_job_info_id1")
@@ -135,7 +138,7 @@ ray.init(address="auto", namespace="{namespace}")
         driver_template.format(namespace="_ray_internal_dashboard")
     )
 
-    # Wait 1 sec for drivers to start
+    # Wait 1.5 sec for drivers to start (but not finish)
     time.sleep(1.5)
 
     # Verify drivers are considered active after running script
@@ -158,10 +161,22 @@ ray.init(address="auto", namespace="{namespace}")
 
     assert driver_ray_activity_response.is_active == "ACTIVE"
     # Drivers with namespace starting with "_ray_internal" are not
-    # considered active drivers. Three active drivers are the two
+    # considered active drivers. Two active drivers are the second one
     # run with namespace "my_namespace" and the one started
     # from ray_start_with_dashboard
-    assert driver_ray_activity_response.reason == "Number of active drivers: 3"
+    assert driver_ray_activity_response.reason == "Number of active drivers: 2"
+
+    # Get expected_last_activity at from snapshot endpoint which returns details
+    # about all jobs
+    jobs_snapshot_data = requests.get(f"{webui_url}/api/snapshot").json()["data"][
+        "snapshot"
+    ]["jobs"]
+    # Divide endTime by 1000 to convert from milliseconds to seconds
+    expected_last_activity_at = max(
+        [job.get("endTime", 0) / 1000 for (job_id, job) in jobs_snapshot_data.items()]
+    )
+
+    assert driver_ray_activity_response.last_activity_at == expected_last_activity_at
 
 
 def test_snapshot(ray_start_with_dashboard):
@@ -219,6 +234,33 @@ ray.get(a.ping.remote())
         assert "runtimeEnv" in entry
     assert data["data"]["snapshot"]["rayCommit"] == ray.__commit__
     assert data["data"]["snapshot"]["rayVersion"] == ray.__version__
+
+    # test actor limit
+    response = requests.get(f"{webui_url}/api/snapshot?actor_limit=2")
+    response.raise_for_status()
+    data = response.json()
+    pprint.pprint(data)
+    assert len(data["data"]["snapshot"]["actors"]) == 2
+
+
+def test_snapshot_timeout(monkeypatch, ray_start_cluster):
+    """Verifies the timeout argument works for snapshot API."""
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "ActorInfoGcsService.grpc_server.GetAllActorInfo=2000000:2000000",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=2)
+        address = ray.init(address=cluster.address)
+        webui_url = address["webui_url"]
+
+        # Verifies timeout will work.
+        response = requests.get(f"http://{webui_url}/api/snapshot?timeout=1")
+        assert response.json()["result"] is False
+        assert "Deadline Exceeded" in response.json()["msg"]
 
 
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)

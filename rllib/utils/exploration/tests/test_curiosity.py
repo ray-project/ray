@@ -274,8 +274,8 @@ class TestCuriosity(unittest.TestCase):
             # config_wo["exploration_config"] = {"type": "StochasticSampling"}
             # stop_wo = stop.copy()
             # stop_wo["training_iteration"] = iters
-            # results = tune.run(
-            #     "PPO", config=config_wo, stop=stop_wo, verbose=1)
+            # results = tune.Tuner(
+            #     "PPO", param_space=config_wo, stop=stop_wo, verbose=1).fit()
             # try:
             #     check_learning_achieved(results, min_reward)
             # except ValueError:
