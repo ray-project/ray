@@ -99,7 +99,11 @@ def _setup_torch_process_group(
     # distributed.html#torch.distributed.init_process_group for description of
     # NCCL_ASYNC_ERROR_HANDLING. We do not use NCCL_BLOCKING_WAIT due to performance
     # overhead.
-    if backend == "nccl" and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ:
+    if (
+        backend == "nccl"
+        and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ
+        and "NCCL_BLOCKING_WAIT" not in os.environ
+    ):
         logger.debug(
             "Setting NCCL_ASYNC_ERROR_HANDLING to fail if NCCL collective "
             "communication operations are timing out. "
