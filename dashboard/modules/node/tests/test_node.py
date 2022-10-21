@@ -104,6 +104,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             detail = detail["data"]["detail"]
             assert detail["hostname"] == hostname
             assert detail["raylet"]["state"] == "ALIVE"
+            assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
             assert len(detail["actors"]) == 2, detail["actors"]

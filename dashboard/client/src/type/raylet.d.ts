@@ -27,4 +27,5 @@ export type Raylet = {
   terminateTime: number;
   objectStoreAvailableMemory: number;
   objectStoreUsedMemory: number;
+  isHeadNode: boolean;
 };
