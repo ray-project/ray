@@ -441,7 +441,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 std::string GcsServer::StorageType() const {
   if (RayConfig::instance().gcs_storage() == "memory") {
     if (!config_.redis_address.empty()) {
-      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address;
+      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
+                    << ":" << config_.redis_port;
       return "redis";
     }
     return "memory";
