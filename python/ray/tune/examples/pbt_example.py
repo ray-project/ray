@@ -123,10 +123,10 @@ if __name__ == "__main__":
         PBTBenchmarkExample,
         run_config=air.RunConfig(
             name="pbt_class_api_example",
-            # Stop when done = True or at 1000 train steps (whichever comes first)
+            # Stop when done = True or at some # of train steps (whichever comes first)
             stop={
                 "done": True,
-                "training_iteration": 1000,
+                "training_iteration": 10 if args.smoke_test else 1000,
             },
             verbose=0,
             # We recommend matching `perturbation_interval` and `checkpoint_interval`
