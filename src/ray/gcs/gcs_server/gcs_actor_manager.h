@@ -126,7 +126,7 @@ class GcsActor {
 
   ~GcsActor() {
     if (last_metric_state_) {
-      RAY_LOG(DEBUG) << "Decrementing state at "
+      RAY_LOG(ERROR) << "Decrementing state at "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value());
       counter_.Decrement(
           std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()));
@@ -182,14 +182,14 @@ class GcsActor {
   void RefreshMetrics() {
     auto cur_state = GetState();
     if (last_metric_state_) {
-      RAY_LOG(DEBUG) << "Swapping state from "
+      RAY_LOG(ERROR) << "Swapping state from "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
       counter_.Swap(
           std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
           std::make_pair(cur_state, GetActorTableData().class_name()));
     } else {
-      RAY_LOG(DEBUG) << "Incrementing state at "
+      RAY_LOG(ERROR) << "Incrementing state at "
                      << rpc::ActorTableData::ActorState_Name(cur_state);
       counter_.Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
     }
@@ -430,6 +430,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Collect stats from gcs actor manager in-memory data structures.
   void RecordMetrics() const;
+
+  // Visible for testing.
+  int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
+    return actor_state_counter_.Get(std::make_pair(state, name));
+  }
 
  private:
   /// A data structure representing an actor's owner.

@@ -56,12 +56,14 @@ def test_basic_states(shutdown_only):
             @ray.remote
             def sleep():
                 time.sleep(999)
+
             ray.get(sleep.remote())
 
         def wait(self):
             @ray.remote
             def sleep():
                 time.sleep(999)
+
             ray.wait([sleep.remote()])
 
     a = Actor.remote()
@@ -98,6 +100,7 @@ def test_basic_states(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+    del d
 
 
 def test_destroy_actors(shutdown_only):
@@ -123,6 +126,7 @@ def test_destroy_actors(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+    del c
 
 
 def test_dep_wait(shutdown_only):
@@ -146,6 +150,7 @@ def test_dep_wait(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+    del a
 
 
 @ray.remote(num_cpus=1)
@@ -187,4 +192,3 @@ if __name__ == "__main__":
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
-
