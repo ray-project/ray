@@ -77,11 +77,14 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         # Short-circuit on empty list of blocks.
         return blocks
 
+    if len(blocks) == 1:
+        return blocks[0]
+
     schema = blocks[0].schema
     if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schema.types):
-        schema = pyarrow.unify_schemas([block.schema for block in blocks])
         # Custom handling for extension array columns.
         cols = []
+        schema_tensor_field_overrides = {}
         for col_name in schema.names:
             col_chunked_arrays = []
             for block in blocks:
@@ -103,10 +106,24 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                     # a collection of homogeneous-shaped columns resulted in a
                     # variable-shaped tensor column once concatenated.
                     new_field = schema.field(col_name).with_type(col.type)
-                    schema = schema.set(schema.get_field_index(col_name), new_field)
+                    field_idx = schema.get_field_index(col_name)
+                    schema_tensor_field_overrides[field_idx] = new_field
             else:
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
             cols.append(col)
+        # Unify schemas.
+        schemas = []
+        for block in blocks:
+            schema = block.schema
+            # If concatenating uniform tensor columns results in a variable-shaped
+            # tensor columns, override the column type for all blocks.
+            if schema_tensor_field_overrides:
+                for idx, field in schema_tensor_field_overrides.items():
+                    schema = schema.set(idx, field)
+            schemas.append(schema)
+        # Let Arrow unify the schema of non-tensor extension type columns.
+        schema = pyarrow.unify_schemas(schemas)
+        # Build the concatenated table.
         table = pyarrow.Table.from_arrays(cols, schema=schema)
         # Validate table schema (this is a cheap check by default).
         table.validate()
