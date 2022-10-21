@@ -326,22 +326,23 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             default_policy_class=StatefulPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=5, num_rollout_workers=0
+            config=(
+                AlgorithmConfig()
+                .rollouts(
+                    rollout_fragment_length=5, num_rollout_workers=0
+                )
+                # Force `state_in_0` to be repeated every ts in the collected batch
+                # (even though we don't even have a model that would care about this).
+                .training(model={"max_seq_len": 1})
             ),
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch["state_in_0"][0], {})
         self.assertEqual(batch["state_out_0"][0], h)
-        self.assertEqual(batch["state_in_0"][1], h)
-        self.assertEqual(batch["state_out_0"][1], h)
-        self.assertEqual(batch["state_in_0"][2], h)
-        self.assertEqual(batch["state_out_0"][2], h)
-        self.assertEqual(batch["state_in_0"][3], h)
-        self.assertEqual(batch["state_out_0"][3], h)
-        self.assertEqual(batch["state_in_0"][4], h)
-        self.assertEqual(batch["state_out_0"][4], h)
+        for i in range(1, 5):
+            self.assertEqual(batch["state_in_0"][i], h)
+            self.assertEqual(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(DQNTFPolicy):
