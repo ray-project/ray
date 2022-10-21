@@ -37,7 +37,7 @@ SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
 PROXY_FORWARD_ATTEMPT_TIMEOUT_S = (
-    float(os.environ.get("PROXY_FORWARD_ATTEMPT_TIMEOUT", 0)) or None
+    float(os.environ.get("PROXY_FORWARD_ATTEMPT_TIMEOUT_S", 0)) or None
 )
 
 
