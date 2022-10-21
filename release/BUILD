@@ -274,21 +274,21 @@ py_test(
     args = ["run", "--num-runs=1", "--num-epochs=1", "--num-workers=1", "--cpus-per-worker=1", "--batch-size=1", "--smoke-test", "--local"]
 )
 
-# py_test(
-#     name = "air_benchmark_tune_torch_smoke_test",
-#     size = "large",
-#     srcs = test_srcs,
-#     main = "air_tests/air_benchmarks/workloads/tune_torch_benchmark.py",
-#     tags = [
-#         "exclusive",
-#         "team:ml",
-#     ],
-#     deps = [
-#         "//:ray_lib",
-#         "//python/ray/air:ml_lib",
-#     ],
-#     args = ["run", "--num-runs=1", "--num-trials=1", "--num-workers=1", "--local"]
-# )
+py_test(
+    name = "air_benchmark_tune_torch_smoke_test",
+    size = "large",
+    srcs = test_srcs,
+    main = "air_tests/air_benchmarks/workloads/tune_torch_benchmark.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/air:ml_lib",
+    ],
+    args = ["run", "--num-runs=1", "--num-trials=1", "--num-workers=1", "--smoke-test"]
+)
 
 
 ####
