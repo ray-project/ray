@@ -241,9 +241,9 @@ class SACConfig(AlgorithmConfig):
         if twin_q is not None:
             self.twin_q = twin_q
         if q_model_config is not None:
-            self.q_model_config = q_model_config
+            self.q_model_config.update(q_model_config)
         if policy_model_config is not None:
-            self.policy_model_config = policy_model_config
+            self.policy_model_config.update(policy_model_config)
         if tau is not None:
             self.tau = tau
         if initial_alpha is not None:
