@@ -13,8 +13,4 @@ You may also be interested in visiting the design patterns section for :ref:`act
 .. toctree::
     :maxdepth: -1
 
-    tree-of-tasks
     map-reduce
-    closure-capture
-    global-variables
-    too-many-results

@@ -46,6 +46,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
             "serve_deployment_processing_latency_ms",
             # gauge
             "serve_replica_processing_queries",
+            "serve_deployment_replica_healthy",
             # handle
             "serve_handle_request_counter",
         ]

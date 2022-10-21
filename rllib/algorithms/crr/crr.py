@@ -84,7 +84,7 @@ class CRRConfig(AlgorithmConfig):
         **kwargs,
     ) -> "CRRConfig":
 
-        """
+        r"""
         === CRR configs
 
         Args:

@@ -179,6 +179,7 @@ class AlgorithmConfig:
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.off_policy_estimation_methods = {}
+        self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
@@ -195,6 +196,9 @@ class AlgorithmConfig:
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
+
+        # `self.checkpointing()`
+        self.export_native_model_files = False
 
         # `self.debugging()`
         self.logger_creator = None
@@ -338,7 +342,7 @@ class AlgorithmConfig:
         *,
         num_gpus: Optional[Union[float, int]] = None,
         _fake_gpus: Optional[bool] = None,
-        num_cpus_per_worker: Optional[int] = None,
+        num_cpus_per_worker: Optional[Union[float, int]] = None,
         num_gpus_per_worker: Optional[Union[float, int]] = None,
         num_cpus_for_local_worker: Optional[int] = None,
         custom_resources_per_worker: Optional[dict] = None,
@@ -717,6 +721,7 @@ class AlgorithmConfig:
         if no_done_at_end is not None:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not None:
+            assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not None:
             self.observation_filter = observation_filter
@@ -826,6 +831,7 @@ class AlgorithmConfig:
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
         off_policy_estimation_methods: Optional[Dict] = None,
+        ope_split_batch_by_episode: Optional[bool] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
@@ -879,6 +885,11 @@ class AlgorithmConfig:
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
+            ope_split_batch_by_episode: Whether to use SampleBatch.split_by_episode() to
+                split the input batch to episodes before estimating the ope metrics. In
+                case of bandits you should make this False to see improvements in ope
+                evaluation speed. In case of bandits, it is ok to not split by episode,
+                since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
                 be run in the algorithm process (only if evaluation_interval is not
@@ -924,10 +935,12 @@ class AlgorithmConfig:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results:
+        if always_attach_evaluation_results is not None:
             self.always_attach_evaluation_results = always_attach_evaluation_results
-        if enable_async_evaluation:
+        if enable_async_evaluation is not None:
             self.enable_async_evaluation = enable_async_evaluation
+        if ope_split_batch_by_episode is not None:
+            self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
         return self
 
@@ -1170,6 +1183,29 @@ class AlgorithmConfig:
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not None:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+
+        return self
+
+    def checkpointing(
+        self,
+        export_native_model_files: Optional[bool] = None,
+    ) -> "AlgorithmConfig":
+        """Sets the config's checkpointing settings.
+
+        Args:
+            export_native_model_files: Whether an individual Policy-
+                or the Algorithm's checkpoints also contain (tf or torch) native
+                model files. These could be used to restore just the NN models
+                from these files w/o requiring RLlib. These files are generated
+                by calling the tf- or torch- built-in saving utility methods on
+                the actual models.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+
+        if export_native_model_files is not None:
+            self.export_native_model_files = export_native_model_files
 
         return self
 
