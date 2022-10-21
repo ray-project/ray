@@ -283,6 +283,7 @@ class AlgorithmConfig:
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+        config["num_workers"] = config.pop("num_rollout_workers", 0)
 
         return config
 
