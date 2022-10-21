@@ -202,7 +202,7 @@ py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
-    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    tags = ["team:ml", "exclusive", "torch_1_11_gpu"],
     deps = [":train_lib"]
 )
 
@@ -250,7 +250,7 @@ py_test(
     name = "test_mosaic_trainer",
     size = "medium",
     srcs = ["tests/test_mosaic_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "torch_1_11"],
     deps = [":train_lib"]
 )
 
