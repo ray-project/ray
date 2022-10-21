@@ -4699,6 +4699,51 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
     assert "2 nodes used" not in ds.stats()
 
 
+def test_read_write_local_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=10)
+
+    ray.init(cluster.address)
+
+    import os
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    num_files = 5
+    for idx in range(num_files):
+        df = pd.DataFrame(
+            {"one": list(range(idx, idx + 10)), "two": list(range(idx + 10, idx + 20))}
+        )
+        path = os.path.join(data_path, f"test{idx}.parquet")
+        df.to_parquet(path)
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.read_write_local_node = True
+
+    def check_dataset_is_local(ds):
+        blocks = ds.get_internal_block_refs()
+        assert len(blocks) == num_files
+        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(blocks)
+        locations = []
+        for block in blocks:
+            locations.extend(location_data[block]["node_ids"])
+        assert set(locations) == {ray.get_runtime_context().node_id.hex()}
+
+    # Plain read.
+    ds = ray.data.read_parquet(data_path).fully_executed()
+    check_dataset_is_local(ds)
+    # With fusion.
+    ds = ray.data.read_parquet(data_path).map(lambda x: x).fully_executed()
+    check_dataset_is_local(ds)
+
+
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -4768,6 +4813,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
+    print(location_data)
     locations = []
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
