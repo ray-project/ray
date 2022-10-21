@@ -105,7 +105,7 @@ train_help = dict(
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
     filetype="The file type of the config file. Defaults to 'yaml' and can also be "
-    "'json', or 'py'.",
+    "'json', or 'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
