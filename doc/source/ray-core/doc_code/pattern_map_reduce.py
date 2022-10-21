@@ -21,11 +21,16 @@ def reduce(func, *objs):
 
 map_outputs = [map.remote(lambda i: i * 2, i) for i in items]
 
-# simple reduce
+# Simple reduce
+# Here we use the * syntax to unpack map_outputs
+# and pass each map output ObjectRef to reduce individually instead of passing
+# the entire list as a single argument.
+# When an argument is ObjectRef, Ray will resolve it
+# and repalce it with the actual object when calling the remote function.
 reduce_output = ray.get(reduce.remote(sum, *map_outputs))
 assert reduce_output == 9900
 
-# tree reduce
+# Tree reduce
 intermediate_reduce_outputs = [
     reduce.remote(sum, *map_outputs[i * 20 : (i + 1) * 20]) for i in range(5)
 ]

@@ -1,10 +1,14 @@
-Pattern: Using tasks to achieve MapReduce
+Pattern: Using tasks to execute MapReduce
 =========================================
 
 In this pattern, Ray remote tasks can be used to implement the MapReduce paradigm.
 For the ``map`` stage, we can submit multiple tasks to process data in a distributed and parallel fashion.
-For the ``reduce`` stage, we use :ref:`ray.get() <ray-get-ref>` (or implicitly via task arguments) to fetch the results of each of these tasks and aggregate on them.
-We can also have many ``map`` stages and many ``reduce`` stages.
+For the ``reduce`` stage, we use task arguments to fetch the results of each of these map tasks implicitly and aggregate on them.
+
+.. note::
+
+  It's generally recommended to use the high level Ray :ref:`Datasets <datasets>` library to do MapReduce than the low level Ray tasks.
+  The relevant APIs are :meth:`map_batches <ray.data.Dataset.map_batches>`, :meth:`aggregate <ray.data.Dataset.aggregate>` and :meth:`groupby <ray.data.Dataset.groupby>`.
 
 Example use case
 ----------------
