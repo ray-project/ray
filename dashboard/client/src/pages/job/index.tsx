@@ -57,6 +57,7 @@ const columns = [
   },
   { label: "StartTime" },
   { label: "EndTime" },
+  { label: "Duration" },
   { label: "Driver Pid" },
 ];
 
