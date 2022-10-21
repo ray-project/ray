@@ -172,9 +172,29 @@ class DashboardAgent:
             """Check if raylet is dead and fate-share if it is."""
             try:
                 curr_proc = psutil.Process()
+                parent_death_cnt = 0
                 while True:
                     parent = curr_proc.parent()
-                    if parent is None or parent.pid == 1 or self.ppid != parent.pid:
+                    parent_gone = parent is None
+                    init_assigned_for_parent = parent.pid == 1
+                    parent_changed = self.ppid != parent.pid
+                    if parent_gone or init_assigned_for_parent or parent_changed:
+                        parent_death_cnt += 1
+                        parent_death_threshold = 5
+                        logger.info(
+                            f"Raylet is considered dead {parent_death_cnt} times. "
+                            f"If it reaches to {parent_death_threshold}, the agent "
+                            f"will kill itself. Parent status: {parent}, "
+                            f"parent_gone: {parent_gone}, "
+                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
+                            f"parent_changed: {parent_changed}."
+                        )
+                        if parent_death_cnt < 5:
+                            await asyncio.sleep(
+                                dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
+                            )
+                            continue
+
                         log_path = os.path.join(self.log_dir, "raylet.out")
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
@@ -224,8 +244,10 @@ class DashboardAgent:
                         else:
                             logger.info(msg)
                         sys.exit(0)
+                    else:
+                        parent_death_cnt = 0
                     await asyncio.sleep(
-                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
+                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
                 logger.error("Failed to check parent PID, exiting.")
