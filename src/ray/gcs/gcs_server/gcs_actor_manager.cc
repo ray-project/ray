@@ -224,7 +224,9 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
-  actor_state_counter_.SetOnChangeCallback(
+  actor_state_counter_.reset(
+      new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
+  actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> pair,
              int64_t num_actors) mutable {
         ray::stats::STATS_actors.Record(

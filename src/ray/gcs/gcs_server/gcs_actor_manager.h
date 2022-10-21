@@ -44,7 +44,8 @@ class GcsActor {
   /// \param actor_table_data Data of the actor (see gcs.proto).
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
-      CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>> &counter)
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
     RefreshMetrics();
   }
@@ -57,7 +58,8 @@ class GcsActor {
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
       rpc::TaskSpec task_spec,
-      CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>> &counter)
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
         counter_(counter) {
@@ -71,7 +73,8 @@ class GcsActor {
   explicit GcsActor(
       const ray::rpc::TaskSpec &task_spec,
       std::string ray_namespace,
-      CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>> &counter)
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
       : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
@@ -126,10 +129,10 @@ class GcsActor {
 
   ~GcsActor() {
     if (last_metric_state_) {
-      RAY_LOG(ERROR) << "Decrementing state at "
-                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value());
-      counter_.Decrement(
-          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()));
+      RAY_LOG(DEBUG) << "Decrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
+                     << " " << GetActorTableData().class_name();
+      counter_->Decrement(std::make_pair(last_metric_state_.value(), ""));
     }
   }
 
@@ -182,16 +185,16 @@ class GcsActor {
   void RefreshMetrics() {
     auto cur_state = GetState();
     if (last_metric_state_) {
-      RAY_LOG(ERROR) << "Swapping state from "
+      RAY_LOG(DEBUG) << "Swapping state from "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
-      counter_.Swap(
-          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
-          std::make_pair(cur_state, GetActorTableData().class_name()));
+      counter_->Swap(std::make_pair(last_metric_state_.value(), ""),
+                     std::make_pair(cur_state, ""));
     } else {
-      RAY_LOG(ERROR) << "Incrementing state at "
-                     << rpc::ActorTableData::ActorState_Name(cur_state);
-      counter_.Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
+      RAY_LOG(DEBUG) << "Incrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(cur_state) << " "
+                     << GetActorTableData().class_name();
+      counter_->Increment(std::make_pair(cur_state, ""));
     }
     last_metric_state_ = cur_state;
   }
@@ -203,7 +206,8 @@ class GcsActor {
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
   /// Reference to the counter to use for actor state metrics tracking.
-  CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>> &counter_;
+  std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+      counter_;
   /// Whether the actor's target node only grants or rejects the lease request.
   bool grant_or_reject_ = false;
   /// The last recorded metric state.
@@ -433,7 +437,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   // Visible for testing.
   int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
-    return actor_state_counter_.Get(std::make_pair(state, name));
+    return actor_state_counter_->Get(std::make_pair(state, name));
   }
 
  private:
@@ -627,7 +631,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
   /// Counter of actors broken down by their state.
-  CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>
+  std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
 
   // Debug info.

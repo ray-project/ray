@@ -287,8 +287,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
-  RAY_CHECK_EQ(
-      gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""), 1);
+  RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""),
+               1);
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
