@@ -49,6 +49,11 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
+    from ray.data.extensions import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
+
     # Single flat list of chunks across all chunked arrays.
     chunks = []
     type_ = None
@@ -56,6 +61,11 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
         if type_ is None:
             type_ = arr.type
         else:
+            if isinstance(type_, (ArrowTensorType, ArrowVariableShapedTensorType)):
+                raise ValueError(
+                    "_concatenate_chunked_arrays should only be used on non-tensor "
+                    f"extension types, but got a chunked array of type {type_}."
+                )
             assert type_ == arr.type
         # Add chunks for this chunked array to flat chunk list.
         chunks.extend(arr.chunks)
