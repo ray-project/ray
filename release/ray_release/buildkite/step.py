@@ -44,6 +44,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
                     f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
                 ],
                 "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
+                "shell": ["/bin/bash", "-e", "-c", "-i", "-l"],
             }
         }
     ],
