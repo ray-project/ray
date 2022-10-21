@@ -311,7 +311,7 @@ def train_torch_vanilla(
     try:
         nccl_network_interface = find_network_interface()
         runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}}
-    except Exception as e:
+    except Exception:
         runtime_env = {}
 
     actors = create_actors_with_options(
