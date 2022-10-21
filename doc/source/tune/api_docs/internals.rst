@@ -6,7 +6,7 @@ Tune Internals
 RayTrialExecutor
 ----------------
 
-.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
+.. autoclass:: ray.tune.execution.ray_trial_executor.RayTrialExecutor
     :members:
 
 .. _trialrunner-docstring:
@@ -14,14 +14,14 @@ RayTrialExecutor
 TrialRunner
 -----------
 
-.. autoclass:: ray.tune.trial_runner.TrialRunner
+.. autoclass:: ray.tune.execution.trial_runner.TrialRunner
 
 .. _trial-docstring:
 
 Trial
 -----
 
-.. autoclass:: ray.tune.trial.Trial
+.. autoclass:: ray.tune.experiment.trial.Trial
 
 .. _tune-callbacks-docs:
 
