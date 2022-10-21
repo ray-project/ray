@@ -19,7 +19,6 @@ from typing import (
     Union,
 )
 
-import gym
 from gym.spaces import Discrete, MultiDiscrete, Space
 import numpy as np
 import tree  # pip install dm_tree
@@ -983,9 +982,8 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if (
-                    self.is_policy_to_train is not None
-                    and not self.is_policy_to_train(pid, samples)
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
                 ):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
@@ -999,9 +997,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
-            if (
-                self.is_policy_to_train is None
-                or self.is_policy_to_train(DEFAULT_POLICY_ID, samples)
+            if self.is_policy_to_train is None or self.is_policy_to_train(
+                DEFAULT_POLICY_ID, samples
             ):
                 info_out.update(
                     {
@@ -1115,9 +1112,8 @@ class RolloutWorker(ParallelIteratorWorker):
         grad_out, info_out = {}, {}
         if self.config.framework_str == "tf":
             for pid, batch in samples.policy_batches.items():
-                if (
-                    self.is_policy_to_train is not None
-                    and not self.is_policy_to_train(pid, samples)
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
                 ):
                     continue
                 policy = self.policy_map[pid]
@@ -1129,9 +1125,8 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out = {k: builder.get(v) for k, v in info_out.items()}
         else:
             for pid, batch in samples.policy_batches.items():
-                if (
-                    self.is_policy_to_train is not None
-                    and not self.is_policy_to_train(pid, samples)
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
                 ):
                     continue
                 grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
@@ -1176,15 +1171,13 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if (
-                    self.is_policy_to_train is None
-                    or self.is_policy_to_train(pid, None)
+                if self.is_policy_to_train is None or self.is_policy_to_train(
+                    pid, None
                 ):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif (
-            self.is_policy_to_train is None
-            or self.is_policy_to_train(DEFAULT_POLICY_ID, None)
+        elif self.is_policy_to_train is None or self.is_policy_to_train(
+            DEFAULT_POLICY_ID, None
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
@@ -1475,7 +1468,8 @@ class RolloutWorker(ParallelIteratorWorker):
             `batch`.
         """
         return {
-            pid for pid in self.policy_map.keys()
+            pid
+            for pid in self.policy_map.keys()
             if self.is_policy_to_train is None or self.is_policy_to_train(pid, batch)
         }
 
@@ -1657,7 +1651,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     )
                 else:
                     policy_spec = (
-                        PolicySpec.deserialize(spec) if connector_enabled or isinstance(spec, dict) else spec
+                        PolicySpec.deserialize(spec)
+                        if connector_enabled or isinstance(spec, dict)
+                        else spec
                     )
                     self.add_policy(
                         policy_id=pid,
@@ -1922,7 +1918,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # for this particular policy.
             merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
             update_dict = (
-                policy_spec.config.to_dict() if isinstance(policy_spec.config, AlgorithmConfig)
+                policy_spec.config.to_dict()
+                if isinstance(policy_spec.config, AlgorithmConfig)
                 else policy_spec.config
             )
             merged_conf.update_from_dict(update_dict or {})

@@ -287,8 +287,7 @@ class ImpalaConfig(AlgorithmConfig):
         if replay_proportion is not None:
             self.replay_proportion = replay_proportion
             self.replay_ratio = (
-                (1 / self.replay_proportion) if self.replay_proportion > 0
-                else 0.0
+                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
             )
         if replay_buffer_num_slots is not None:
             self.replay_buffer_num_slots = replay_buffer_num_slots

@@ -2350,7 +2350,11 @@ class Algorithm(Trainable):
                 default_policy_cls = self.get_default_policy_class(config)
                 policies = config["multiagent"]["policies"]
                 policy_specs = (
-                    [PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec for spec in policies.values()] if isinstance(policies, dict)
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
                     else [PolicySpec() for _ in policies]
                 )
 

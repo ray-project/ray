@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 import unittest
 
@@ -59,11 +58,13 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid % 2),
             ),

@@ -355,15 +355,19 @@ class AlgorithmConfig:
 
             # Set our multi-agent settings.
             if key == "_multi_agent_legacy_dict":
-                kwargs = {k: value[k] for k in [
-                    "policies",
-                    "policy_map_capacity",
-                    "policy_map_cache",
-                    "policy_mapping_fn",
-                    "policies_to_train",
-                    "observation_fn",
-                    "count_steps_by",
-                ] if k in value}
+                kwargs = {
+                    k: value[k]
+                    for k in [
+                        "policies",
+                        "policy_map_capacity",
+                        "policy_map_cache",
+                        "policy_mapping_fn",
+                        "policies_to_train",
+                        "observation_fn",
+                        "count_steps_by",
+                    ]
+                    if k in value
+                }
                 self.multi_agent(**kwargs)
             # "model" key, must use `.update()` from given model config dict
             # (to not lose any keys).
@@ -1138,11 +1142,6 @@ class AlgorithmConfig:
                 f"int and >0!"
             )
 
-        ## Merge user-provided eval config overrides with `self`. This makes sure
-        ## the eval config is always complete, no matter whether we have eval
-        ## workers or perform evaluation on the (non-eval) local worker.
-        #self._recompile_eval_config(evaluation_config or self.evaluation_config)
-
         return self
 
     def offline_data(
@@ -1321,22 +1320,24 @@ class AlgorithmConfig:
                     )
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
-                for pid, policy_spec in policies.items():
+                for pid, spec in policies.items():
                     # If not a PolicySpec object, values must be lists/tuples of len 4.
-                    if not isinstance(policy_spec, PolicySpec):
-                        if not isinstance(policy_spec, (list, tuple)) or len(
-                            policy_spec) != 4:
+                    if not isinstance(spec, PolicySpec):
+                        if not isinstance(spec, (list, tuple)) or len(spec) != 4:
                             raise ValueError(
                                 "Policy specs must be tuples/lists of "
                                 "(cls or None, obs_space, action_space, config), "
-                                f"got {policy_spec} for PolicyID={pid}"
+                                f"got {spec} for PolicyID={pid}"
                             )
                     # TODO: Switch from dict to AlgorithmConfigOverride, once available.
                     # Config not a dict.
-                    elif not isinstance(policy_spec.config, (AlgorithmConfig, dict)) and policy_spec.config is not None:
+                    elif (
+                        not isinstance(spec.config, (AlgorithmConfig, dict))
+                        and spec.config is not None
+                    ):
                         raise ValueError(
-                            f"Multi-agent policy config for {pid} must be a dict or AlgorithmConfig object, "
-                            f"but got {type(policy_spec.config)}!"
+                            f"Multi-agent policy config for {pid} must be a dict or "
+                            f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
             self.policies = policies
 
@@ -1373,7 +1374,9 @@ class AlgorithmConfig:
             self.count_steps_by = count_steps_by
 
         if policies_to_train is not None:
-            assert isinstance(policies_to_train, (list, set, tuple)) or callable(policies_to_train), (
+            assert isinstance(policies_to_train, (list, set, tuple)) or callable(
+                policies_to_train
+            ), (
                 "ERROR: `policies_to_train`must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
@@ -1710,8 +1713,7 @@ class AlgorithmConfig:
             ):
                 env_obs_space = env.observation_space
 
-            if hasattr(env, "action_space") and isinstance(env.action_space,
-                                                           gym.Space):
+            if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
                 env_act_space = env.action_space
         # Last resort: Try getting the env's spaces from the spaces
         # dict's special __env__ key.
@@ -1748,7 +1750,7 @@ class AlgorithmConfig:
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the policy ID.
+                                # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
@@ -1757,10 +1759,10 @@ class AlgorithmConfig:
                                         and env_obs_space[aid] != obs_space
                                     ):
                                         raise ValueError(
-                                            "Two agents in your environment map to the same"
-                                            " policyID (as per your `policy_mapping_fn`), "
-                                            "however, these agents also have different "
-                                            "observation spaces!"
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different observation spaces!"
                                         )
                                     obs_space = env_obs_space[aid]
                     # Otherwise, just use env's obs space as-is.
@@ -1796,7 +1798,7 @@ class AlgorithmConfig:
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the policy ID.
+                                # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
@@ -1805,10 +1807,10 @@ class AlgorithmConfig:
                                         and env_act_space[aid] != act_space
                                     ):
                                         raise ValueError(
-                                            "Two agents in your environment map to the same"
-                                            " policyID (as per your `policy_mapping_fn`), "
-                                            "however, these agents also have different "
-                                            "action spaces!"
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different action spaces!"
                                         )
                                     act_space = env_act_space[aid]
                     # Otherwise, just use env's action space as-is.

@@ -16,7 +16,6 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PolicyID,
 )
-from ray.tune.utils.util import merge_dicts
 
 tf1, tf, tfv = try_import_tf()
 

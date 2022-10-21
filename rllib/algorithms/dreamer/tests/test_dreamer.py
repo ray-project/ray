@@ -20,12 +20,12 @@ class TestDreamer(unittest.TestCase):
         """Test whether an Dreamer can be built with all frameworks."""
         config = dreamer.DreamerConfig()
         config.environment(
-                env=RandomEnv,
-                env_config={
-                    "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
-                    "action_space": Box(-1.0, 1.0, (3,)),
-                },
-            )
+            env=RandomEnv,
+            env_config={
+                "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
+                "action_space": Box(-1.0, 1.0, (3,)),
+            },
+        )
         # Num episode chunks per batch.
         # Length (ts) of an episode chunk in a batch.
         # Sub-iterations per .train() call.

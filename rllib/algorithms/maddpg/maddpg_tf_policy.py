@@ -69,16 +69,18 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 )
 
         from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
-        policies, _ = MADDPGConfig.from_dict(config).environment(
-            observation_space=obs_space, action_space=act_space
-        ).get_multi_agent_setup()
+
+        policies, _ = (
+            MADDPGConfig.from_dict(config)
+            .environment(observation_space=obs_space, action_space=act_space)
+            .get_multi_agent_setup()
+        )
         obs_space_n = [
             _make_continuous_space(spec.observation_space)
             for _, spec in policies.items()
         ]
         act_space_n = [
-            _make_continuous_space(spec.action_space)
-            for _, spec in policies.items()
+            _make_continuous_space(spec.action_space) for _, spec in policies.items()
         ]
 
         # _____ Placeholders

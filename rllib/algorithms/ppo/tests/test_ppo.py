@@ -159,7 +159,8 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .environment(
-                "FrozenLake-v1", env_config={"is_slippery": False, "map_name": "4x4"},
+                "FrozenLake-v1",
+                env_config={"is_slippery": False, "map_name": "4x4"},
             )
             .rollouts(
                 # Run locally.

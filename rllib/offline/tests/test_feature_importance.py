@@ -25,7 +25,7 @@ class TestFeatureImportance(unittest.TestCase):
             estimate = evaluator.estimate(sample_batch)
 
             # check if the estimate is positive
-            assert all([val > 0 for val in estimate.values()])
+            assert all(val > 0 for val in estimate.values())
 
 
 if __name__ == "__main__":

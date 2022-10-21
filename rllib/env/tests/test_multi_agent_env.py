@@ -141,12 +141,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=50, num_rollout_workers=0
-            ).multi_agent(
+            config=AlgorithmConfig()
+            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
-            )
+            ),
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -161,16 +161,18 @@ class TestMultiAgentEnv(unittest.TestCase):
             # This signature will raise a soft-deprecation warning due
             # to the new signature we are using (agent_id, episode, **kwargs),
             # but should not break this test.
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
                 num_envs_per_worker=4,
                 remote_worker_envs=True,
                 remote_env_batch_wait_ms=99999999,
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
-            )
+            ),
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
@@ -179,12 +181,14 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
                 num_envs_per_worker=4,
                 remote_worker_envs=True,
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             ),
@@ -196,11 +200,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
                 horizon=10,  # test with episode horizon set
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
             ),
@@ -212,11 +218,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=1,
                 num_rollout_workers=0,
                 batch_mode="complete_episodes",
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             ),
@@ -259,10 +267,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0"},
                 policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             ),
@@ -383,10 +393,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
             default_policy_class=ModelBasedPolicy,
-            config=AlgorithmConfig().rollouts(
+            config=AlgorithmConfig()
+            .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             ),

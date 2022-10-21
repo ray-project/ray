@@ -15,18 +15,16 @@ import copy
 import platform
 import random
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 import ray
 from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
-from ray.rllib import Policy
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
