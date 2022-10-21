@@ -1,6 +1,6 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_GPU"] | default("anyscale/ray-ml:2.0.0-py37-gpu") }}
 debian_packages: []
-env_vars: {"RAY_metrics_report_interval_ms": "1000", "RAY_INTERNAL_MEM_PROFILE_COMPONENTS": "dashboard_agent"}
+env_vars: {"RAY_INTERNAL_MEM_PROFILE_COMPONENTS": "dashboard_agent"}
 debian_packages:
   - htop
   - curl
@@ -18,9 +18,6 @@ python:
     - wandb
     - memray
     - typer
-    - torch
-    - gym[atari]
-    - autorom[accept-rom-license]
   conda_packages: []
 
 post_build_cmds:
@@ -28,9 +25,9 @@ post_build_cmds:
   - pip install ale-py==0.7
   - pip uninstall importlib-metadata -y
   - pip install importlib-metadata==4.13.0
+  - pip install gym[atari] autorom[accept-rom-license]
   - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
-  - pip3 install -U ray[rllib]
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo apt-get update
   - echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
