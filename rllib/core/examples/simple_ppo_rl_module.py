@@ -165,15 +165,13 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpecDict:
-        return self.input_specs_exploration
+        return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
-        return ModelSpecDict(
-            {
-                "action_dist": TorchDeterministic,
-            }
-        )
+        return ModelSpecDict({
+            "action_dist": TorchDeterministic,
+        })
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -231,7 +229,7 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def input_specs_train(self) -> ModelSpecDict:
         if self._is_discrete:
-            action_dim = self.config.action_space.n
+            action_dim = 1
         else:
             action_dim = self.config.action_space.shape[0]
 
@@ -240,7 +238,7 @@ class SimplePPOModule(TorchRLModule):
                 "obs": self.encoder.input_specs
                 if self.encoder
                 else self.pi.input_specs,
-                "actions": TorchSpecs("b, da", da=action_dim),
+                "action": TorchSpecs("b, da", da=action_dim),
             }
         )
 
@@ -272,12 +270,12 @@ class SimplePPOModule(TorchRLModule):
         else:
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
-
-        logp = action_dist.log_prob(batch["actions"])
+        
+        logp = action_dist.logp(batch["action"].squeeze(-1))
         entropy = action_dist.entropy()
         return {
             "action_dist": action_dist,
             "logp": logp,
             "entropy": entropy,
-            "vf": vf,
+            "vf": vf.squeeze(-1),
         }

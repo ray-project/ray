@@ -157,6 +157,9 @@ class TorchDeterministic(ActionDistributionV2):
             raise ValueError("Cannot return logp for TorchDeterministic.")
         return self.loc
 
+    def rsample(self, *, sample_shape: Tuple[int, ...] = None, return_logp: bool = False, **kwargs) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        raise NotImplementedError
+
     @override(ActionDistributionV2)
     def logp(self, action: TensorType, **kwargs) -> TensorType:
         raise ValueError("Cannot return logp for TorchDeterministic.")

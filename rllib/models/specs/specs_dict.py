@@ -119,7 +119,12 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
         for spec_name, spec in self.items():
             data_to_validate = data[spec_name]
             if isinstance(spec, TensorSpecs):
-                spec.validate(data_to_validate)
+                try:
+                    spec.validate(data_to_validate)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Mismatch found in data element {spec_name}, which is a TensorSpecs: {e}"
+                    )
             elif isinstance(spec, Type):
                 if not isinstance(data_to_validate, spec):
                     raise ValueError(
@@ -203,14 +208,20 @@ def check_specs(
             if input_spec:
                 input_spec_ = getattr(self, input_spec)()
                 if should_validate():
-                    input_spec_.validate(input_dict_, exact_match=input_exact_match)
+                    try:
+                        input_spec_.validate(input_dict_, exact_match=input_exact_match)
+                    except ValueError as e:
+                        raise ValueError(f"Input spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}.")
                 if filter:
                     input_dict_ = input_dict_.filter(input_spec_)
 
             output_dict_ = func(self, input_dict_, **kwargs)
             if output_spec and should_validate():
                 output_spec_ = getattr(self, output_spec)()
-                output_spec_.validate(output_dict_, exact_match=output_exact_match)
+                try:
+                    output_spec_.validate(output_dict_, exact_match=output_exact_match)
+                except ValueError as e:
+                    raise ValueError(f"Output spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}.")
 
             if cache:
                 self.__checked_specs_cache__[func.__name__] = True
