@@ -60,7 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -2348,20 +2348,19 @@ class Algorithm(Trainable):
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
                 default_policy_cls = self.get_default_policy_class(config)
-                if not isinstance(config["multiagent"]["policies"], dict) and (
-                    default_policy_cls is None
+                policies = config["multiagent"]["policies"]
+                policy_specs = (
+                    [PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec for spec in policies.values()] if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
+                if any(
+                    (spec.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        default_policy_cls, (DynamicTFPolicy, TorchPolicy)
-                    ),
-                ):
-                    config["simple_optimizer"] = True
-                elif any(
-                    (p.policy_class or default_policy_cls) is None
-                    or not issubclass(
-                        p.policy_class or default_policy_cls,
+                        spec.policy_class or default_policy_cls,
                         (DynamicTFPolicy, TorchPolicy),
                     )
-                    for p in config["multiagent"]["policies"].values()
+                    for spec in policy_specs
                 ):
                     config["simple_optimizer"] = True
                 else:
