@@ -148,14 +148,6 @@ const BasicLayout = (
               <ListItemText>METRICS</ListItemText>
             </ListItem>
           )}
-
-          <ListItem
-            button
-            className={classnames(classes.menuItem)}
-            onClick={() => history.push("/legacy")}
-          >
-            <ListItemText>TO LEGACY DASHBOARD</ListItemText>
-          </ListItem>
           <ListItem>
             <IconButton
               color="primary"
