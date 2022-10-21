@@ -180,8 +180,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("https",
             "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
-    package name will be the adjusted path with 's3_' prepended.
+    For S3 URIs, the bucket and path will have '/' and `:` replaced with '_'.
+    The package name will be the adjusted path with 's3_' prepended.
         urlparse("s3://bucket/dir/file.zip")
             -> ParseResult(
                 scheme='s3',
@@ -189,8 +189,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/dir/file.zip'
             )
             -> ("s3", "bucket_dir_file.zip")
-    For GS URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'gs_' prepended.
+    For GS URIs, the path will have '/' and ':' replaced with '_'. The package
+    name will be the adjusted path with 'gs_' prepended.
         urlparse("gs://public-runtime-env-test/test_module.zip")
             -> ParseResult(
                 scheme='gs',
@@ -199,8 +199,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("gs",
             "gs_public-runtime-env-test_test_module.zip")
-    For FILE URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'file_' prepended.
+    For FILE URIs, the path will have '/' and ':' replaced with '_'. The
+    package name will be the adjusted path with 'file_' prepended.
         urlparse("file:///path/to/test_module.zip")
             -> ParseResult(
                 scheme='file',
@@ -218,7 +218,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
+        return (
+            protocol,
+            (
+                f"{protocol.value}_{uri.netloc}"
+                f"{uri.path.replace('/', '_').replace(':', '_')}"
+            ),
+        )
     elif protocol == Protocol.HTTPS:
         parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
         return (
@@ -228,7 +234,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     elif protocol == Protocol.FILE:
         return (
             protocol,
-            f"file_{uri.path.replace('/', '_')}",
+            f"file_{uri.path.replace('/', '_').replace(':', '_')}",
         )
     else:
         return (protocol, uri.netloc)
