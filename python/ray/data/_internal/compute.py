@@ -21,6 +21,8 @@ from ray.data.block import (
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+import itertools
+from ray.data._internal.util import _get_spread_resources_iter
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,23 @@ class TaskPoolStrategy(ComputeStrategy):
                 )
                 for bs, ms in block_bundles
             ]
+        elif name == "Read":
+            resource_iter = _get_spread_resources_iter(
+                ray.nodes(), "node:", remote_args,
+            )
+            map_block = cached_remote_fn(_map_block_nosplit)
+            all_refs = [
+                map_block.options(**dict(remote_args, num_returns=2, resources=next(resource_iter))).remote(
+                    block_fn,
+                    [f for m in ms for f in m.input_files],
+                    fn,
+                    len(bs),
+                    *(bs + fn_args),
+                    **fn_kwargs,
+                )
+                for bs, ms in block_bundles
+            ]
+            data_refs, refs = map(list, zip(*all_refs))
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
                 **dict(remote_args, num_returns=2)

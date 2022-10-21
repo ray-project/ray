@@ -596,8 +596,7 @@ class LazyBlockList(BlockList):
                 cached_remote_fn(_execute_read_task_split)
                 .options(
                     num_returns="dynamic",
-                    **self._remote_args,
-                    resources=next(self._resource_iter),
+                    **{**self._remote_args, **{"resources": next(self._resource_iter)}},
                 )
                 .remote(
                     i=task_idx,
@@ -613,8 +612,7 @@ class LazyBlockList(BlockList):
                 cached_remote_fn(_execute_read_task_nosplit)
                 .options(
                     num_returns=2,
-                    **self._remote_args,
-                    resources=next(self._resource_iter),
+                    **{**self._remote_args, **{"resources": next(self._resource_iter)}},
                 )
                 .remote(
                     i=task_idx,

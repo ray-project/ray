@@ -89,9 +89,8 @@ class SimpleShufflePlan(ShuffleOp):
 
         shuffle_map_out = [
             shuffle_map.options(
-                **map_ray_remote_args,
+                **{**map_ray_remote_args, **{"resources": next(map_resource_iter)}},
                 num_returns=1 + output_num_blocks,
-                resources=next(map_resource_iter),
             ).remote(i, block, output_num_blocks, *self._map_args)
             for i, block in enumerate(input_blocks_list)
         ]
@@ -115,9 +114,8 @@ class SimpleShufflePlan(ShuffleOp):
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         shuffle_reduce_out = [
             shuffle_reduce.options(
-                **reduce_ray_remote_args,
+                **{**reduce_ray_remote_args, **{"resources": next(reduce_resource_iter)}},
                 num_returns=2,
-                resources=next(reduce_resource_iter),
             ).remote(
                 *self._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
