@@ -230,13 +230,13 @@ sleep(3)
 
 
 def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
