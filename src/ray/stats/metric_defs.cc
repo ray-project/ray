@@ -53,9 +53,10 @@ DEFINE_stats(
 /// we use the "Source" required label.
 DEFINE_stats(actors,
              "Current number of actors currently in a particular state.",
-             // State: the actor state, in IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET,
-             // RUNNING_IN_RAY_WAIT. Name: the name of actor class. Source: component
-             // reporting, e.g., "core_worker", "executor", or "pull_manager".
+             // State: the actor state, which is from rpc::ActorTableData::ActorState,
+             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // Name: the name of actor class.
+             // Source: component reporting, e.g., "gcs" or "executor".
              ("State", "Name", "Source"),
              (),
              ray::stats::GAUGE);
