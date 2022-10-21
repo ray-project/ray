@@ -6,8 +6,10 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class HashingVectorizer(Preprocessor):
     """Count the frequency of tokens using the
     `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
@@ -140,6 +142,7 @@ class HashingVectorizer(Preprocessor):
         )
 
 
+@PublicAPI(stability="alpha")
 class CountVectorizer(Preprocessor):
     """Count the frequency of tokens in a column of strings.
 
