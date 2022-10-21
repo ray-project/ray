@@ -7,8 +7,8 @@ For the ``reduce`` stage, we use task arguments to fetch the results of each of 
 
 .. note::
 
-  It's generally recommended to use the high level Ray :ref:`Datasets <datasets>` library to do MapReduce than the low level Ray tasks.
-  The relevant APIs are :meth:`map_batches <ray.data.Dataset.map_batches>`, :meth:`aggregate <ray.data.Dataset.aggregate>` and :meth:`groupby <ray.data.Dataset.groupby>`.
+  It's generally recommended to use the high level Ray :ref:`Datasets <datasets>` library for data transformations rather than building MapReduce directly with Ray tasks.
+  For example, you can use Datasets APIs like :meth:`map_batches <ray.data.Dataset.map_batches>`, :meth:`aggregate <ray.data.Dataset.aggregate>` and :meth:`groupby <ray.data.Dataset.groupby>`.
 
 Example use case
 ----------------
