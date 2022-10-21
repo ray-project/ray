@@ -1,21 +1,21 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import torchvision
-from ray.air import RunConfig, session
-from ray.train.horovod import HorovodTrainer
-from ray.air.config import ScalingConfig, FailureConfig, CheckpointConfig
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
-
+import torchvision
 import torchvision.transforms as transforms
 from torchvision.models import resnet18
 
 import ray
-from ray import tune
+from ray.air import RunConfig, session
+from ray.air.config import ScalingConfig, FailureConfig, CheckpointConfig
 from ray.air.checkpoint import Checkpoint
+import ray.train.torch
+from ray.train.horovod import HorovodTrainer
+from ray import tune
 from ray.tune.schedulers import create_scheduler
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 from ray.tune.utils.release_test_util import ProgressCallback
 
 # The long running version starts 4 trials while only 2 can be run at a time.

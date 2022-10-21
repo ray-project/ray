@@ -2,17 +2,17 @@ import argparse
 from filelock import FileLock
 import horovod.torch as hvd
 import os
-from ray.air.checkpoint import Checkpoint
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from torchvision import datasets, transforms
 
-import ray
 from ray.air import session
-from ray.train.horovod import HorovodTrainer
+from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig
+from ray.train.horovod import HorovodTrainer
+import ray.train.torch
 
 
 def metric_average(val, name):
