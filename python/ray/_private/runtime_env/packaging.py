@@ -168,8 +168,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
     For HTTPS URIs, the netloc will have '.', ':', and '@' swapped with '_',
-    and the path will have '/' replaced with '_'. The package name will be the
-    adjusted path with 'https_' prepended.
+    and the path will have '/' and ':' replaced with '_'. The package name
+    will be the adjusted path with 'https_' prepended.
         urlparse(
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
         )
@@ -229,7 +229,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
         return (
             protocol,
-            f"https_{parsed_netloc}{uri.path.replace('/', '_')}",
+            f"https_{parsed_netloc}{uri.path.replace('/', '_').replace(':', '_')}",
         )
     elif protocol == Protocol.FILE:
         return (

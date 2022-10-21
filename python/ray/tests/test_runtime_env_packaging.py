@@ -468,6 +468,37 @@ class TestParseUri:
         assert parsed_protocol == Protocol.HTTPS
         assert parsed_package_name == parsed_uri
 
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
+                Protocol.HTTPS,
+                "https_username_PAT_github_com_repo_archive_2_commit_hash.zip",
+            ),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.GS,
+                "gs_fake_2022-10-21T13_11_35+00_00_package.zip",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.S3,
+                "s3_fake_2022-10-21T13_11_35+00_00_package.zip",
+            ),
+            (
+                "file://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.FILE,
+                "file__2022-10-21T13_11_35+00_00_package.zip",
+            ),
+        ],
+    )
+    def test_parse_uris_with_colons(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == parsed_uri
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_travel(tmp_path):
