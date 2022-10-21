@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -319,10 +320,12 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
-  // Report heartbeat
-  rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    // Report heartbeat
+    rpc::ReportHeartbeatRequest report_heartbeat_request;
+    report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+    ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  }
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
@@ -336,6 +339,9 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 }
 
 TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  if (RayConfig::instance().pull_based_healthcheck()) {
+    GTEST_SKIP();
+  }
   // Create gcs node info
   auto gcs_node_info = Mocker::GenNodeInfo();
 

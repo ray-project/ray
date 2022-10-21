@@ -462,7 +462,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
 ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeat here to ensure it happening after raylet being registered.
-  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);

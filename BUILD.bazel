@@ -546,6 +546,7 @@ cc_library(
         ":scheduler",
         ":worker_rpc",
         "@boost//:bimap",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -1807,6 +1808,20 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs_client_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_health_check_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
