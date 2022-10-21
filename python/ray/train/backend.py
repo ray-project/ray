@@ -4,6 +4,7 @@ from typing import TypeVar, Dict
 from ray.train._internal.utils import Singleton
 from ray.train._internal.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
+
 from ray.widgets import make_table_html_repr
 
 EncodedData = TypeVar("EncodedData")

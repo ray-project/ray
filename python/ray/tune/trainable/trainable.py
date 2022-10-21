@@ -80,16 +80,22 @@ class Trainable:
     Other implementation methods that may be helpful to override are
     ``log_result``, ``reset_config``, ``cleanup``, and ``_export_model``.
 
-    When using Tune, Tune will convert this class into a Ray actor, which
-    runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``. This is designed so that
-    different trials that run on the same physical node won't accidently
-    write to the same location and overstep each other.
+    Tune will convert this class into a Ray actor, which runs on a separate process.
+    By default, Tune will also change the current working directory of this process to
+    its corresponding trial-level log directory ``self.logdir``.
+    This is designed so that different trials that run on the same physical node won't
+    accidently write to the same location and overstep each other.
 
-    If you want to know the orginal working directory path on the driver node,
-    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
-    It is advised that you access this path for read only purposes and you
-    need to make sure that the path exists on the remote nodes.
+    The behavior of changing the working directory can be disabled by setting the
+    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    in the original working directory, but relative paths should be used for read only
+    purposes, and you must make sure that the directory is synced on all nodes if
+    running on multiple machines.
+
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 

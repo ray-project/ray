@@ -6,7 +6,7 @@ import {
   Typography,
 } from "@material-ui/core";
 import React from "react";
-import { StyledTooltip } from "./Tooltip";
+import { StyledTooltip } from "../Tooltip";
 
 const useStyles = makeStyles((theme) =>
   createStyles({

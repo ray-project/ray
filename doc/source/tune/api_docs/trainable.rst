@@ -7,7 +7,7 @@
 Training (tune.Trainable, session.report)
 ==========================================
 
-Training can be done with either a **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`) or **function API** (:ref:`session.report <tune-function-docstring>`).
+Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
 For the sake of example, let's maximize this objective function:
 
@@ -222,6 +222,9 @@ session (Function API)
     :noindex:
 
 .. autofunction:: ray.air.session.get_trial_resources
+    :noindex:
+
+.. autofunction:: ray.air.session.get_trial_dir
     :noindex:
 
 .. _tune-trainable-docstring:
