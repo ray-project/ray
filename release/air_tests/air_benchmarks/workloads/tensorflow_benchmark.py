@@ -264,7 +264,7 @@ def run(
 
     print("Preparing Tensorflow benchmark: Downloading MNIST")
 
-    path = str((Path(__file__).parent / "workloads/_tensorflow_prepare.py").absolute())
+    path = str((Path(__file__).parent / "_tensorflow_prepare.py").absolute())
 
     upload_file_to_all_nodes(path)
     run_command_on_all_nodes(["python", path])
