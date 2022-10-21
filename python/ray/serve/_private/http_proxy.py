@@ -36,8 +36,8 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-PROXY_FORWARD_ATTEMPT_TIMEOUT_S = (
-    float(os.environ.get("PROXY_FORWARD_ATTEMPT_TIMEOUT_S", 0)) or None
+SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S = (
+    float(os.environ.get("SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S", 0)) or None
 )
 
 
@@ -63,12 +63,12 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
-            timeout=PROXY_FORWARD_ATTEMPT_TIMEOUT_S,
+            timeout=SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S,
         )
         if len(done) == 0:
             logger.debug(
                 "HTTPProxy couldn't reach target replica in "
-                f"{PROXY_FORWARD_ATTEMPT_TIMEOUT_S} seconds. Retrying with "
+                f"{SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S} seconds. Retrying with "
                 "another replica. You can modify this timeout by setting the "
                 '"PROXY_FORWARD_ATTEMPT_TIMEOUT" env var.'
             )
