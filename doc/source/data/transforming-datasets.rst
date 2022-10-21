@@ -354,7 +354,7 @@ Configuring Batch Size
 transformation API for Datasets: it launches parallel tasks over the underlying Datasets
 blocks and maps UDFs over batches of data within those tasks, allowing the UDF to
 implement vectorized operations on batches. An important parameter to
-set is the ``batch_size``, which controls the size of batches provided to the UDF.
+set is ``batch_size``, which controls the size of batches provided to the UDF.
 
 .. literalinclude:: ./doc_code/transforming_datasets.py
   :language: python
@@ -367,8 +367,8 @@ also result in higher memory utilization, which can lead to out-of-memory failur
 If encountering OOMs, decreasing your ``batch_size`` may help.
 
 .. note::
-  The default ``batch_size`` of ``4096`` may be too large for wide tables (many columns)
-  or datasets containing large images.
+  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
+  (e.g. tables with many columns or a collection of large images).
 
 Datasets will also bundle multiple blocks together for a single mapper task in order
 to better satisfy ``batch_size``, so if ``batch_size`` is a lot larger than your Dataset
