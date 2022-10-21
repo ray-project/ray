@@ -464,7 +464,7 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                         float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
                     ),
                     "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=b"abc")
+                        bytes_list=tf.train.BytesList(value=[b"abc"])
                     ),
                     "bytes_list": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
@@ -507,12 +507,16 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
     # This follows the offical TFRecords tutorial:
     # https://www.tensorflow.org/tutorials/load_data/tfrecord#reading_a_tfrecord_file_2
 
-    files = sorted(os.listdir(tmp_path))
-    raw_dataset = tf.data.TFRecordDataset(filenames)
-    tfrecords = [
-        tf.train.Example().ParseFromString(raw_record.numpy())
-        for raw_record in raw_dataset
-    ]
+    filenames = sorted(os.listdir(tmp_path))
+    filepaths = [os.path.join(tmp_path, filename) for filename in filenames]
+    raw_dataset = tf.data.TFRecordDataset(filepaths)
+    
+    tfrecords = []
+    for raw_record in raw_dataset:
+        example = tf.train.Example()
+        example.ParseFromString(raw_record.numpy())
+        tfrecords.append(example)
+
     assert tfrecords == expected_records
 
 

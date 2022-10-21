@@ -112,19 +112,29 @@ def _get_feature_value(
         return list(feature.int64_list.value)
 
 
-def _value_to_feature(value: Union[bytes, float, int]) -> "tf.train.Feature":
+def _value_to_feature(value: Union[bytes, float, int, List]) -> "tf.train.Feature":
     import tensorflow as tf
 
-    # From https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample
+    # A Feature stores a list of values.
+    # If we have a single value, convert it to a singleton list first.
+    values = [value] if not isinstance(value, list) else value
 
-    if isinstance(value, bytes):
-        return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-    elif isinstance(value, float):
-        return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
-    elif isinstance(value, int):
-        return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    if not values:
+        raise ValueError(
+            "Storing an empty value in a tf.train.Feature is not supported."
+        )
+    elif isinstance(values[0], bytes):
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=values))
+    elif isinstance(values[0], float):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=values))
+    elif isinstance(values[0], int):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
     else:
-        raise ValueError(f"Value is of type {type(value)}, not bytes, float, or int.")
+        raise ValueError(
+            f"Value is of type {type(values[0])}, "
+            "which is not a supported tf.train.Feature storage type "
+            "(bytes, float, or int)."
+        )
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/reader.py#L16-L96  # noqa: E501

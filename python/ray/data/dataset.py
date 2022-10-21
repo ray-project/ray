@@ -2280,6 +2280,27 @@ class Dataset(Generic[T]):
         files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
         for the dataset.
         
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     { "name": "foo", "score": 42 },
+            ...     { "name": "bar", "score": 43 },
+            ... ])
+            >>> ds.write_tfrecords("s3://bucket/path"))
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where csv
+                files will be written to.
+            filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
 
         """
 
