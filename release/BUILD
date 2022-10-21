@@ -194,7 +194,7 @@ py_test(
 
 py_test(
     name = "air_benchmark_xgboost_smoke_test",
-    size = "medium",
+    size = "small",
     srcs = test_srcs,
     main = "air_tests/air_benchmarks/workloads/xgboost_benchmark.py",
     tags = [
@@ -276,7 +276,9 @@ py_test(
 
 py_test(
     name = "air_benchmark_tune_torch_smoke_test",
-    size = "large",
+    # Keep this medium, as it will be slower if data has to be downloaded
+    # (runtime is shorter when air_benchmark_torch_smoke_test is executed first)
+    size = "medium",
     srcs = test_srcs,
     main = "air_tests/air_benchmarks/workloads/tune_torch_benchmark.py",
     tags = [
