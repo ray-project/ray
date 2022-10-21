@@ -647,7 +647,7 @@ class AlgorithmConfig:
         if env is not None:
             self.env = env
         if env_config is not None:
-            self.env_config = env_config
+            self.env_config.update(env_config)
         if observation_space is not None:
             self.observation_space = observation_space
         if action_space is not None:

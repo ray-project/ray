@@ -326,6 +326,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_out_0"][0], h)
         self.assertEqual(batch["state_in_0"][1], h)
         self.assertEqual(batch["state_out_0"][1], h)
+        self.assertEqual(batch["state_in_0"][2], h)
+        self.assertEqual(batch["state_out_0"][2], h)
+        self.assertEqual(batch["state_in_0"][3], h)
+        self.assertEqual(batch["state_out_0"][3], h)
+        self.assertEqual(batch["state_in_0"][4], h)
+        self.assertEqual(batch["state_out_0"][4], h)
 
     def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(DQNTFPolicy):

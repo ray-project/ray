@@ -181,7 +181,7 @@ class DDPPO(PPO):
             config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
-        if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
+        if "train_batch_size" in config and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
                 "Set rollout_fragment_length instead of train_batch_size for DDPPO."
