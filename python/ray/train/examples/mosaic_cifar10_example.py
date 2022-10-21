@@ -6,19 +6,19 @@ import torchvision
 from torchvision import transforms, datasets
 
 from torchmetrics.classification.accuracy import Accuracy
-from composer.core.evaluator import Evaluator
-from composer.models.tasks import ComposerClassifier
-import composer.optim
-from composer.algorithms import LabelSmoothing
+
 
 import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-from ray.train.mosaic import MosaicTrainer
 
 
 def trainer_init_per_worker(config):
+    from composer.core.evaluator import Evaluator
+    from composer.models.tasks import ComposerClassifier
+    import composer.optim
+
     BATCH_SIZE = 32
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
@@ -78,6 +78,9 @@ def trainer_init_per_worker(config):
 
 
 def train_mosaic_cifar10(num_workers=2, use_gpu=False):
+    from composer.algorithms import LabelSmoothing
+    from ray.train.mosaic import MosaicTrainer
+
     trainer_init_config = {
         "max_duration": "1ep",
         "algorithms": [LabelSmoothing()],
@@ -113,5 +116,6 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    runtime_env = {"pip": ["mosaicml==0.10.1"]}
+    ray.init(address=args.address, runtime_env=runtime_env)
     train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
