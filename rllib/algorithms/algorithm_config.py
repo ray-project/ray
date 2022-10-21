@@ -362,7 +362,6 @@ class AlgorithmConfig:
                     "policy_mapping_fn",
                     "policies_to_train",
                     "observation_fn",
-                    "replay_mode",
                     "count_steps_by",
                 ] if k in value}
                 self.multi_agent(**kwargs)
