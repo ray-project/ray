@@ -2264,8 +2264,8 @@ class Dataset(Generic[T]):
         """Write the dataset to TFRecord files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain 
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+        files will contain
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # doctest: +SKIP
         records, with one Example record for each row in the dataset.
 
         .. warning::
@@ -2279,7 +2279,7 @@ class Dataset(Generic[T]):
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
         for the dataset.
-        
+
         Examples:
             >>> import ray
             >>> ds = ray.data.from_items([

@@ -429,8 +429,8 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
                 "bytes_item": b"abc",
-                "bytes_list": [b"abc", b"1234"]
-            }, 
+                "bytes_list": [b"abc", b"1234"],
+            },
             # Row two.
             {
                 "int_item": 2,
@@ -438,8 +438,8 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                 "float_item": 2.0,
                 "float_list": [2.0, 2.0, 3.0],
                 "bytes_item": b"def",
-                "bytes_list": [b"def", b"1234"]
-            }
+                "bytes_list": [b"def", b"1234"],
+            },
         ]
     )
 
@@ -510,7 +510,7 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
     filenames = sorted(os.listdir(tmp_path))
     filepaths = [os.path.join(tmp_path, filename) for filename in filenames]
     raw_dataset = tf.data.TFRecordDataset(filepaths)
-    
+
     tfrecords = []
     for raw_record in raw_dataset:
         example = tf.train.Example()
