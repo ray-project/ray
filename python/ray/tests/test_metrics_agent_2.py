@@ -24,7 +24,11 @@ from ray.core.generated.metrics_pb2 import (
 )
 from ray._raylet import WorkerID
 
-from ray._private.test_utils import fetch_prometheus_metrics, fetch_raw_prometheus, wait_for_condition
+from ray._private.test_utils import (
+    fetch_prometheus_metrics,
+    fetch_raw_prometheus,
+    wait_for_condition,
+)
 
 
 def raw_metrics(export_port):
@@ -145,7 +149,11 @@ def test_metrics_agent_record_and_export(get_agent):
         value=6,
         tags={"tag": "aa"},
     )
-    agent.record_and_export([record_d,])
+    agent.record_and_export(
+        [
+            record_d,
+        ]
+    )
     name, samples = get_metric(get_prom_metric_name(namespace, metric_name), agent_port)
     assert name == get_prom_metric_name(namespace, metric_name)
     assert len(samples) == 2
@@ -153,7 +161,6 @@ def test_metrics_agent_record_and_export(get_agent):
     assert samples[0].labels == {"tag": "a"}
     assert samples[1].value == 6
     assert samples[1].labels == {"tag": "aa"}
-
 
     # Record more than 1 gauge.
     metric_name_2 = "test2"
@@ -347,12 +354,12 @@ def test_metrics_agent_proxy_record_and_export_from_workers_delay(get_agent):  #
     assert time.time() - start > DELAY
 
 
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_export_format_correct(get_agent):
     """
-    Verifies that there is one metric per metric name and not one per metric name + tag combination.
-    And verifies that the prometheus output is in the right format.
+    Verifies that there is one metric per metric name and not one
+    per metric name + tag combination.
+    Also verifies that the prometheus output is in the right format.
     """
     namespace = "test"
     agent, agent_port = get_agent
@@ -403,8 +410,9 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert samples[1].labels == {"tag": "b"}
 
     # Assert there is not multiple HELP text per metric
-    # Need to manually parse the prometheus output because the official `prometheus_client.parser`
-    # is more lenient than the actual specification and ignores the multiple HELP / TYPE comments.
+    # Need to manually parse the prometheus output because the official
+    # `prometheus_client.parser` is more lenient than the actual
+    # specification and ignores the multiple HELP / TYPE comments.
     metrics_page = "localhost:{}".format(agent_port)
     _, response = list(fetch_raw_prometheus([metrics_page]))[0]
     assert response.count("# HELP test_test desc") == 1

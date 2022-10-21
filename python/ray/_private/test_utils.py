@@ -908,6 +908,7 @@ def object_memory_usage() -> bool:
     avail = ray.available_resources().get("object_store_memory", 0)
     return total - avail
 
+
 def fetch_raw_prometheus(prom_addresses):
     # Local import so minimal dependency tests can run without requests
     import requests
@@ -919,10 +920,8 @@ def fetch_raw_prometheus(prom_addresses):
         except requests.exceptions.ConnectionError:
             continue
 
-def fetch_prometheus(prom_addresses):
-    # Local import so minimal dependency tests can run without requests
-    import requests
 
+def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
     metric_samples = []
@@ -930,7 +929,7 @@ def fetch_prometheus(prom_addresses):
     for address in prom_addresses:
         if address not in components_dict:
             components_dict[address] = set()
-    
+
     for address, response in fetch_raw_prometheus(prom_addresses):
         for line in response.split("\n"):
             for family in text_string_to_metric_families(line):
