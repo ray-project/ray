@@ -380,18 +380,6 @@
     - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
       python/ray/serve/test_api
 
-- label: ":python: Release test package unit tests"
-  conditions: ["ALWAYS"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - pip install -e release/
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=release_unit
-      release/...
-
 - label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
