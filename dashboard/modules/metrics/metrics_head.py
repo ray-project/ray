@@ -269,7 +269,8 @@ def _format_prometheus_output(prom_data: Dict[str, Any]) -> Optional[TaskProgres
             )
             # metric["value"] is a tuple where first item is a timestamp
             # and second item is the value.
-            metric_value = int(metric["value"][1])
+            # We never want to show a negative number here so let's clip to 0.
+            metric_value = max(0, int(metric["value"][1]))
             kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
 
         return TaskProgress(**kwargs)
