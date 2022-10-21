@@ -343,6 +343,31 @@ Here is the example code that illustrates these:
     :start-after: __export-models-begin__
     :end-before: __export-models-end__
 
+We can now export the Keras NN model (that our PPOTF1Policy inside the PPO Algorithm uses)
+to disk ...
+
+1) Using the Policy object:
+
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+    :language: python
+    :start-after: __export-models-1-begin__
+    :end-before: __export-models-1-end__
+
+2) Via the Policy's checkpointing method:
+
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+    :language: python
+    :start-after: __export-models-2-begin__
+    :end-before: __export-models-2-end__
+
+3) Via the Algorithm (Policy) checkpoint:
+
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+    :language: python
+    :start-after: __export-models-3-begin__
+    :end-before: __export-models-3-end__
+
+
 And what about exporting my NN Models in ONNX format?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
