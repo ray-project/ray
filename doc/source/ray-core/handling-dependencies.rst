@@ -78,7 +78,7 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
     # simply change to ray.init("ray://123.456.7.8:10001", runtime_env=...)
     ray.init(runtime_env=runtime_env)
 
-    @ray.remote()
+    @ray.remote
     def f():
       open("my_datafile.txt").read()
       return requests.get("https://www.ray.io")
@@ -141,7 +141,7 @@ This will install the dependencies to the remote cluster.  Any tasks and actors 
 Specifying a Runtime Environment Per-Task or Per-Actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify different runtime environments per-actor or per-task using ``.options()`` or the ``@ray.remote()`` decorator:
+You can specify different runtime environments per-actor or per-task using ``.options()`` or the ``@ray.remote`` decorator:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
