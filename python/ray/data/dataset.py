@@ -2261,7 +2261,27 @@ class Dataset(Generic[T]):
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """TODO docs."""
+        """Write the dataset to TFRecord files.
+
+        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
+        files will contain 
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+        records, with one Example record for each row in the dataset.
+
+        .. warning::
+            tf.train.Feature only natively stores ints, floats, and bytes,
+            so this function only supports datasets with these data types,
+            and will error if the dataset contains unsupported types.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
+
+        Unless a custom block path provider is given, the format of the output
+        files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
+        for the dataset.
+        
+
+        """
 
         self.write_datasource(
             TFRecordDatasource(),
