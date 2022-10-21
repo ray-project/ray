@@ -15,18 +15,16 @@ config = (
     .framework("tf")
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
-    .training(model={
-        "fcnet_hiddens": [64, 64],
-        "fcnet_activation": "relu",
-    })
+    .training(
+        model={
+            "fcnet_hiddens": [64, 64],
+            "fcnet_activation": "relu",
+        }
+    )
     # Set up a separate evaluation worker set for the
     # `algo.evaluate()` call after training (see below).
     .evaluation(
         evaluation_num_workers=1,
-        # Only for evaluation runs, render the env.
-        evaluation_config={
-            "render_env": True,
-        }
     )
 )
 
