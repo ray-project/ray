@@ -449,7 +449,7 @@ class TestAlgorithm(unittest.TestCase):
         algo2 = config.build()
         self.assertTrue(all(c == 0 for c in algo2._counters.values()))
         algo2.__setstate__(state)
-        counter_values2 = list(algo._counters.values())
+        counter_values2 = list(algo2._counters.values())
         self.assertEqual(counter_values, counter_values2)
 
 
