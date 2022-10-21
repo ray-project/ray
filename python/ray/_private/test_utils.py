@@ -909,22 +909,29 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_prometheus(prom_addresses):
+def fetch_raw_prometheus(prom_addresses):
     # Local import so minimal dependency tests can run without requests
     import requests
 
-    components_dict = {}
-    metric_names = set()
-    metric_samples = []
     for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
         try:
             response = requests.get(f"http://{address}/metrics")
+            yield address, response.text
         except requests.exceptions.ConnectionError:
             continue
 
-        for line in response.text.split("\n"):
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses):
+        for line in response.split("\n"):
             for family in text_string_to_metric_families(line):
                 for sample in family.samples:
                     metric_names.add(sample.name)
