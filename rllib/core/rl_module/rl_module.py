@@ -69,18 +69,17 @@ class RLModule(abc.ABC):
         forward_exploration: Forward pass during training for exploration.
         forward_inference: Forward pass during inference.
 
-    Note: There is a reason that the specs are not written as abstract properties. 
-        The reason is that torch overrides `__getattr__` and `__setattr__`. This means 
-        that if we define the specs as properties, then any error in the property will 
-        be interpreted as a failure to retrieve the attribute and will invoke 
-        `__getattr__` which will give a confusing error about the attribute not found. 
+    Note: There is a reason that the specs are not written as abstract properties.
+        The reason is that torch overrides `__getattr__` and `__setattr__`. This means
+        that if we define the specs as properties, then any error in the property will
+        be interpreted as a failure to retrieve the attribute and will invoke
+        `__getattr__` which will give a confusing error about the attribute not found.
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: Mapping[str, Any]) -> None:
         self.config = config
-
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpecDict:
@@ -91,7 +90,6 @@ class RLModule(abc.ABC):
         has `action_dist` key and its value is an instance of `ActionDistributionV2`. This assumption must always hold.
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
-
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> ModelSpecDict:

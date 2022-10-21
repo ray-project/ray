@@ -95,13 +95,8 @@ class FCNet(nn.Module):
         if self.output_activation is not None:
             self.output_activation = getattr(nn, self.output_activation)()
 
-
     def input_specs(self):
-        return ModelSpecDict(
-            {
-                "input": TorchSpecs("b, h", h=self.input_dim)
-            }
-        )
+        return ModelSpecDict({"input": TorchSpecs("b, h", h=self.input_dim)})
 
     @check_specs(input_spec="input_specs")
     def forward(self, x):
@@ -171,7 +166,7 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpecDict:
         return self.input_specs_exploration
-    
+
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
         return ModelSpecDict(
@@ -197,7 +192,6 @@ class SimplePPOModule(TorchRLModule):
         action_dist = TorchDeterministic(action)
         return {"action_dist": action_dist}
 
-
     @override(RLModule)
     def input_specs_exploration(self):
         return ModelSpecDict(
@@ -218,7 +212,6 @@ class SimplePPOModule(TorchRLModule):
             }
         )
 
-    
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:

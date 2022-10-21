@@ -191,7 +191,7 @@ def check_specs(
                 raise ValueError(
                     f"input_dict must be a Mapping, got {type(input_dict).__name__}"
                 )
-                
+
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
 

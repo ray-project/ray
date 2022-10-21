@@ -44,7 +44,6 @@ class ActionDistributionV2(abc.ABC):
             sampled action and its logp.
         """
 
-    
     @abc.abstractmethod
     def rsample(
         self,
