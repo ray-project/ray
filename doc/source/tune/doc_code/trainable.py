@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __class_api_checkpointing_start__
 import os
 import torch
