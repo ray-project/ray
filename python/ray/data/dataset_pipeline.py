@@ -824,11 +824,14 @@ class DatasetPipeline(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
+        **ray_remote_args,
     ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to
         each dataset/window in this pipeline."""
         return self.foreach_window(
-            lambda ds: ds.random_shuffle(seed=seed, num_blocks=num_blocks)
+            lambda ds: ds.random_shuffle(
+                seed=seed, num_blocks=num_blocks, **ray_remote_args
+            )
         )
 
     def sort_each_window(

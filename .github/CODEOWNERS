@@ -93,7 +93,7 @@
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
-/python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
+/python/requirements/ml/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119
