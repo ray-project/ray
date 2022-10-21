@@ -144,6 +144,13 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   }
 
   void Run(size_t n = 1) {
+    // If n == 0 it mean we just run it and return.
+    if(n == 0) {
+      io_service.run();
+      io_service.restart();
+      return;
+    }
+
     while (n) {
       auto i = io_service.run_one();
       n -= i;
@@ -161,7 +168,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
 
 TEST_F(GcsHealthCheckManagerTest, TestBasic) {
   auto node_id = AddServer();
-  Run();
+  Run(0); // Initial run
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
@@ -187,7 +194,7 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
 
 TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
   auto node_id = AddServer();
-  Run();
+  Run(0); // Initial run
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
@@ -215,7 +222,7 @@ TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
 
 TEST_F(GcsHealthCheckManagerTest, Crashed) {
   auto node_id = AddServer();
-  Run();
+  Run(0); // Initial run
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
@@ -247,7 +254,7 @@ TEST_F(GcsHealthCheckManagerTest, Crashed) {
 
 TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
   auto node_id = AddServer();
-  io_service.run();
+  Run(0); // Initial run
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
