@@ -2265,7 +2265,7 @@ class Dataset(Generic[T]):
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # doctest: +SKIP
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
         records, with one Example record for each row in the dataset.
 
         .. warning::
