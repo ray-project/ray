@@ -94,6 +94,8 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   void TearDown() override {
     io_service.poll();
     io_service.stop();
+
+    // Stop the servers.
     for (auto [_, server] : servers) {
       server->Shutdown();
     }
