@@ -3320,31 +3320,6 @@
     type: sdk_command
     file_manager: sdk
 
-- name: non_streaming_shuffle_1tb_1000_partition
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: non_streaming_shuffle_1tb_1000_partition
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
-      --no-streaming
-
-    wait_for_nodes:
-      num_nodes: 20
-
-    type: sdk_command
-    file_manager: sdk
-
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
   working_dir: nightly_tests
@@ -3823,7 +3798,7 @@
     test_name: dask_on_ray_1tb_sort
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
@@ -3958,7 +3933,7 @@
     test_name: many_actors
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -4036,7 +4011,7 @@
     test_name: many_pgs
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
