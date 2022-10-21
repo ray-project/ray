@@ -94,6 +94,9 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   void TearDown() override {
     io_service.poll();
     io_service.stop();
+    for (auto [_, server] : servers) {
+      server->Shutdown();
+    }
   }
 
   NodeID AddServer() {
@@ -159,10 +162,9 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   }
 
   int port;
-  std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
-  std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
   instrumented_io_context io_service;
-
+  std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
+  std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
 };
 

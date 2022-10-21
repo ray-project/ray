@@ -72,12 +72,12 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       &request,
       &response,
       [this, context = this->context](::grpc::Status status) {
+        if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
+          return;
+        }
+
         manager->io_service_.post(
             [this, status]() {
-              if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
-                return;
-              }
-
               RAY_LOG(DEBUG) << "Health check status: " << int(response.status());
 
               if (status.ok() && response.status() == HealthCheckResponse::SERVING) {
