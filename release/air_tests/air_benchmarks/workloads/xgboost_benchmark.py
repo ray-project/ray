@@ -28,14 +28,17 @@ _EXPERIMENT_PARAMS = {
             "10G-xgboost-data.parquet/8034b2644a1d426d9be3bbfa78673dfa_000000.parquet"
         ),
         "num_workers": 1,
+        "cpus_per_worker": 1,
     },
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
         "num_workers": 1,
+        "cpus_per_worker": 12,
     },
     "100G": {
         "data": "s3://air-example-data-2/100G-xgboost-data.parquet/",
         "num_workers": 10,
+        "cpus_per_worker": 12,
     },
 }
 
@@ -119,15 +122,14 @@ def run_xgboost_prediction(model_path: str, data_path: str):
 
 
 def main(args):
+    experiment = args.size if not args.smoke_test else "smoke_test"
+    experiment_params = _EXPERIMENT_PARAMS[experiment]
 
-    if args.smoke_test:
-        experiment_params = _EXPERIMENT_PARAMS["smoke_test"]
-        cpus_per_worker = 1
-    else:
-        experiment_params = _EXPERIMENT_PARAMS[args.size]
-        cpus_per_worker = 12
-
-    data_path, num_workers = experiment_params["data"], experiment_params["num_workers"]
+    data_path, num_workers, cpus_per_worker = (
+        experiment_params["data"],
+        experiment_params["num_workers"],
+        experiment_params["cpus_per_worker"],
+    )
     print("Running xgboost training benchmark...")
     training_time = run_xgboost_training(data_path, num_workers, cpus_per_worker)
     print("Running xgboost prediction benchmark...")
