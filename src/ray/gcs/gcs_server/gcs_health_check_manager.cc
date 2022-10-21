@@ -53,7 +53,7 @@ void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
 
 std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
   std::vector<NodeID> nodes;
-  for(const auto& [node_id, _] : inflight_health_checks_) {
+  for (const auto &[node_id, _] : inflight_health_checks_) {
     nodes.empalce_back(node_id);
   }
   return nodes;

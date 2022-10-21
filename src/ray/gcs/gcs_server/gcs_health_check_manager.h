@@ -66,8 +66,8 @@ class GcsHealthCheckManager {
   ///
   /// \return A list of node id which are being monitored by this class.
   std::vector<NodeID> GetAllNodes() const;
- private:
 
+ private:
   void FailNode(const NodeID &node_id);
 
   /// This is for testing. We'll use mock timer in gtest.
@@ -134,7 +134,8 @@ class GcsHealthCheckManager {
   std::function<void(const NodeID &)> on_node_death_callback_;
 
   /// The context of the health check for each nodes.
-  absl::flat_hash_map<NodeID, std::unique_ptr<HealthCheckContext>> inflight_health_checks_;
+  absl::flat_hash_map<NodeID, std::unique_ptr<HealthCheckContext>>
+      inflight_health_checks_;
 
   /// The delay for the first health check request.
   const int64_t initial_delay_ms_;
@@ -144,7 +145,6 @@ class GcsHealthCheckManager {
   const int64_t period_ms_;
   /// The number of failures before the node is considered as dead.
   const int64_t failure_threshold_;
-
 };
 
 }  // namespace gcs

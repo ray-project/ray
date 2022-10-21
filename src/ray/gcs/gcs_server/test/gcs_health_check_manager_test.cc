@@ -69,10 +69,10 @@ using mock_deadline_timer =
 
 #define _TESTING_RAY_TIMER mock_deadline_timer
 
-#include <thread>
-#include <chrono>
-
 #include <ray/rpc/grpc_server.h>
+
+#include <chrono>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
@@ -84,7 +84,8 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
   void SetUp() override {
     grpc::EnableDefaultHealthCheckService(true);
-    mock_time_traits::set_now(boost::posix_time::time_from_string("2022-01-20 0:0:0.000"));
+    mock_time_traits::set_now(
+        boost::posix_time::time_from_string("2022-01-20 0:0:0.000"));
     health_check = std::make_unique<gcs::GcsHealthCheckManager>(
         io_service, [this](const NodeID &id) { dead_nodes.insert(id); });
     port = 10000;
@@ -130,19 +131,20 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-
   void AdvanceInitialDelay() {
-    auto delta = boost::posix_time::millisec(RayConfig::instance().health_check_initial_delay_ms() + 10);
+    auto delta = boost::posix_time::millisec(
+        RayConfig::instance().health_check_initial_delay_ms() + 10);
     mock_time_traits::set_now(mock_time_traits::now() + delta);
   }
 
   void AdvanceNextDelay() {
-    auto delta = boost::posix_time::millisec(RayConfig::instance().health_check_period_ms() + 10);
+    auto delta =
+        boost::posix_time::millisec(RayConfig::instance().health_check_period_ms() + 10);
     mock_time_traits::set_now(mock_time_traits::now() + delta);
   }
 
   void Run(size_t n = 1) {
-    while(n) {
+    while (n) {
       auto i = io_service.run_one();
       n -= i;
       io_service.restart();
@@ -168,16 +170,16 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
   ASSERT_TRUE(dead_nodes.empty());
 
   AdvanceNextDelay();
-  Run(2); // One for starting RPC and one for the RPC callback.
+  Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   StopServing(node_id);
 
-  for(auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
+  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
     AdvanceNextDelay();
-    Run(2); // One for starting RPC and one for the RPC callback.
+    Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
-  Run(); // For failure callback.
+  Run();  // For failure callback.
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
@@ -194,19 +196,19 @@ TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
   ASSERT_TRUE(dead_nodes.empty());
 
   AdvanceNextDelay();
-  Run(2); // One for starting RPC and one for the RPC callback.
+  Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   StopServing(node_id);
 
-  for(auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
+  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
     AdvanceNextDelay();
-    Run(2); // One for starting RPC and one for the RPC callback.
-    if(i == (RayConfig::instance().health_check_failure_threshold()) / 2) {
+    Run(2);  // One for starting RPC and one for the RPC callback.
+    if (i == (RayConfig::instance().health_check_failure_threshold()) / 2) {
       StartServing(node_id);
     }
   }
 
-  Run(); // For failure callback.
+  Run();  // For failure callback.
 
   ASSERT_EQ(0, dead_nodes.size());
 }
@@ -222,22 +224,22 @@ TEST_F(GcsHealthCheckManagerTest, Crashed) {
   ASSERT_TRUE(dead_nodes.empty());
 
   AdvanceNextDelay();
-  Run(2); // One for starting RPC and one for the RPC callback.
+  Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
 
   // Check it again
   AdvanceNextDelay();
-  Run(2); // One for starting RPC and one for the RPC callback.
+  Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
 
   DeleteServer(node_id);
 
-  for(auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
+  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
     AdvanceNextDelay();
-    Run(2); // One for starting RPC and one for the RPC callback.
+    Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
-  Run(); // For failure callback.
+  Run();  // For failure callback.
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
@@ -254,12 +256,12 @@ TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
   ASSERT_TRUE(dead_nodes.empty());
 
   AdvanceNextDelay();
-  Run(2); // One for starting RPC and one for the RPC callback.
+  Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   health_check->RemoveNode(node_id);
 
   // Make sure it's not monitored any more
-  for(auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
+  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
     AdvanceNextDelay();
     io_service.poll();
   }
@@ -270,5 +272,5 @@ TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();  
+  return RUN_ALL_TESTS();
 }
