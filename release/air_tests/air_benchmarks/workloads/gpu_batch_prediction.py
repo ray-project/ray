@@ -40,8 +40,12 @@ def main(data_size_gb: int, smoke_test: bool = False):
     if smoke_test:
         # Only read one image
         data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(
+            f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}"
+        )
 
-    print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
