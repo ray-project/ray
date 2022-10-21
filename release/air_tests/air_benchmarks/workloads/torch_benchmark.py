@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 from typing import Dict, Tuple
 
 import click
@@ -431,7 +432,7 @@ def run(
 
     print("Preparing Torch benchmark: Downloading MNIST")
 
-    path = os.path.abspath("workloads/_torch_prepare.py")
+    path = str((Path(__file__).parent / "workloads/_torch_prepare.py").absolute())
     upload_file_to_all_nodes(path)
     run_command_on_all_nodes(["python", path])
 

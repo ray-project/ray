@@ -287,7 +287,7 @@ py_test(
         "//:ray_lib",
         "//python/ray/air:ml_lib",
     ],
-    args = ["run", "--num-runs=1", "--num-trials=1", "--num-workers=1", "--smoke-test"]
+    args = ["--num-runs=1", "--num-trials=1", "--num-workers=1", "--smoke-test"]
 )
 
 
