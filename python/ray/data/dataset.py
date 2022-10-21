@@ -2344,6 +2344,8 @@ class Dataset(Generic[T]):
         """
 
         ctx = DatasetContext.get_current()
+        if ray_remote_args is None:
+            ray_remote_args = {}
         if ctx.read_write_local_node:
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
