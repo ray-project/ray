@@ -1,7 +1,13 @@
-from ray._private.memory_monitor import MemoryMonitor, get_top_n_memory_usage
 import time
 import os
 import json
+
+import ray
+
+from ray._private.memory_monitor import MemoryMonitor, get_top_n_memory_usage
+
+# Initialize ray to avoid autosuspend.
+ray.init()
 
 if __name__ == "__main__":
     m = MemoryMonitor()
