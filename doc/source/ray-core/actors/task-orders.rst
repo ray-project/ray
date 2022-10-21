@@ -27,7 +27,7 @@ the same submitter have finished execution.
         counter = Counter.remote()
 
         # For tasks from the same submitter,
-        # their are executed according to submission order.
+        # they are executed according to submission order.
         value0 = counter.add.remote(1)
         value1 = counter.add.remote(2)
 
