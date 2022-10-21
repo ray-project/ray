@@ -186,6 +186,7 @@ class Algorithm(Trainable):
         "exploration_config",
         "replay_buffer_config",
         "extra_python_environs_for_worker",
+        "extra_python_environs_for_driver",
         "input_config",
         "output_config",
     ]
