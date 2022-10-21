@@ -95,7 +95,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
+                "worker_register_timeout_seconds": 0.5,
             },
         },
         {
@@ -105,7 +105,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
+                "worker_register_timeout_seconds": 0.5,
             },
         },
     ],
@@ -150,7 +150,7 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
         runtime_env = {"py_modules": [S3_PACKAGE_URI]}
 
     # Note: We should set a bigger timeout if downloads the s3 package slowly.
-    get_timeout = 2
+    get_timeout = 10
 
     # Start a task with runtime env
     if worker_register_timeout:
