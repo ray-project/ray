@@ -1,15 +1,18 @@
 import unittest
 import gym
-from ray.rllib.core.examples.simple_ppo_rl_module import (
-    SimplePPOModule,
-    PPOModuleConfig,
-    FCConfig,
-)
-
 import torch
-from ray.rllib.utils.test_utils import check
 import tree
 import numpy as np
+
+
+from ray.rllib.core.examples.simple_ppo_rl_module import (
+    SimplePPOModule,
+    get_separate_encoder_config,
+    get_shared_encoder_config,
+)
+from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
+from ray.rllib.utils.test_utils import check
+
 
 def to_numpy(tensor):
     return tensor.detach().cpu().numpy()
@@ -22,41 +25,8 @@ def to_tensor(array, device=None):
 
 
 class TestRLModule(unittest.TestCase):
-    @staticmethod
-    def _get_shared_encoder_config(env):
-        return PPOModuleConfig(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            encoder_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-            pi_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-            vf_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-        )
-
-    @staticmethod
-    def _get_separate_encoder_config(env):
-        return PPOModuleConfig(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            pi_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-            vf_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-        )
-
-    def test_simple_ppo_module_compilation(self):
+    
+    def test_compilation(self):
 
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
             env = gym.make(env_name)
@@ -67,10 +37,10 @@ class TestRLModule(unittest.TestCase):
                 else env.action_space.shape[0]
             )
 
-            #
-            config_separate_encoder = self._get_separate_encoder_config(env)
+            config_separate_encoder = get_separate_encoder_config(env)
             module = SimplePPOModule(config_separate_encoder)
 
+            self.assertIsInstance(module, TorchRLModule)
             self.assertIsNone(module.encoder)
             self.assertEqual(module.pi.layers[0].in_features, obs_dim)
             self.assertEqual(module.vf.layers[0].in_features, obs_dim)
@@ -81,7 +51,7 @@ class TestRLModule(unittest.TestCase):
             self.assertEqual(module.vf.layers[-1].out_features, 1)
 
             # with shared encoder
-            config_shared_encoder = self._get_shared_encoder_config(env)
+            config_shared_encoder = get_shared_encoder_config(env)
             module = SimplePPOModule(config_shared_encoder)
 
             self.assertIsNotNone(module.encoder)
@@ -93,19 +63,40 @@ class TestRLModule(unittest.TestCase):
             else:
                 self.assertEqual(module.pi.layers[-1].out_features, action_dim * 2)
             self.assertEqual(module.vf.layers[-1].out_features, 1)
+    
+    def test_get_set_state(self):
+        
+        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+            env = gym.make(env_name)
+            config = get_shared_encoder_config(env)
+            module = SimplePPOModule(config)
 
-    def test_rollouts_with_rlmodule(self):
+            state = module.get_state()
+            self.assertIsInstance(state, dict)
+
+            module2 = SimplePPOModule(config)
+            state2 = module2.get_state()
+            self.assertRaises(AssertionError, lambda: check(state, state2))
+
+            module2.set_state(state)
+            state2_after = module2.get_state()
+            check(state, state2_after)
+
+
+    def test_rollouts(self):
 
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
-                    print(f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED={shared_encoder}]")
+                    print(
+                        f"[ENV={env_name}] | [FWD={fwd_fn}] | [SHARED={shared_encoder}]"
+                    )
                     env = gym.make(env_name)
 
                     if shared_encoder:
-                        config = self._get_shared_encoder_config(env)
+                        config = get_shared_encoder_config(env)
                     else:
-                        config = self._get_separate_encoder_config(env)
+                        config = get_separate_encoder_config(env)
                     module = SimplePPOModule(config)
 
                     obs = env.reset()
@@ -113,13 +104,23 @@ class TestRLModule(unittest.TestCase):
                     while tstep < 10:
 
                         if fwd_fn == "forward_exploration":
-                            fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
-                            action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
+                            fwd_out = module.forward_exploration(
+                                {"obs": to_tensor(obs)[None]}
+                            )
+                            action = to_numpy(
+                                fwd_out["action_dist"].sample().squeeze(0)
+                            )
                         elif fwd_fn == "forward_inference":
                             # check if I sample twice, I get the same action
-                            fwd_out = module.forward_inference({"obs": to_tensor(obs)[None]})
-                            action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-                            action2 = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
+                            fwd_out = module.forward_inference(
+                                {"obs": to_tensor(obs)[None]}
+                            )
+                            action = to_numpy(
+                                fwd_out["action_dist"].sample().squeeze(0)
+                            )
+                            action2 = to_numpy(
+                                fwd_out["action_dist"].sample().squeeze(0)
+                            )
                             check(action, action2)
 
                         obs, reward, done, info = env.step(action)
@@ -127,7 +128,6 @@ class TestRLModule(unittest.TestCase):
                             f"obs: {obs}, action: {action}, reward: {reward}, done: {done}, info: {info}"
                         )
                         tstep += 1
-
 
     def test_forward_train(self):
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
@@ -137,10 +137,10 @@ class TestRLModule(unittest.TestCase):
                 env = gym.make(env_name)
 
                 if shared_encoder:
-                    config = self._get_shared_encoder_config(env)
+                    config = get_shared_encoder_config(env)
                 else:
-                    config = self._get_separate_encoder_config(env)
-                
+                    config = get_separate_encoder_config(env)
+
                 module = SimplePPOModule(config)
                 module.to("cpu")
                 module.train()
@@ -153,14 +153,16 @@ class TestRLModule(unittest.TestCase):
                     fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
                     action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
                     obs, reward, done, _ = env.step(action)
-                    batch.append({
-                        "obs": obs,
-                        "action": action[None] if action.ndim == 0 else action,
-                        "reward": np.array(reward),
-                        "done": np.array(done),
-                    })
+                    batch.append(
+                        {
+                            "obs": obs,
+                            "action": action[None] if action.ndim == 0 else action,
+                            "reward": np.array(reward),
+                            "done": np.array(done),
+                        }
+                    )
                     tstep += 1
-                
+
                 # convert the list of dicts to dict of lists
                 batch = tree.map_structure(lambda *x: list(x), *batch)
                 # convert dict of lists to dict of tensors
@@ -169,7 +171,7 @@ class TestRLModule(unittest.TestCase):
                 # forward train
                 fwd_out = module.forward_train(batch)
 
-                # this is not exactly a ppo loss, just something to show that the 
+                # this is not exactly a ppo loss, just something to show that the
                 # forward train works
                 adv = batch["reward"] - fwd_out["vf"]
                 actor_loss = -(fwd_out["logp"] * adv).mean()
@@ -181,9 +183,6 @@ class TestRLModule(unittest.TestCase):
                 # check that all neural net parameters have gradients
                 for param in module.parameters():
                     self.assertIsNotNone(param.grad)
-
-
-
 
 
 if __name__ == "__main__":

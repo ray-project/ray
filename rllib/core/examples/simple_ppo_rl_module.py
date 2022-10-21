@@ -20,6 +20,39 @@ import gym
 from typing import List, Mapping, Any
 
 
+def get_shared_encoder_config(env):
+    return PPOModuleConfig(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        encoder_config=FCConfig(
+            hidden_layers=[32],
+            activation="ReLU",
+        ),
+        pi_config=FCConfig(
+            hidden_layers=[32],
+            activation="ReLU",
+        ),
+        vf_config=FCConfig(
+            hidden_layers=[32],
+            activation="ReLU",
+        ),
+    )
+
+def get_separate_encoder_config(env):
+    return PPOModuleConfig(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        pi_config=FCConfig(
+            hidden_layers=[32],
+            activation="ReLU",
+        ),
+        vf_config=FCConfig(
+            hidden_layers=[32],
+            activation="ReLU",
+        ),
+    )
+
+
 @dataclass
 class FCConfig:
     """Configuration for a fully connected network.
@@ -169,9 +202,11 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
-        return ModelSpecDict({
-            "action_dist": TorchDeterministic,
-        })
+        return ModelSpecDict(
+            {
+                "action_dist": TorchDeterministic,
+            }
+        )
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -270,7 +305,7 @@ class SimplePPOModule(TorchRLModule):
         else:
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
-        
+
         logp = action_dist.logp(batch["action"].squeeze(-1))
         entropy = action_dist.entropy()
         return {

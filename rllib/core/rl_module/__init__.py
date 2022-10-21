@@ -1,3 +1,3 @@
-from .rl_module import RLModule
+from .rl_module import RLModule, MultiAgentRLModule
 
-__all__ = ["RLModule"]
+__all__ = ["RLModule", "MultiAgentRLModule"]

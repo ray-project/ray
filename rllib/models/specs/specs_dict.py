@@ -8,11 +8,11 @@ from ray.rllib.models.specs.specs_base import TensorSpecs
 
 _MISSING_KEYS_FROM_SPEC = (
     "The data dict does not match the model specs. Keys {} are "
-    "in the data dict but not on the given spec dict, and exact_match is set to True."
+    "in the data dict but not on the given spec dict, and exact_match is set to True"
 )
 _MISSING_KEYS_FROM_DATA = (
     "The data dict does not match the model specs. Keys {} are "
-    "in the spec dict but not on the data dict."
+    "in the spec dict but not on the data dict. Data keys are {}"
 )
 _TYPE_MISMATCH = (
     "The data does not match the spec. The data element "
@@ -110,7 +110,7 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
         data_keys_set = set(data.keys())
         missing_keys = self._keys_set.difference(data_keys_set)
         if missing_keys:
-            raise ValueError(_MISSING_KEYS_FROM_DATA.format(missing_keys))
+            raise ValueError(_MISSING_KEYS_FROM_DATA.format(missing_keys, data_keys_set))
         if exact_match:
             data_spec_missing_keys = data_keys_set.difference(self._keys_set)
             if data_spec_missing_keys:
@@ -211,7 +211,9 @@ def check_specs(
                     try:
                         input_spec_.validate(input_dict_, exact_match=input_exact_match)
                     except ValueError as e:
-                        raise ValueError(f"Input spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}.")
+                        raise ValueError(
+                            f"Input spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}."
+                        )
                 if filter:
                     input_dict_ = input_dict_.filter(input_spec_)
 
@@ -221,7 +223,9 @@ def check_specs(
                 try:
                     output_spec_.validate(output_dict_, exact_match=output_exact_match)
                 except ValueError as e:
-                    raise ValueError(f"Output spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}.")
+                    raise ValueError(
+                        f"Output spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}."
+                    )
 
             if cache:
                 self.__checked_specs_cache__[func.__name__] = True

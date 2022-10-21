@@ -1,10 +1,11 @@
 import abc
 from collections import defaultdict
-from typing import Iterator, Mapping, Any, Union, Dict
+from typing import Iterator, Mapping, Any, Union, Dict, Type
 
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
+    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     override,
 )
@@ -12,10 +13,10 @@ from ray.rllib.core.base_module import Module
 
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
-
+import pprint
 
 ModuleID = str
 
@@ -162,21 +163,163 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
+    @abc.abstractmethod
+    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
+        """Makes the module distributed."""
+
+    @abc.abstractmethod
+    def is_distributed(self) -> bool:
+        """Returns True if the module is distributed."""
+
+    def as_multi_agent(self) -> "MultiAgentRLModule":
+        """Returns a multi-agent wrapper around this module."""
+        return self.get_multi_agent_class()({
+            "modules": {DEFAULT_POLICY_ID: self}
+        })
+
+    @classmethod
+    @OverrideToImplementCustomLogic
+    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
+        """Returns the multi-agent wrapper class for this module."""
+        return MultiAgentRLModule
+
 
 class MultiAgentRLModule(RLModule):
     def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
         super().__init__(config, **kwargs)
 
-        self._shared_module_infos = self._make_shared_module_infos()
-        self._modules: Mapping[ModuleID, RLModule] = self._make_modules()
+        self._rl_modules: Mapping[ModuleID, RLModule] = self._make_modules()
+        self._trainable_rl_modules = self.config.get(
+            "trainable_modules", set(self._rl_modules.keys())
+        )
+
+    def keys(self) -> Iterator[ModuleID]:
+        """Returns an iteratable of module ids."""
+        return self._rl_modules.keys()
 
     @override(RLModule)
+    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
+        for module in self._rl_modules.values():
+            module.make_distributed(dist_config)
+
+    @override(RLModule)
+    def is_distributed(self) -> bool:
+        return all(module.is_distributed() for module in self._rl_modules.values())
+
+    @override(RLModule)
+    def get_state(self) -> Mapping[str, Any]:
+        return {module_id: module.get_state() for module_id, module in self._rl_modules.items()}
+
+    @override(RLModule)
+    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+        """Sets the state dict of the multi-agent module.
+        
+        The default implementation is a mapping from independent module IDs to their individual state_dicts. Override this method to customize the state_dict for custom more advanced multi-agent use cases.
+        
+        Args:
+            state_dict: The state dict to set.
+        """
+        for module_id, module in self._rl_modules.items():
+            module.set_state(state_dict[module_id])
+
+    @override(RLModule)
+    def as_multi_agent(self) -> "MultiAgentRLModule":
+        """Returns a multi-agent wrapper around this module.
+        
+        This method is overridden to avoid double wrapping.
+
+        Returns:
+            The instance itself.
+        """
+        return self
+
+    def add_module(self, module_id: ModuleID, module: RLModule, *, dist_config=None, override: bool = False) -> None:
+        """Adds a module at run time to the multi-agent module.
+        
+        Args:
+            module_id: The module ID to add. If the module ID already exists and 
+                override is False, an error is raised. If override is True, the module 
+                is replaced.
+            module: The module to add.
+            dist_config: The distributed configuration to use if module needs to be 
+                distributed. 
+            override: Whether to override the module if it already exists.
+
+        Raises:
+            ValueError: If the module ID already exists and override is False.
+        """
+        if module_id in self._rl_modules and not override:
+            raise ValueError(
+                f"Module ID {module_id} already exists. If your intention is to " "override, set override=True."
+            )
+        if self.is_distributed():
+            module.make_distributed(dist_config)
+        self._rl_modules[module_id] = module
+
+    def remove_module(self, module_id: ModuleID, *, raise_err_if_not_found: bool = True) -> None:
+        """Removes a module at run time from the multi-agent module.
+
+        Args:
+            module_id: The module ID to remove.
+            raise_err_if_not_found: Whether to raise an error if the module ID is not 
+                found.
+        Raises:
+            ValueError: If the module ID does not exist.
+        """
+        if raise_err_if_not_found:
+            self._check_module_exists(module_id)
+        del self._rl_modules[module_id]
+
+    def __getitem__(self, module_id: ModuleID) -> RLModule:
+        """Returns the module with the given module ID.
+
+        Args:
+            module_id: The module ID to get.
+        
+        Returns:
+            The module with the given module ID.
+        """
+        self._check_module_exists(module_id)
+        return self._rl_modules[module_id]
+
+    @OverrideToImplementCustomLogic
+    def _make_modules(self) -> Mapping[ModuleID, RLModule]:
+        modules_info_dict = self.config["modules"]
+        modules = {}
+        for module_id, module_info in modules_info_dict.items():
+
+            if isinstance(module_info, RLModule):
+                modules[module_id] = module_info
+            elif isinstance(module_info, dict):
+                mod_class = module_info.get("module_class")
+                if mod_class is None:
+                    raise KeyError(
+                        f"key `module_class` is missing in the module specfication of module {module_id}"
+                    )
+                mod_config = module_info.get("module_config", {})
+                modules[module_id] = mod_class(config=mod_config)
+            elif isinstance(module_id, tuple):
+                if len(module_id) != 2:
+                    raise ValueError(
+                        f"module {module_id} should has 2 elements: (module_class, module_config)"
+                    )
+                mod_class, mod_config = module_info
+                modules[module_id] = mod_class(config=mod_config)
+            else:
+                raise ValueError(
+                    f"Invalid module info for module {module_id}: {module_info}"
+                )
+
+
+        return modules
+    
+    @override(RLModule)
     def output_specs_train(self) -> ModelSpecDict:
-        return self._get_specs_for_modules(self._modules, "output_specs_train")
+        return self._get_specs_for_modules("output_specs_train")
 
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpecDict:
-        return self._get_specs_for_modules(self._modules, "output_specs_inference")
+        return self._get_specs_for_modules("output_specs_inference")
 
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpecDict:
@@ -184,41 +327,39 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpecDict:
-        return self._get_specs_for_modules(self._modules, "input_specs_train")
+        return self._get_specs_for_modules("input_specs_train")
 
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpecDict:
-        return self._get_specs_for_modules(self._modules, "input_specs_inference")
+        return self._get_specs_for_modules("input_specs_inference")
 
     @override(RLModule)
     def input_specs_exploration(self) -> ModelSpecDict:
-        return self._get_specs_for_modules(self._modules, "input_specs_exploration")
+        return self._get_specs_for_modules("input_specs_exploration")
 
     def _get_specs_for_modules(self, property_name: str) -> ModelSpecDict:
-        return ModelSpecDict(
-            {
-                module_id: getattr(module, property_name)
-                for module_id, module in self._modules.items()
-            }
-        )
+        return ModelSpecDict({
+            module_id: getattr(module, property_name)()
+            for module_id, module in self._rl_modules.items()
+        })
 
     @override(RLModule)
     def _forward_train(
         self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        self._run_forward_pass("forward_train", batch, module_id, **kwargs)
+        return self._run_forward_pass("forward_train", batch, module_id, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
         self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
+        return self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
         self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
+        return self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
 
     def _run_forward_pass(
         self,
@@ -233,20 +374,31 @@ class MultiAgentRLModule(RLModule):
         else:
             module_ids = self.keys()
 
-        return {
-            module_id: getattr(self._modules[module_id], forward_fn_name)(
-                batch[module_id], **kwargs
+        outputs = {}
+        for module_id in module_ids:
+            rl_module = self._rl_modules[module_id]
+            forward_fn = getattr(rl_module, forward_fn_name)
+            outputs[module_id] = forward_fn(batch.get(module_id), **kwargs)
+        return outputs
+
+    def _check_module_exists(self, module_id: ModuleID) -> None:
+        if module_id not in self._rl_modules:
+            raise ValueError(
+                f"Module with module_id {module_id} not found. Available modules: {set(self.keys())}"
             )
-            for module_id in module_ids
-        }
 
-    def keys(self) -> Iterator[ModuleID]:
-        """Returns the list of agent ids."""
-        return self._modules.keys()
+    def __repr__(self) -> str:
+        return f"MARL({pprint.pformat(self._rl_modules)})"
+        
 
-    def __getitem__(self, module_id: ModuleID) -> RLModule:
-        self._check_module_exists(module_id)
-        return self._modules[module_id]
+
+# TODO (Kourosh): I don't know if this will be used at all in the future, but let's
+# keep it for now
+class MultiAgentRLModuleWithSimpleSharedSubmodules(MultiAgentRLModule):
+    
+    def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
+        self._shared_module_infos = self._make_shared_module_infos()
+        super().__init__(config, **kwargs)
 
     def _make_shared_module_infos(self):
         config = self.configs
@@ -268,8 +420,9 @@ class MultiAgentRLModule(RLModule):
             '__all__': {'mixer': mixer}
         }
         """
-        return shared_mod_infos
+        return shared_mod_infos 
 
+    @override(MultiAgentRLModule)
     def _make_modules(self):
         shared_mod_info = self.shared_module_infos
         policies = self.config["multi_agent"]["modules"]
@@ -286,9 +439,3 @@ class MultiAgentRLModule(RLModule):
             modules[pid] = rl_mod_obj
 
         return modules
-
-    def _check_module_exists(self, module_id: ModuleID) -> None:
-        if module_id not in self._modules:
-            raise ValueError(
-                f"Module with module_id {module_id} not found in ModuleDict"
-            )
