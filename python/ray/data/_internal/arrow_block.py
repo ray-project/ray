@@ -100,7 +100,8 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(pyarrow.Table)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
             if col_name == VALUE_COL_NAME or isinstance(
                 next(iter(col), None), np.ndarray
@@ -110,11 +111,9 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
         return pyarrow.Table.from_pydict(columns)
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
-        if len(tables) > 1:
-            return pyarrow.concat_tables(tables, promote=True)
-        else:
-            return tables[0]
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
+        return transform_pyarrow.concat(tables)
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
