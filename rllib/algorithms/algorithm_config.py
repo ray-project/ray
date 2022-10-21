@@ -9,7 +9,11 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.utils import deep_update, merge_dicts
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     EnvConfigDict,
@@ -104,7 +108,7 @@ class AlgorithmConfig:
         self.disable_env_checking = False
 
         # `self.rollouts()`
-        self.num_workers = 2
+        self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
@@ -475,8 +479,8 @@ class AlgorithmConfig:
                 a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
                 Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
-                object (which is a dict plus the properties: num_workers, worker_index,
-                vector_index, and remote).
+                object (which is a dict plus the properties: num_rollout_workers,
+                worker_index, vector_index, and remote).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
             env_task_fn: A callable taking the last train results, the base env and the
@@ -484,8 +488,8 @@ class AlgorithmConfig:
                 The env must be a `TaskSettableEnv` sub-class for this to work.
                 See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
-                worker 1 (if num_workers > 0). For vectorized envs, this usually means
-                that only the first sub-environment will be rendered.
+                worker 1 (if num_rollout_workers > 0). For vectorized envs, this usually
+                means that only the first sub-environment will be rendered.
                 In order for this to work, your env will have to implement the
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
@@ -573,7 +577,7 @@ class AlgorithmConfig:
                 retrieve environment-, model-, and sampler data. Override the
                 SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
-            create_env_on_local_worker: When `num_workers` > 0, the driver
+            create_env_on_local_worker: When `num_rollout_workers` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
@@ -681,7 +685,7 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
         if num_rollout_workers is not None:
-            self.num_workers = num_rollout_workers
+            self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not None:
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not None:
@@ -1305,3 +1309,9 @@ class AlgorithmConfig:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
+
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
+    @property
+    def num_workers(self):
+        """For backward-compatibility purposes only."""
+        return self.num_rollout_workers

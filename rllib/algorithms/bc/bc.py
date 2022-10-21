@@ -50,6 +50,7 @@ class BCConfig(MARWILConfig):
         self.postprocess_inputs = False
         # __sphinx_doc_end__
         # fmt: on
+
         # TODO: Remove this when the off_polciy_estimation_methods
         # default config is removed from MARWIL
         # No off-policy estimation.

@@ -42,8 +42,8 @@ class TestApexDDPG(unittest.TestCase):
             )
             scale = [i["cur_scale"] for i in infos]
             expected = [
-                0.4 ** (1 + (i + 1) / float(config.num_workers - 1) * 7)
-                for i in range(config.num_workers)
+                0.4 ** (1 + (i + 1) / float(config.num_rollout_workers - 1) * 7)
+                for i in range(config.num_rollout_workers)
             ]
             check(scale, [0.0] + expected)
 

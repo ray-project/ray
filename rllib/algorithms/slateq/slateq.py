@@ -112,7 +112,6 @@ class SlateQConfig(AlgorithmConfig):
         }
         # Switch to greedy actions in evaluation workers.
         self.evaluation_config = {"explore": False}
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025

@@ -144,6 +144,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.framework_str = "torch"
         self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"

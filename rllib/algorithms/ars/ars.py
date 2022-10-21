@@ -95,7 +95,7 @@ class ARSConfig(AlgorithmConfig):
         self.offset = 0
 
         # Override some of AlgorithmConfig's default values with ARS-specific values.
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.observation_filter = "MeanStdFilter"
         # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
         # Therefore, we must be careful not to use more than 1 env per eval worker
