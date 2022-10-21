@@ -34,6 +34,10 @@ except ImportError:
 _METRICS = [
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
     # , e.g. need to see how users currently depend on them.
+    "ray_node_disk_usage",
+    "ray_node_mem_used",
+    "ray_node_mem_total",
+    "ray_node_cpu_utilization",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -201,6 +205,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        cluster_id = ray._private.worker.global_worker.node.cluster_id
 
         # Raylet should be on every node
         assert all("raylet" in components for components in components_dict.values())
@@ -222,6 +227,10 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure metrics are recorded.
         for metric in _METRICS:
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
+
+        for sample in metric_samples:
+            if sample.name in _METRICS:
+                assert sample.labels["ClusterId"] == cluster_id
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]

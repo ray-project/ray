@@ -1528,6 +1528,7 @@ def init(
 
     connect(
         _global_node,
+        _global_node.cluster_id,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
@@ -1853,6 +1854,7 @@ def is_initialized() -> bool:
 
 def connect(
     node,
+    cluster_id,
     mode=WORKER_MODE,
     log_to_driver: bool = False,
     worker=global_worker,
@@ -2025,6 +2027,7 @@ def connect(
         node.metrics_agent_port,
         runtime_env_hash,
         startup_token,
+        cluster_id,
     )
 
     # Notify raylet that the core worker is ready.

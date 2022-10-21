@@ -481,6 +481,11 @@ class Node:
         return self._resource_spec
 
     @property
+    def cluster_id(self):
+        """Get the cluster ID."""
+        return self.session_name
+
+    @property
     def node_ip_address(self):
         """Get the IP address of this node."""
         return self._node_ip_address
@@ -904,6 +909,7 @@ class Node:
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
+            self.cluster_id,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -958,6 +964,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            self.cluster_id,
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,

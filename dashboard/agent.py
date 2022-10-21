@@ -70,6 +70,7 @@ class DashboardAgent:
         runtime_env_dir: str,
         logging_params: dict,
         agent_id: int,
+        cluster_id: str,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -93,6 +94,7 @@ class DashboardAgent:
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
         self.agent_id = agent_id
+        self.cluster_id = cluster_id
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -433,6 +435,13 @@ if __name__ == "__main__":
         help="ID to report when registering with raylet",
         default=os.getpid(),
     )
+    parser.add_argument(
+        "--cluster-id",
+        required=False,
+        type=str,
+        default=None,
+        help="The unique ID of this cluster.",
+    )
 
     args = parser.parse_args()
     try:
@@ -463,6 +472,7 @@ if __name__ == "__main__":
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
             agent_id=args.agent_id,
+            cluster_id=args.cluster_id,
         )
 
         loop = asyncio.get_event_loop()

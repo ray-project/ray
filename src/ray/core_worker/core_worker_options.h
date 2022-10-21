@@ -84,7 +84,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        cluster_id("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -177,6 +178,9 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
+  /// Unique clusterID. There's no specific format, and we are currently using
+  /// the session_name as a cluster id.
+  std::string cluster_id;
 };
 }  // namespace core
 }  // namespace ray
