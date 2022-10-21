@@ -595,6 +595,8 @@ class WorkerSet:
         """Whether given PolicyID (optionally inside some batch) is trainable."""
         local_worker = self.local_worker()
         if local_worker:
+            if local_worker.is_policy_to_train is None:
+                return True
             return local_worker.is_policy_to_train(policy_id, batch)
         else:
             raise NotImplementedError
@@ -850,12 +852,4 @@ class WorkerSet:
 
     @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
-        local_worker = self.local_worker()
-        if local_worker is not None:
-            return [
-                pid
-                for pid in local_worker.policy_map.keys()
-                if local_worker.is_policy_to_train(pid, None)
-            ]
-        else:
-            raise NotImplementedError
+        pass
