@@ -63,6 +63,9 @@ TFRecords
 
 .. autofunction:: ray.data.read_tfrecords
 
+.. autofunction:: ray.data.Dataset.write_tfrecords
+    :noindex:
+
 
 Pandas
 ------
