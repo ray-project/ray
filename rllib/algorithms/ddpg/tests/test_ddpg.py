@@ -235,7 +235,14 @@ class TestDDPG(unittest.TestCase):
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
                 assert fw == "tf"  # Start with the tf vars-dict.
-                weights_dict = policy.get_weights()
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                with p_sess.graph.as_default():
+                    collector = ray.experimental.tf_utils.TensorFlowVariables(
+                        [], p_sess, weights_dict_list
+                    )
+                    weights_dict = collector.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)

@@ -68,8 +68,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
     auto channel =
         grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
                             grpc::InsecureChannelCredentials());
-    std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-        rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+    std::unique_ptr<rpc::NodeInfoGcsService::Stub> stub =
+        rpc::NodeInfoGcsService::NewStub(std::move(channel));
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     const rpc::CheckAliveRequest request;

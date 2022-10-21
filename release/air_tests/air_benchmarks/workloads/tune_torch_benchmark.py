@@ -36,6 +36,13 @@ def get_trainer(num_workers: int = 4, use_gpu: bool = False):
     def train_loop(config):
         train_func(use_ray=True, config=config)
 
+    # We are using STRICT_PACK here to do an apples to apples comparison.
+    # PyTorch defaults to using multithreading, so if the workers are spread,
+    # they are able to utilize more resources. We would effectively be comparing
+    # X tune runs with 2 CPUs per worker vs. 1 tune run with up to 8 CPUs per
+    # worker. Using STRICT_PACK avoids this by forcing all workers to be
+    # co-located.
+
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=CONFIG,
@@ -44,6 +51,7 @@ def get_trainer(num_workers: int = 4, use_gpu: bool = False):
             resources_per_worker={"CPU": 2},
             trainer_resources={"CPU": 0},
             use_gpu=use_gpu,
+            placement_strategy="STRICT_PACK",
         ),
     )
     return trainer

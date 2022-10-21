@@ -71,6 +71,7 @@ from ray.experimental.state.api import (
     summarize_tasks,
     StateApiClient,
 )
+from ray._private.event.event_logger import get_event_id
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -83,6 +84,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    ClusterEventState,
     StateSchema,
     state_column,
 )
@@ -574,6 +576,63 @@ async def test_api_manager_list_pgs(state_api_manager):
             option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_cluster_events(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    event_id_1 = get_event_id()
+    event_id_2 = get_event_id()
+    data_source_client.get_all_cluster_events.return_value = {
+        "job_1": {
+            event_id_1: {
+                "timestamp": 10,
+                "severity": "DEBUG",
+                "message": "a",
+                "event_id": event_id_1,
+            },
+            event_id_2: {
+                "timestamp": 10,
+                "severity": "INFO",
+                "message": "b",
+                "event_id": event_id_2,
+            },
+        }
+    }
+    result = await state_api_manager.list_cluster_events(option=create_api_options())
+    data = result.result
+    data = data[0]
+    verify_schema(ClusterEventState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    # TODO(sang)
+
+    """
+    Test limit
+    """
+    assert len(result.result) == 2
+    result = await state_api_manager.list_cluster_events(
+        option=create_api_options(limit=1)
+    )
+    data = result.result
+    assert len(data) == 1
+    assert result.total == 2
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_cluster_events(
+            option=create_api_options(filters=[("time", "=", "20")])
+        )
+    result = await state_api_manager.list_cluster_events(
+        option=create_api_options(filters=[("severity", "=", "INFO")])
+    )
+    assert len(result.result) == 1
 
 
 @pytest.mark.asyncio
@@ -1486,6 +1545,12 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(
         lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
+    # TODO(sang): Enable it.
+    # wait_for_condition(
+    #     lambda: verify_output(
+    #         ray_list, ["cluster-events"], ["Stats:", "Table:", "EVENT_ID"]
+    #     )
+    # )
     wait_for_condition(
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
@@ -1784,6 +1849,35 @@ def test_list_get_workers(shutdown_only):
 
     wait_for_condition(verify)
     print(list_workers())
+
+
+# TODO(sang): Enable the test.
+# @pytest.mark.skipif(
+#     sys.platform == "win32",
+#     reason="Failed on Windows",
+# )
+# def test_list_cluster_events(shutdown_only):
+#     ray.init()
+
+#     @ray.remote(num_gpus=1)
+#     def f():
+#         pass
+
+#     f.remote()
+
+#     def verify():
+#         events = list_cluster_events()
+#         assert len(events) == 1
+#         assert (
+#             "event_summary:Error: No available node types can fulfill "
+#             "resource request {'GPU': 1.0, 'CPU': 1.0}."
+#         ) in events[0]["message"]
+#         return True
+
+#     wait_for_condition(verify)
+#     print(list_cluster_events())
+
+#     # TODO(sang): Support get_cluster_events
 
 
 def test_list_get_tasks(shutdown_only):

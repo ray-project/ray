@@ -135,8 +135,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PG(config=config)
-                test.restore(checkpoint)
+                test = pg.PG.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w):
@@ -157,6 +156,43 @@ class TestAlgorithm(unittest.TestCase):
                 )
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
+
+                # After having added 2 policies, try to restore the Algorithm,
+                # but only with 1 of the originally added policies (plus the initial
+                # p0).
+                if i == 2:
+
+                    def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                        return f"p{choice([0, 2])}"
+
+                    test2 = pg.PG.from_checkpoint(
+                        checkpoint=checkpoint,
+                        policy_ids=["p0", "p2"],
+                        policy_mapping_fn=new_mapping_fn,
+                        policies_to_train=["p0"],
+                    )
+
+                    # Make sure evaluation workers have the same policies.
+                    def _has_policies(w):
+                        return (
+                            w.get_policy("p0") is not None
+                            and w.get_policy("p2") is not None
+                            and w.get_policy("p1") is None
+                        )
+
+                    self.assertTrue(
+                        all(test2.evaluation_workers.foreach_worker(_has_policies))
+                    )
+
+                    # Make sure algorithm can continue training the restored policy.
+                    pol2 = test2.get_policy("p2")
+                    test2.train()
+                    # Test creating an action with the added (and restored) policy.
+                    a = test2.compute_single_action(
+                        np.zeros_like(pol2.observation_space.sample()), policy_id=pid
+                    )
+                    self.assertTrue(pol2.action_space.contains(a))
+                    test2.stop()
 
             # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):
@@ -396,6 +432,25 @@ class TestAlgorithm(unittest.TestCase):
         bc = BC(config=offline_rl_config)
         bc.train()
         bc.stop()
+
+    def test_counters_after_checkpoint(self):
+        # We expect algorithm to no start counters from zero after loading a
+        # checkpoint on a fresh Algorithm instance
+        config = pg.PGConfig().environment(env="CartPole-v0")
+        algo = config.build()
+
+        self.assertTrue(all(c == 0 for c in algo._counters.values()))
+        algo.step()
+        self.assertTrue((all(c != 0 for c in algo._counters.values())))
+        counter_values = list(algo._counters.values())
+        state = algo.__getstate__()
+        algo.stop()
+
+        algo2 = config.build()
+        self.assertTrue(all(c == 0 for c in algo2._counters.values()))
+        algo2.__setstate__(state)
+        counter_values2 = list(algo2._counters.values())
+        self.assertEqual(counter_values, counter_values2)
 
 
 if __name__ == "__main__":
