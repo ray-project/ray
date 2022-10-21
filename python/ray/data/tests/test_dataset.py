@@ -4818,7 +4818,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
-    print(location_data)
     locations = []
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
