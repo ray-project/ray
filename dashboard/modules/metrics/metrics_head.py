@@ -163,7 +163,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # one task in one of these states, the worker has not exited. Therefore,
         # we fetch the current count.
         query_for_non_terminal_states = (
-            f"sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State)"
+            f"clamp_min(sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State), 0)"
         )
         query = f"{query_for_terminal_states} or {query_for_non_terminal_states}"
 
@@ -269,8 +269,7 @@ def _format_prometheus_output(prom_data: Dict[str, Any]) -> Optional[TaskProgres
             )
             # metric["value"] is a tuple where first item is a timestamp
             # and second item is the value.
-            # We never want to show a negative number here so let's clip to 0.
-            metric_value = max(0, int(metric["value"][1]))
+            metric_value = int(metric["value"][1])
             kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
 
         return TaskProgress(**kwargs)
