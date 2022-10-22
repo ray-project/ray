@@ -156,7 +156,7 @@ def check_specs(
 
 
     It adds the ability to filter the input data if it is a mappinga to only contain
-    the keys in the spec. It can also cache the validation to make sure the spec is 
+    the keys in the spec. It can also cache the validation to make sure the spec is
     only validated once in the lifetime of the instance.
 
     Examples (See more exmaples in ../tests/test_specs_dict.py):
