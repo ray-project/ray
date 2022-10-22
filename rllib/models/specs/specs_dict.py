@@ -159,7 +159,7 @@ def check_specs(
     and also to cache to make sure the spec check is only called once in the lifetime
     of the instance.
 
-    Examples (See more exmaples in the tests):
+    Examples (See more exmaples in ../tests/test_specs_dict.py):
 
         >>> class MyModel(nn.Module):
         ...     def input_spec(self):
