@@ -16,7 +16,6 @@ import tree
 import numpy as np
 
 
-
 def to_numpy(tensor):
     return tensor.detach().cpu().numpy()
 
@@ -25,6 +24,7 @@ def to_tensor(array, device=None):
     if device:
         return torch.from_numpy(array).float().to(device)
     return torch.from_numpy(array).float()
+
 
 def get_policy_data_from_agent_data(agent_data, policy_map_fn, debug=False):
     policy_data = {}
@@ -45,28 +45,33 @@ def get_policy_data_from_agent_data(agent_data, policy_map_fn, debug=False):
             policy_data[policy_id][k].append(v)
 
     for policy_id in policy_data:
-        policy_data[policy_id] = {k: np.concatenate(v) if k != "agent_id" else v for k, v in policy_data[policy_id].items()}
-        
+        policy_data[policy_id] = {
+            k: np.concatenate(v) if k != "agent_id" else v
+            for k, v in policy_data[policy_id].items()
+        }
+
     return policy_data
+
 
 def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
     policy_to_agent_to_action = {}
     for policy_id, policy_out in fwd_out.items():
         policy_to_agent_to_action[policy_id] = {}
-        for agent_id, agent_out in zip(fwd_in[policy_id]["agent_id"], policy_out["action_dist"].sample()):
+        for agent_id, agent_out in zip(
+            fwd_in[policy_id]["agent_id"], policy_out["action_dist"].sample()
+        ):
             policy_to_agent_to_action[policy_id][agent_id] = to_numpy(agent_out)
 
     action = {
-        aid: policy_to_agent_to_action[policy_map_fn(aid)][aid] 
-        for aid in agent_obs
+        aid: policy_to_agent_to_action[policy_map_fn(aid)][aid] for aid in agent_obs
     }
 
     return action
 
-class TestMARLModule(unittest.TestCase):
 
+class TestMARLModule(unittest.TestCase):
     def test_as_multi_agent(self):
-        
+
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
@@ -77,10 +82,10 @@ class TestMARLModule(unittest.TestCase):
         config = get_shared_encoder_config(env)
         module = SimplePPOModule(config)
         marl_module = module.as_multi_agent()
-        
+
         self.assertNotIsInstance(marl_module, SimplePPOModule)
         self.assertIsInstance(marl_module, TorchMARLModule)
-        
+
         self.assertEqual(set([DEFAULT_POLICY_ID]), set(marl_module.keys()))
 
         # check as_multi_agent() for the second time
@@ -98,7 +103,10 @@ class TestMARLModule(unittest.TestCase):
         state = module.get_state()
         self.assertIsInstance(state, dict)
         self.assertEqual(set(state.keys()), set(module.keys()))
-        self.assertEqual(set(state[DEFAULT_POLICY_ID].keys()), set(module[DEFAULT_POLICY_ID].get_state().keys()))
+        self.assertEqual(
+            set(state[DEFAULT_POLICY_ID].keys()),
+            set(module[DEFAULT_POLICY_ID].get_state().keys()),
+        )
 
         module2 = SimplePPOModule(config).as_multi_agent()
         state2 = module2.get_state()
@@ -109,7 +117,7 @@ class TestMARLModule(unittest.TestCase):
         check(state, state2_after)
 
     def test_add_remove_modules(self):
-        # TODO (Avnish): Modify this test to make sure that the distributed 
+        # TODO (Avnish): Modify this test to make sure that the distributed
         # functionality won't break the add / remove.
 
         env_class = make_multi_agent("CartPole-v0")
@@ -123,7 +131,10 @@ class TestMARLModule(unittest.TestCase):
         self.assertEqual(set(module.keys()), set([DEFAULT_POLICY_ID]))
 
         # test if add works with a conflicting name
-        self.assertRaises(ValueError, lambda: module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config)))
+        self.assertRaises(
+            ValueError,
+            lambda: module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config)),
+        )
 
         module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config), override=True)
 
@@ -141,27 +152,33 @@ class TestMARLModule(unittest.TestCase):
 
                 tstep = 0
                 while tstep < 10:
-                    # go from agent_id to module_id, compute the actions in batches 
-                    # and come back to the original per agent format. 
+                    # go from agent_id to module_id, compute the actions in batches
+                    # and come back to the original per agent format.
                     agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
                     fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
                     fwd_in = tree.map_structure(
-                        lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
-                        fwd_in
+                        lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x,
+                        fwd_in,
                     )
 
                     if fwd_fn == "forward_exploration":
                         fwd_out = module.forward_exploration(fwd_in)
-                        
-                        action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
-                    
+
+                        action = get_action_from_ma_fwd_pass(
+                            agent_obs, fwd_out, fwd_in, policy_map
+                        )
+
                     elif fwd_fn == "forward_inference":
                         # check if I sample twice, I get the same action
                         fwd_out = module.forward_inference(fwd_in)
-                        
-                        action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
-                        action2 = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
-                    
+
+                        action = get_action_from_ma_fwd_pass(
+                            agent_obs, fwd_out, fwd_in, policy_map
+                        )
+                        action2 = get_action_from_ma_fwd_pass(
+                            agent_obs, fwd_out, fwd_in, policy_map
+                        )
+
                         check(action, action2)
 
                     obs, reward, done, info = env.step(action)
@@ -170,9 +187,8 @@ class TestMARLModule(unittest.TestCase):
                     )
                     tstep += 1
 
-
     def test_forward_train(self):
-        
+
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         config = get_shared_encoder_config(env)
@@ -185,25 +201,26 @@ class TestMARLModule(unittest.TestCase):
         batch = []
         tstep = 0
         while tstep < 10:
-            # go from agent_id to module_id, compute the actions in batches 
-            # and come back to the original per agent format. 
+            # go from agent_id to module_id, compute the actions in batches
+            # and come back to the original per agent format.
             agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
             fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
             fwd_in = tree.map_structure(
-                lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
-                fwd_in
+                lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, fwd_in
             )
             fwd_out = module.forward_exploration(fwd_in)
             action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
             next_obs, reward, done, info = env.step(action)
             tstep += 1
-            
+
             # construct the data from this iteration
             iteration_data = {}
             for aid in agent_obs.keys():
                 iteration_data[aid] = {
                     "obs": obs[aid],
-                    "action": action[aid][None] if action[aid].ndim == 0 else action[aid],
+                    "action": action[aid][None]
+                    if action[aid].ndim == 0
+                    else action[aid],
                     "reward": np.array(reward[aid])[None],
                     "done": np.array(done[aid])[None],
                     "next_obs": next_obs[aid],
@@ -213,11 +230,10 @@ class TestMARLModule(unittest.TestCase):
             obs = next_obs
 
         # convert a list of similarly structured nested dicts that end with np.array leaves to a nested dict of the same structure that ends with stacked np.arrays
-        batch = tree.map_structure(lambda *x: np.stack(x, axis=0),*batch)
+        batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *batch)
         fwd_in = get_policy_data_from_agent_data(batch, policy_map, debug=True)
         fwd_in = tree.map_structure(
-            lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
-            fwd_in
+            lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, fwd_in
         )
         fwd_out = module.forward_train(fwd_in)
 
@@ -231,6 +247,7 @@ class TestMARLModule(unittest.TestCase):
         # check that all neural net parameters have gradients
         for param in module.parameters():
             self.assertIsNotNone(param.grad)
+
 
 if __name__ == "__main__":
     import pytest

@@ -27,7 +27,6 @@ def to_tensor(array, device=None):
 
 
 class TestRLModule(unittest.TestCase):
-    
     def test_compilation(self):
 
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
@@ -65,9 +64,9 @@ class TestRLModule(unittest.TestCase):
             else:
                 self.assertEqual(module.pi.layers[-1].out_features, action_dim * 2)
             self.assertEqual(module.vf.layers[-1].out_features, 1)
-    
+
     def test_get_set_state(self):
-        
+
         for env_name in ["CartPole-v0", "Pendulum-v1"]:
             env = gym.make(env_name)
             config = get_shared_encoder_config(env)
@@ -83,7 +82,6 @@ class TestRLModule(unittest.TestCase):
             module2.set_state(state)
             state2_after = module2.get_state()
             check(state, state2_after)
-
 
     def test_rollouts(self):
 

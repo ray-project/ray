@@ -19,6 +19,7 @@ import gym
 
 from typing import List, Mapping, Any
 
+
 def get_ppo_loss(fwd_in, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
@@ -28,6 +29,7 @@ def get_ppo_loss(fwd_in, fwd_out):
     loss = actor_loss + critic_loss
 
     return loss
+
 
 def get_shared_encoder_config(env):
     return PPOModuleConfig(
@@ -46,6 +48,7 @@ def get_shared_encoder_config(env):
             activation="ReLU",
         ),
     )
+
 
 def get_separate_encoder_config(env):
     return PPOModuleConfig(

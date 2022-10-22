@@ -36,20 +36,14 @@ class TorchRLModule(RLModule, nn.Module):
         """Returns the multi-agent wrapper class for this module."""
         return TorchMARLModule
 
-        
-class TorchMARLModule(MultiAgentRLModule, nn.Module):
 
+class TorchMARLModule(MultiAgentRLModule, nn.Module):
     def __init__(self, config: Mapping[str, Any]) -> None:
         MultiAgentRLModule.__init__(self, config)
         nn.Module.__init__(self)
 
         # after initialization, all submodules need to be TorchRLModules
         for module_id, module in self._rl_modules.items():
-            assert isinstance(module, TorchRLModule), \
-                f"Module {module_id} is not a TorchRLModule!"
-
-
-        
-
-
-    
+            assert isinstance(
+                module, TorchRLModule
+            ), f"Module {module_id} is not a TorchRLModule!"
