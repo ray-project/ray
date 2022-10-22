@@ -715,7 +715,7 @@ class AllToAllStage(Stage):
             return False
         if not is_task_compute(prev.compute):
             return False
-        if any(k not in INHERITABLE_REMOTE_ARGS for k in prev.ray_remote_args):
+        if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
         return True
 

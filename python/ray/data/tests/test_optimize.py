@@ -435,6 +435,22 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
                 ],
             )
 
+    for kwa in equivalent_kwargs:
+        for kwb in equivalent_kwargs:
+            print("CHECKING", kwa, kwb)
+            pipe = ray.data.range(3).repeat(2)
+            pipe = pipe.map_batches(lambda x: x, compute="tasks", **kwa)
+            pipe = pipe.random_shuffle_each_window(**kwb)
+            pipe.take()
+            expect_stages(
+                pipe,
+                1,
+                [
+                    "read->map_batches->random_shuffle_map",
+                    "random_shuffle_reduce",
+                ],
+            )
+
 
 def test_optimize_incompatible_stages(ray_start_regular_shared):
     context = DatasetContext.get_current()
