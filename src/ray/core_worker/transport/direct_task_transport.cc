@@ -358,7 +358,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   } else if ((scheduling_key_entry.task_queue.size() <=
               scheduling_key_entry.inflight_lease_requests.size()) &&
-             // When raylet_address == nullptr it means it's a redirect request
+             // When raylet_address != nullptr it means it's a spillback request
              // from the original raylet. If there is no ongoing leasing requests
              // running on that node, we should just run this, otherwise, there might
              // be a deadlock: the original raylet has deducted the resources because
@@ -369,7 +369,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
              //    - The core worker will fail to do the leasing because the leasing
              //      requests is bigger than the task queue.
              // And this will make the scheduler hanging. With resource broadcasting,
-             // it's kind of mitigating the problem, but it has uncessary cost (
+             // it's kind of mitigating the problem, but it has uncessary cost too (
              // no progress until resource is refreshed).
              (raylet_address == nullptr ||
               scheduling_key_entry.raylet_ongoing_lease_loads.count(
