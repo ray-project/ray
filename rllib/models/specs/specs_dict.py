@@ -3,7 +3,7 @@ from typing import Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpecs
+from ray.rllib.models.specs.specs_base import TensorSpec
 
 
 _MISSING_KEYS_FROM_SPEC = (
@@ -19,14 +19,14 @@ _TYPE_MISMATCH = (
     "{} has type {} (expected type {})."
 )
 
-SPEC_LEAF_TYPE = Union[Type, TensorSpecs]
+SPEC_LEAF_TYPE = Union[Type, TensorSpec]
 DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
-class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
-    """A NestedDict containing `TensorSpecs` and `Types`.
+class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
+    """A NestedDict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.
 
@@ -34,12 +34,12 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
         Basic validation:
         -----------------
-        >>> spec_dict = ModelSpecDict({
+        >>> spec_dict = ModelSpec({
         ...     "obs": {
-        ...         "arm":      TensorSpecs("b, d_a", d_a=64),
-        ...         "gripper":  TensorSpecs("b, d_g", d_g=12)
+        ...         "arm":      TensorSpec("b, d_a", d_a=64),
+        ...         "gripper":  TensorSpec("b, d_g", d_g=12)
         ...     },
-        ...     "action": TensorSpecs("b, d_a", h=12),
+        ...     "action": TensorSpec("b, d_a", h=12),
         ...     "action_dist": torch.distributions.Categorical
         ... })
 
@@ -120,13 +120,13 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
         for spec_name, spec in self.items():
             data_to_validate = data[spec_name]
-            if isinstance(spec, TensorSpecs):
+            if isinstance(spec, TensorSpec):
                 try:
                     spec.validate(data_to_validate)
                 except ValueError as e:
                     raise ValueError(
                         f"Mismatch found in data element {spec_name}, "
-                        f"which is a TensorSpecs: {e}"
+                        f"which is a TensorSpec: {e}"
                     )
             elif isinstance(spec, Type):
                 if not isinstance(data_to_validate, spec):
@@ -138,7 +138,7 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
     @override(NestedDict)
     def __repr__(self) -> str:
-        return f"ModelSpecDict({repr(self._data)})"
+        return f"ModelSpec({repr(self._data)})"
 
 
 def check_specs(
@@ -151,21 +151,21 @@ def check_specs(
 ):
     """A general-purpose [stateful decorator]
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
-    enforce input/output specs for any instance method that has `input_dict` in input
-    args and returns and a dict.
+    enforce input/output specs for any instance method that has `input_data` in input
+    args and returns and a single object.
 
 
-    It adds the ability to filter the input dict to only contain the keys in the spec
-    and also to cache to make sure the spec check is only called once in the lifetime
-    of the instance.
-
+    It adds the ability to filter the input data if it is a mappinga to only contain 
+    the keys in the spec. It can also cache the validation to make sure the spec is only validated once in the lifetime of the instance.
+    
     Examples (See more exmaples in ../tests/test_specs_dict.py):
 
         >>> class MyModel(nn.Module):
         ...     def input_spec(self):
-        ...         return ModelSpecDict({"obs": TensorSpecs("b, d", d=64)})
+        ...         return ModelSpec({"obs": TensorSpec("b, d", d=64)})
+        ...
         ...     @check_specs(input_spec="input_spec")
-        ...     def forward(self, input_dict, return_loss=False):
+        ...     def forward(self, input_data, return_loss=False):
         ...         ...
         ...         output_dict = ...
         ...         return output_dict
@@ -176,24 +176,25 @@ def check_specs(
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
-            `self` as the first argument, `input_dict` as the second argument and any
-            other keyword argument thereafter. It should return a dict.
+            `self` as the first argument, `input_data` as the second argument and any
+            other keyword argument thereafter. It should return a single object.
         input_spec: `self` should have an instance method that is named input_spec and
             returns the `ModelSpec`, `TensorSpec`, or simply the `Type` that the
-            `input_dict` should comply with.
+            `input_data` should comply with.
         output_spec: `self` should have an instance method that is named output_spec
             and returns the spec that the output should comply with.
-        filter: If True, the input_dict is filtered by its corresponding spec tree
-            structure and then passed into the implemented function to make sure user
-            is not confounded with unnecessary data.
-        cache: If True, only checks the input/output for the first time the instance
-            method is called.
-        input_exact_match: If True, the input data must match the spec exactly.
-            Otherwise, the data is validated as long as it contains at least the
-            elements of the spec, but can contain more entries.
-        output_exact_match: If True, the output data must match the spec exactly.
-            Otherwise, the data is validated as long as it contains at least the
-            elements of the spec, but can contain more entries.
+        filter: If True, and `input_data` is a nested dict the `input_data` will be 
+            filtered by its corresponding spec tree structure and then passed into the 
+            implemented function to make sure user is not confounded with unnecessary 
+            data.
+        cache: If True, only checks the input/output validation for the first time the 
+            instance method is called.
+        input_exact_match: If True, the input data (should be a nested dict) must match 
+            the spec exactly. Otherwise, the data is validated as long as it contains 
+            at least the elements of the spec, but can contain more entries.
+        output_exact_match: If True, the output data (should be a nested dict) must 
+            match the spec exactly. Otherwise, the data is validated as long as it 
+            contains at least the elements of the spec, but can contain more entries.
 
     Returns:
         A wrapped instance method. In case of `cache=True`, after the first invokation
@@ -218,8 +219,8 @@ def check_specs(
                 return not cache or func.__name__ not in self.__checked_specs_cache__
 
             def validate(data, spec, exact_match, tag="data"):
-                is_mapping = isinstance(spec, ModelSpecDict)
-                is_tensor = isinstance(spec, TensorSpecs)
+                is_mapping = isinstance(spec, ModelSpec)
+                is_tensor = isinstance(spec, TensorSpec)
 
                 if is_mapping:
                     if not isinstance(data, Mapping):
@@ -261,7 +262,7 @@ def check_specs(
                     tag="input_data",
                 )
 
-                if filter and isinstance(input_spec_, ModelSpecDict):
+                if filter and isinstance(input_spec_, ModelSpec):
                     # filtering should happen regardless of cache
                     input_data_ = input_data_.filter(input_spec_)
 

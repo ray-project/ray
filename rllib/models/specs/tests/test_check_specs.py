@@ -5,9 +5,9 @@ import torch
 from typing import Dict, Any, Type
 import unittest
 
-from ray.rllib.models.specs.specs_base import TensorSpecs
-from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
-from ray.rllib.models.specs.specs_torch import TorchSpecs
+from ray.rllib.models.specs.specs_base import TensorSpec
+from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
@@ -19,11 +19,11 @@ class AbstractInterfaceClass(abc.ABC):
     input/output constraints."""
 
     @abc.abstractmethod
-    def input_spec(self) -> ModelSpecDict:
+    def input_spec(self) -> ModelSpec:
         pass
 
     @abc.abstractmethod
-    def output_spec(self) -> ModelSpecDict:
+    def output_spec(self) -> ModelSpec:
         pass
 
     @check_specs(input_spec="input_spec", output_spec="output_spec")
@@ -68,11 +68,11 @@ class AbstractInterfaceClass(abc.ABC):
 class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
 
-    def input_spec(self) -> ModelSpecDict:
-        return ModelSpecDict({"input": (float, int)})
+    def input_spec(self) -> ModelSpec:
+        return ModelSpec({"input": (float, int)})
 
-    def output_spec(self) -> ModelSpecDict:
-        return ModelSpecDict({"output": float})
+    def output_spec(self) -> ModelSpec:
+        return ModelSpec({"output": float})
 
 
 class CorrectImplementation(InputNumberOutputFloat):
@@ -225,8 +225,8 @@ class TestCheckSpecs(unittest.TestCase):
     def test_tensor_specs(self):
         # test if the input_spec can be a tensor spec
         class ClassWithTensorSpec:
-            def input_spec1(self) -> TensorSpecs:
-                return TorchSpecs("b, h", h=4)
+            def input_spec1(self) -> TensorSpec:
+                return TorchTensorSpec("b, h", h=4)
 
             @check_specs(input_spec="input_spec1")
             def forward(self, input_data) -> Any:

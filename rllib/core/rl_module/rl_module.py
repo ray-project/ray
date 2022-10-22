@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import (
     override,
 )
 
-from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
+from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -82,7 +82,7 @@ class RLModule(abc.ABC):
         self.config = config
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> ModelSpecDict:
+    def output_specs_inference(self) -> ModelSpec:
         """Returns the output specs of the forward_inference method.
 
         Override this method to customize the output specs of the inference call.
@@ -90,10 +90,10 @@ class RLModule(abc.ABC):
         has `action_dist` key and its value is an instance of `ActionDistributionV2`.
         This assumption must always hold.
         """
-        return ModelSpecDict({"action_dist": ActionDistributionV2})
+        return ModelSpec({"action_dist": ActionDistributionV2})
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> ModelSpecDict:
+    def output_specs_exploration(self) -> ModelSpec:
         """Returns the output specs of the forward_exploration method.
 
         Override this method to customize the output specs of the inference call.
@@ -101,23 +101,23 @@ class RLModule(abc.ABC):
         that has `action_dist` key and its value is an instance of
         `ActionDistributionV2`. This assumption must always hold.
         """
-        return ModelSpecDict({"action_dist": ActionDistributionV2})
+        return ModelSpec({"action_dist": ActionDistributionV2})
 
-    def output_specs_train(self) -> ModelSpecDict:
+    def output_specs_train(self) -> ModelSpec:
         """Returns the output specs of the forward_train method."""
-        return ModelSpecDict()
+        return ModelSpec()
 
-    def input_specs_inference(self) -> ModelSpecDict:
+    def input_specs_inference(self) -> ModelSpec:
         """Returns the input specs of the forward_inference method."""
-        return ModelSpecDict()
+        return ModelSpec()
 
-    def input_specs_exploration(self) -> ModelSpecDict:
+    def input_specs_exploration(self) -> ModelSpec:
         """Returns the input specs of the forward_exploration method."""
-        return ModelSpecDict()
+        return ModelSpec()
 
-    def input_specs_train(self) -> ModelSpecDict:
+    def input_specs_train(self) -> ModelSpec:
         """Returns the input specs of the forward_train method."""
-        return ModelSpecDict()
+        return ModelSpec()
 
     @check_specs(
         input_spec="input_specs_inference", output_spec="output_specs_inference"
@@ -332,31 +332,31 @@ class MultiAgentRLModule(RLModule):
         return modules
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpecDict:
+    def output_specs_train(self) -> ModelSpec:
         return self._get_specs_for_modules("output_specs_train")
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpecDict:
+    def output_specs_inference(self) -> ModelSpec:
         return self._get_specs_for_modules("output_specs_inference")
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpecDict:
+    def output_specs_exploration(self) -> ModelSpec:
         return self._get_specs_for_modules("output_specs_exploration")
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpecDict:
+    def input_specs_train(self) -> ModelSpec:
         return self._get_specs_for_modules("input_specs_train")
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpecDict:
+    def input_specs_inference(self) -> ModelSpec:
         return self._get_specs_for_modules("input_specs_inference")
 
     @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpecDict:
+    def input_specs_exploration(self) -> ModelSpec:
         return self._get_specs_for_modules("input_specs_exploration")
 
-    def _get_specs_for_modules(self, property_name: str) -> ModelSpecDict:
-        return ModelSpecDict(
+    def _get_specs_for_modules(self, property_name: str) -> ModelSpec:
+        return ModelSpec(
             {
                 module_id: getattr(module, property_name)()
                 for module_id, module in self._rl_modules.items()

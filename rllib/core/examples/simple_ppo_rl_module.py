@@ -9,8 +9,8 @@ from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
-from ray.rllib.models.specs.specs_torch import TorchSpecs
+from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_action_dist_v2 import (
     TorchCategorical,
     TorchDeterministic,
@@ -139,7 +139,7 @@ class FCNet(nn.Module):
             self.output_activation = getattr(nn, self.output_activation)()
 
     def input_specs(self):
-        return TorchSpecs("b, h", h=self.input_dim)
+        return TorchTensorSpec("b, h", h=self.input_dim)
 
     @check_specs(input_spec="input_specs")
     def forward(self, x):
@@ -203,12 +203,12 @@ class SimplePPOModule(TorchRLModule):
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpecDict:
+    def input_specs_inference(self) -> ModelSpec:
         return self.input_specs_exploration()
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpecDict:
-        return ModelSpecDict(
+    def output_specs_inference(self) -> ModelSpec:
+        return ModelSpec(
             {
                 "action_dist": TorchDeterministic,
             }
@@ -232,7 +232,7 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return ModelSpecDict(
+        return ModelSpec(
             {
                 "obs": self.encoder.input_specs()
                 if self.encoder
@@ -241,8 +241,8 @@ class SimplePPOModule(TorchRLModule):
         )
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpecDict:
-        return ModelSpecDict(
+    def output_specs_exploration(self) -> ModelSpec:
+        return ModelSpec(
             {
                 "action_dist": TorchCategorical
                 if self._is_discrete
@@ -267,31 +267,31 @@ class SimplePPOModule(TorchRLModule):
         return {"action_dist": action_dist}
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpecDict:
+    def input_specs_train(self) -> ModelSpec:
         if self._is_discrete:
             action_dim = 1
         else:
             action_dim = self.config.action_space.shape[0]
 
-        return ModelSpecDict(
+        return ModelSpec(
             {
                 "obs": self.encoder.input_specs
                 if self.encoder
                 else self.pi.input_specs,
-                "action": TorchSpecs("b, da", da=action_dim),
+                "action": TorchTensorSpec("b, da", da=action_dim),
             }
         )
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpecDict:
-        return ModelSpecDict(
+    def output_specs_train(self) -> ModelSpec:
+        return ModelSpec(
             {
                 "action_dist": TorchCategorical
                 if self._is_discrete
                 else TorchDiagGaussian,
-                "logp": TorchSpecs("b", dtype=torch.float32),
-                "entropy": TorchSpecs("b", dtype=torch.float32),
-                "vf": TorchSpecs("b", dtype=torch.float32),
+                "logp": TorchTensorSpec("b", dtype=torch.float32),
+                "entropy": TorchTensorSpec("b", dtype=torch.float32),
+                "vf": TorchTensorSpec("b", dtype=torch.float32),
             }
         )
 

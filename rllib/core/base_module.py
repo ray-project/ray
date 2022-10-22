@@ -3,7 +3,7 @@ from typing import Optional, Any, Mapping
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.temp_spec_classes import SpecDict, TensorDict
-from ray.rllib.models.specs.specs_dict import ModelSpecDict
+from ray.rllib.models.specs.specs_dict import ModelSpec
 
 
 @ExperimentalAPI
@@ -51,7 +51,7 @@ class RecurrentModule(Module):
     @property
     def fwd_in_spec(self) -> SpecDict:
         """Returns the spec of the input of this module."""
-        return ModelSpecDict(
+        return ModelSpec(
             {
                 "input_dict": self.input_spec,
                 "state_dict": self.prev_state_spec,
@@ -61,7 +61,7 @@ class RecurrentModule(Module):
     @property
     def fwd_out_spec(self) -> SpecDict:
         """Returns the spec of the output of this module."""
-        return ModelSpecDict(
+        return ModelSpec(
             {
                 "output_dict": self.output_spec,
                 "state_dict": self.next_state_spec,
