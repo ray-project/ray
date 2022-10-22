@@ -13,6 +13,8 @@ from ray.rllib.core.examples.simple_ppo_rl_module import (
 from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 from ray.rllib.utils.test_utils import check
 
+from rllib.core.examples.simple_ppo_rl_module import get_ppo_loss
+
 
 def to_numpy(tensor):
     return tensor.detach().cpu().numpy()
@@ -166,18 +168,11 @@ class TestRLModule(unittest.TestCase):
                 # convert the list of dicts to dict of lists
                 batch = tree.map_structure(lambda *x: list(x), *batch)
                 # convert dict of lists to dict of tensors
-                batch = {k: to_tensor(np.array(v)) for k, v in batch.items()}
+                fwd_in = {k: to_tensor(np.array(v)) for k, v in batch.items()}
 
                 # forward train
-                fwd_out = module.forward_train(batch)
-
-                # this is not exactly a ppo loss, just something to show that the
-                # forward train works
-                adv = batch["reward"] - fwd_out["vf"]
-                actor_loss = -(fwd_out["logp"] * adv).mean()
-                critic_loss = (adv ** 2).mean()
-                loss = actor_loss + critic_loss
-
+                fwd_out = module.forward_train(fwd_in)
+                loss = get_ppo_loss(fwd_in, fwd_out)
                 loss.backward()
 
                 # check that all neural net parameters have gradients

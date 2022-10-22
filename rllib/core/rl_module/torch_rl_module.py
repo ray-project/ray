@@ -35,6 +35,8 @@ class TorchRLModule(RLModule, nn.Module):
     def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
         """Returns the multi-agent wrapper class for this module."""
         return TorchMARLModule
+
+        
 class TorchMARLModule(MultiAgentRLModule, nn.Module):
 
     def __init__(self, config: Mapping[str, Any]) -> None:

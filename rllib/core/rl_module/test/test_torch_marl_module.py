@@ -3,19 +3,18 @@ import unittest
 import gym
 from ray.rllib.core.examples.simple_ppo_rl_module import (
     SimplePPOModule,
-    PPOModuleConfig,
-    FCConfig,
     get_shared_encoder_config,
+    get_ppo_loss,
 )
 from ray.rllib.core.rl_module.torch_rl_module import TorchMARLModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override
 
 import torch
 from ray.rllib.utils.test_utils import check
 import tree
 import numpy as np
+
 
 
 def to_numpy(tensor):
@@ -27,35 +26,42 @@ def to_tensor(array, device=None):
         return torch.from_numpy(array).float().to(device)
     return torch.from_numpy(array).float()
 
-def key_int_to_str(d):
-    if not isinstance(d, dict):
-        return d
-    return {str(k): v for k, v in d.items()}
-
-def get_policy_data_from_agent_data(agent_data, policy_map_fn):
+def get_policy_data_from_agent_data(agent_data, policy_map_fn, debug=False):
     policy_data = {}
-    for agent_id, agent_data in agent_data.items():
+    for agent_id, data in agent_data.items():
         policy_id = policy_map_fn(agent_id)
         policy_data.setdefault(policy_id, {})
         policy_data[policy_id].setdefault("agent_id", [])
-        for k, v in agent_data.items():
-            policy_data[policy_id].setdefault(k, [])
-            policy_data[policy_id][k].append(v)
-            policy_data[policy_id]["agent_id"].append(agent_id)
 
-        ref_len = None
-        for k, v in policy_data[policy_id].items():
-            if ref_len is None:
-                ref_len = len(v)
-            else:
-                if len(v) != ref_len:
-                    raise ValueError(f"policy data length mismatch at key {k}")
-    
+        if data["obs"].ndim == 1:
+            policy_data[policy_id]["agent_id"].append(agent_id)
+        else:
+            policy_data[policy_id]["agent_id"] += [agent_id] * len(data["obs"])
+
+        for k, v in data.items():
+            policy_data[policy_id].setdefault(k, [])
+            if v.ndim == 1:
+                v = v[None]
+            policy_data[policy_id][k].append(v)
+
     for policy_id in policy_data:
-        policy_data[policy_id] = {k: np.stack(v) if k != "agent_id" else v for k, v in policy_data[policy_id].items()}
+        policy_data[policy_id] = {k: np.concatenate(v) if k != "agent_id" else v for k, v in policy_data[policy_id].items()}
         
     return policy_data
 
+def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
+    policy_to_agent_to_action = {}
+    for policy_id, policy_out in fwd_out.items():
+        policy_to_agent_to_action[policy_id] = {}
+        for agent_id, agent_out in zip(fwd_in[policy_id]["agent_id"], policy_out["action_dist"].sample()):
+            policy_to_agent_to_action[policy_id][agent_id] = to_numpy(agent_out)
+
+    action = {
+        aid: policy_to_agent_to_action[policy_map_fn(aid)][aid] 
+        for aid in agent_obs
+    }
+
+    return action
 
 class TestMARLModule(unittest.TestCase):
 
@@ -122,59 +128,109 @@ class TestMARLModule(unittest.TestCase):
         module.add_module(DEFAULT_POLICY_ID, SimplePPOModule(config), override=True)
 
     def test_rollouts(self):
-        for fwd_fn in ["forward_exploration", "forward_inference"]:
-            env_class = make_multi_agent("CartPole-v0")
-            env = env_class({"num_agents": 2})
-            config = get_shared_encoder_config(env)
-            module = SimplePPOModule(config).as_multi_agent()
+        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+            for fwd_fn in ["forward_exploration", "forward_inference"]:
+                env_class = make_multi_agent(env_name)
+                env = env_class({"num_agents": 2})
+                config = get_shared_encoder_config(env)
+                module = SimplePPOModule(config).as_multi_agent()
 
-            policy_map = lambda agent_id: DEFAULT_POLICY_ID
+                policy_map = lambda agent_id: DEFAULT_POLICY_ID
 
-            obs = env.reset()
+                obs = env.reset()
 
-            tstep = 0
-            while tstep < 10:
-                # go from agent_id to module_id, compute the actions in batches 
-                # and come back to the original per agent format. 
-                agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
-                fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
-                fwd_in = tree.map_structure(
-                    lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
-                    fwd_in
-                )
-                if fwd_fn == "forward_exploration":
-                    fwd_out = module.forward_exploration(fwd_in)
-                    
-                    action = to_numpy(
-                        fwd_out["action_dist"].sample().squeeze(0)
+                tstep = 0
+                while tstep < 10:
+                    # go from agent_id to module_id, compute the actions in batches 
+                    # and come back to the original per agent format. 
+                    agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
+                    fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
+                    fwd_in = tree.map_structure(
+                        lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
+                        fwd_in
                     )
 
-                # elif fwd_fn == "forward_inference":
-                #     # check if I sample twice, I get the same action
-                #     fwd_out = module.forward_inference(
-                #         {"obs": to_tensor(obs)[None]}
-                #     )
-                #     action = to_numpy(
-                #         fwd_out["action_dist"].sample().squeeze(0)
-                #     )
-                #     action2 = to_numpy(
-                #         fwd_out["action_dist"].sample().squeeze(0)
-                #     )
-                #     check(action, action2)
-            # obs = tree.map_structure(lambda x: to_tensor(x), obs)
-            # output = module.inference(obs)
-            # self.assertIsInstance(output, dict)
-            # self.assertEqual(set(output.keys()), set(module.keys()))
-            # self.assertIsInstance(output[DEFAULT_POLICY_ID], dict)
-            # self.assertEqual(set(output[DEFAULT_POLICY_ID].keys()), set(["logits", "value"]))
+                    if fwd_fn == "forward_exploration":
+                        fwd_out = module.forward_exploration(fwd_in)
+                        
+                        action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
+                    
+                    elif fwd_fn == "forward_inference":
+                        # check if I sample twice, I get the same action
+                        fwd_out = module.forward_inference(fwd_in)
+                        
+                        action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
+                        action2 = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
+                    
+                        check(action, action2)
 
-            # # check if the output is deterministic
-            # output2 = module.inference(obs)
-            # check(output, output2)
+                    obs, reward, done, info = env.step(action)
+                    print(
+                        f"obs: {obs}, action: {action}, reward: {reward}, done: {done}, info: {info}"
+                    )
+                    tstep += 1
 
 
+    def test_forward_train(self):
+        
+        env_class = make_multi_agent("CartPole-v0")
+        env = env_class({"num_agents": 2})
+        config = get_shared_encoder_config(env)
+        module = SimplePPOModule(config).as_multi_agent()
 
+        policy_map = lambda agent_id: DEFAULT_POLICY_ID
 
+        obs = env.reset()
+
+        batch = []
+        tstep = 0
+        while tstep < 10:
+            # go from agent_id to module_id, compute the actions in batches 
+            # and come back to the original per agent format. 
+            agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
+            fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
+            fwd_in = tree.map_structure(
+                lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
+                fwd_in
+            )
+            fwd_out = module.forward_exploration(fwd_in)
+            action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
+            next_obs, reward, done, info = env.step(action)
+            tstep += 1
+            
+            # construct the data from this iteration
+            iteration_data = {}
+            for aid in agent_obs.keys():
+                iteration_data[aid] = {
+                    "obs": obs[aid],
+                    "action": action[aid][None] if action[aid].ndim == 0 else action[aid],
+                    "reward": np.array(reward[aid])[None],
+                    "done": np.array(done[aid])[None],
+                    "next_obs": next_obs[aid],
+                }
+            batch.append(iteration_data)
+
+            obs = next_obs
+
+        # convert a list of similarly structured nested dicts that end with np.array leaves to a nested dict of the same structure that ends with stacked np.arrays
+        batch = tree.map_structure(lambda *x: np.stack(x, axis=0),*batch)
+        fwd_in = get_policy_data_from_agent_data(batch, policy_map, debug=True)
+        fwd_in = tree.map_structure(
+            lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, 
+            fwd_in
+        )
+        fwd_out = module.forward_train(fwd_in)
+
+        # compute loss per each module and then sum them up to get the total loss
+        loss = {}
+        for module_id in module.get_trainable_module_ids():
+            loss[module_id] = get_ppo_loss(fwd_in[module_id], fwd_out[module_id])
+        loss_total = sum(loss.values())
+        loss_total.backward()
+
+        # check that all neural net parameters have gradients
+        for param in module.parameters():
+            self.assertIsNotNone(param.grad)
 
 if __name__ == "__main__":
     import pytest

@@ -1,6 +1,6 @@
 import abc
 from collections import defaultdict
-from typing import Iterator, Mapping, Any, Union, Dict, Type
+from typing import Iterator, Mapping, Any, Union, Dict, Type, Set
 
 
 from ray.rllib.utils.annotations import (
@@ -196,6 +196,10 @@ class MultiAgentRLModule(RLModule):
     def keys(self) -> Iterator[ModuleID]:
         """Returns an iteratable of module ids."""
         return self._rl_modules.keys()
+
+    def get_trainable_module_ids(self) -> Set[ModuleID]:
+        """Returns the ids of the trainable modules."""
+        return self._trainable_rl_modules
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
