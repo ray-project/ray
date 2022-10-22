@@ -155,9 +155,10 @@ def check_specs(
     args and returns and a single object.
 
 
-    It adds the ability to filter the input data if it is a mappinga to only contain 
-    the keys in the spec. It can also cache the validation to make sure the spec is only validated once in the lifetime of the instance.
-    
+    It adds the ability to filter the input data if it is a mappinga to only contain
+    the keys in the spec. It can also cache the validation to make sure the spec is 
+    only validated once in the lifetime of the instance.
+
     Examples (See more exmaples in ../tests/test_specs_dict.py):
 
         >>> class MyModel(nn.Module):
@@ -183,17 +184,17 @@ def check_specs(
             `input_data` should comply with.
         output_spec: `self` should have an instance method that is named output_spec
             and returns the spec that the output should comply with.
-        filter: If True, and `input_data` is a nested dict the `input_data` will be 
-            filtered by its corresponding spec tree structure and then passed into the 
-            implemented function to make sure user is not confounded with unnecessary 
+        filter: If True, and `input_data` is a nested dict the `input_data` will be
+            filtered by its corresponding spec tree structure and then passed into the
+            implemented function to make sure user is not confounded with unnecessary
             data.
-        cache: If True, only checks the input/output validation for the first time the 
+        cache: If True, only checks the input/output validation for the first time the
             instance method is called.
-        input_exact_match: If True, the input data (should be a nested dict) must match 
-            the spec exactly. Otherwise, the data is validated as long as it contains 
+        input_exact_match: If True, the input data (should be a nested dict) must match
+            the spec exactly. Otherwise, the data is validated as long as it contains
             at least the elements of the spec, but can contain more entries.
-        output_exact_match: If True, the output data (should be a nested dict) must 
-            match the spec exactly. Otherwise, the data is validated as long as it 
+        output_exact_match: If True, the output data (should be a nested dict) must
+            match the spec exactly. Otherwise, the data is validated as long as it
             contains at least the elements of the spec, but can contain more entries.
 
     Returns:
