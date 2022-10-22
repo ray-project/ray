@@ -78,6 +78,25 @@ Train a model with an ``XGBoostTrainer``.
 ```
 `````
 
+`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
+
+Configure the parameters for tuning:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_tuner_start__
+    :end-before: __air_xgb_tuner_end__
+```
+
+Run hyperparameter tuning with Ray Tune to find the best model:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_tune_generic_end__
+    :end-before: __air_tune_generic_end__
+```
+`````
+
 `````{dropdown} Use the trained model for Batch prediction
 
 Use the trained model for batch prediction with a ``BatchPredictor``.
