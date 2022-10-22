@@ -36,6 +36,12 @@ Check out our detailed [installation guide](installation.rst).
 
 ## Ray AI Runtime Quick Start
 
+To use Ray's AI Runtime install Ray with the optional extra `air` packages:
+
+```
+pip install "ray[air]"
+```
+
 `````{dropdown} Efficiently process your data into features.
 
 Load data into a ``Dataset``.
@@ -56,6 +62,12 @@ Preprocess your data with a ``Preprocessor``.
 `````
 
 `````{dropdown} Scale out model training.
+
+This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
+
+```
+pip install xgboost_ray
+```
 
 Train a model with an ``XGBoostTrainer``.
 
