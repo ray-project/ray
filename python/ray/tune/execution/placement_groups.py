@@ -75,7 +75,8 @@ class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
 
     This function should be used to define resource requests for Ray Tune
-    trials. It holds the parameters to create placement groups.
+    trials. It holds the parameters to create
+    :ref:`placement groups <https://docs.ray.io/en/latest/ray-core/placement-group.html>`.
     At a minimum, this will hold at least one bundle specifying the
     resource requirements for each trial:
 
