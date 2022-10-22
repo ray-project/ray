@@ -1,9 +1,9 @@
-import unittest
 import abc
-import time
 import numpy as np
-
+import time
 from typing import Dict, Any
+import unittest
+
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -15,12 +15,10 @@ class AbstractInterfaceClass(abc.ABC):
     """An abstract class that has a couple of methods, each having their own
     input/output constraints."""
 
-    @property
     @abc.abstractmethod
     def input_spec(self) -> ModelSpecDict:
         pass
 
-    @property
     @abc.abstractmethod
     def output_spec(self) -> ModelSpecDict:
         pass
@@ -67,12 +65,10 @@ class AbstractInterfaceClass(abc.ABC):
 class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
 
-    @property
-    def input_spec(self):
+    def input_spec(self) -> ModelSpecDict:
         return ModelSpecDict({"input": (float, int)})
 
-    @property
-    def output_spec(self):
+    def output_spec(self) -> ModelSpecDict:
         return ModelSpecDict({"output": float})
 
 
@@ -124,7 +120,7 @@ class TestCheckSpecs(unittest.TestCase):
 
         output = correct_module.check_input_and_output({"input": 2})
         # output should also match the output_spec
-        correct_module.output_spec.validate(NestedDict(output))
+        correct_module.output_spec().validate(NestedDict(output))
 
         # this should raise an error saying that the `input` key is missing
         self.assertRaises(
@@ -137,7 +133,8 @@ class TestCheckSpecs(unittest.TestCase):
         output = correct_module.check_only_input({"input": 2})
         # output can be anything since ther is no output_spec
         self.assertRaises(
-            ValueError, lambda: correct_module.output_spec.validate(NestedDict(output))
+            ValueError,
+            lambda: correct_module.output_spec().validate(NestedDict(output)),
         )
 
     def test_check_only_output(self):
@@ -145,7 +142,7 @@ class TestCheckSpecs(unittest.TestCase):
         # this should not raise any error since input does not have to match input_spec
         output = correct_module.check_only_output({"not_input": 2})
         # output should match the output specs
-        correct_module.output_spec.validate(NestedDict(output))
+        correct_module.output_spec().validate(NestedDict(output))
 
     def test_incorrect_implementation(self):
         incorrect_module = IncorrectImplementation()

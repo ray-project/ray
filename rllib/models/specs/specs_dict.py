@@ -179,7 +179,8 @@ def check_specs(
             `self` as the first argument, `input_dict` as the second argument and any
             other keyword argument thereafter. It should return a dict.
         input_spec: `self` should have an instance method that is named input_spec and
-            returns the spec that the `input_dict` should comply with.
+            returns the `ModelSpec`, `TensorSpec`, or simply the `Type` that the
+            `input_dict` should comply with.
         output_spec: `self` should have an instance method that is named output_spec
             and returns the spec that the output should comply with.
         filter: If True, the input_dict is filtered by its corresponding spec tree
