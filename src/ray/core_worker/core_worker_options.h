@@ -33,18 +33,20 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
+      const rpc::Address &caller_address,
       TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist,
-      std::vector<std::shared_ptr<RayObject>> *results,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      bool *is_application_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.
@@ -52,7 +54,8 @@ struct CoreWorkerOptions {
       // Defined concurrency groups of this actor. Note this is only
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute)>;
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt)>;
 
   CoreWorkerOptions()
       : store_socket(""),

@@ -5,6 +5,7 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
@@ -46,6 +47,11 @@ def check_multi_agent(
     from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
     allowed = list(COMMON_CONFIG["multiagent"].keys())
+    if (
+        "replay_mode" in multiagent_config
+        and multiagent_config["replay_mode"] == "independent"
+    ):
+        multiagent_config.pop("replay_mode")
     if any(k not in allowed for k in multiagent_config.keys()):
         raise KeyError(
             f"You have invalid keys in your 'multiagent' config dict! "
@@ -66,6 +72,9 @@ def check_multi_agent(
 
     # Check each defined policy ID and spec.
     for pid, policy_spec in policies.copy().items():
+        # Make sure our Policy ID is ok.
+        validate_policy_id(pid, error=False)
+
         # Policy IDs must be strings.
         if not isinstance(pid, str):
             raise KeyError(f"Policy IDs must always be of type `str`, got {type(pid)}")
@@ -100,15 +109,7 @@ def check_multi_agent(
             "[env_steps|agent_steps], not "
             f"{multiagent_config['count_steps_by']}!"
         )
-    if multiagent_config.get("replay_mode", "independent") not in [
-        "independent",
-        "lockstep",
-    ]:
-        raise ValueError(
-            "`config.multiagent.replay_mode` must be "
-            "[independent|lockstep], not "
-            f"{multiagent_config['replay_mode']}!"
-        )
+
     # Attempt to create a `policy_mapping_fn` from config dict. Helpful
     # is users would like to specify custom callable classes in yaml files.
     if isinstance(multiagent_config.get("policy_mapping_fn"), dict):
@@ -125,7 +126,7 @@ def check_multi_agent(
             )
         for pid in multiagent_config["policies_to_train"]:
             if pid not in policies:
-                raise ValueError(
+                logger.warning(
                     "`config.multiagent.policies_to_train` contains policy "
                     f"ID ({pid}) that was not defined in `config.multiagent.policies!"
                 )

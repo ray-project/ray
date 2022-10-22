@@ -14,6 +14,7 @@ import ray
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.test_utils import (
     Semaphore,
     SignalActor,
@@ -674,9 +675,14 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     ray.get(o)
 
     workers = [
-        Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
+        Worker.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote(i)
+        for i in range(NUM_CPU_BUNDLES)
     ]
-    trainer = Trainer.options(placement_group=pg).remote(0)
+    trainer = Trainer.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote(0)
 
     # If the gpu scheduling doesn't properly work, the below
     # code will hang.
@@ -731,11 +737,12 @@ def test_scheduling_class_depth(ray_start_regular):
 
         return condition
 
-    wait_for_condition(make_condition(2))
+    # timeout=60 necessary to pass on windows debug/asan builds.
+    wait_for_condition(make_condition(2), timeout=60)
     start_infeasible.remote(2)
-    wait_for_condition(make_condition(3))
+    wait_for_condition(make_condition(3), timeout=60)
     start_infeasible.remote(4)
-    wait_for_condition(make_condition(4))
+    wait_for_condition(make_condition(4), timeout=60)
 
 
 if __name__ == "__main__":

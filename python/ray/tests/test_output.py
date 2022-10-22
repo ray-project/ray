@@ -179,13 +179,13 @@ ray.get([f.remote() for _ in range(15)])
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -205,32 +205,38 @@ module = __import__(module_name)
 
 # Define an actor that closes over this temporary module. This should
 # fail when it is unpickled.
-@ray.remote
+@ray.remote(max_restarts=0)
 class Foo:
     def __init__(self):
         self.x = module.temporary_python_file()
-
+    def ready(self):
+        pass
 a = Foo.remote()
-import time
-time.sleep(3)  # Wait for actor start.
+try:
+    ray.get(a.ready.remote())
+except Exception as e:
+    pass
+from time import sleep
+sleep(3)
 """
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
     err_str = proc.stderr.read().decode("ascii")
     print(out_str)
+    print("-----")
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The actor with name Foo failed to import" in err_str
 
 
 def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1

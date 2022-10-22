@@ -15,5 +15,5 @@ __all__ = [
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
-    "ray.rllib.agents.bandits", "ray.rllib.algorithms.bandits", error=False
+    "ray.rllib.agents.bandits", "ray.rllib.algorithms.bandits", error=True
 )

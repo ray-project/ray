@@ -34,7 +34,7 @@ class QMixConfig(SimpleQConfig):
         >>> from ray.rllib.algorithms.qmix import QMixConfig
         >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=TwoStepGame)
@@ -43,6 +43,7 @@ class QMixConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.algorithms.qmix import QMixConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
@@ -53,11 +54,11 @@ class QMixConfig(SimpleQConfig):
         >>> config.environment(env=TwoStepGame)
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "QMix",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -190,7 +191,7 @@ class QMixConfig(SimpleQConfig):
                 "This is now the same parameter as in other "
                 "algorithms. `grad_clip` will be overwritten by "
                 "`grad_norm_clipping={}`".format(grad_norm_clipping),
-                error=False,
+                error=True,
             )
             grad_clip = grad_norm_clipping
 
@@ -318,7 +319,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

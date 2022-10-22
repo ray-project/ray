@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 
 import click
 import numpy as np
@@ -160,7 +161,7 @@ def train_tf_vanilla(
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
     from benchmark_util import (
         upload_file_to_all_nodes,
-        create_actors_with_resources,
+        create_actors_with_options,
         run_commands_on_actors,
         run_fn_on_actors,
         get_ip_port_actors,
@@ -171,7 +172,7 @@ def train_tf_vanilla(
 
     num_epochs = config["epochs"]
 
-    actors = create_actors_with_resources(
+    actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
@@ -236,6 +237,7 @@ def cli():
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--batch-size", type=int, default=64)
 @click.option("--smoke-test", is_flag=True, default=False)
+@click.option("--local", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
@@ -244,6 +246,7 @@ def run(
     use_gpu: bool = False,
     batch_size: int = 64,
     smoke_test: bool = False,
+    local: bool = False,
 ):
     # Note: smoke_test is ignored as we just adjust the batch size.
     # The parameter is passed by the release test pipeline.
@@ -254,10 +257,15 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    ray.init("auto")
+    if local:
+        ray.init(num_cpus=4)
+    else:
+        ray.init("auto")
+
     print("Preparing Tensorflow benchmark: Downloading MNIST")
 
-    path = os.path.abspath("workloads/_tensorflow_prepare.py")
+    path = str((Path(__file__).parent / "_tensorflow_prepare.py").absolute())
+
     upload_file_to_all_nodes(path)
     run_command_on_all_nodes(["python", path])
 

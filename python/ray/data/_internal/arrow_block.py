@@ -16,11 +16,11 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.air.util.transform_pyarrow import (
     _concatenate_extension_column,
     _is_column_extension_type,
 )
+from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
     TableBlockAccessor,
@@ -100,7 +100,8 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(pyarrow.Table)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
             if col_name == VALUE_COL_NAME or isinstance(
                 next(iter(col), None), np.ndarray
@@ -110,11 +111,9 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
         return pyarrow.Table.from_pydict(columns)
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
-        if len(tables) > 1:
-            return pyarrow.concat_tables(tables, promote=True)
-        else:
-            return tables[0]
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
+        return transform_pyarrow.concat(tables)
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
@@ -157,7 +156,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         new_batch = {}
         for col_name, col in batch.items():
             # Use Arrow's native *List types for 1-dimensional ndarrays.
-            if col.ndim > 1:
+            if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
                     col = ArrowTensorArray.from_numpy(col)
                 except pa.ArrowNotImplementedError as e:
@@ -265,6 +264,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         extension arrays.
         """
         return transform_pyarrow.take_table(self._table, indices)
+
+    def select(self, columns: List[KeyFn]) -> "pyarrow.Table":
+        if not all(isinstance(col, str) for col in columns):
+            raise ValueError(
+                "Columns must be a list of column name strings when aggregating on "
+                f"Arrow blocks, but got: {columns}."
+            )
+        return self._table.select(columns)
 
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)

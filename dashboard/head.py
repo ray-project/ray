@@ -108,6 +108,7 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
+        DataOrganizer.head_node_ip = self.ip
         ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
@@ -124,7 +125,12 @@ class DashboardHead:
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
         http_server = HttpServerDashboardHead(
-            self.ip, self.http_host, self.http_port, self.http_port_retries
+            self.ip,
+            self.http_host,
+            self.http_port,
+            self.http_port_retries,
+            self.gcs_address,
+            self.gcs_client,
         )
         await http_server.run(modules)
         return http_server

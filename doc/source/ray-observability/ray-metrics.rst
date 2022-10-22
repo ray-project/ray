@@ -1,69 +1,95 @@
 .. _ray-metrics:
 
-Exporting Metrics
-=================
+Metrics
+=======
 
 To help monitor Ray applications, Ray
 
-- Collects some default system level metrics.
+- Collects system-level metrics.
+- Provides a default configuration for prometheus.
+- Provides a default Grafana dashboard.
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
 - Supports custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
-This page describes how to access these metrics using Prometheus.
-
-.. note::
-
-    It is currently an experimental feature and under active development. APIs are subject to change.
-
-Getting Started (Single Node)
------------------------------
-
-First, install Ray with the proper dependencies:
-
-.. code-block:: bash
-
-  pip install "ray[default]"
+Getting Started
+---------------
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
-Let's expose metrics through `ray start`.
-
-.. code-block:: bash
-
-    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
-
-Now, you can scrape Ray's metrics using Prometheus.
-
-First, download Prometheus. `Download Link <https://prometheus.io/download/>`_
+First, `download Prometheus. <https://prometheus.io/download/>`_
 
 .. code-block:: bash
 
     tar xvfz prometheus-*.tar.gz
     cd prometheus-*
 
-Let's modify Prometheus's config file to scrape metrics from Prometheus endpoints.
+Ray exports metrics only when ``ray[default]`` is installed.
+
+.. code-block:: bash
+
+  pip install "ray[default]"
+
+Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
 .. code-block:: yaml
 
-    # prometheus.yml
     global:
-      scrape_interval:     5s
-      evaluation_interval: 5s
+      scrape_interval: 15s
+      evaluation_interval: 15s
 
     scrape_configs:
-      - job_name: prometheus
-        static_configs:
-        - targets: ['localhost:8080'] # This must be same as metrics_export_port
+    # Scrape from each ray node as defined in the service_discovery.json provided by ray.
+    - job_name: 'ray'
+      file_sd_configs:
+      - files:
+        - '/tmp/ray/prom_metrics_service_discovery.json'
+
 
 Next, let's start Prometheus.
 
 .. code-block:: shell
 
-    ./prometheus --config.file=./prometheus.yml
+    ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
+
+Export Metrics from Prometheus Endpoint
+---------------------------------------
+
+It's also possible to expose metrics through `ray start`.
+
+.. code-block:: bash
+
+    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
+
+Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
+
+.. _grafana:
+
+Grafana
+-------
+Grafana is a tool that supports more advanced visualizations of prometheus metrics and
+allows you to create custom dashboards with your favorite metrics. Ray exports some default
+configurations which includes a default dashboard showing some of the most valuable metrics
+for debugging ray applications.
+
+First, `download Grafana. <https://grafana.com/grafana/download>`_
+
+Then run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
+
+.. code-block:: shell
+
+    ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
+
+Now, you can access grafana using the default grafana url, `http://localhost:3000`.
+If this is your first time, you can login with the username: `admin` and password `admin`.
+
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same dashboard is also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
+    :align: center
 
 .. _application-level-metrics:
 

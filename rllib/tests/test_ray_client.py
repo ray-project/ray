@@ -4,6 +4,7 @@ import unittest
 
 import pytest
 import ray
+from ray import air
 from ray import tune
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -32,7 +33,10 @@ class TestRayClient(unittest.TestCase):
             resources = ppo.PPO.default_resource_request(config)
             from ray.rllib.examples.custom_train_fn import my_train_fn
 
-            tune.run(my_train_fn, resources_per_trial=resources, config=config)
+            tune.Tuner(
+                tune.with_resources(my_train_fn, resources),
+                param_space=config,
+            ).fit()
 
     def test_cartpole_lstm(self):
         with ray_start_client_server():
@@ -46,7 +50,11 @@ class TestRayClient(unittest.TestCase):
                 "training_iteration": 3,
             }
 
-            tune.run("PPO", config=config, stop=stop, verbose=2)
+            tune.Tuner(
+                "PPO",
+                param_space=config,
+                run_config=air.RunConfig(stop=stop, verbose=2),
+            ).fit()
 
     def test_custom_experiment(self):
 
@@ -60,11 +68,12 @@ class TestRayClient(unittest.TestCase):
 
             from ray.rllib.examples.custom_experiment import experiment
 
-            tune.run(
-                experiment,
-                config=config,
-                resources_per_trial=ppo.PPO.default_resource_request(config),
-            )
+            tune.Tuner(
+                tune.with_resources(
+                    experiment, ppo.PPO.default_resource_request(config)
+                ),
+                param_space=config,
+            ).fit()
 
 
 if __name__ == "__main__":

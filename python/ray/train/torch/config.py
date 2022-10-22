@@ -6,7 +6,9 @@ from datetime import timedelta
 from typing import Dict, Optional
 
 import ray
+import ray.cloudpickle
 from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.util import PublicAPI
@@ -49,6 +51,20 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TorchBackend
+
+
+def _set_nccl_network_interface() -> str:
+    """Set the appropriate NCCL network interface to use."""
+
+    if "NCCL_SOCKET_IFNAME" not in os.environ:
+        logger.debug(
+            f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
+            f"to prioritize ethernet connection. To override this behavior, set the "
+            f"`NCCL_SOCKET_IFNAME` environment variable in your Ray runtime "
+            "environment: "
+            "`ray.init(runtime_env={{'env_vars': {'NCCL_SOCKET_IFNAME': 'ens5'}}}`"
+        )
+        os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
 
 def _setup_torch_process_group(
@@ -116,6 +132,9 @@ class _TorchBackend(Backend):
             else:
                 backend = backend_config.backend
 
+            if backend == "nccl":
+                worker_group.execute(_set_nccl_network_interface)
+
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
@@ -175,7 +194,11 @@ class _TorchBackend(Backend):
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
-        torch.save(data_dict, _buffer)
+        # If a custom torch model contains a function that cannot be pickled normally,
+        # we need to use ray.cloudpickle. This is also consistent with how Ray
+        # serialization works in general and has no downsides
+        # (this can still be unpickled without ray using normal pickle).
+        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
         return _buffer.getvalue()
 
     @staticmethod

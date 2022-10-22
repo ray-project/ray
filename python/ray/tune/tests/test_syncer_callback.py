@@ -9,9 +9,9 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import NODE_IP
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
@@ -70,13 +70,19 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 class MockTrial:
-    def __init__(self, trial_id: str, logdir: str):
+    def __init__(self, trial_id: str, logdir: str, on_dead_node: bool = False):
         self.trial_id = trial_id
-        self.last_result = {NODE_IP: ray.util.get_node_ip_address()}
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
+        self._local_ip = ray.util.get_node_ip_address()
+        self._on_dead_node = on_dead_node
+
+    def get_runner_ip(self):
+        if self._on_dead_node:
+            raise RayActorError()
+        return self._local_ip
 
 
 class TestSyncerCallback(SyncerCallback):
@@ -198,6 +204,29 @@ def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
     syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
 
     trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_callback_sync_with_invalid_ip(ray_start_2_cpus, temp_data_dirs):
+    """Check that the sync client updates the IP correctly"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
 
     syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
     syncer_callback.wait_for_all()
@@ -398,6 +427,27 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
 
     syncer_callback.wait_for_all()
     assert_file(True, tmp_target, "level0.txt")
+
+
+def test_syncer_callback_dead_node_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+    """Check that we catch + log errors when trying syncing with a dead remote node."""
+    caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source, on_dead_node=True)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+
+    assert (
+        "An error occurred when trying to get the node ip where this trial is running"
+        in caplog.text
+    )
 
 
 def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
