@@ -1,5 +1,5 @@
 import functools
-from typing import Callable, Union, Type, Mapping, Any
+from typing import Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -125,7 +125,8 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
                     spec.validate(data_to_validate)
                 except ValueError as e:
                     raise ValueError(
-                        f"Mismatch found in data element {spec_name}, which is a TensorSpecs: {e}"
+                        f"Mismatch found in data element {spec_name}, "
+                        f"which is a TensorSpecs: {e}"
                     )
             elif isinstance(spec, Type):
                 if not isinstance(data_to_validate, spec):
@@ -154,22 +155,36 @@ def check_specs(
     args and returns and a dict.
 
 
-    It has the ability to filter the input dict to only contain the keys in the spec
+    It adds the ability to filter the input dict to only contain the keys in the spec
     and also to cache to make sure the spec check is only called once in the lifetime
     of the instance.
 
+    Examples (See more exmaples in the tests):
+
+        >>> class MyModel(nn.Module):
+        ...     def input_spec(self):
+        ...         return ModelSpecDict({"obs": TensorSpecs("b, d", d=64)})
+        ...     @check_specs(input_spec="input_spec")
+        ...     def forward(self, input_dict, return_loss=False):
+        ...         ...
+        ...         output_dict = ...
+        ...         return output_dict
+
+        >>> model = MyModel()
+        >>> model.forward({"obs": torch.randn(32, 64)}) # No error
+        >>> model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
             `self` as the first argument, `input_dict` as the second argument and any
             other keyword argument thereafter. It should return a dict.
-        input_spec: `getattr(self, input_spec)` should correspond to the spec that
-            `input_dict` should comply with
-        output_spec: `getattr(self, output_spec)` should correspond to the spec that
-            the returned dict should comply with.
+        input_spec: `self` should have an instance method that is named input_spec and
+            returns the spec that the `input_dict` should comply with.
+        output_spec: `self` should have an instance method that is named output_spec
+            and returns the spec that the output should comply with.
         filter: If True, the input_dict is filtered by its corresponding spec tree
             structure and then passed into the implemented function to make sure user
-            is not confounded by unnecessary data.
+            is not confounded with unnecessary data.
         cache: If True, only checks the input/output for the first time the instance
             method is called.
         input_exact_match: If True, the input data must match the spec exactly.
@@ -183,8 +198,9 @@ def check_specs(
         A wrapped instance method. In case of `cache=True`, after the first invokation
         of the decorated method, the intance will have `__checked_specs_cache__`
         attribute that store which method has been invoked at least once. This is a
-        special attribute can be used as for the cache. The wrapped class method also
-        has a special attribute `__checked_specs__` that marks the method as decorated.
+        special attribute can be used for the cache itself. The wrapped class method
+        also has a special attribute `__checked_specs__` that marks the method as
+        decorated.
     """
 
     if not input_spec and not output_spec:
@@ -214,9 +230,11 @@ def check_specs(
                         input_spec_.validate(input_dict_, exact_match=input_exact_match)
                     except ValueError as e:
                         raise ValueError(
-                            f"Input spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}."
+                            f"Input spec validation failed on "
+                            f"{self.__class__.__name__}.{func.__name__}, {e}."
                         )
                 if filter:
+                    # filtering should happen regardless of cache
                     input_dict_ = input_dict_.filter(input_spec_)
 
             output_dict_ = func(self, input_dict_, **kwargs)
@@ -226,7 +244,8 @@ def check_specs(
                     output_spec_.validate(output_dict_, exact_match=output_exact_match)
                 except ValueError as e:
                     raise ValueError(
-                        f"Output spec validation failed on {self.__class__.__name__}.{func.__name__}, {e}."
+                        f"Output spec validation failed on "
+                        f"{self.__class__.__name__}.{func.__name__}, {e}."
                     )
 
             if cache:

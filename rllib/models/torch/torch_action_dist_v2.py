@@ -1,23 +1,15 @@
-from argparse import Action
-import functools
 import gym
-from math import log
 import numpy as np
-import tree  # pip install dm_tree
 from typing import Optional
+import abc
+
 
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
-from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
 
-# torch, nn = try_import_torch()
-
-import torch
-from typing import Mapping
-import abc
+torch, nn = try_import_torch()
 
 
 @DeveloperAPI

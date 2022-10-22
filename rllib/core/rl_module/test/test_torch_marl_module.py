@@ -1,6 +1,9 @@
-from distutils.command.config import config
 import unittest
 import gym
+import tree
+import torch
+import numpy as np
+
 from ray.rllib.core.examples.simple_ppo_rl_module import (
     SimplePPOModule,
     get_shared_encoder_config,
@@ -9,11 +12,7 @@ from ray.rllib.core.examples.simple_ppo_rl_module import (
 from ray.rllib.core.rl_module.torch_rl_module import TorchMARLModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-
-import torch
 from ray.rllib.utils.test_utils import check
-import tree
-import numpy as np
 
 
 def to_numpy(tensor):
@@ -86,7 +85,7 @@ class TestMARLModule(unittest.TestCase):
         self.assertNotIsInstance(marl_module, SimplePPOModule)
         self.assertIsInstance(marl_module, TorchMARLModule)
 
-        self.assertEqual(set([DEFAULT_POLICY_ID]), set(marl_module.keys()))
+        self.assertEqual({DEFAULT_POLICY_ID}, set(marl_module.keys()))
 
         # check as_multi_agent() for the second time
         marl_module2 = marl_module.as_multi_agent()
@@ -126,9 +125,9 @@ class TestMARLModule(unittest.TestCase):
         module = SimplePPOModule(config).as_multi_agent()
 
         module.add_module("test", SimplePPOModule(config))
-        self.assertEqual(set(module.keys()), set([DEFAULT_POLICY_ID, "test"]))
+        self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID, "test"})
         module.remove_module("test")
-        self.assertEqual(set(module.keys()), set([DEFAULT_POLICY_ID]))
+        self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID})
 
         # test if add works with a conflicting name
         self.assertRaises(
@@ -146,7 +145,8 @@ class TestMARLModule(unittest.TestCase):
                 config = get_shared_encoder_config(env)
                 module = SimplePPOModule(config).as_multi_agent()
 
-                policy_map = lambda agent_id: DEFAULT_POLICY_ID
+                def policy_map(agent_id):
+                    return DEFAULT_POLICY_ID
 
                 obs = env.reset()
 
@@ -183,7 +183,8 @@ class TestMARLModule(unittest.TestCase):
 
                     obs, reward, done, info = env.step(action)
                     print(
-                        f"obs: {obs}, action: {action}, reward: {reward}, done: {done}, info: {info}"
+                        f"obs: {obs}, action: {action}, reward: {reward}, "
+                        "done: {done}, info: {info}"
                     )
                     tstep += 1
 
@@ -194,7 +195,8 @@ class TestMARLModule(unittest.TestCase):
         config = get_shared_encoder_config(env)
         module = SimplePPOModule(config).as_multi_agent()
 
-        policy_map = lambda agent_id: DEFAULT_POLICY_ID
+        def policy_map(agent_id):
+            return DEFAULT_POLICY_ID
 
         obs = env.reset()
 
@@ -229,7 +231,8 @@ class TestMARLModule(unittest.TestCase):
 
             obs = next_obs
 
-        # convert a list of similarly structured nested dicts that end with np.array leaves to a nested dict of the same structure that ends with stacked np.arrays
+        # convert a list of similarly structured nested dicts that end with np.array
+        # leaves to a nested dict of the same structure that ends with stacked np.arrays
         batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *batch)
         fwd_in = get_policy_data_from_agent_data(batch, policy_map, debug=True)
         fwd_in = tree.map_structure(

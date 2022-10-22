@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from typing import Iterator, Mapping, Any, Union, Dict, Type, Set
+import pprint
 
 
 from ray.rllib.utils.annotations import (
@@ -9,18 +10,12 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     override,
 )
-from ray.rllib.core.base_module import Module
 
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
 from ray.rllib.models.action_dist_v2 import ActionDistributionV2
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    SampleBatch,
-    MultiAgentBatch,
-)
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
-import pprint
 
 ModuleID = str
 
@@ -92,7 +87,8 @@ class RLModule(abc.ABC):
 
         Override this method to customize the output specs of the inference call.
         The default implementation requires the forward_inference to reutn a dict that
-        has `action_dist` key and its value is an instance of `ActionDistributionV2`. This assumption must always hold.
+        has `action_dist` key and its value is an instance of `ActionDistributionV2`.
+        This assumption must always hold.
         """
         return ModelSpecDict({"action_dist": ActionDistributionV2})
 
@@ -223,7 +219,9 @@ class MultiAgentRLModule(RLModule):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the multi-agent module.
 
-        The default implementation is a mapping from independent module IDs to their individual state_dicts. Override this method to customize the state_dict for custom more advanced multi-agent use cases.
+        The default implementation is a mapping from independent module IDs to their
+        individual state_dicts. Override this method to customize the state_dict for
+        custom more advanced multi-agent use cases.
 
         Args:
             state_dict: The state dict to set.
@@ -313,14 +311,16 @@ class MultiAgentRLModule(RLModule):
                 mod_class = module_info.get("module_class")
                 if mod_class is None:
                     raise KeyError(
-                        f"key `module_class` is missing in the module specfication of module {module_id}"
+                        f"key `module_class` is missing in the module "
+                        f"specfication of module {module_id}"
                     )
                 mod_config = module_info.get("module_config", {})
                 modules[module_id] = mod_class(config=mod_config)
             elif isinstance(module_id, tuple):
                 if len(module_id) != 2:
                     raise ValueError(
-                        f"module {module_id} should has 2 elements: (module_class, module_config)"
+                        f"module {module_id} should has 2 elements: "
+                        f"(module_class, module_config)"
                     )
                 mod_class, mod_config = module_info
                 modules[module_id] = mod_class(config=mod_config)
@@ -404,7 +404,8 @@ class MultiAgentRLModule(RLModule):
     def _check_module_exists(self, module_id: ModuleID) -> None:
         if module_id not in self._rl_modules:
             raise ValueError(
-                f"Module with module_id {module_id} not found. Available modules: {set(self.keys())}"
+                f"Module with module_id {module_id} not found. "
+                f"Available modules: {set(self.keys())}"
             )
 
     def __repr__(self) -> str:

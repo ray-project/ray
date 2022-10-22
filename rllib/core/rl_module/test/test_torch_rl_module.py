@@ -125,7 +125,8 @@ class TestRLModule(unittest.TestCase):
 
                         obs, reward, done, info = env.step(action)
                         print(
-                            f"obs: {obs}, action: {action}, reward: {reward}, done: {done}, info: {info}"
+                            f"obs: {obs}, action: {action}, reward: {reward}, "
+                            f"done: {done}, info: {info}"
                         )
                         tstep += 1
 

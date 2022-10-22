@@ -182,7 +182,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         output = self.get(k)
         if isinstance(output, NestedDict):
             raise IndexError(
-                f"Key `{k}` is not a complete key in the given {self.__class__.__name__}. It results in a container with subkeys {set(output.keys())}. To get partial indexing, use {self.__class__.__name__}.get(key) instead."
+                f"Key `{k}` is not a complete key in the given "
+                f"{self.__class__.__name__}. It results in a container "
+                f"with subkeys {set(output.keys())}. To get partial indexing, "
+                f"use {self.__class__.__name__}.get(key) instead."
             )
         return output
 

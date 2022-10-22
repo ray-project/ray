@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from tabnanny import check
 
 from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -158,20 +157,17 @@ class SimplePPOModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__(config)
 
-        assert (
-            isinstance(self.config.observation_space, gym.spaces.Box),
-            "This simple PPOModule only supports Box observation space.",
-        )
+        assert isinstance(
+            self.config.observation_space, gym.spaces.Box
+        ), "This simple PPOModule only supports Box observation space."
 
         assert (
-            self.config.observation_space.shape[0] == 1,
-            "This simple PPOModule only supports 1D observation space.",
-        )
+            self.config.observation_space.shape[0] == 1
+        ), "This simple PPOModule only supports 1D observation space."
 
-        assert (
-            isinstance(self.config.action_space, (gym.spaces.Discrete, gym.spaces.Box)),
-            "This simple PPOModule only supports Discrete and Box action space.",
-        )
+        assert isinstance(
+            self.config.action_space, (gym.spaces.Discrete, gym.spaces.Box)
+        ), ("This simple PPOModule only supports Discrete and Box action space.",)
 
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
