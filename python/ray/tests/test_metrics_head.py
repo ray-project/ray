@@ -138,7 +138,7 @@ def test_format_prometheus_output():
                 {"metric": {"State": "FINISHED"}, "value": [1664330796.832, "20"]},
                 {
                     "metric": {"State": "PENDING_ARGS_AVAIL"},
-                    "value": [1664330796.832, "-5"],
+                    "value": [1664330796.832, "5"],
                 },
                 {
                     "metric": {"State": "SOME_NEW_VARIABLE"},
@@ -153,7 +153,7 @@ def test_format_prometheus_output():
     }
     assert _format_prometheus_output(prom_output_with_unknown) == TaskProgress(
         num_finished=20,
-        num_pending_args_avail=0,
+        num_pending_args_avail=5,
         num_pending_node_assignment=0,
         num_running=14,
         num_submitted_to_worker=0,
