@@ -1,10 +1,13 @@
 import abc
 import numpy as np
 import time
-from typing import Dict, Any
+import torch
+from typing import Dict, Any, Type
 import unittest
 
+from ray.rllib.models.specs.specs_base import TensorSpecs
 from ray.rllib.models.specs.specs_dict import ModelSpecDict, check_specs
+from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
@@ -218,6 +221,44 @@ class TestCheckSpecs(unittest.TestCase):
                 self.assertGreater(lower_bound_time1, upper_bound_time2)
             else:
                 self.assertGreater(upper_bound_time2, lower_bound_time1)
+
+    def test_tensor_specs(self):
+        # test if the input_spec can be a tensor spec
+        class ClassWithTensorSpec:
+            def input_spec1(self) -> TensorSpecs:
+                return TorchSpecs("b, h", h=4)
+
+            @check_specs(input_spec="input_spec1")
+            def forward(self, input_data) -> Any:
+                return input_data
+
+        module = ClassWithTensorSpec()
+        module.forward(torch.rand(2, 4))
+        self.assertRaises(ValueError, lambda: module.forward(torch.rand(2, 3)))
+
+    def test_type_specs(self):
+        class SpecialOutputType:
+            pass
+
+        class WrongOutputType:
+            pass
+
+        class ClassWithTypeSpec:
+            def output_spec(self) -> Type:
+                return SpecialOutputType
+
+            @check_specs(output_spec="output_spec")
+            def forward_pass(self, input_data) -> Any:
+                return SpecialOutputType()
+
+            @check_specs(output_spec="output_spec")
+            def forward_fail(self, input_data) -> Any:
+                return WrongOutputType()
+
+        module = ClassWithTypeSpec()
+        output = module.forward_pass(torch.rand(2, 4))
+        self.assertIsInstance(output, SpecialOutputType)
+        self.assertRaises(ValueError, lambda: module.forward_fail(torch.rand(2, 3)))
 
 
 if __name__ == "__main__":

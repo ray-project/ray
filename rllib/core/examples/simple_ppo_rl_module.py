@@ -1,4 +1,9 @@
 from dataclasses import dataclass, field
+import gym
+import torch
+import torch.nn as nn
+from typing import List, Mapping, Any
+
 
 from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -11,12 +16,6 @@ from ray.rllib.models.torch.torch_action_dist_v2 import (
     TorchDeterministic,
     TorchDiagGaussian,
 )
-
-import torch
-import torch.nn as nn
-import gym
-
-from typing import List, Mapping, Any
 
 
 def get_ppo_loss(fwd_in, fwd_out):
@@ -140,11 +139,10 @@ class FCNet(nn.Module):
             self.output_activation = getattr(nn, self.output_activation)()
 
     def input_specs(self):
-        return ModelSpecDict({"input": TorchSpecs("b, h", h=self.input_dim)})
+        return TorchSpecs("b, h", h=self.input_dim)
 
     @check_specs(input_spec="input_specs")
     def forward(self, x):
-        x = x["input"]
         for layer in self.layers[:-1]:
             x = self.activation(layer(x))
         x = self.layers[-1](x)
@@ -219,11 +217,10 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            # TODO (kourosh): This {"input": xxx} is very verbose.
-            encoded_state = self.encoder({"input": batch["obs"]})
-            pi_out = self.pi({"input": encoded_state})
+            encoded_state = self.encoder(batch["obs"])
+            pi_out = self.pi(encoded_state)
         else:
-            pi_out = self.pi({"input": batch["obs"]})
+            pi_out = self.pi(batch["obs"])
 
         if self._is_discrete:
             action = torch.argmax(pi_out, dim=-1)
@@ -237,9 +234,9 @@ class SimplePPOModule(TorchRLModule):
     def input_specs_exploration(self):
         return ModelSpecDict(
             {
-                "obs": self.encoder.input_specs()["input"]
+                "obs": self.encoder.input_specs()
                 if self.encoder
-                else self.pi.input_specs()["input"],
+                else self.pi.input_specs(),
             }
         )
 
@@ -256,10 +253,10 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            encoded_state = self.encoder({"input": batch["obs"]})
-            pi_out = self.pi({"input": encoded_state})
+            encoded_state = self.encoder(batch["obs"])
+            pi_out = self.pi(encoded_state)
         else:
-            pi_out = self.pi({"input": batch["obs"]})
+            pi_out = self.pi(batch["obs"])
 
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)
@@ -301,12 +298,12 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         if self.encoder:
-            encoded_state = self.encoder({"input": batch["obs"]})
-            pi_out = self.pi({"input": encoded_state})
-            vf = self.vf({"input": encoded_state})
+            encoded_state = self.encoder(batch["obs"])
+            pi_out = self.pi(encoded_state)
+            vf = self.vf(encoded_state)
         else:
-            pi_out = self.pi({"input": batch["obs"]})
-            vf = self.vf({"input": batch["obs"]})
+            pi_out = self.pi(batch["obs"])
+            vf = self.vf(batch["obs"])
 
         if self._is_discrete:
             action_dist = TorchCategorical(pi_out)

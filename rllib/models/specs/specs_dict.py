@@ -209,12 +209,7 @@ def check_specs(
 
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(self, input_dict, **kwargs):
-
-            if not isinstance(input_dict, Mapping):
-                raise ValueError(
-                    f"input_dict must be a Mapping, got {type(input_dict).__name__}"
-                )
+        def wrapper(self, input_data, **kwargs):
 
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
@@ -222,37 +217,68 @@ def check_specs(
             def should_validate():
                 return not cache or func.__name__ not in self.__checked_specs_cache__
 
-            input_dict_ = NestedDict(input_dict)
+            def validate(data, spec, exact_match, tag="data"):
+                is_mapping = isinstance(spec, ModelSpecDict)
+                is_tensor = isinstance(spec, TensorSpecs)
 
-            if input_spec:
-                input_spec_ = getattr(self, input_spec)()
+                if is_mapping:
+                    if not isinstance(data, Mapping):
+                        raise ValueError(
+                            f"{tag} must be a Mapping, got {type(data).__name__}"
+                        )
+                    data = NestedDict(data)
+
                 if should_validate():
                     try:
-                        input_spec_.validate(input_dict_, exact_match=input_exact_match)
+                        if is_mapping:
+                            spec.validate(data, exact_match=exact_match)
+                        elif is_tensor:
+                            spec.validate(data)
                     except ValueError as e:
                         raise ValueError(
-                            f"Input spec validation failed on "
+                            f"{tag} spec validation failed on "
                             f"{self.__class__.__name__}.{func.__name__}, {e}."
                         )
-                if filter:
-                    # filtering should happen regardless of cache
-                    input_dict_ = input_dict_.filter(input_spec_)
 
-            output_dict_ = func(self, input_dict_, **kwargs)
-            if output_spec and should_validate():
+                    if not (is_tensor or is_mapping):
+                        if not isinstance(data, spec):
+                            raise ValueError(
+                                f"Input spec validation failed on "
+                                f"{self.__class__.__name__}.{func.__name__}, "
+                                f"expected {spec.__name__}, got "
+                                f"{type(data).__name__}."
+                            )
+                return data
+
+            input_data_ = input_data
+            if input_spec:
+                input_spec_ = getattr(self, input_spec)()
+
+                input_data_ = validate(
+                    input_data,
+                    input_spec_,
+                    exact_match=input_exact_match,
+                    tag="input_data",
+                )
+
+                if filter and isinstance(input_spec_, ModelSpecDict):
+                    # filtering should happen regardless of cache
+                    input_data_ = input_data_.filter(input_spec_)
+
+            output_data = func(self, input_data_, **kwargs)
+            if output_spec:
                 output_spec_ = getattr(self, output_spec)()
-                try:
-                    output_spec_.validate(output_dict_, exact_match=output_exact_match)
-                except ValueError as e:
-                    raise ValueError(
-                        f"Output spec validation failed on "
-                        f"{self.__class__.__name__}.{func.__name__}, {e}."
-                    )
+                validate(
+                    output_data,
+                    output_spec_,
+                    exact_match=output_exact_match,
+                    tag="output_data",
+                )
 
             if cache:
                 self.__checked_specs_cache__[func.__name__] = True
 
-            return output_dict_
+            return output_data
 
         wrapper.__check_specs__ = True
         return wrapper
