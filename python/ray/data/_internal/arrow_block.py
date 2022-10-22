@@ -16,10 +16,6 @@ from typing import (
 
 import numpy as np
 
-from ray.air.util.transform_pyarrow import (
-    _concatenate_extension_column,
-    _is_column_extension_type,
-)
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
@@ -193,6 +189,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        from ray.air.util.transform_pyarrow import (
+            _concatenate_extension_column,
+            _is_column_extension_type,
+        )
+
         if columns is None:
             columns = self._table.column_names
         if not isinstance(columns, list):
@@ -597,6 +598,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
     import pyarrow as pa
+    from ray.air.util.transform_pyarrow import (
+        _concatenate_extension_column,
+        _is_column_extension_type,
+    )
 
     # Copy the table by copying each column and constructing a new table with
     # the same schema.

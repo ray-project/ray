@@ -7,14 +7,8 @@ import pandas as pd
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
-from ray.air.util.transform_pyarrow import (
-    _is_column_extension_type,
-    _concatenate_extension_column,
-)
-
 try:
     import pyarrow
 except ImportError:
@@ -139,6 +133,12 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
+        from ray.air.util.tensor_extensions.arrow import ArrowTensorType
+        from ray.air.util.transform_pyarrow import (
+            _is_column_extension_type,
+            _concatenate_extension_column,
+        )
+
         if data.column_names == [TENSOR_COLUMN_NAME] and (
             isinstance(data.schema.types[0], ArrowTensorType)
         ):
