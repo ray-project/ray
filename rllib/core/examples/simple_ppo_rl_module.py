@@ -162,7 +162,7 @@ class SimplePPOModule(TorchRLModule):
         ), "This simple PPOModule only supports Box observation space."
 
         assert (
-            self.config.observation_space.shape[0] == 1
+            len(self.config.observation_space.shape) == 1
         ), "This simple PPOModule only supports 1D observation space."
 
         assert isinstance(
