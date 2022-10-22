@@ -102,9 +102,20 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
+  _term() {
+    echo "Caught SIGTERM signal, sending SIGTERM to release test script"
+    kill -TERM "$proc" 2>/dev/null
+  }
+
+  trap _term SIGTERM
+
   set +e
-  python "${RAY_TEST_SCRIPT}" "$@"
+  python "${RAY_TEST_SCRIPT}" "$@" &
+  proc=$!
+
+  wait "$proc"
   EXIT_CODE=$?
+
   set -e
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
