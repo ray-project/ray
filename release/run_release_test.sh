@@ -39,7 +39,7 @@ INSTALL_MATCHING_RAY=${BUILDKITE-false}
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -q -r requirements.txt
+  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
   pip install -q -U boto3 botocore
 
   if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
