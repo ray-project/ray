@@ -1333,7 +1333,7 @@ def from_torch(
 ) -> Dataset:
     """Create a dataset from a Torch dataset.
 
-    This function is intended for small datasets like MNIST or CIFAR-10.
+    This function is inefficient. Use it to read small datasets or prototype.
 
     .. warning::
         If your dataset is large, this function may execute slowly or raise an
@@ -1342,7 +1342,7 @@ def from_torch(
 
     .. note::
         This function isn't paralellized. It loads the entire dataset into the head
-        node's memory before moving the data to the distributed object store.
+        node's memory, and then moves the data to the distributed object store.
 
     Examples:
         >>> import ray
