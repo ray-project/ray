@@ -1342,7 +1342,7 @@ def from_torch(
 
     .. note::
         This function isn't paralellized. It loads the entire dataset into the head
-        node's memory, and then moves the data to the distributed object store.
+        node's memory before moving the data to the distributed object store.
 
     Examples:
         >>> import ray
