@@ -251,7 +251,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if isinstance(result, Response):
             return result
         else:
-            submit_request = result
+            submit_request: JobSubmitRequest = result
 
         try:
             job_agent_client = await asyncio.wait_for(

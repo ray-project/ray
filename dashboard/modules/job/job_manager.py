@@ -12,12 +12,16 @@ import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, Iterator, List, Optional, Tuple
-
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
+)
 import ray
 from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -538,6 +542,36 @@ class JobManager:
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
+    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
+        if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
+            logger.info(
+                f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
+                "Using Ray's default actor scheduling strategy for the job "
+                "driver instead of running it on the head node."
+            )
+            scheduling_strategy = "DEFAULT"
+        else:
+            head_node_id = (
+                await self._gcs_aio_client.internal_kv_get(
+                    "head_node_id".encode(),
+                    namespace=ray_constants.KV_NAMESPACE_JOB,
+                    timeout=30,
+                )
+            ).decode()
+            if head_node_id is None:
+                logger.info(
+                    "Head node ID not found in GCS. Using Ray's default actor "
+                    "scheduling strategy for the job driver instead of running "
+                    "it on the head node."
+                )
+                scheduling_strategy = "DEFAULT"
+            else:
+                logger.info(f"Head node ID found in GCS: {head_node_id}")
+                scheduling_strategy = NodeAffinitySchedulingStrategy(
+                    node_id=head_node_id, soft=True
+                )
+        return scheduling_strategy
+
     async def submit_job(
         self,
         *,
@@ -594,11 +628,12 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
+            scheduling_strategy = await self._get_scheduling_strategy()
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
-                scheduling_strategy="DEFAULT",
+                scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)

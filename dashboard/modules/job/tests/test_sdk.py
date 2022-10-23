@@ -22,6 +22,7 @@ from ray.dashboard.modules.dashboard_sdk import (
 )
 from ray.dashboard.modules.job.sdk import JobSubmissionClient, JobStatus
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.tests.conftest import _ray_start
 import ray
 import ray.experimental.internal_kv as kv
@@ -166,7 +167,10 @@ def mock_candidate_number():
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
 )
-def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_head):
+def test_job_head_choose_job_agent_E2E(
+    mock_candidate_number, ray_start_cluster_head, monkeypatch
+):
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
     cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
