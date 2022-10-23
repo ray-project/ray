@@ -26,7 +26,7 @@ map_outputs = [map.remote(lambda i: i * 2, i) for i in items]
 # and pass each map output ObjectRef to reduce individually instead of passing
 # the entire list as a single argument.
 # When an argument is ObjectRef, Ray will resolve it
-# and repalce it with the actual object when calling the remote function.
+# and replace it with the actual object when calling the remote function.
 reduce_output = ray.get(reduce.remote(sum, *map_outputs))
 assert reduce_output == 9900
 
