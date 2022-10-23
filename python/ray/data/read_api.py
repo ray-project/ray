@@ -1349,6 +1349,7 @@ def from_torch(
         >>> from torchvision import datasets
         >>> dataset = datasets.MNIST("data", download=True)
         >>> dataset = ray.data.from_torch(dataset)
+        >>> dataset
         Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
         >>> dataset.take(1)
         [(<PIL.Image.Image image mode=L size=28x28 at 0x122CD8340>, 5)]
