@@ -132,6 +132,17 @@ class TestJobSubmit:
         assert "Tailing logs until the job exits" not in stdout
 
 
+class TestRuntimeEnv:
+    def test_bad_runtime_env(self, ray_start_stop):
+        """Should fail with helpful error if runtime env setup fails."""
+        stdout, _ = _run_cmd(
+            f'ray job submit --runtime-env-json=\'{{"pip": ["does-not-exist"]}}\' -- echo hi',
+        )
+        assert "Tailing logs until the job exits" in stdout
+        assert "runtime_env setup failed" in stdout
+        assert "No matching distribution found for does-not-exist" in stdout
+
+
 class TestJobStop:
     def test_basic_stop(self, ray_start_stop):
         """Should wait until the job is stopped."""
