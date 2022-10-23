@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import tensorflow as tf
 
 
 T = TypeVar("T")
@@ -1325,6 +1326,41 @@ def from_huggingface(
             f"got {type(dataset)}"
         )
 
+
+@PublicAPI
+def from_tf(
+    dataset: "tf.data.Dataset",
+) -> Dataset:
+    """Create a dataset from a TensorFlow dataset.
+
+    This function is inefficient. Use it to read small datasets or prototype.
+
+    .. warning::
+        If your dataset is large, this function may execute slowly or raise an
+        out-of-memory error. To avoid issues, read the underyling data with a function
+        like :meth:`~ray.data.read_images`.
+
+    .. note::
+        This function isn't paralellized. It loads the entire dataset into the head
+        node's memory before moving the data to the distributed object store.
+
+    Examples:
+        >>> import ray
+        >>> import tensorflow_datasets as tfds
+        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])
+        >>> dataset = ray.data.from_tf(dataset)
+        >>> dataset
+        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        >>> dataset.take(1)
+        # TODO add output. Blocked on #29590.
+
+    Args:
+        dataset: A TensorFlow dataset.
+
+    Returns:
+        A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
+    """
+    return from_items(list(dataset.as_numpy_iterator()))
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     stats = BlockExecStats.builder()
