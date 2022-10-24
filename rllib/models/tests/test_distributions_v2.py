@@ -173,7 +173,7 @@ class TestDistributions(unittest.TestCase):
 
         # check entropy
         expected = 0.5 * ndim * (
-            1 + torch.log(2 * torch.tensor([torch.pi]))
+            1 + math.log(2 * math.pi)
         ) + scale_tens.log().sum(-1)
         check(dist.entropy(), expected)
 
