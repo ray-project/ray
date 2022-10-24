@@ -131,6 +131,12 @@ class TestJobSubmit:
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
+    def test_submit_with_logs_instant_job(self, ray_start_stop):
+        """Should exit immediately and print logs even if job returns instantly."""
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
+        assert "hello" in stdout
+
 
 class TestRuntimeEnv:
     def test_bad_runtime_env(self, ray_start_stop):
