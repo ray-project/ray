@@ -329,7 +329,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             outputs = env_runner.step()
 
         self.assertEqual(len(outputs), 1)
-        self.assertTrue(len(list(outputs[0].agent_rewards.keys)) == 2)
+        self.assertTrue(len(list(outputs[0].agent_rewards.keys())) == 2)
 
 
 if __name__ == "__main__":
