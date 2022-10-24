@@ -215,5 +215,14 @@ def _mosaic_train_loop_per_worker(config):
     config["progress_bar"] = False
     trainer: Trainer = trainer_init_per_worker(config)
 
+    # Remove Composer's Loggers if there are any added in the trainer_init_per_worker
+    filtered_callbacks = list()
+    for callback in trainer.state.callbacks:
+        if not isinstance(callback, LoggerDestination) or isinstance(
+            callback, RayLogger
+        ):
+            filtered_callbacks.append(callback)
+    trainer.state.callbacks = filtered_callbacks
+
     # call the trainer
     trainer.fit()
