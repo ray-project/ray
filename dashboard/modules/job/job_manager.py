@@ -693,7 +693,7 @@ class JobManager:
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
-                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                if status.is_terminal():
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
