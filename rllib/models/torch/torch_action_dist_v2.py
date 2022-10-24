@@ -1,3 +1,8 @@
+"""The main difference between this and the old action distribution is that this one
+has more explicit input args. So that the input format does not have to be guessed from
+the code. This matches the design pattern of torch distribution which developers may
+already be familiar with.
+"""
 import gym
 import numpy as np
 from typing import Optional
@@ -147,7 +152,11 @@ class TorchDeterministic(ActionDistributionV2):
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         if return_logp:
             raise ValueError("Cannot return logp for TorchDeterministic.")
-        return self.loc
+
+        if sample_shape is None:
+            sample_shape = torch.Size()
+        loc_shape = self.loc.shape
+        return torch.ones(sample_shape + loc_shape, device=self.loc.device) * self.loc
 
     def rsample(
         self,
@@ -160,7 +169,7 @@ class TorchDeterministic(ActionDistributionV2):
 
     @override(ActionDistributionV2)
     def logp(self, action: TensorType, **kwargs) -> TensorType:
-        raise ValueError("Cannot return logp for TorchDeterministic.")
+        raise NotImplementedError
 
     @override(ActionDistributionV2)
     def entropy(self, **kwargs) -> TensorType:
@@ -175,4 +184,5 @@ class TorchDeterministic(ActionDistributionV2):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
+        # TODO: This was copied from previous code. Is this correct? add unit test.
         return tuple(np.prod(action_space.shape, dtype=np.int32))
