@@ -197,30 +197,26 @@ class TestCheckSpecs(unittest.TestCase):
             input_dict[inds] = i
 
         N = 500
-        for fname in ["check_input_and_output", "check_input_and_output_with_cache"]:
-            time1, time2 = [], []
-            for _ in range(N):
+        time1, time2 = [], []
+        for _ in range(N):
 
-                module = CorrectImplementation()
+            module = CorrectImplementation()
 
-                fn = getattr(module, fname)
-                start = time.time()
-                fn(input_dict)
-                end = time.time()
-                time1.append(end - start)
+            fn = getattr(module, "check_input_and_output_with_cache")
+            start = time.time()
+            fn(input_dict)
+            end = time.time()
+            time1.append(end - start)
 
-                start = time.time()
-                fn(input_dict)
-                end = time.time()
-                time2.append(end - start)
+            start = time.time()
+            fn(input_dict)
+            end = time.time()
+            time2.append(end - start)
 
-            lower_bound_time1 = np.mean(time1) - 3 * np.std(time1)
-            upper_bound_time2 = np.mean(time2) + 3 * np.std(time2)
+        lower_bound_time1 = np.mean(time1) - 3 * np.std(time1)
+        upper_bound_time2 = np.mean(time2) + 3 * np.std(time2)
 
-            if fname == "check_input_and_output_with_cache":
-                self.assertGreater(lower_bound_time1, upper_bound_time2)
-            else:
-                self.assertGreater(upper_bound_time2, lower_bound_time1)
+        self.assertGreater(lower_bound_time1, upper_bound_time2)
 
     def test_tensor_specs(self):
         # test if the input_spec can be a tensor spec
