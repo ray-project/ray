@@ -251,7 +251,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_mosaic_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air", "torch_1_11", "mosaic"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
