@@ -136,7 +136,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         job_id = req.query.get("job_id")
         job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
-        query = f"sum(ray_tasks{job_id_query}) by (State)"
+        query = f"clamp_min(sum(ray_tasks{job_id_query}) by (State), 0)"
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
         ) as resp:
