@@ -13,7 +13,7 @@ def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.
     import pyarrow.compute as pac
 
     indices = pac.sort_indices(table, sort_keys=key)
-    return table.take(indices)
+    return take_table(table, indices)
 
 
 def take_table(

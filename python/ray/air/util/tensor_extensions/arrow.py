@@ -383,13 +383,15 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
     """
 
-    def __init__(self, dtype: pa.DataType):
+    def __init__(self, dtype: pa.DataType, ndim: int):
         """
         Construct the Arrow extension type for array of heterogeneous-shaped tensors.
 
         Args:
             dtype: pyarrow dtype of tensor elements.
+            ndim: The number of dimensions in the tensor elements.
         """
+        self._ndim = ndim
         super().__init__(
             pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))])
         )
@@ -404,14 +406,19 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(
-            None,
+            (None,) * self.ndim,
             self.storage_type["data"].type.value_type.to_pandas_dtype(),
         )
+
+    @property
+    def ndim(self) -> int:
+        """Return the number of dimensions in the tensor elements."""
+        return self._ndim
 
     def __reduce__(self):
         return (
             ArrowVariableShapedTensorType,
-            (self.storage_type["data"].type.value_type,),
+            (self.storage_type["data"].type.value_type, self._ndim),
         )
 
     def __arrow_ext_class__(self):
@@ -426,7 +433,7 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
-        return f"ArrowVariableShapedTensorType(dtype={dtype})"
+        return f"ArrowVariableShapedTensorType(dtype={dtype}, ndim={self.ndim})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -440,7 +447,8 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
     This is the Arrow side of TensorArray for tensor elements that have differing
     shapes. Note that this extension only supports non-ragged tensor elements; i.e.,
     when considering each tensor element in isolation, they must have a well-defined
-    shape.
+    shape. This extension also only supports tensor elements that all have the same
+    number of dimensions.
 
     See Arrow docs for customizing extension arrays:
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
@@ -520,8 +528,16 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         # Whether all subndarrays are contiguous views of the same ndarray.
         shapes, sizes, raveled = [], [], []
+        ndim = None
         for a in arr:
             a = np.asarray(a)
+            if ndim is not None and a.ndim != ndim:
+                raise ValueError(
+                    "ArrowVariableShapedTensorArray only supports tensor elements that "
+                    "all have the same number of dimensions, but got tensor elements "
+                    f"with dimensions: {ndim}, {a.ndim}"
+                )
+            ndim = a.ndim
             shapes.append(a.shape)
             sizes.append(a.size)
             # Convert to 1D array view; this should be zero-copy in the common case.
@@ -571,7 +587,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             [data_array, shape_array],
             ["data", "shape"],
         )
-        type_ = ArrowVariableShapedTensorType(pa_dtype)
+        type_ = ArrowVariableShapedTensorType(pa_dtype, ndim)
         return pa.ExtensionArray.from_storage(type_, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):

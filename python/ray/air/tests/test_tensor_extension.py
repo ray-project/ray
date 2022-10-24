@@ -64,6 +64,10 @@ def test_scalar_tensor_array_roundtrip():
 
 
 def test_arrow_variable_shaped_tensor_array_validation():
+    # Test tensor elements with differing dimensions raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
+
     # Test arbitrary object raises ValueError.
     with pytest.raises(ValueError):
         ArrowVariableShapedTensorArray.from_numpy(object())
@@ -405,7 +409,7 @@ def test_tensor_array_concat(a1, a2):
         assert ta.dtype.element_shape == a1.shape[1:]
         np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
     else:
-        assert ta.dtype.element_shape is None
+        assert ta.dtype.element_shape == (None,) * (len(a1.shape) - 1)
         for arr, expected in zip(
             ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
         ):
