@@ -160,6 +160,40 @@ def run_release_test(
         else:
             cluster_manager.set_cluster_env(cluster_env)
 
+        # Load some timeouts
+        build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        cluster_timeout = int(
+            test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
+        )
+        # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
+        # sure we don't inflate the maximum_uptime_minutes too much if we don't wait
+        # for nodes at all.
+        # The actual default will be otherwise loaded further down.
+        wait_timeout = int(test["run"].get("wait_for_nodes", {}).get("timeout", 0))
+
+        autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
+        if autosuspend_mins:
+            cluster_manager.autosuspend_minutes = autosuspend_mins
+            autosuspend_base = autosuspend_mins
+        else:
+            cluster_manager.autosuspend_minutes = min(
+                DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+            )
+            # Maximum uptime should be based on the command timeout, not the
+            # DEFAULT_AUTOSUSPEND_MINS
+            autosuspend_base = int(command_timeout / 60) + 10
+
+        maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
+        if maximum_uptime_minutes:
+            cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
+        else:
+            cluster_manager.maximum_uptime_minutes = (
+                autosuspend_base + wait_timeout + 10
+            )
+
+        # Set cluster compute here. Note that this may use timeouts provided
+        # above.
         cluster_manager.set_cluster_compute(cluster_compute)
 
         buildkite_group(":nut_and_bolt: Setting up local environment")
@@ -172,7 +206,6 @@ def run_release_test(
 
         # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
-        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         # Re-install anyscale package as local dependencies might have changed
         # from local env setup
@@ -192,24 +225,11 @@ def run_release_test(
             cluster_manager.cluster_name = get_cluster_name(cluster_id)
         else:
             buildkite_group(":gear: Building cluster environment")
-            build_timeout = test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT)
 
             if cluster_env_id:
                 cluster_manager.cluster_env_id = cluster_env_id
 
             cluster_manager.build_configs(timeout=build_timeout)
-
-            cluster_timeout = test["run"].get(
-                "session_timeout", DEFAULT_CLUSTER_TIMEOUT
-            )
-
-            autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
-            if autosuspend_mins:
-                cluster_manager.autosuspend_minutes = autosuspend_mins
-            else:
-                cluster_manager.autosuspend_minutes = min(
-                    DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
-                )
 
             buildkite_group(":rocket: Starting up cluster")
             cluster_manager.start_cluster(timeout=cluster_timeout)
@@ -223,10 +243,11 @@ def run_release_test(
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
-            num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
-            wait_timeout = test["run"]["wait_for_nodes"].get(
-                "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
+            # Overwrite wait_timeout from above to account for better default
+            wait_timeout = int(
+                wait_for_nodes.get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
             )
+            num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)

@@ -81,10 +81,12 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         raise NotImplementedError
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
         raise NotImplementedError
 
     @staticmethod
