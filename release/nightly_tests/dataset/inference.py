@@ -93,7 +93,10 @@ print("Preprocessing...")
 ds = ds.map(preprocess)
 end_preprocess_time = time.time()
 print("Inferring...")
-ds = ds.map_batches(infer, num_gpus=0.25, batch_format="pandas", compute="actors")
+# NOTE: set a small batch size to avoid OOM on GRAM when doing inference.
+ds = ds.map_batches(
+    infer, num_gpus=0.25, batch_size=128, batch_format="pandas", compute="actors"
+)
 
 end_time = time.time()
 

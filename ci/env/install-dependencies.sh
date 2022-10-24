@@ -31,7 +31,7 @@ install_bazel() {
       new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
-        return
+        export BAZEL_CONFIG_ONLY=1
       fi
     fi
   fi
@@ -224,11 +224,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.3.1
-    # cryptography 37.0.0 breaks ensurepip.
-    # Example build failure:
-    # https://buildkite.com/ray-project/ray-builders-branch/builds/7207#a16e8f76-a993-4d8d-a5f0-09c4f76245dc
-    "${python}" -m pip install cryptography==36.0.2
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -316,11 +312,18 @@ install_pip_packages() {
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
-  fi
 
-  # Default requirements
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+    # Repeat for requirements_test.txt
+    local status="0";
+    local errmsg="";
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
+
   fi
 
   if [ "${LINT-}" = 1 ]; then
@@ -378,6 +381,13 @@ install_pip_packages() {
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
     pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
+  fi
+
+  # Additional dependency for statsforecast.
+  # This cannot be included in requirements_tune.txt as it has conflicting
+  # dependencies.
+  if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0"
   fi
 
   # Data processing test dependencies.

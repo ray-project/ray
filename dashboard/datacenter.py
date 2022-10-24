@@ -61,6 +61,8 @@ class DataSource:
 
 
 class DataOrganizer:
+    head_node_ip = None
+
     @staticmethod
     @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
     async def purge():
@@ -175,6 +177,13 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_info["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
         # Merge actors to node physical stats
         node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
@@ -205,6 +214,13 @@ class DataOrganizer:
         node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_summary["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
 
         await GlobalSignals.node_summary_fetched.send(node_summary)
 
@@ -223,6 +239,18 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
+
+    @classmethod
+    async def get_all_agent_infos(cls):
+        agent_infos = dict()
+        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+            agent_infos[node_id] = dict(
+                ipAddress=DataSource.node_id_to_ip[node_id],
+                httpPort=int(http_port or -1),
+                grpcPort=int(grpc_port or -1),
+                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            )
+        return agent_infos
 
     @classmethod
     async def get_all_actors(cls):

@@ -297,7 +297,11 @@ if not MOCK:
                 source=local_dir,
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+                return False
             return True
 
         def sync_down(
@@ -307,14 +311,22 @@ if not MOCK:
                 source=remote_dir,
                 target=local_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+                return False
             return True
 
         def delete(self, remote_dir: str) -> bool:
             cmd_str = self.delete_template.format(
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when deleting {remote_dir}: {e}")
+                return False
             return True
 
         def retry(self):
@@ -399,3 +411,28 @@ tuner = tune.Tuner(
     ),
 )
 # __grid_search_2_end__
+
+if not MOCK:
+    import os
+    from pathlib import Path
+
+    # __no_chdir_start__
+    def train_func(config):
+        # Read from relative paths
+        print(open("./read.txt").read())
+
+        # The working directory shouldn't have changed from the original
+        # NOTE: The `TUNE_ORIG_WORKING_DIR` environment variable is deprecated.
+        assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
+
+        # Write to the Tune trial directory, not the shared working dir
+        tune_trial_dir = Path(session.get_trial_dir())
+        with open(tune_trial_dir / "write.txt", "w") as f:
+            f.write("trial saved artifact")
+
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=False),
+    )
+    tuner.fit()
+    # __no_chdir_end__

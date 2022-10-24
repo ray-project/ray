@@ -5,10 +5,17 @@ import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
-import { NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
+import {
+  Help,
+  NightsStay,
+  VerticalAlignTop,
+  WbSunny,
+} from "@material-ui/icons";
 import classnames from "classnames";
-import React, { PropsWithChildren } from "react";
+import React, { PropsWithChildren, useContext } from "react";
+
 import { RouteComponentProps } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
 import SpeedTools from "../../components/SpeedTools";
@@ -63,6 +70,7 @@ const BasicLayout = (
 ) => {
   const classes = useStyles();
   const { location, history, children, setTheme, theme } = props;
+  const { grafanaHost } = useContext(GlobalContext);
 
   return (
     <div className={classes.root}>
@@ -128,13 +136,18 @@ const BasicLayout = (
           >
             <ListItemText>EVENTS</ListItemText>
           </ListItem>
-          <ListItem
-            button
-            className={classnames(classes.menuItem)}
-            onClick={() => history.push("/legacy")}
-          >
-            <ListItemText>TO LEGACY DASHBOARD</ListItemText>
-          </ListItem>
+          {grafanaHost !== "DISABLED" && (
+            <ListItem
+              button
+              className={classnames(
+                classes.menuItem,
+                location.pathname.includes("metrics") && classes.selected,
+              )}
+              onClick={() => history.push("/metrics")}
+            >
+              <ListItemText>METRICS</ListItemText>
+            </ListItem>
+          )}
           <ListItem>
             <IconButton
               color="primary"
@@ -154,6 +167,15 @@ const BasicLayout = (
             >
               <Tooltip title={`Theme - ${theme}`}>
                 {theme === "dark" ? <NightsStay /> : <WbSunny />}
+              </Tooltip>
+            </IconButton>
+            <IconButton
+              href="https://docs.ray.io/en/master/ray-core/ray-dashboard.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Tooltip title="Doc">
+                <Help />
               </Tooltip>
             </IconButton>
           </ListItem>

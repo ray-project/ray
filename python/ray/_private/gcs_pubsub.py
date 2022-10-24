@@ -505,13 +505,17 @@ class _AioSubscriber(_SubscriberBase):
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
         while len(self._queue) == 0:
-            # TODO: use asyncio.create_task() after Python 3.6 is no longer
-            # supported.
-            poll = asyncio.ensure_future(self._poll_call(req, timeout=timeout))
-            close = asyncio.ensure_future(self._close.wait())
-            done, _ = await asyncio.wait(
+            poll = asyncio.get_event_loop().create_task(
+                self._poll_call(req, timeout=timeout)
+            )
+            close = asyncio.get_event_loop().create_task(self._close.wait())
+            done, others = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
+            # Cancel the other task if needed to prevent memory leak.
+            other_task = others.pop()
+            if not other_task.done():
+                other_task.cancel()
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break

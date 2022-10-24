@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -38,37 +38,30 @@ class ViewRequirementAgentConnector(AgentConnector):
         self._view_requirements = ctx.view_requirements
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
-        env_default = defaultdict(
-            lambda: AgentCollector(
-                self._view_requirements,
-                max_seq_len=ctx.config["model"]["max_seq_len"],
-                intial_states=ctx.initial_states,
-                disable_action_flattening=ctx.config.get(
-                    "_disable_action_flattening", False
-                ),
-                is_policy_recurrent=ctx.is_policy_recurrent,
+        self.agent_collectors = defaultdict(
+            lambda: defaultdict(
+                lambda: AgentCollector(
+                    self._view_requirements,
+                    max_seq_len=ctx.config["model"]["max_seq_len"],
+                    intial_states=ctx.initial_states,
+                    disable_action_flattening=ctx.config.get(
+                        "_disable_action_flattening", False
+                    ),
+                    is_policy_recurrent=ctx.is_policy_recurrent,
+                    # Note(jungong): We only leverage AgentCollector for building sample
+                    # batches for computing actions.
+                    # So regardless of whether this ViewRequirement connector is in
+                    # training or inference mode, we should tell these AgentCollectors
+                    # to behave in inference mode, so they don't accumulate episode data
+                    # that is not useful for inference.
+                    is_training=False,
+                )
             )
         )
-        self.agent_collectors = defaultdict(lambda: env_default)
 
     def reset(self, env_id: str):
         if env_id in self.agent_collectors:
             del self.agent_collectors[env_id]
-
-    def _get_sample_batch_for_action(
-        self, view_requirements, agent_batch
-    ) -> SampleBatch:
-        # TODO(jungong) : actually support buildling input sample batch with all the
-        #  view shift requirements, etc.
-        # For now, we only support last elemen (no shift).
-        input_dict = {}
-        for col, req in view_requirements.items():
-            if not req.used_for_compute_actions:
-                continue
-            if col not in agent_batch:
-                continue
-            input_dict[col] = agent_batch[col][-1]
-        return SampleBatch(input_dict, is_training=False)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
@@ -120,7 +113,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         return ViewRequirementAgentConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ViewRequirementAgentConnector(ctx)
 
 

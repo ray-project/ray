@@ -1,4 +1,3 @@
-import tempfile
 import logging
 import os
 import random
@@ -7,14 +6,12 @@ import warnings
 import collections
 from distutils.version import LooseVersion
 
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import ray
 from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import PYTORCH_PROFILER_KEY
 from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import PublicAPI, Deprecated
@@ -240,62 +237,9 @@ class TorchWorkerProfiler:
     WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
     def __init__(self, trace_dir: Optional[str] = None):
-        warnings.warn(
-            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0",
-            DeprecationWarning,
-            stacklevel=2,
+        raise DeprecationWarning(
+            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0.",
         )
-        if profile is None:
-            raise ImportError(
-                "Torch Profiler requires torch>=1.8.1. "
-                "Run `pip install 'torch>=1.8.1'` to use TorchWorkerProfiler."
-            )
-
-        trace_dir = trace_dir or Path(tempfile.gettempdir()).joinpath(
-            self.WORKER_TRACE_DIR_NAME
-        )
-        self.trace_dir = Path(trace_dir)
-        self.trace_dir.mkdir(parents=True, exist_ok=True)
-        # Accumulated traces.
-        self.profiler_trace_filenames = []
-
-    def trace_handler(self, p: profile):
-        """A stateful PyTorch Profiler trace handler.
-
-        This will the export chrome trace to a file on disk.
-
-        These exported traces can then be fetched by calling
-        ``get_and_clear_profile_traces``.
-
-        Args:
-            p: A PyTorch Profiler profile.
-        """
-        trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
-        trace_path = self.trace_dir.joinpath(trace_filename)
-
-        logger.debug(f"Writing worker trace to {trace_path}.")
-        p.export_chrome_trace(str(trace_path))
-        self.profiler_trace_filenames.append(trace_filename)
-
-    def get_and_clear_profile_traces(self):
-        """Reads unread Profiler traces from this worker.
-
-        Returns:
-            The traces in a format consumable by
-            ``TorchTensorboardProfilerCallback``.
-        """
-
-        def get_trace(filename):
-            trace_path = self.trace_dir.joinpath(filename)
-            return trace_path.read_text()
-
-        traces = [
-            (trace_filename, get_trace(trace_filename))
-            for trace_filename in self.profiler_trace_filenames
-        ]
-
-        self.profiler_trace_files = []
-        return {PYTORCH_PROFILER_KEY: traces}
 
 
 class _TorchAccelerator(Accelerator):
@@ -401,8 +345,8 @@ class _TorchAccelerator(Accelerator):
                 DataParallel = DistributedDataParallel
                 if torch.cuda.is_available():
                     parallel_strategy_kwargs = {
-                        "device_ids": [rank],
-                        "output_device": rank,
+                        "device_ids": [device],
+                        "output_device": device,
                         **parallel_strategy_kwargs,
                     }
             else:
@@ -559,7 +503,9 @@ class _TorchAccelerator(Accelerator):
         """
         if torch.cuda.is_available():
             # GPU IDs are assigned by Ray after you specify "use_gpu"
-            gpu_ids = ray.get_gpu_ids()
+            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+            # We should always convert to strings.
+            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -570,9 +516,7 @@ class _TorchAccelerator(Accelerator):
 
                 cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
                 if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = [
-                        int(dev) for dev in cuda_visible_str.split(",")
-                    ]
+                    cuda_visible_list = cuda_visible_str.split(",")
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(
@@ -670,7 +614,7 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.info(
+                logger.debug(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
                 item_on_device = item
