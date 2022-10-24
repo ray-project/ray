@@ -172,9 +172,7 @@ class TestDistributions(unittest.TestCase):
         check(dist.logp(sample), expected)
 
         # check entropy
-        expected = 0.5 * ndim * (
-            1 + math.log(2 * math.pi)
-        ) + scale_tens.log().sum(-1)
+        expected = 0.5 * ndim * (1 + math.log(2 * math.pi)) + scale_tens.log().sum(-1)
         check(dist.entropy(), expected)
 
         # check kl
