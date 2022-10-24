@@ -1751,6 +1751,13 @@ py_test(
 )
 
 py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
     name = "test_conv2d_default_stacks",
     tags = ["team:rllib", "models"],
     size = "small",

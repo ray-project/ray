@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from ray.rllib.models.specs.specs_np import NPSpec
+from ray.rllib.models.specs.specs_np import NPTensorSpec
 from ray.rllib.models.specs.specs_dict import ModelSpec
 
 
@@ -19,8 +19,8 @@ class TestModelSpec(unittest.TestCase):
         h1, h2 = 3, 4
         spec_1 = ModelSpec(
             {
-                "out_tensor_1": NPSpec("b, h", h=h1),
-                "out_tensor_2": NPSpec("b, h", h=h2),
+                "out_tensor_1": NPTensorSpec("b, h", h=h1),
+                "out_tensor_2": NPTensorSpec("b, h", h=h2),
                 "out_class_1": TypeClass1,
             }
         )
@@ -71,12 +71,12 @@ class TestModelSpec(unittest.TestCase):
         spec_2 = ModelSpec(
             {
                 "encoder": {
-                    "input": NPSpec("b, h", h=h1),
-                    "output": NPSpec("b, h", h=h2),
+                    "input": NPTensorSpec("b, h", h=h1),
+                    "output": NPTensorSpec("b, h", h=h2),
                 },
                 "decoder": {
-                    "input": NPSpec("b, h", h=h2),
-                    "output": NPSpec("b, h", h=h1),
+                    "input": NPTensorSpec("b, h", h=h2),
+                    "output": NPTensorSpec("b, h", h=h1),
                 },
             }
         )

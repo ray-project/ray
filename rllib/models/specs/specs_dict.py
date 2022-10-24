@@ -128,13 +128,18 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
                         f"Mismatch found in data element {spec_name}, "
                         f"which is a TensorSpec: {e}"
                     )
-            elif isinstance(spec, Type):
+            elif isinstance(spec, (Type, tuple)):
                 if not isinstance(data_to_validate, spec):
                     raise ValueError(
                         _TYPE_MISMATCH.format(
                             spec_name, type(data_to_validate).__name__, spec.__name__
                         )
                     )
+            else:
+                raise ValueError(
+                    f"The spec type has to be either TensorSpec or Type. "
+                    f"got {type(spec)}"
+                )
 
     @override(NestedDict)
     def __repr__(self) -> str:

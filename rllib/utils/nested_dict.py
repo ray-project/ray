@@ -85,7 +85,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             >>>                             #            'b': {'c': 200, 'd': 300}}
             >>> # Getting elements, possibly nested:
             >>> print(foo_dict['b', 'c'])   # 200
-            >>> print(foo_dict['b']) # IndexError
+            >>> print(foo_dict['b'])        # {'c': 200, 'd': 300}
             >>> print(foo_dict.get('b'))    # {'c': 200, 'd': 300}
             >>> print(foo_dict) # {'a': 100, 'b': {'c': 200, 'd': 300}}
             >>> # Converting to a dict:
@@ -180,13 +180,6 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     def __getitem__(self, k: SeqStrType) -> T:
         output = self.get(k)
-        if isinstance(output, NestedDict):
-            raise IndexError(
-                f"Key `{k}` is not a complete key in the given "
-                f"{self.__class__.__name__}. It results in a container "
-                f"with subkeys {set(output.keys())}. To get partial indexing, "
-                f"use {self.__class__.__name__}.get(key) instead."
-            )
         return output
 
     def __setitem__(self, k: SeqStrType, v: Union[T, _NestedMappingType]) -> None:
