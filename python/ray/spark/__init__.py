@@ -20,7 +20,6 @@ from .utils import (
     get_avail_mem_per_ray_worker,
     get_dbutils,
     get_max_num_concurrent_tasks,
-    get_spark_task_local_rank,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
     _resolve_target_spark_tasks,
@@ -415,21 +414,18 @@ def init_cluster(
     #     processes spawned by the `ray_start ...` process.
 
     def ray_cluster_job_mapper(_):
-        from pyspark.taskcontext import BarrierTaskContext
+        from pyspark.taskcontext import TaskContext
 
         _worker_logger = logging.getLogger("ray.spark.worker")
 
-        context = BarrierTaskContext.get()
+        context = TaskContext.get()
         task_id = context.partitionId()
-
-        task_ip_list = [info.address.split(":")[0] for info in context.getTaskInfos()]
-        task_local_rank = get_spark_task_local_rank(task_id, task_ip_list)
 
         # NB: If we launch multiple ray worker nodes at the same time,
         #  it might cause Raylet to have a port conflict, likely due to a race condition.
         #  A sleep is added here to attempt to avoid resource allocation contention with available
         #  ports.
-        time.sleep(task_local_rank * 10.0)
+        time.sleep(task_id + 5.0)
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.

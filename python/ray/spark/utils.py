@@ -367,12 +367,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def get_spark_task_local_rank(task_id, task_ip_list):
-    node_ip = task_ip_list[task_id]
-    rank = 0
-    for i in range(task_id):
-        if task_ip_list[i] == node_ip:
-            rank += 1
-    return rank
