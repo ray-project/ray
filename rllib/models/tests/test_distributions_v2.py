@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 import math
 
-from ray.rllib.models.torch.torch_action_dist_v2 import (
+from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDeterministic,
