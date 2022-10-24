@@ -101,7 +101,7 @@ class LazyBlockList(BlockList):
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
             # Always return fetched metadata if we already have it.
-            metadata = self._cached_metadata
+            metadata = self._cached_metadata.copy()
         elif not fetch_if_missing:
             metadata = [
                 m if m is not None else t.get_metadata()
