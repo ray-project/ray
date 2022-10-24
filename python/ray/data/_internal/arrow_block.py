@@ -167,7 +167,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
-        # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
