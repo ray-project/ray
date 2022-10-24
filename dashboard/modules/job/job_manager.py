@@ -567,10 +567,10 @@ class JobManager:
                 head_node_id = head_node_id_bytes.decode()
                 logger.info(
                     "Head node ID found in GCS; scheduling job driver on "
-                    f"head node {head_node_id} with soft=True"
+                    f"head node {head_node_id}"
                 )
                 scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=head_node_id, soft=True
+                    node_id=head_node_id, soft=False
                 )
         return scheduling_strategy
 
