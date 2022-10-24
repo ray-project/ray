@@ -110,13 +110,13 @@ class Batcher(BatcherInterface):
                 # We need this entire block to fill out a batch.
                 # We need to call `accessor.slice()` to ensure
                 # the subsequent block's type are the same.
-                output.add_block(accessor.slice(0, accessor.num_rows()))
+                output.add_block(accessor.slice(0, accessor.num_rows(), copy=False))
                 needed -= accessor.num_rows()
             else:
                 # We only need part of the block to fill out a batch.
-                output.add_block(accessor.slice(0, needed))
+                output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
-                leftover.append(accessor.slice(needed, accessor.num_rows()))
+                leftover.append(accessor.slice(needed, accessor.num_rows(), copy=False))
                 needed = 0
 
         # Move the leftovers into the block buffer so they're the first
