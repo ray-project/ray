@@ -35,12 +35,15 @@
 
 #define PRINT_MACRO_HELPER(x) #x
 #define PRINT_MACRO(x) #x "=" PRINT_MACRO_HELPER(x)
+#ifdef _WIN32
+#define BOOST_ASIO_HAS_LOCAL_SOCKETS 0
+#endif
 
 #pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 #pragma message(PRINT_MACRO(BOOST_ASIO_DISABLE_LOCAL_SOCKETS))
 #pragma message(PRINT_MACRO(BOOST_ASIO_WINDOWS_RUNTIME))
 #pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
-#pragma message(PRINT_MACRO(_WIN32))
+#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
@@ -413,3 +416,6 @@ std::string FormatFloat(float value, int32_t precision) {
 }
 
 }  // namespace ray
+#ifdef _WIN32
+#define BOOST_ASIO_HAS_LOCAL_SOCKETS 1
+#endif
