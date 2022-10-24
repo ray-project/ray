@@ -13,7 +13,7 @@ NUM_AGENTS = 4
 
 class EchoPolicy(Policy):
     @override(Policy)
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch,
         state_batches=None,
