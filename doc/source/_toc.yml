@@ -326,6 +326,7 @@ parts:
   - caption: References
     chapters:
       - file: ray-references/api
+      - file: ray-references/glossary
       - file: cluster/usage-stats
 
   - caption: Developer Guides
