@@ -2297,7 +2297,7 @@ class Dataset(Generic[T]):
             ...     { "name": "foo", "score": 42 },
             ...     { "name": "bar", "score": 43 },
             ... ])
-            >>> ds.write_tfrecords("s3://bucket/path")
+            >>> ds.write_tfrecords("s3://bucket/path") # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
