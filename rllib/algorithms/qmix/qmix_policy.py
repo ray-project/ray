@@ -275,7 +275,7 @@ class QMixTorchPolicy(TorchPolicy):
         )
 
     @override(TorchPolicy)
-    def compute_actions_from_input_dict(
+    def _compute_actions_without_connectors_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
         explore: bool = None,
@@ -325,7 +325,7 @@ class QMixTorchPolicy(TorchPolicy):
 
     @override(TorchPolicy)
     def _compute_actions_without_connectors(self, *args, **kwargs):
-        return self.compute_actions_from_input_dict(*args, **kwargs)
+        return self._compute_actions_without_connectors_from_input_dict(*args, **kwargs)
 
     @override(TorchPolicy)
     def compute_log_likelihoods(
