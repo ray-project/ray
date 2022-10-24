@@ -22,7 +22,6 @@ import ray._private.prometheus_exporter as prometheus_exporter
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
 from ray._raylet import WorkerID
 
@@ -171,9 +170,27 @@ METRICS_GAUGES = {
         "MB",
         ["ip", "pid"],
     ),
+    "raylet_mem_shm": Gauge(
+        "raylet_mem_shm",
+        "SHM usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
+    ),
     "raylet_mem_uss": Gauge(
         "raylet_mem_uss",
         "USS usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "raylet_mem_pss": Gauge(
+        "raylet_mem_pss",
+        "PSS usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "raylet_mem_swap": Gauge(
+        "raylet_mem_swap",
+        "Swap usage of the Raylet on the node. Only available on Linux",
         "MB",
         ["ip", "pid"],
     ),
@@ -189,9 +206,45 @@ METRICS_GAUGES = {
         "MB",
         ["ip"],
     ),
+    "workers_mem_shm": Gauge(
+        "workers_mem_shm",
+        "SHM usage of all workers on the node. Only available on Linux.",
+        "MB",
+        ["ip"],
+    ),
     "workers_mem_uss": Gauge(
         "workers_mem_uss",
         "USS usage of all workers on the node. Only available on Linux",
+        "MB",
+        ["ip"],
+    ),
+    "workers_mem_pss": Gauge(
+        "workers_mem_pss",
+        "PSS usage of all workers on the node. Only available on Linux",
+        "MB",
+        ["ip"],
+    ),
+    "agent_cpu": Gauge(
+        "agent_cpu",
+        "Total CPU usage of an agent on a node.",
+        "percentage",
+        ["ip"],
+    ),
+    "agent_mem": Gauge(
+        "agent_mem",
+        "RSS usage of an agent on the node.",
+        "MB",
+        ["ip"],
+    ),
+    "agent_mem_uss": Gauge(
+        "agent_mem_uss",
+        "USS usage of an agent on the node. Only available on Linux",
+        "MB",
+        ["ip"],
+    ),
+    "agent_mem_pss": Gauge(
+        "agent_mem_pss",
+        "PSS usage of an agent on the node. Only available on Linux",
         "MB",
         ["ip"],
     ),
@@ -317,10 +370,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_cpu_percent():
-        if IN_KUBERNETES_POD:
-            return k8s_utils.cpu_percent()
-        else:
-            return psutil.cpu_percent()
+        return ray._private.utils.get_system_cpu_percent(IN_KUBERNETES_POD)
 
     @staticmethod
     def _get_gpu_usage():
@@ -464,6 +514,24 @@ class ReporterAgent(
                 ]
             )
 
+    def _get_agent(self):
+        # Curret proc == agent proc
+        agent_proc = psutil.Process()
+        if agent_proc is None:
+            return {}
+        else:
+            return agent_proc.as_dict(
+                attrs=[
+                    "pid",
+                    "create_time",
+                    "cpu_percent",
+                    "cpu_times",
+                    "cmdline",
+                    "memory_info",
+                    "memory_full_info",
+                ]
+            )
+
     def _get_load_avg(self):
         if sys.platform == "win32":
             cpu_percent = psutil.cpu_percent()
@@ -501,6 +569,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             "workers": self._get_workers(),
             "raylet": self._get_raylet(),
+            "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
@@ -719,6 +788,10 @@ class ReporterAgent(
             tags={"ip": ip},
         )
 
+        """
+        Record system stats.
+        """
+        # Record raylet CPU/memory
         raylet_stats = stats["raylet"]
         if raylet_stats:
             raylet_pid = str(raylet_stats["pid"])
@@ -741,9 +814,20 @@ class ReporterAgent(
                     tags={"ip": ip, "pid": raylet_pid},
                 )
             )
+            raylet_shm = float(raylet_stats["memory_info"].shared) / 1.0e6
+            if raylet_shm > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["raylet_mem_shm"],
+                        value=raylet_shm,
+                        tags={"ip": ip, "pid": raylet_pid},
+                    )
+                )
             raylet_mem_full_info = raylet_stats.get("memory_full_info")
             if raylet_mem_full_info is not None:
                 raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
+                raylet_pss = float(raylet_mem_full_info.pss) / 1.0e6
+                raylet_swap = float(raylet_mem_full_info.swap) / 1.0e6
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["raylet_mem_uss"],
@@ -751,18 +835,37 @@ class ReporterAgent(
                         tags={"ip": ip, "pid": raylet_pid},
                     )
                 )
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["raylet_mem_pss"],
+                        value=raylet_pss,
+                        tags={"ip": ip, "pid": raylet_pid},
+                    )
+                )
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["raylet_mem_swap"],
+                        value=raylet_swap,
+                        tags={"ip": ip, "pid": raylet_pid},
+                    )
+                )
 
+        # Record worker CPU/memroy.
         workers_stats = stats["workers"]
         if workers_stats:
             total_workers_cpu_percentage = 0.0
             total_workers_rss = 0.0
+            total_workers_shm = 0.0
             total_workers_uss = 0.0
+            total_workers_pss = 0.0
             for worker in workers_stats:
                 total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
                 total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
+                total_workers_shm += float(worker["memory_info"].shared) / 1.0e6
                 worker_mem_full_info = worker.get("memory_full_info")
                 if worker_mem_full_info is not None:
                     total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
+                    total_workers_pss += float(worker_mem_full_info.pss) / 1.0e6
 
             records_reported.append(
                 Record(
@@ -779,6 +882,15 @@ class ReporterAgent(
                     tags={"ip": ip},
                 )
             )
+
+            if total_workers_shm > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["workers_mem_shm"],
+                        value=total_workers_shm,
+                        tags={"ip": ip},
+                    )
+                )
             if total_workers_uss > 0.0:
                 records_reported.append(
                     Record(
@@ -787,6 +899,62 @@ class ReporterAgent(
                         tags={"ip": ip},
                     )
                 )
+            if total_workers_pss > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["workers_mem_pss"],
+                        value=total_workers_pss,
+                        tags={"ip": ip},
+                    )
+                )
+
+        # Record agent CPU/memory.
+        agent_stats = stats["agent"]
+        if agent_stats:
+            agent_pid = str(agent_stats["pid"])
+            # -- raylet CPU --
+            agent_cpu_usage = float(agent_stats["cpu_percent"]) * 100
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["agent_cpu"],
+                    value=agent_cpu_usage,
+                    tags={"ip": ip, "pid": agent_pid},
+                )
+            )
+
+            # -- raylet mem --
+            agent_rss = float(agent_stats["memory_info"].rss) / 1.0e6
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["agent_mem"],
+                    value=agent_rss,
+                    tags={"ip": ip, "pid": agent_pid},
+                )
+            )
+            agent_mem_full_info = agent_stats.get("memory_full_info")
+            if agent_mem_full_info is not None:
+                agent_uss = float(agent_mem_full_info.uss) / 1.0e6
+                agent_pss = float(agent_mem_full_info.pss) / 1.0e6
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["agent_mem_uss"],
+                        value=agent_uss,
+                        tags={"ip": ip, "pid": agent_pid},
+                    )
+                )
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["agent_mem_pss"],
+                        value=agent_pss,
+                        tags={"ip": ip, "pid": agent_pid},
+                    )
+                )
+
+        # NOTE: For GCS / dashboard, they are recorded within the process,
+        # not within an agent.
+        # It is because when you have more than 1 ray instance
+        # per node, there's no way to distinguish them if they are
+        # collected from an agent.
 
         records_reported.extend(
             [

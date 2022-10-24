@@ -16,7 +16,7 @@ class NullMetric:
 
 try:
 
-    from prometheus_client import CollectorRegistry, Counter, Histogram
+    from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
@@ -63,6 +63,22 @@ try:
                 "Total requests count per endpoint",
                 ("method", "endpoint", "http_status"),
                 unit="requests",
+                namespace="dashboard",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_cpu = Gauge(
+                "dashboard_cpu",
+                "Dashboard CPU percentage usage.",
+                (),
+                unit="percentage",
+                namespace="dashboard",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_mem = Gauge(
+                "dashboard_mem",
+                "Dashboard RSS usage.",
+                (),
+                unit="MB",
                 namespace="dashboard",
                 registry=self.registry,
             )

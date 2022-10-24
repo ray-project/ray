@@ -34,6 +34,7 @@ from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+from ray.dashboard import k8s_utils
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -446,6 +447,13 @@ def open_log(path, unbuffered=False, **kwargs):
         return Unbuffered(stream)
     else:
         return stream
+
+
+def get_system_cpu_percent(in_k8s: bool):
+    if in_k8s:
+        return k8s_utils.cpu_percent()
+    else:
+        return psutil.cpu_percent()
 
 
 def get_system_memory(

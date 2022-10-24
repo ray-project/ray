@@ -1,11 +1,15 @@
-from typing import Any, Dict, Optional
+import asyncio
 import aiohttp
 import logging
 import os
-from pydantic import BaseModel
 import shutil
-from urllib.parse import quote
 
+from typing import Any, Dict, Optional
+
+import psutil
+
+from pydantic import BaseModel
+from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
@@ -21,6 +25,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
+METRICS_RECORD_INTERVAL_S = 5
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
@@ -247,9 +252,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
+    @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
+    async def record_dashboard_metrics(self):
+        dashboard_proc = psutil.Process()
+        self._dashboard_head.metrics.metrics_dashboard_cpu.set(
+            float(dashboard_proc.cpu_percent()) * 100
+        )
+        self._dashboard_head.metrics.metrics_dashboard_mem.set(
+            float(dashboard_proc.memory_info().rss) / 1.0e6
+        )
+
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
+        await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
