@@ -58,16 +58,10 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
-    try:
-        async for lines in client.tail_job_logs(job_id):
-            print(lines, end="")
-    except asyncio.TimeoutError:
-        cli_logger.warning(
-            "Timed out waiting for job logs. "
-            "This may be because the job is not running yet."
-        )
-    finally:
-        _log_job_status(client, job_id)
+    async for lines in client.tail_job_logs(job_id):
+        print(lines, end="")
+
+    _log_job_status(client, job_id)
 
 
 @click.group("job")
