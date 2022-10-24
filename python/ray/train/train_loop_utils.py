@@ -1,8 +1,5 @@
-import warnings
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
-from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.util import log_once
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
@@ -27,22 +24,6 @@ def _get_deprecation_msg(is_docstring: bool, fn_name: Optional[str] = None):
         "but in a unified manner across Ray Train and Ray Tune."
     )
     return deprecation_msg
-
-
-def _warn_session_misuse(fn_name: str):
-    """Logs warning message on provided fn being used outside of session.
-
-    Args:
-        fn_name: The name of the function to warn about.
-    """
-
-    if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
-        warnings.warn(
-            f"`train.{fn_name}()` is meant to only be "
-            f"called "
-            "inside a training function that is executed by "
-            "`Trainer.run`. Returning None."
-        )
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
