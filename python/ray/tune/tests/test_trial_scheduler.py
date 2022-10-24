@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -856,8 +857,10 @@ class _MockTrial(Trial):
         self.custom_dirname = None
         self._default_result_or_future = None
         self.checkpoint_manager = _CheckpointManager(
-            keep_checkpoints_num=2,
-            checkpoint_score_attr="episode_reward_mean",
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="episode_reward_mean",
+            ),
             delete_fn=lambda c: None,
         )
 
@@ -2331,7 +2334,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # skip trial complete in this mock setting
 
     def testPBTNanInf(self):
-        scheduler = PopulationBasedTraining(metric="episode_reward_mean", mode="max")
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean",
+            mode="max",
+            hyperparam_mutations={"ignored": [1]},
+        )
         t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2411,7 +2418,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(MedianStoppingRule)
 
     def testAnonymousMetricEndToEndPBT(self):
-        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
+        self._testAnonymousMetricEndToEnd(
+            lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
+        )
 
 
 if __name__ == "__main__":

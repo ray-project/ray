@@ -28,6 +28,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
+    ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -41,7 +42,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_arrow_serialization_workaround,
+    _wrap_and_register_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
@@ -275,7 +276,7 @@ def read_datasource(
                 ctx,
                 cur_pg,
                 parallelism,
-                _wrap_arrow_serialization_workaround(read_args),
+                _wrap_and_register_arrow_serialization_workaround(read_args),
             )
         )
 
@@ -394,6 +395,91 @@ def read_parquet(
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
         **arrow_parquet_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_images(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = ImageDatasource.file_extension_filter(),
+    partitioning: Partitioning = None,
+    size: Optional[Tuple[int, int]] = None,
+    mode: Optional[str] = None,
+):
+    """Read images from the specified paths.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
+        >>> ds = ray.data.read_images(path)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
+
+        If your images are arranged like:
+
+        .. code::
+
+            root/dog/xxx.png
+            root/dog/xxy.png
+
+            root/cat/123.png
+            root/cat/nsdf3.png
+
+        Then you can include the labels by specifying a
+        :class:`~ray.data.datasource.partitioning.Partitioning`.
+
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> root = "example://tiny-imagenet-200/train"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        size: The desired height and width of loaded images. If unspecified, images
+            retain their original shape.
+        mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
+            describing the desired type and depth of pixels. If unspecified, image
+            modes are inferred by
+            `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing tensors that represent the images at
+        the specified paths. For information on working with tensors, read the
+        :ref:`tensor data guide <datasets_tensor_support>`.
+
+    Raises:
+        ValueError: if ``size`` contains non-positive numbers.
+        ValueError: if ``mode`` is unsupported.
+    """  # noqa: E501
+    return read_datasource(
+        ImageDatasource(),
+        paths=paths,
+        filesystem=filesystem,
+        parallelism=parallelism,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        size=size,
+        mode=mode,
     )
 
 
@@ -577,9 +663,7 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = CSVDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
@@ -597,15 +681,13 @@ def read_csv(
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
-        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
-        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # Read files that use a different delimiter. For more uses of ParseOptions see
         >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\t")
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     "example://iris.tsv",
-        ...     parse_options=parse_options,
-        ...     partition_filter=None)
+        ...     parse_options=parse_options)
 
         >>> # Convert a date column with a custom format from a CSV file.
         >>> # For more uses of ConvertOptions see
@@ -626,6 +708,15 @@ def read_csv(
         >>> ds.take(1)  # doctest: + SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
+        By default, ``read_csv`` reads all files from file paths. If you want to filter
+        files by file extensions, set the ``partition_filter`` parameter.
+
+        >>> # Read only *.csv files from multiple directories.
+        >>> from ray.data.datasource import FileExtensionFilter
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"],
+        ...     partition_filter=FileExtensionFilter("csv"))
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -639,8 +730,9 @@ def read_csv(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
-            match "*.csv*".
+            By default, this does not filter out any files.
+            If wishing to filter out all file paths except those whose file extension
+            matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
