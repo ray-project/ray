@@ -274,14 +274,27 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list --help").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example run --help").read()
 
-    def test_simple_commands(self):
+    def test_example_commands(self):
         assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
 
+    def test_yaml_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
             f"cartpole-simpleq-test.yaml"
+        ).read()
+
+    def test_json_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole-simpleq-test.json --type=json"
+        ).read()
+
+    def test_python_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole_simpleq_test.py --type=python"
         ).read()
 
     def test_all_example_files_exist(self):

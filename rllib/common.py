@@ -4,6 +4,7 @@ from enum import Enum
 import os.path
 import tempfile
 import typer
+from typing import Optional
 import requests
 
 
@@ -24,7 +25,7 @@ class SupportedFileType(str, Enum):
 
     yaml = "yaml"
     json = "json"
-    py = "py"
+    python = "python"
 
 
 def _create_tune_parser_help():
@@ -41,7 +42,8 @@ PARSER_HELP = _create_tune_parser_help()
 
 def download_example_file(
     example_file: str,
-    base_url: str = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/",
+    base_url: Optional[str] = "https://raw.githubusercontent.com/"
+    + "ray-project/ray/master/rllib/",
 ):
     """Download the example file (e.g. from GitHub) if it doesn't exist locally.
     If the provided example file exists locally, we return it directly.
@@ -102,6 +104,8 @@ train_help = dict(
     "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
+    filetype="The file type of the config file. Defaults to 'yaml' and can also be "
+    "'json', or 'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -182,6 +186,9 @@ class CLIArguments:
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
     )
+    FileType = typer.Option(
+        SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
+    )
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
@@ -234,8 +241,9 @@ EXAMPLES = {
         "description": "Runs grid search over several Atari games on A2C.",
     },
     "cartpole-a2c": {
-        "file": "tuned_examples/a2c/cartpole-a2c.yaml",
-        "description": "Runs A2C on the CartPole-v0 environment.",
+        "file": "tuned_examples/a2c/cartpole_a2c.py",
+        "file_type": SupportedFileType.python,
+        "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
         "file": "tuned_examples/a2c/cartpole-a2c-microbatch.yaml",

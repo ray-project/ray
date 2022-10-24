@@ -10,6 +10,7 @@ from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
+    SupportedFileType,
     example_help,
     download_example_file,
 )
@@ -67,15 +68,24 @@ def list(
     )
 
 
+def get_example_file(example_id):
+    """Simple helper function to get the example file for a given example ID."""
+    if example_id not in EXAMPLES:
+        raise example_error(example_id)
+
+    example = EXAMPLES[example_id]
+    assert hasattr(
+        example, "file"
+    ), f"Example {example_id} does not have a 'file' attribute."
+    return example.get("file")
+
+
 @example_app.command()
 def get(example_id: str = typer.Argument(..., help="The example ID of the example.")):
     """Print the configuration of an example.\n\n
     Example usage: `rllib example get atari-a2c`
     """
-    if example_id not in EXAMPLES:
-        raise example_error(example_id)
-
-    example_file = EXAMPLES[example_id]["file"]
+    example_file = get_example_file(example_id)
     example_file, temp_file = download_example_file(example_file)
     with open(example_file) as f:
         console = Console()
@@ -88,14 +98,14 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
 
     Example usage: `rllib example run pong-impala`
     """
-    if example_id not in EXAMPLES.keys():
-        raise example_error(example_id)
-
-    example_file = EXAMPLES[example_id]["file"]
+    example = EXAMPLES[example_id]
+    example_file = get_example_file(example_id)
     example_file, temp_file = download_example_file(example_file)
+    file_type = example.get("file_type", SupportedFileType.yaml)
 
     train_module.file(
         config_file=example_file,
+        file_type=file_type,
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,

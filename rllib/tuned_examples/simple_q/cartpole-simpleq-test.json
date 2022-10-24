@@ -1,0 +1,13 @@
+{
+  "cartpole-simpleq-test": {
+    "env": "CartPole-v1",
+    "run": "SimpleQ",
+    "stop": {
+      "episode_reward_mean": 15,
+      "timesteps_total": 500
+    },
+    "config": {
+      "framework": "tf"
+    }
+  }
+}
