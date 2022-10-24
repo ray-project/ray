@@ -60,19 +60,30 @@ sit idle, the autoscaler will remove worker nodes from the cluster.
 It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
+
+.. _ray_driver
+Ray Driver
+----------
+
+A Ray driver is the process that runs the Ray tasks and actors in the user application.
+A driver is started by running `ray.init()`. The script that calls `ray.init()` may also be referred to as the "driver script".
+
+
 .. _cluster-clients-and-jobs:
 
-Ray Jobs
---------
+Ray Job
+-------
 
-The main method for running a workload on a Ray cluster is to use Ray Jobs.
-Ray Jobs enable users to submit locally developed-and-tested applications to a
+A Ray Job is a user application that includes a Ray driver. There are two ways of running Ray Jobs on Ray clusters:
+
+The recommended method for running a workload on a Ray cluster is to use Ray Job Submission.
+Ray Job Submission enable users to submit locally developed-and-tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
-For interactive development, the following additional methods are available:
+An alternative method is to run Ray Jobs interactively.  For interactive development, the following methods are available:
 
-* Directly running a script or notebook on any head or worker node.
-* Using the Ray Client to connect remotely to the cluster.
+* Directly running a :ref:`Ray driver <ray-driver>` Ray driver on any head or worker node.
+* Using the Ray Client to connect remotely to the cluster within a :ref:`Ray driver <ray-driver>` script.
 
-To learn how to run workloads on a Ray cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
+For details about all of these workflows, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
