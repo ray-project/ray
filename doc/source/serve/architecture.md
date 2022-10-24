@@ -71,7 +71,7 @@ When a machine hosting any of the actors crashes, those actors will be automatic
 available machine. All data in the Controller (routing policies, deployment
 configurations, etc) is checkpointed to the Ray Global Control Store (GCS) on the head node. Transient data in the
 router and the replica (like network connections and internal request queues) will be lost for this kind of failure.
-See [Serve Health Checking](serve-health-checking) for how actor crashes are detected.
+See [the end-to-end fault tolerance guide](serve-e2e-ft) for more details on how actor crashes are detected.
 
 (serve-autoscaling-architecture)=
 
