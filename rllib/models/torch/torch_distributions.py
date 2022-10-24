@@ -142,8 +142,9 @@ class TorchDiagGaussian(TorchDistribution):
 
     Args:
         loc: mean of the distribution (often referred to as mu). If scale is None, the
-            second half of the `loc` will be used as scale.
-        scale: standard deviation of the distribution (often referred to as sigma)
+            second half of the `loc` will be used as the log of scale.
+        scale: standard deviation of the distribution (often referred to as sigma). 
+            Has to be positive.
     """
 
     @override(Distribution)
