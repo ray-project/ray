@@ -261,7 +261,7 @@ class BatchPredictor:
                     input_batch, select_columns=feature_columns
                 )
                 prediction_output_batch: DataBatchType = self._predictor.predict(
-                    prediction_batch, batch_format=batch_format, **predict_kwargs
+                    prediction_batch, **predict_kwargs
                 )
                 prediction_output_batch: DataBatchType = (
                     self._keep_columns_from_input_batch(
