@@ -52,11 +52,7 @@ def train_loop_per_worker(config):
     import horovod.torch as hvd
 
     hvd.init()
-    device = (
-        ray.train.torch.get_device()
-        if torch.cuda.is_available()
-        else torch.device("cpu")
-    )
+    device = ray.train.torch.get_device()
     mode = config["mode"]
     net = Net(mode).to(device)
     optimizer = torch.optim.SGD(
