@@ -349,9 +349,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     @ray.remote(num_gpus=1)
     def f1():
-        t1 = time.monotonic()
+        t1 = time.time()
         time.sleep(0.1)
-        t2 = time.monotonic()
+        t2 = time.time()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
@@ -363,9 +363,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     @ray.remote(num_gpus=2)
     def f2():
-        t1 = time.monotonic()
+        t1 = time.time()
         time.sleep(0.1)
-        t2 = time.monotonic()
+        t2 = time.time()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
         assert gpu_ids[0] in range(num_gpus_per_raylet)
