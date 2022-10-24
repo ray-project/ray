@@ -36,11 +36,11 @@ GcsHealthCheckManager::~GcsHealthCheckManager() {}
 void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
   io_service_.dispatch(
       [this, node_id]() {
-        auto iter = inflight_health_checks_.find(node_id);
-        if (iter == inflight_health_checks_.end()) {
+        auto iter = health_check_contexts_.find(node_id);
+        if (iter == health_check_contexts_.end()) {
           return;
         }
-        inflight_health_checks_.erase(iter);
+        health_check_contexts_.erase(iter);
       },
       "GcsHealthCheckManager::RemoveNode");
 }
@@ -48,12 +48,12 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
 void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_LOG(WARNING) << "Node " << node_id << " is dead because the health check failed.";
   on_node_death_callback_(node_id);
-  inflight_health_checks_.erase(node_id);
+  health_check_contexts_.erase(node_id);
 }
 
 std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
   std::vector<NodeID> nodes;
-  for (const auto &[node_id, _] : inflight_health_checks_) {
+  for (const auto &[node_id, _] : health_check_contexts_) {
     nodes.emplace_back(node_id);
   }
   return nodes;
@@ -110,9 +110,9 @@ void GcsHealthCheckManager::AddNode(const NodeID &node_id,
                                     std::shared_ptr<grpc::Channel> channel) {
   io_service_.dispatch(
       [this, channel, node_id]() {
-        RAY_CHECK(inflight_health_checks_.count(node_id) == 0);
+        RAY_CHECK(health_check_contexts_.count(node_id) == 0);
         auto context = std::make_unique<HealthCheckContext>(this, channel, node_id);
-        inflight_health_checks_.emplace(std::make_pair(node_id, std::move(context)));
+        health_check_contexts_.emplace(std::make_pair(node_id, std::move(context)));
       },
       "GcsHealthCheckManager::AddNode");
 }

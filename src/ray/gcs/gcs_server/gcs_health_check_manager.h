@@ -31,16 +31,24 @@ namespace gcs {
 /// cluster. The health check is done in pull based way, which means this module will send
 /// health check to the raylets to see whether the raylet is healthy or not. If the raylet
 /// is not healthy for certain times, the module will think the raylet dead.
+/// When the node is dead a callback passed in the constructor will be called and this
+/// node will be removed from GcsHealthCheckManager. The node can be added into this class
+/// later. Although the same node id is not supposed to be reused in ray cluster, this is
+/// not enforced in this class. The implementation of this class try its bes not to couple
+/// itself with GCS so we can move it to ray/common/health_check_manager.h in the future.
+/// TODO (iycheng): Move the GcsHealthCheckManager to common and decouple it from GCS
+/// completely.
 class GcsHealthCheckManager {
  public:
   /// Constructor of GcsHealthCheckManager.
   ///
   /// \param io_service The thread where all operations in this class should run.
   /// \param on_node_death_callback The callback function when some node is marked as
-  /// failure. \param initial_delay_ms The delay for the first health check. \param
-  /// period_ms The interval between two health checks for the same node. \param
-  /// failure_threshold The threshold before a node will be marked as dead due to health
-  /// check failure.
+  /// failure.
+  /// \param initial_delay_ms The delay for the first health check.
+  /// \param period_ms The interval between two health checks for the same node.
+  /// \param failure_threshold The threshold before a node will be marked as dead due to
+  /// health check failure.
   GcsHealthCheckManager(
       instrumented_io_context &io_service,
       std::function<void(const NodeID &)> on_node_death_callback,
@@ -134,8 +142,7 @@ class GcsHealthCheckManager {
   std::function<void(const NodeID &)> on_node_death_callback_;
 
   /// The context of the health check for each nodes.
-  absl::flat_hash_map<NodeID, std::unique_ptr<HealthCheckContext>>
-      inflight_health_checks_;
+  absl::flat_hash_map<NodeID, std::unique_ptr<HealthCheckContext>> health_check_contexts_;
 
   /// The delay for the first health check request.
   const int64_t initial_delay_ms_;
