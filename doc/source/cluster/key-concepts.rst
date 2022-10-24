@@ -66,7 +66,7 @@ To learn more about autoscaling, refer to the user guides for Ray clusters on :r
 Ray Driver
 ----------
 
-A Ray driver is the process that runs the Ray tasks and actors in the user application.
+A Ray driver is the process that calls the Ray tasks and actors in the user application.
 A driver is started by running `ray.init()`. The script that calls `ray.init()` may also be referred to as the "driver script".
 
 
