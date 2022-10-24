@@ -371,6 +371,20 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
              // And this will make the scheduler hanging. With resource broadcasting,
              // it's kind of mitigating the problem, but it has uncessary cost too (
              // no progress until resource is refreshed).
+             // To make it easier to understand, let's think the following case:
+             // - N1 and N2 both has 1 CPU and suppose we have 10 tasks.
+             // - 10 tasks go to N1.
+             // - N1 leased one worker and the task_queue.size() = 9
+             //   and inflight_lease_requests.size() = 9.
+             // - The worker finished the work and started the next one, then
+             //   task_queue.size() = 8. And think it's an actor task, so it'll hold
+             //   it forever.
+             // - N1 spill one request to N2, so inflight_lease_requests.size() = 8.
+             // - But the core worker doesn't spill it to N2, because
+             //       task_queue.size() <= inflight_lease_requests.size()
+             // - N1 stop spilling because it thought N2 is full.
+             // - N2 doesn't broadcast the resource because the resource never change.
+             // - And thus hangs forever.
              (raylet_address == nullptr ||
               scheduling_key_entry.raylet_ongoing_lease_loads.count(
                   raylet_address->raylet_id()) != 0)) {

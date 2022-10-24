@@ -182,6 +182,7 @@ class RaySyncer {
 
   std::shared_ptr<bool> stopped_;
 
+  /// Data related to the initial sync request.
   struct StartSyncCall {
     StartSyncRequest request;
     StartSyncResponse response;
