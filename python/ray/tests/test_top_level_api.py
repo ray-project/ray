@@ -1,4 +1,7 @@
 from inspect import getmembers, isfunction, ismodule
+import sys
+
+import pytest
 
 import ray
 
@@ -36,15 +39,56 @@ def test_api_functions():
         "get_runtime_context",
     ]
 
+    IMPL_FUNCTIONS = ["__getattr__"]
+
     functions = getmembers(ray, isfunction)
     function_names = [f[0] for f in functions]
-    assert set(function_names) == set(PYTHON_API + OTHER_ALLOWED_FUNCTIONS)
+    assert set(function_names) == set(
+        PYTHON_API + OTHER_ALLOWED_FUNCTIONS + IMPL_FUNCTIONS
+    )
 
 
 def test_non_ray_modules():
     modules = getmembers(ray, ismodule)
     for name, mod in modules:
         assert "ray" in str(mod), f"Module {mod} should not be reachable via ray.{name}"
+
+
+def test_dynamic_subpackage_import():
+    # Test that subpackages are dynamically imported and properly cached.
+
+    # ray.data
+    assert "ray.data" not in sys.modules
+    ray.data
+    # Check that the package is cached.
+    assert "ray.data" in sys.modules
+
+    # ray.workflow
+    assert "ray.workflow" not in sys.modules
+    ray.workflow
+    # Check that the package is cached.
+    assert "ray.workflow" in sys.modules
+
+
+def test_dynamic_subpackage_missing():
+    # Test nonexistent subpackage dynamic attribute access and imports raise expected
+    # errors.
+
+    # Test that nonexistent subpackage attribute access raises an AttributeError.
+    with pytest.raises(AttributeError):
+        ray.foo  # noqa:F401
+
+    # Test that nonexistent subpackage import raises an ImportError.
+    with pytest.raises(ImportError):
+        from ray.foo import bar  # noqa:F401
+
+
+def test_dynamic_subpackage_fallback_only():
+    # Test that the __getattr__ dynamic
+    assert "ray.autoscaler" in sys.modules
+    assert ray.__getattribute__("autoscaler") is ray.autoscaler
+    with pytest.raises(AttributeError):
+        ray.__getattr__("autoscaler")
 
 
 def test_for_strings():
@@ -55,9 +99,7 @@ def test_for_strings():
 
 
 if __name__ == "__main__":
-    import pytest
     import os
-    import sys
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
