@@ -15,16 +15,6 @@ from ray.air import session
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
-@pytest.fixture()
-def ray_start_4_cpus_mosaic():
-    runtime_env = {"pip": ["mosaicml==0.10.1"]}
-
-    address_info = ray.init(num_cpus=4, runtime_env=runtime_env)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 def trainer_init_per_worker(config):
     from torchmetrics.classification.accuracy import Accuracy
     from composer.core.evaluator import Evaluator
@@ -92,7 +82,7 @@ def trainer_init_per_worker(config):
 trainer_init_per_worker.__test__ = False
 
 
-def test_mosaic_cifar10(ray_start_4_cpus_mosaic):
+def test_mosaic_cifar10(ray_start_4_cpus):
     from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
     _ = train_mosaic_cifar10()
@@ -100,7 +90,7 @@ def test_mosaic_cifar10(ray_start_4_cpus_mosaic):
     # TODO : add asserts once reporting has been integrated
 
 
-def test_init_errors(ray_start_4_cpus_mosaic):
+def test_init_errors(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     """Tests errors that may be raised when constructing MosaicTrainer. The error may
@@ -143,7 +133,7 @@ def test_init_errors(ray_start_4_cpus_mosaic):
         )
 
 
-def test_loggers(ray_start_4_cpus_mosaic):
+def test_loggers(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     from composer.loggers.logger_destination import LoggerDestination
