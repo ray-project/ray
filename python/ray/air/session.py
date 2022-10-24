@@ -27,7 +27,7 @@ def _warn_session_misuse(default_value: Any = None):
                     warnings.warn(
                         f"`{fn_name}` is meant to only be "
                         "called inside a function that is executed by a Tuner"
-                        " or Trainer."
+                        f" or Trainer. Returning `{default_value}`."
                     )
                 return default_value
             return fn(*args, **kwargs)
