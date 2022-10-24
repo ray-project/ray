@@ -1,6 +1,7 @@
 from copy import copy
 import numpy as np
 import unittest
+import math
 
 from ray.rllib.models.torch.torch_action_dist_v2 import (
     TorchCategorical,
@@ -165,7 +166,7 @@ class TestDistributions(unittest.TestCase):
         # check logp values
         expected = (
             -0.5 * ((sample - loc_tens) / scale_tens).pow(2).sum(-1)
-            + -0.5 * ndim * torch.log(2 * torch.tensor([torch.pi]))
+            + -0.5 * ndim * math.log(2 * math.pi) 
             - scale_tens.log().sum(-1)
         )
         check(dist.logp(sample), expected)
