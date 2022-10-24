@@ -18,6 +18,7 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentRepla
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
@@ -140,6 +141,7 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
+        self.policies = None
         # __sphinx_doc_end__
         # fmt: on
 
@@ -215,7 +217,18 @@ class AlphaStarConfig(appo.APPOConfig):
         if timeout_s_learner_manager is not None:
             self.timeout_s_learner_manager = timeout_s_learner_manager
         if league_builder_config is not None:
-            self.league_builder_config = league_builder_config
+            # Override entire `league_builder_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_league_builder_config = deep_update(
+                {"league_builder_config": self.league_builder_config},
+                {"league_builder_config": league_builder_config},
+                False,
+                ["league_builder_config"],
+                ["league_builder_config"],
+            )
+            self.league_builder_config = (
+                new_league_builder_config["league_builder_config"]
+            )
         if max_num_policies_to_train is not None:
             self.max_num_policies_to_train = max_num_policies_to_train
         if max_requests_in_flight_per_sampler_worker is not None:

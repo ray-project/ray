@@ -176,8 +176,6 @@ class AlgorithmConfig:
         self.policies_to_train = None
         self.observation_fn = None
         self.count_steps_by = "env_steps"
-        self._multi_agent_legacy_dict = {}
-        self._set_ma_legacy_dict()
 
         # `self.offline_data()`
         self.input_ = "sampler"
@@ -303,6 +301,29 @@ class AlgorithmConfig:
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+
+        for dep_k in [
+            "monitor",
+            "evaluation_num_episodes",
+            "metrics_smoothing_episodes",
+            "timesteps_per_iteration",
+            "min_iter_time_s",
+            "collect_metrics_timeout",
+            "buffer_size",
+            "prioritized_replay",
+            "learning_starts",
+            "replay_batch_size",
+            "replay_mode",
+            "prioritized_replay_alpha",
+            "prioritized_replay_beta",
+            "prioritized_replay_eps",
+            "min_time_s_per_reporting",
+            "min_train_timesteps_per_reporting",
+            "min_sample_timesteps_per_reporting",
+            "input_evaluation",
+        ]:
+            if config.get(dep_k) == DEPRECATED_VALUE:
+                config.pop(dep_k, None)
 
         return config
 
@@ -1404,8 +1425,6 @@ class AlgorithmConfig:
             len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
         )
 
-        self._set_ma_legacy_dict()
-
         return self
 
     def is_multi_agent(self) -> bool:
@@ -1886,6 +1905,15 @@ class AlgorithmConfig:
     def pop(self, key, default=None):
         return self.get(key, default)
 
+    def keys(self):
+        return self.to_dict().keys()
+
+    def values(self):
+        return self.to_dict().values()
+
+    def items(self):
+        return self.to_dict().items()
+
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
         # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
@@ -1905,9 +1933,6 @@ class AlgorithmConfig:
             key = "num_cpus_for_local_worker"
 
         # Deprecated keys.
-        elif key == "multiagent":
-            key = "_multi_agent_legacy_dict"
-
         if warn_deprecated:
             if key == "collect_metrics_timeout":
                 deprecation_warning(
@@ -1962,15 +1987,14 @@ class AlgorithmConfig:
 
         return key
 
-    def _set_ma_legacy_dict(self):
-        self._multi_agent_legacy_dict.update(
-            {
-                "policies": self.policies,
-                "policy_mapping_fn": self.policy_mapping_fn,
-                "policies_to_train": self.policies_to_train,
-                "policy_map_capacity": self.policy_map_capacity,
-                "policy_map_cache": self.policy_map_cache,
-                "count_steps_by": self.count_steps_by,
-                "observation_fn": self.observation_fn,
-            }
-        )
+    @property
+    def multiagent(self):
+        return {
+            "policies": self.policies,
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "policies_to_train": self.policies_to_train,
+            "policy_map_capacity": self.policy_map_capacity,
+            "policy_map_cache": self.policy_map_cache,
+            "count_steps_by": self.count_steps_by,
+            "observation_fn": self.observation_fn,
+        }
