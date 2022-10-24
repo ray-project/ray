@@ -215,6 +215,7 @@ parts:
           - file: rllib/user-guides
             sections:
               - file: rllib/rllib-models
+              - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
