@@ -50,9 +50,9 @@ class Distribution(abc.ABC):
         return_logp: bool = False,
         **kwargs
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        """Draw a re-parameterized sample from the action distribution. 
-        
-        If this method is implemented, we can take gradients of samples w.r.t. the 
+        """Draw a re-parameterized sample from the action distribution.
+
+        If this method is implemented, we can take gradients of samples w.r.t. the
         distribution parameters.
 
         Args:
@@ -109,9 +109,9 @@ class Distribution(abc.ABC):
         particular space and an optional dict of distribution-specific
         options.
 
-        Let's have this method here just as a reminder to the next developer that this 
-        was part of the old distribution classes that we may or may not keep depending 
-        on how the catalog gets written. 
+        Let's have this method here just as a reminder to the next developer that this
+        was part of the old distribution classes that we may or may not keep depending
+        on how the catalog gets written.
 
         Args:
             space: The space this distribution will be used for,

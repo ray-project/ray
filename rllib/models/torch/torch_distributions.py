@@ -16,7 +16,6 @@ from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
 
 torch, nn = try_import_torch()
 
-from torch.distributions.normal import Normal
 
 @DeveloperAPI
 class TorchDistribution(Distribution, abc.ABC):
@@ -27,7 +26,9 @@ class TorchDistribution(Distribution, abc.ABC):
         self.dist = self._get_torch_distribution(*args, **kwargs)
 
     @abc.abstractmethod
-    def _get_torch_distribution(self, *args, **kwargs) -> torch.distributions.Distribution:
+    def _get_torch_distribution(
+        self, *args, **kwargs
+    ) -> torch.distributions.Distribution:
         """Returns the torch.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -68,15 +69,15 @@ class TorchCategorical(TorchDistribution):
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).
 
-    Samples are integers from :math:`\{0, \ldots, K-1\}` where `K` is 
+    Samples are integers from :math:`\{0, \ldots, K-1\}` where `K` is
     ``probs.size(-1)``.
 
-    If `probs` is 1-dimensional with length-`K`, each element is the relative 
+    If `probs` is 1-dimensional with length-`K`, each element is the relative
     probability of sampling the class at that index.
 
     If `probs` is N-dimensional, the first N-1 dimensions are treated as a batch of
     relative probability vectors.
-    
+
     Example::
         >>> m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
         >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
@@ -85,10 +86,10 @@ class TorchCategorical(TorchDistribution):
     Args:
         probs: The probablities of each event.
         logits: Event log probabilities (unnormalized)
-        temperature: In case of using logits, this parameter can be used to determine 
-            the sharpness of the distribution. i.e. 
-            ``probs = softmax(logits / temperature)``. The temperature must be strictly 
-            positive. A low value (e.g. 1e-10) will result in argmax sampling while a 
+        temperature: In case of using logits, this parameter can be used to determine
+            the sharpness of the distribution. i.e.
+            ``probs = softmax(logits / temperature)``. The temperature must be strictly
+            positive. A low value (e.g. 1e-10) will result in argmax sampling while a
             larger value will result in uniform sampling.
     """
 
@@ -123,8 +124,8 @@ class TorchCategorical(TorchDistribution):
 @DeveloperAPI
 class TorchDiagGaussian(TorchDistribution):
     """Wrapper class for PyTorch Normal distribution.
-    
-    Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In 
+
+    Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
     Example::
@@ -140,7 +141,7 @@ class TorchDiagGaussian(TorchDistribution):
 
 
     Args:
-        loc: mean of the distribution (often referred to as mu). If scale is None, the 
+        loc: mean of the distribution (often referred to as mu). If scale is None, the
             second half of the `loc` will be used as scale.
         scale: standard deviation of the distribution (often referred to as sigma)
     """
@@ -153,7 +154,9 @@ class TorchDiagGaussian(TorchDistribution):
     ):
         super().__init__(loc=loc, scale=scale)
 
-    def _get_torch_distribution(self, loc, scale=None) -> torch.distributions.Distribution:
+    def _get_torch_distribution(
+        self, loc, scale=None
+    ) -> torch.distributions.Distribution:
         if scale is None:
             loc, log_std = torch.chunk(self.inputs, 2, dim=1)
             scale = torch.exp(log_std)
@@ -208,7 +211,7 @@ class TorchDeterministic(Distribution):
         *,
         sample_shape: Tuple[int, ...] = None,
         return_logp: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         if return_logp:
             raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
@@ -223,7 +226,7 @@ class TorchDeterministic(Distribution):
         *,
         sample_shape: Tuple[int, ...] = None,
         return_logp: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         raise NotImplementedError
 

@@ -166,7 +166,7 @@ class TestDistributions(unittest.TestCase):
         # check logp values
         expected = (
             -0.5 * ((sample - loc_tens) / scale_tens).pow(2).sum(-1)
-            + -0.5 * ndim * math.log(2 * math.pi) 
+            + -0.5 * ndim * math.log(2 * math.pi)
             - scale_tens.log().sum(-1)
         )
         check(dist.logp(sample), expected)
