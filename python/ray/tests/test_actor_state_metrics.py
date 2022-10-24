@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 import pytest
 import time
@@ -153,6 +154,46 @@ def test_dep_wait(shutdown_only):
     del a
 
 
+def test_async_actor(shutdown_only):
+    info = ray.init(num_cpus=3, _system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    def sleep():
+        time.sleep(999)
+
+    @ray.remote(max_concurrency=30)
+    class AsyncActor:
+        async def sleep(self):
+            await asyncio.sleep(300)
+
+        async def do_get(self):
+            await ray.get(sleep.remote())
+
+    a = AsyncActor.remote()
+    a.sleep.remote()
+    expected = {
+        "RUNNING_TASK": 1,
+    }
+    wait_for_condition(
+        lambda: actors_by_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Test that this transitions the entire actor to reporting IN_RAY_GET state.
+    a.do_get.remote()
+    a.do_get.remote()
+    expected = {
+        "RUNNING_IN_RAY_GET": 1,
+    }
+    wait_for_condition(
+        lambda: actors_by_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+    del a
+
+
 @ray.remote(num_cpus=1)
 class Actor1:
     def sleep(self):
@@ -170,13 +211,22 @@ def test_tracking_by_name(shutdown_only):
 
     a = Actor1.remote()
     b = Actor2.remote()
-    a.sleep.remote()
-    b.sleep.remote()
 
+    # Test the GCS recorded case.
     expected = {
         "Actor1": 1,
         "Actor2": 1,
     }
+    wait_for_condition(
+        lambda: actors_by_name(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Also test the core worker recorded case.
+    a.sleep.remote()
+    b.sleep.remote()
+    time.sleep(1)
     wait_for_condition(
         lambda: actors_by_name(info) == expected,
         timeout=20,

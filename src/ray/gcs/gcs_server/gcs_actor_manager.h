@@ -132,7 +132,8 @@ class GcsActor {
       RAY_LOG(DEBUG) << "Decrementing state at "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " " << GetActorTableData().class_name();
-      counter_->Decrement(std::make_pair(last_metric_state_.value(), ""));
+      counter_->Decrement(
+          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()));
     }
   }
 
@@ -188,13 +189,14 @@ class GcsActor {
       RAY_LOG(DEBUG) << "Swapping state from "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
-      counter_->Swap(std::make_pair(last_metric_state_.value(), ""),
-                     std::make_pair(cur_state, ""));
+      counter_->Swap(
+          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
+          std::make_pair(cur_state, GetActorTableData().class_name()));
     } else {
       RAY_LOG(DEBUG) << "Incrementing state at "
                      << rpc::ActorTableData::ActorState_Name(cur_state) << " "
                      << GetActorTableData().class_name();
-      counter_->Increment(std::make_pair(cur_state, ""));
+      counter_->Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
     }
     last_metric_state_ = cur_state;
   }
