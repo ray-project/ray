@@ -2,6 +2,7 @@ from pathlib import Path
 import tempfile
 import time
 import os
+from ray.dashboard.modules.job.pydantic_models import JobType
 import requests
 import pytest
 import psutil
@@ -284,6 +285,58 @@ def test_job_head_choose_job_agent_E2E(
     assert len(new_owner_port) == 2
     assert len(old_owner_port - new_owner_port) == 1
     assert len(new_owner_port - old_owner_port) == 1
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+@pytest.mark.parametrize("allow_driver_on_worker_nodes", [True, False])
+def test_jobs_run_on_head_by_default_E2E(
+    ray_start_cluster_head, monkeypatch, allow_driver_on_worker_nodes
+):
+    """This test makes sure that the job will be run on the head node by default,
+    unless the environment variable `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES` is set
+    to `1`.
+    """
+    if allow_driver_on_worker_nodes:
+        monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
+
+    # Cluster setup
+    cluster = ray_start_cluster_head
+    cluster.add_node(dashboard_agent_listen_port=52366)
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+    client = JobSubmissionClient(webui_url)
+
+    # Submit 20 simple jobs.
+    for i in range(20):
+        client.submit_job(entrypoint="echo hi", submission_id=f"job_{i}")
+    import pprint
+
+    def check_all_jobs_succeeded():
+        submission_jobs = [
+            job for job in client.list_jobs() if job.type == JobType.SUBMISSION
+        ]
+        for job in submission_jobs:
+            pprint.pprint(job)
+            if job.status != JobStatus.SUCCEEDED:
+                return False
+        return True
+
+    # Wait until all jobs have finished.
+    wait_for_condition(check_all_jobs_succeeded, timeout=60, retry_interval_ms=1000)
+
+    # Check driver_node_id of all jobs.
+    submission_jobs = [
+        job for job in client.list_jobs() if job.type == JobType.SUBMISSION
+    ]
+    driver_node_ids = [job.driver_node_id for job in submission_jobs]
+
+    # Spuriously fails with probability (1/2)^20 = 1e-6.
+    assert len(set(driver_node_ids)) == (
+        2 if allow_driver_on_worker_nodes else 1
+    ), driver_node_ids
 
 
 if __name__ == "__main__":
