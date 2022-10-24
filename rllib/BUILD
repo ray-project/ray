@@ -1773,6 +1773,13 @@ py_test(
 )
 
 py_test(
+    name = "test_distributions_v2",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions_v2.py"]
+)
+
+py_test(
     name = "test_lstms",
     tags = ["team:rllib", "models"],
     size = "large",
