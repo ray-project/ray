@@ -26,7 +26,27 @@ def preprocess(batch: np.ndarray) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
+    return pd.DataFrame({"image": [preprocess(image).numpy() for image in batch]})
+
+
+def _human_readable_bytes(num_bytes: int) -> str:
+    return f"{num_bytes / (2 ** 30)} GiB"
+
+
+class DebugPredictor(TorchPredictor):
+    def call_model(self, tensor):
+        import torch
+
+        out = super().call_model(tensor)
+        print(
+            "cuda reserved memory: ",
+            _human_readable_bytes(torch.cuda.memory_reserved()),
+        )
+        print(
+            "cuda allocated memory: ",
+            _human_readable_bytes(torch.cuda.memory_allocated()),
+        )
+        return out
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
@@ -54,12 +74,12 @@ def main(data_size_gb: int, smoke_test: bool = False):
     preprocessor = BatchMapper(preprocess, batch_format="numpy")
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
-    predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
+    predictor = BatchPredictor.from_checkpoint(ckpt, DebugPredictor)
     predictor.predict(
         dataset,
         num_gpus_per_worker=int(not smoke_test),
         feature_columns=["image"],
-        batch_size=512,
+        batch_size=1024,
     )
     total_time_s = round(time.time() - start, 2)
 
