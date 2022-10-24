@@ -124,7 +124,10 @@ def test_predict_array(use_gpu):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 1
-    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -140,7 +143,10 @@ def test_predict_array_with_preprocessor(use_gpu):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 1
-    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
     assert predictor.get_preprocessor().has_preprocessed
 
 
