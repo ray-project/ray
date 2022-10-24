@@ -9,6 +9,7 @@ from composer.loggers.logger_destination import LoggerDestination
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.train.mosaic._mosaic_utils import RayLogger
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
@@ -207,16 +208,12 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
+    # Replace Composer's Loggers with RayLogger
+    config["loggers"] = RayLogger(keys=config.pop("log_keys", []))
+
     # initialize Composer trainer
     config["progress_bar"] = False
     trainer: Trainer = trainer_init_per_worker(config)
-
-    # Remove Composer's Loggers
-    filtered_callbacks = list()
-    for callback in trainer.state.callbacks:
-        if not isinstance(callback, LoggerDestination):
-            filtered_callbacks.append(callback)
-    trainer.state.callbacks = filtered_callbacks
 
     # call the trainer
     trainer.fit()

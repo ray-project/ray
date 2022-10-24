@@ -81,7 +81,7 @@ def trainer_init_per_worker(config):
         weight_decay=2.0e-3,
     )
 
-    if config.pop("eval", False):
+    if config.pop("should_eval", False):
         config["eval_dataloader"] = evaluator
 
     return composer.trainer.Trainer(
@@ -184,6 +184,65 @@ def test_loggers(ray_start_4_cpus_mosaic):
     with pytest.raises(ValueError) as e:
         trainer.fit()
         assert e == "Composer Callback object exists."
+
+
+def test_metrics_key(ray_start_4_cpus_mosaic):
+    from ray.train.mosaic import MosaicTrainer
+
+    """Tests if `log_keys` defined in `trianer_init_config` appears in result
+    metrics_dataframe.
+    """
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": True,
+        "log_keys": ["metrics/my_evaluator/Accuracy"],
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    # check if the passed in log key exists
+    assert "metrics/my_evaluator/Accuracy" in result.metrics_dataframe.columns
+
+
+def test_monitor_callbacks(ray_start_4_cpus_mosaic):
+    from ray.train.mosaic import MosaicTrainer
+
+    # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
+    from composer.callbacks import SpeedMonitor, LRMonitor, GradMonitor
+
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": True,
+    }
+    trainer_init_config["log_keys"] = [
+        "grad_l2_norm/step",
+    ]
+    trainer_init_config["callbacks"] = [
+        SpeedMonitor(window_size=3),
+        LRMonitor(),
+        GradMonitor(),
+    ]
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    metrics_columns = result.metrics_dataframe.columns
+    assert "wall_clock/train" in metrics_columns
+    assert "wall_clock/val" in metrics_columns
+    assert "wall_clock/total" in metrics_columns
+    assert "lr-DecoupledSGDW/group0" in metrics_columns
+    assert "grad_l2_norm/step" in metrics_columns
 
 
 if __name__ == "__main__":
