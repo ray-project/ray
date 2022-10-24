@@ -375,7 +375,7 @@ class AlgorithmConfig:
             key = self._translate_special_keys(key, warn_deprecated=False)
 
             # Set our multi-agent settings.
-            if key == "_multi_agent_legacy_dict":
+            if key == "multiagent":
                 kwargs = {
                     k: value[k]
                     for k in [
