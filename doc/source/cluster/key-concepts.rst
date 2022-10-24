@@ -61,7 +61,8 @@ It is important to understand that the autoscaler only reacts to task and actor 
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
 
-.. _ray_driver
+.. _ray_driver:
+
 Ray Driver
 ----------
 
