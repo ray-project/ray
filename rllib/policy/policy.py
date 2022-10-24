@@ -21,6 +21,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from gym.spaces import Box
 from packaging import version
+from collections import defaultdict
 
 import ray
 import ray.cloudpickle as pickle
@@ -555,6 +556,7 @@ class Policy(metaclass=ABCMeta):
         reward_batch: Optional[List[TensorStructType]] = None,
         dones_batch: Optional[List[TensorStructType]] = None,
         info_batch: Optional[List[Dict[str, list]]] = None,
+        t_batch: Optional[List[int]] = None,
         explore: bool = None,
         agent_ids: Optional[int] = None,
         env_ids: Optional[int] = None,
@@ -567,6 +569,8 @@ class Policy(metaclass=ABCMeta):
             reward_batch: Batch of rewards, one per agent.
             dones_batch: batch of dones, one per agent.
             info_batch: Batch of infos, one per agent.
+            t_batch: Batch of timesteps, one per agent. If None, we assume the
+                subsequent timestep when building trajectories from this input data.
             explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             episodes: This provides access to all of the internal episodes'
@@ -612,27 +616,26 @@ class Policy(metaclass=ABCMeta):
                 "provided as an argument.".format(old_kwarg)
             )
 
-        # We need lists to zip further down
+        # Turn all None default args into lists to zip further down
         if not self._check_compute_action_agent_id_arg(agent_ids):
             # Assume there is only one agent
             agent_ids = np.zeros(len(next_obs_batch))
         if not self._check_compute_action_env_id_arg(env_ids):
             # Assume there is only one env
             env_ids = np.zeros(len(next_obs_batch))
-        if reward_batch is None:
-            reward_batch = [None] * len(next_obs_batch)
-        if dones_batch is None:
-            dones_batch = [None] * len(next_obs_batch)
-        if info_batch is None:
-            info_batch = [None] * len(next_obs_batch)
+        _reward_batch = [None] * len(next_obs_batch) if reward_batch is None else reward_batch
+        _dones_batch = [None] * len(next_obs_batch) if dones_batch is None else dones_batch
+        _info_batch = [None] * len(next_obs_batch) if info_batch is None else info_batch
+        _t_batch = [None] * len(next_obs_batch) if t_batch is None else t_batch
 
         assert len(agent_ids) == len(env_ids) == len(next_obs_batch) == len(
-            reward_batch) == len(dones_batch) == len(info_batch), "All batched inputs must have the same first dimension"
+            _reward_batch) == len(_dones_batch) == len(_info_batch) == len(_t_batch), "All batched inputs must have the same first dimension"
 
         # Compute ACD list
         acd_list: List[AgentConnectorDataType] = []
-        for agent_obs, agent_reward, agent_done, agent_info, env_id, agent_id in zip(
-            next_obs_batch, reward_batch, dones_batch, info_batch, env_ids, agent_ids
+        for agent_obs, agent_reward, agent_done, agent_info, agent_t, env_id, agent_id in zip(
+            next_obs_batch, _reward_batch, _dones_batch, _info_batch, _t_batch, env_ids,
+            agent_ids
         ):
             values_dict = {
                 SampleBatch.ENV_ID: env_id,
@@ -649,6 +652,8 @@ class Policy(metaclass=ABCMeta):
                 values_dict[SampleBatch.DONES] = agent_done
             if agent_info is not None:
                 values_dict[SampleBatch.INFOS] = agent_info
+            if agent_t is not None:
+                values_dict[SampleBatch.T] = agent_t
 
             # Create one ACD per observation
             acd_list.append(
@@ -672,38 +677,53 @@ class Policy(metaclass=ABCMeta):
             for step_out in processed
         ]
 
-        actions = list()
-        rnn_states = list()
-        fetches = list()
+        actions = list()  # We return [BATCH_DIM, ACTION_DIM, ...]
+        rnn_states = list()  # We return [BATCH_DIM, STATE_DIM, ...]
+        fetches = defaultdict(list)  # We return a dict shaped similarly as
+        # {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
 
-        for output_data, env_id, agent_id, idx in zip(action_connector_input_data,
+        for output_data, env_id, agent_id, agent_idx in zip(action_connector_input_data,
                                                    env_ids,
-                                         agent_ids, range(len(env_ids))): # All
+                                         agent_ids, range(len(env_ids))):  # All
             # lengths of batched inputs assumed to be equal here, choice of env_ids is
-            # arbitrary here
+            # arbitrary
+
+            # Construct the "input_dict" manually here, since we have one input dict
+            # per agent
+            input_dict = {
+                    SampleBatch.NEXT_OBS: next_obs_batch,
+            }
+            if reward_batch is not None:
+                input_dict[SampleBatch.REWARDS] = reward_batch[agent_idx]
+            if dones_batch is not None:
+                input_dict[SampleBatch.DONES] = dones_batch[agent_idx]
+            if info_batch is not None:
+                input_dict[SampleBatch.INFOS] = info_batch[agent_idx]
+            if t_batch is not None:
+                input_dict[SampleBatch.T] = t_batch[agent_idx]
 
             #  Post-process policy output by running them through action connectors.
             ac_data = ActionConnectorDataType(
                 env_id="0",
                 agent_id="0",
-                input_dict={
-                    # Construct the "input_dict" manually here
-                    SampleBatch.NEXT_OBS: next_obs_batch,
-                    SampleBatch.REWARDS: reward_batch,
-                    SampleBatch.DONES: dones_batch,
-                    SampleBatch.INFOS: info_batch,
-                },
+                input_dict=input_dict,
                 output=output_data,
             )
 
             self.agent_connectors.on_policy_output(ac_data)
 
             _action, _rnn_state, _fetches = self.action_connectors(ac_data).output
-            actions.append(_action)
-            rnn_states.append(_rnn_state)
-            fetches.append(_fetches)
+            actions.extend(_action)
+            rnn_states.append(np.array(_rnn_state))
+            for key, item in _fetches.items():
+                fetches[key].append(np.array(item))
 
-        return actions, rnn_states, fetches
+        # Turn fetches into a dict and conform all batches inside into TensorType
+        fetches = dict(fetches)
+        for key, value in fetches.items():
+            fetches[key] = np.array(value)
+
+        return np.array(actions), rnn_states, fetches
 
     @property
     def action_connectors_created(self):
@@ -1635,7 +1655,7 @@ class Policy(metaclass=ABCMeta):
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size
+            sample_batch_size, original_space=self.config["enable_connectors"]
         )
 
         if not self.config["enable_connectors"]:
@@ -1644,10 +1664,12 @@ class Policy(metaclass=ABCMeta):
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=False
         )
+
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
-        # Add all extra action outputs to view reqirements (these may be
+
+        # Add all extra action outputs to view requirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
@@ -1662,8 +1684,10 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
             self.view_requirements[key].used_for_compute_actions = True
+        # Get a dummy batch that is transformed from the original space to the model
+        # input space already to initialize the loss with it
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size
+            sample_batch_size, original_space=False
         )
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
@@ -1788,20 +1812,22 @@ class Policy(metaclass=ABCMeta):
             )
 
     def _get_dummy_batch_from_view_requirements(
-        self, batch_size: int = 1
+        self, batch_size: int = 1, original_space: bool = True
     ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
             batch_size: The size of the batch to create.
+            original_space: If True, sample from the original space and in order to
+                let connectors transform into model input space
 
         Returns:
             Dict[str, TensorType]: The dummy batch containing all zero values.
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if self.config["enable_connectors"]:
-                # If there is an original space, we want to sample from it instead ifcase
+            if original_space:
+                # If there is an original space, we want to sample from it instead if
                 # we are using connectors, because these do the preprocessing
                 space = getattr(view_req.space, "original_space", view_req.space)
             else:
