@@ -102,12 +102,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = data.read_parquet(data_path)
     ckpt = XGBoostCheckpoint.from_model(booster=model)
     batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
-    result = batch_predictor.predict(
-        ds.drop_columns(["labels"]),
-        # Improve prediction throughput for xgboost with larger
-        # batch size than default 4096
-        batch_size=8192,
-    )
+    result = batch_predictor.predict(ds.drop_columns(["labels"]))
     return result
 
 
