@@ -534,7 +534,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             if ndim is not None and a.ndim != ndim:
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
-                    "all have the same number of dimensinos, but got tensor elements "
+                    "all have the same number of dimensions, but got tensor elements "
                     f"with dimensions: {ndim}, {a.ndim}"
                 )
             ndim = a.ndim
