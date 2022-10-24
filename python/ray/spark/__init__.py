@@ -546,46 +546,29 @@ def init_cluster(
     )
 
     def backgroud_job_thread_fn():
-        from pyspark.sql.utils import Py4JJavaError
 
-        _spark_log4j = spark.sparkContext._jvm.org.apache.log4j.LogManager.getLogger("ray.spark")
-
-        # TODO: decide whether to expose these as configurable env variables or args
-        max_retries = 5
-        retry_wait_seconds = 30
-
-        for restart in range(max_retries + 1):
-
-            try:
-                spark.sparkContext.setJobGroup(
-                    spark_job_group_id,
-                    "This job group is for spark job which runs the Ray cluster with ray head node "
-                    f"{ray_head_hostname}:{ray_head_port}",
-                )
-                spark.sparkContext.parallelize(
-                    list(range(num_spark_tasks)), num_spark_tasks
-                ).barrier().mapPartitions(ray_cluster_job_mapper).collect()
-            except Py4JJavaError as e:
-                if restart == max_retries:
-                    raise Exception("The Ray cluster has entered an unhealthy state and will not "
-                                    "restart again. Max retries exceeded.") from e
-                _spark_log4j.warn(f"A failure occurred in the Spark process running Ray. Retrying "
-                                  f"in {retry_wait_seconds} seconds. {restart} of {max_retries} "
-                                  f"retries")
-                time.sleep(retry_wait_seconds)
-            finally:
-                # NB:
-                # The background spark job is designed to running forever until it is killed,
-                # So this `finally` block is reachable only when:
-                #  1. The background job raises unexpected exception (i.e. ray worker nodes
-                #    failed unexpectedly)
-                #  2. User explicitly orders shutting down the ray cluster.
-                #  3. On Databricks runtime, when a notebook is detached, it triggers python REPL
-                #    `onCancel` event, cancelling the background running spark job
-                #  For case 1 and 3, only ray workers are killed, but driver side ray head might still
-                #  be running and the ray context might be in connected status. In order to disconnect
-                #  and kill the ray head node, a call to `ray_cluster_handler.shutdown()` is performed.
-                ray_cluster_handler.shutdown()
+        try:
+            spark.sparkContext.setJobGroup(
+                spark_job_group_id,
+                "This job group is for spark job which runs the Ray cluster with ray head node "
+                f"{ray_head_hostname}:{ray_head_port}",
+            )
+            spark.sparkContext.parallelize(
+                list(range(num_spark_tasks)), num_spark_tasks
+            ).mapPartitions(ray_cluster_job_mapper).collect()
+        finally:
+            # NB:
+            # The background spark job is designed to running forever until it is killed,
+            # So this `finally` block is reachable only when:
+            #  1. The background job raises unexpected exception (i.e. ray worker nodes
+            #    failed unexpectedly)
+            #  2. User explicitly orders shutting down the ray cluster.
+            #  3. On Databricks runtime, when a notebook is detached, it triggers python REPL
+            #    `onCancel` event, cancelling the background running spark job
+            #  For case 1 and 3, only ray workers are killed, but driver side ray head might still
+            #  be running and the ray context might be in connected status. In order to disconnect
+            #  and kill the ray head node, a call to `ray_cluster_handler.shutdown()` is performed.
+            ray_cluster_handler.shutdown()
 
     try:
         threading.Thread(
