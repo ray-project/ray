@@ -4008,14 +4008,8 @@ def _get_size_bytes(block: Block) -> int:
 
 
 def _block_to_df(block: Block):
-    from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
-
     block = BlockAccessor.for_block(block)
-    df = block.to_pandas()
-    ctx = DatasetContext.get_current()
-    if ctx.enable_tensor_extension_casting:
-        df = _cast_tensor_columns_to_ndarrays(df)
-    return df
+    return block.to_pandas()
 
 
 def _block_to_ndarray(block: Block, column: Optional[str]):
