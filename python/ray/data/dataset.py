@@ -2998,27 +2998,50 @@ class Dataset(Generic[T]):
 
         @dask.delayed
         def block_to_df(block: Block):
-            block = BlockAccessor.for_block(block)
             if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
                     "ray.util.dask)."
                 )
-            return block.to_pandas()
+            return _block_to_df(block)
 
         if meta is None:
+            from ray.data.extensions import TensorDtype
+
             # Infer Dask metadata from Datasets schema.
             schema = self.schema(fetch_if_missing=True)
             if isinstance(schema, PandasBlockSchema):
                 meta = pd.DataFrame(
                     {
-                        col: pd.Series(dtype=dtype)
+                        col: pd.Series(
+                            dtype=(
+                                dtype
+                                if not isinstance(dtype, TensorDtype)
+                                else np.object_
+                            )
+                        )
                         for col, dtype in zip(schema.names, schema.types)
                     }
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
-                meta = schema.empty_table().to_pandas()
+                from ray.data.extensions import ArrowTensorType
+
+                if any(isinstance(type_, ArrowTensorType) for type_ in schema.types):
+                    meta = pd.DataFrame(
+                        {
+                            col: pd.Series(
+                                dtype=(
+                                    dtype.to_pandas_dtype()
+                                    if not isinstance(dtype, ArrowTensorType)
+                                    else np.object_
+                                )
+                            )
+                            for col, dtype in zip(schema.names, schema.types)
+                        }
+                    )
+                else:
+                    meta = schema.empty_table().to_pandas()
 
         ddf = dd.from_delayed(
             [block_to_df(block) for block in self.get_internal_block_refs()],
@@ -3112,7 +3135,6 @@ class Dataset(Generic[T]):
             A Pandas DataFrame created from this dataset, containing a limited
             number of records.
         """
-
         count = self.count()
         if count > limit:
             raise ValueError(
@@ -3125,7 +3147,8 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        return BlockAccessor.for_block(output.build()).to_pandas()
+        block = output.build()
+        return _block_to_df(block)
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

@@ -93,7 +93,10 @@ class TestReadImages:
 
         df = ds.to_pandas()
         assert sorted(df["label"]) == ["cat", "cat", "dog"]
-        assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
+        if enable_automatic_tensor_extension_cast:
+            assert all(tensor.shape == (32, 32, 3) for tensor in df["image"])
+        else:
+            assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
     def test_e2e_prediction(self, ray_start_regular_shared):
         from ray.train.torch import TorchCheckpoint, TorchPredictor
