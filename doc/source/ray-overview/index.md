@@ -34,6 +34,25 @@ To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/i
 Want to build Ray from source or with docker? Need more details? 
 Check out our detailed [installation guide](installation.rst).
 
+## Starting your first local Ray cluster
+
+```{raw} html
+
+<div class="termynal" data-termynal>
+    <span data-ty="input">pip install ray</span>
+    <span data-ty="progress"></span>
+    <span data-ty>Successfully installed ray</span>
+    <span data-ty="input">python</span>
+    <span data-ty="input" data-ty-prompt=">>>">import ray; ray.init()</span>
+    <span data-ty>
+        ... INFO worker.py:1509 -- Started a local Ray instance.
+        View the dashboard at 127.0.0.1:8265
+        ...
+    </span>
+</div>
+
+```
+
 ## Ray AI Runtime Quick Start
 
 `````{dropdown} Efficiently process your data into features.
