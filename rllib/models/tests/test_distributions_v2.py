@@ -1,8 +1,9 @@
 from copy import copy
 import numpy as np
 import unittest
+import math
 
-from ray.rllib.models.torch.torch_action_dist_v2 import (
+from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDeterministic,
@@ -165,15 +166,13 @@ class TestDistributions(unittest.TestCase):
         # check logp values
         expected = (
             -0.5 * ((sample - loc_tens) / scale_tens).pow(2).sum(-1)
-            + -0.5 * ndim * torch.log(2 * torch.tensor([torch.pi]))
+            + -0.5 * ndim * math.log(2 * math.pi)
             - scale_tens.log().sum(-1)
         )
         check(dist.logp(sample), expected)
 
         # check entropy
-        expected = 0.5 * ndim * (
-            1 + torch.log(2 * torch.tensor([torch.pi]))
-        ) + scale_tens.log().sum(-1)
+        expected = 0.5 * ndim * (1 + math.log(2 * math.pi)) + scale_tens.log().sum(-1)
         check(dist.entropy(), expected)
 
         # check kl

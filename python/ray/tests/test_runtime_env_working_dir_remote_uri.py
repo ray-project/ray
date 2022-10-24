@@ -74,6 +74,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
         assert ray.get(a.test_import.remote()) == 2
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):

@@ -1,3 +1,4 @@
+import json
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict, Set, Optional
 from ray._private.runtime_env.packaging import parse_uri
@@ -7,7 +8,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     StatusOverview,
 )
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -346,6 +347,53 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "runtime_env": {},
             "deployments": [],
         }
+
+    def kubernetes_dict(self, **kwargs) -> Dict:
+        """Returns dictionary in Kubernetes format.
+
+        Dictionary can be yaml-dumped to a Serve config file directly and then
+        copy-pasted into a RayService Kubernetes config.
+
+        Args: all kwargs are passed directly into schema's dict() function.
+        """
+
+        config = self.dict(**kwargs)
+        for idx, deployment in enumerate(config["deployments"]):
+
+            if isinstance(deployment.get("ray_actor_options"), dict):
+
+                # JSON-serialize ray_actor_options' resources dictionary
+                if isinstance(deployment["ray_actor_options"].get("resources"), dict):
+                    deployment["ray_actor_options"]["resources"] = json.dumps(
+                        deployment["ray_actor_options"]["resources"]
+                    )
+
+                # JSON-serialize ray_actor_options' runtime_env dictionary
+                if isinstance(deployment["ray_actor_options"].get("runtime_env"), dict):
+                    deployment["ray_actor_options"]["runtime_env"] = json.dumps(
+                        deployment["ray_actor_options"]["runtime_env"]
+                    )
+
+                # Convert ray_actor_options' keys
+                deployment["ray_actor_options"] = dict_keys_snake_to_camel_case(
+                    deployment["ray_actor_options"]
+                )
+
+            # JSON-serialize user_config dictionary
+            if isinstance(deployment.get("user_config"), dict):
+                deployment["user_config"] = json.dumps(deployment["user_config"])
+
+            # Convert deployment's keys
+            config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
+
+        # Convert top-level runtime_env
+        if isinstance(config.get("runtime_env"), dict):
+            config["runtime_env"] = json.dumps(config["runtime_env"])
+
+        # Convert top-level option's keys
+        config = dict_keys_snake_to_camel_case(config)
+
+        return config
 
 
 @PublicAPI(stability="beta")
