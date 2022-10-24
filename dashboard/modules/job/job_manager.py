@@ -551,12 +551,10 @@ class JobManager:
             )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id_bytes = (
-                await self._gcs_aio_client.internal_kv_get(
-                    "head_node_id".encode(),
-                    namespace=ray_constants.KV_NAMESPACE_JOB,
-                    timeout=30,
-                )
+            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
+                "head_node_id".encode(),
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=30,
             )
             if head_node_id_bytes is None:
                 logger.info(
