@@ -12,7 +12,7 @@ from ray.air.experimental.execution.resources.request import (
 class ActorRequest:
     cls: Type
     kwargs: Dict
-    resources: ResourceRequest
+    resource_request: ResourceRequest
 
     def __hash__(self):
         return hash(id(self))
@@ -24,7 +24,7 @@ class ActorRequest:
 @dataclass
 class ActorInfo:
     actor_request: ActorRequest
-    used_resource: AllocatedResource
+    allocated_resource: AllocatedResource
 
     def __hash__(self):
         return hash(id(self))

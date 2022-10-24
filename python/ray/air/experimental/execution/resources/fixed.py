@@ -86,31 +86,33 @@ class FixedResourceManager(ResourceManager):
                 ) / _DIGITS
         return available_resources
 
-    def request_resources(self, resources: ResourceRequest):
+    def request_resources(self, resource_request: ResourceRequest):
         pass
 
-    def cancel_resource_request(self, resources: ResourceRequest):
+    def cancel_resource_request(self, resource_request: ResourceRequest):
         pass
 
-    def has_resources_ready(self, resources: ResourceRequest) -> bool:
+    def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
         available_resources = self._available_resources
-        all_resources = _sum_bundle_resources(resources.bundles)
+        all_resources = _sum_bundle_resources(resource_request.bundles)
         for k, v in all_resources.items():
             if available_resources[k] < v:
                 return False
         return True
 
     def acquire_resources(
-        self, resources: ResourceRequest
+        self, resource_request: ResourceRequest
     ) -> Optional[AllocatedResource]:
-        if not self.has_resources_ready(resources):
+        if not self.has_resources_ready(resource_request):
             return None
 
-        self._used_resources.append(resources)
-        return self._resource_cls(bundles=resources.bundles, request=resources)
+        self._used_resources.append(resource_request)
+        return self._resource_cls(
+            bundles=resource_request.bundles, resource_request=resource_request
+        )
 
     def return_resources(
-        self, ready_resources: AllocatedResource, cancel_request: bool = True
+        self, allocated_resources: AllocatedResource, cancel_request: bool = True
     ):
-        resources = ready_resources.request
+        resources = allocated_resources.resource_request
         self._used_resources.remove(resources)

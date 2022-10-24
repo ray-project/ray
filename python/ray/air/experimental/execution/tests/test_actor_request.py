@@ -8,17 +8,17 @@ def test_request_not_same():
     """Test that actor requests are not the same if they share the same properties."""
     resource_request = ResourceRequest([{"CPU": 1}])
 
-    assert ActorRequest(cls=None, kwargs={}, resources=None) != ActorRequest(
-        cls=None, kwargs={}, resources=None
+    assert ActorRequest(cls=None, kwargs={}, resource_request=None) != ActorRequest(
+        cls=None, kwargs={}, resource_request=None
     )
 
     assert ActorRequest(
-        cls=None, kwargs={}, resources=resource_request
-    ) != ActorRequest(cls=None, kwargs={}, resources=resource_request)
+        cls=None, kwargs={}, resource_request=resource_request
+    ) != ActorRequest(cls=None, kwargs={}, resource_request=resource_request)
 
     assert ActorRequest(
-        cls=Exception, kwargs={}, resources=resource_request
-    ) != ActorRequest(cls=Exception, kwargs={}, resources=resource_request)
+        cls=Exception, kwargs={}, resource_request=resource_request
+    ) != ActorRequest(cls=Exception, kwargs={}, resource_request=resource_request)
 
 
 if __name__ == "__main__":

@@ -367,7 +367,7 @@ class ActorManager:
         info = self._actor_to_info.pop(actor)
 
         # Return resources
-        self._resource_manager.return_resources(info.used_resource)
+        self._resource_manager.return_resources(info.allocated_resource)
 
         if exception:
             event = ActorFailed(actor=actor, actor_info=info, exception=exception)
@@ -514,17 +514,19 @@ class ActorManager:
     def _start_new_actors(self):
         new_actor_requests = []
         for actor_request in self._actor_requests:
-            if self._resource_manager.has_resources_ready(actor_request.resources):
-                ready_resource = self._resource_manager.acquire_resources(
-                    actor_request.resources
+            if self._resource_manager.has_resources_ready(
+                actor_request.resource_request
+            ):
+                allocated_resource = self._resource_manager.acquire_resources(
+                    actor_request.resource_request
                 )
                 remote_actor_cls = ray.remote(actor_request.cls)
-                [annotated_actor_cls] = ready_resource.annotate_remote_objects(
+                [annotated_actor_cls] = allocated_resource.annotate_remote_objects(
                     [remote_actor_cls]
                 )
                 actor = annotated_actor_cls.remote(**actor_request.kwargs)
                 actor_info = ActorInfo(
-                    actor_request=actor_request, used_resource=ready_resource
+                    actor_request=actor_request, used_resource=allocated_resource
                 )
                 self._actor_to_info[actor] = actor_info
                 self._active_actors.add(actor)

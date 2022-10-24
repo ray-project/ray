@@ -14,26 +14,26 @@ class ResourceManager(abc.ABC):
         """Return futures for resources to await."""
         return []
 
-    def request_resources(self, resources: ResourceRequest):
+    def request_resources(self, resource_request: ResourceRequest):
         """Request resources, e.g. schedule placement group."""
         raise NotImplementedError
 
-    def cancel_resource_request(self, resources: ResourceRequest):
+    def cancel_resource_request(self, resource_request: ResourceRequest):
         """Cancel resource request, e.g. remove placement group."""
         raise NotImplementedError
 
-    def has_resources_ready(self, resources: ResourceRequest) -> bool:
+    def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
         """Returns True if resources for the given request are available"""
         raise NotImplementedError
 
     def acquire_resources(
-        self, resources: ResourceRequest
+        self, resource_request: ResourceRequest
     ) -> Optional[AllocatedResource]:
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 
     def return_resources(
-        self, ready_resources: AllocatedResource, cancel_request: bool = True
+        self, allocated_resources: AllocatedResource, cancel_request: bool = True
     ):
         """Return resources to resource pool."""
         raise NotImplementedError

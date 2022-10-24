@@ -25,7 +25,7 @@ class AllocatedResource:
     other than the `request` should be private.
     """
 
-    request: ResourceRequest
+    resource_request: ResourceRequest
 
     def annotate_remote_objects(self, actor_classes: List[Type]) -> List[Type]:
         """Return actor class with options set to use the available resources"""

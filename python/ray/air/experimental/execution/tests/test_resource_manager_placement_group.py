@@ -105,7 +105,7 @@ def test_acquire_return_resources(ray_start_4_cpus):
     assert pg_states["REMOVED"] == 0
 
     # Cancel request
-    manager.cancel_resource_request(acquired.request)
+    manager.cancel_resource_request(acquired.resource_request)
 
     assert not manager.has_resources_ready(REQUEST_2_CPU)
 
