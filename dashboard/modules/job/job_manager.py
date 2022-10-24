@@ -566,7 +566,10 @@ class JobManager:
                 )
                 scheduling_strategy = "DEFAULT"
             else:
-                logger.info(f"Head node ID found in GCS: {head_node_id}")
+                logger.info(
+                    "Head node ID found in GCS; scheduling job driver on "
+                    f"head node {head_node_id} with soft=True"
+                )
                 scheduling_strategy = NodeAffinitySchedulingStrategy(
                     node_id=head_node_id, soft=True
                 )
