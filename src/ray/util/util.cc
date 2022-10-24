@@ -33,6 +33,15 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 
+#define PRINT_MACRO_HELPER(x) #x
+#define PRINT_MACRO(x) #x "=" PRINT_MACRO_HELPER(x)
+
+#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
+#pragma message(PRINT_MACRO(BOOST_ASIO_DISABLE_LOCAL_SOCKETS))
+#pragma message(PRINT_MACRO(BOOST_ASIO_WINDOWS_RUNTIME))
+#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
+#pragma message(PRINT_MACRO(_WIN32))
+
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
