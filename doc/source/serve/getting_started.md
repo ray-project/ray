@@ -25,7 +25,7 @@ If you have suggestions on how to improve this tutorial,
 To run this example, you will need to install the following:
 
 ```bash
-pip install "ray[serve]" transformers requests
+pip install "ray[serve]" transformers requests torch
 ```
 
 
@@ -224,7 +224,7 @@ translation = ray.get(translation_ref)
 
 `self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `ray.get(translation_ref)` waits for `translate` to execute and returns the value of that execution.
 
-We compose our graph in line 50:
+We compose our graph in line 52:
 
 ```python
 deployment_graph = Summarizer.bind(Translator.bind())
