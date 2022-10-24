@@ -476,7 +476,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
-            RAY_LOG(INFO)
+            RAY_LOG_EVERY_MS(INFO, 2 * 1000)
                 << "Retrying attempt to schedule task at remote node. Try again "
                    "on a local node. Error: "
                 << status.ToString();
