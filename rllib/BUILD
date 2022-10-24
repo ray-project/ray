@@ -1754,7 +1754,7 @@ py_test(
     name = "test_check_specs",
     tags = ["team:rllib", "models"],
     size = "medium",
-    srcs = ["models/tests/test_check_specs.py"]
+    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
