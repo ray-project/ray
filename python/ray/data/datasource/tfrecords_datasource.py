@@ -218,12 +218,12 @@ def _write_record(
     length = len(record)
     length_bytes = struct.pack("<Q", length)
     file.write(length_bytes)
-    file.write(masked_crc(length_bytes))
+    file.write(_masked_crc(length_bytes))
     file.write(record)
-    file.write(masked_crc(record))
+    file.write(_masked_crc(record))
 
 
-def masked_crc(data: bytes) -> bytes:
+def _masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
     import crc32c
 
