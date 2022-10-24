@@ -135,6 +135,11 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
                             spec_name, type(data_to_validate).__name__, spec.__name__
                         )
                     )
+            else:
+                raise ValueError(
+                    f"The spec type has to be either TensorSpec or Type. "
+                    f"got {type(spec)}"
+                )
 
     @override(NestedDict)
     def __repr__(self) -> str:
