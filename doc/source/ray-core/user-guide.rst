@@ -13,8 +13,7 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     tasks
     actors
     objects
-    placement-group
+    scheduling/index.rst
     handling-dependencies
-    monitoring-debugging/monitoring-debugging
     patterns/index.rst
     advanced-topics

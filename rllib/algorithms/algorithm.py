@@ -26,6 +26,7 @@ from typing import (
     Type,
     Union,
 )
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 import tree
 
 import ray
@@ -680,14 +681,16 @@ class Algorithm(Trainable):
                 mod, obj = method_type.rsplit(".", 1)
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
+
             if isinstance(method_type, type) and issubclass(
-                method_type, OffPolicyEstimator
+                method_type, OfflineEvaluator
             ):
+                # TODO(kourosh) : Add an integration test for all these
+                # offline evaluators.
                 policy = self.get_policy()
-                gamma = self.config["gamma"]
-                self.reward_estimators[name] = method_type(
-                    policy, gamma, **method_config
-                )
+                if issubclass(method_type, OffPolicyEstimator):
+                    method_config["gamma"] = self.config["gamma"]
+                self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
@@ -2732,6 +2735,8 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
+        else:
+            state["counters"] = self._counters
 
         return state
 
@@ -2780,6 +2785,8 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
+        elif "counters" in state:
+            self._counters = state["counters"]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
@@ -3150,6 +3157,7 @@ class Algorithm(Trainable):
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
             # TODO: Backward compatibility.
             results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
