@@ -268,7 +268,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
             return Response(
-                text="Not Available agent to submit job!",
+                text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
