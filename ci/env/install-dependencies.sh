@@ -317,7 +317,7 @@ install_pip_packages() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -c "${WORKSPACE_DIR}"/python/requirements.txt -U -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
