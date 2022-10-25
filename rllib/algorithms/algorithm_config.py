@@ -392,10 +392,12 @@ class AlgorithmConfig:
                     if k in value
                 }
                 self.multi_agent(**kwargs)
-            # "model" key, must use `.update()` from given model config dict
-            # (to not lose any keys).
+            # Some keys must use `.update()` from given config dict (to not lose
+            # any sub-keys).
             elif key == "model":
                 self.training(model=value)
+            elif key == "env_config":
+                self.environment(env_config=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -674,7 +676,11 @@ class AlgorithmConfig:
         if env is not None:
             self.env = env
         if env_config is not None:
-            self.env_config.update(env_config)
+            deep_update(
+                self.env_config,
+                env_config,
+                True,
+            )
         if observation_space is not None:
             self.observation_space = observation_space
         if action_space is not None:
@@ -1111,8 +1117,14 @@ class AlgorithmConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            self.evaluation_config = merge_dicts(
-                self.evaluation_config or {}, evaluation_config
+            from ray.rllib.algorithms.algorithm import Algorithm
+            self.evaluation_config = deep_update(
+                self.evaluation_config or {},
+                evaluation_config,
+                True,
+                Algorithm._allow_unknown_subkeys,
+                Algorithm._override_all_subkeys_if_type_changes,
+                Algorithm._override_all_key_list,
             )
         if off_policy_estimation_methods is not None:
             self.off_policy_estimation_methods = off_policy_estimation_methods
