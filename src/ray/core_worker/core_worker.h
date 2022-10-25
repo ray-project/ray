@@ -68,6 +68,7 @@ class TaskCounter {
 
  public:
   void RecordMetrics() {
+    absl::MutexLock l(&mu_);
     // Track the number of running tasks per name.
     counter_.ForEachEntry([this](const std::pair<std::string, TaskStatusType> &key,
                                  int64_t value) EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
