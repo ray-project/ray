@@ -37,7 +37,9 @@ TEST_NAMESPACE = "jobs_test_namespace"
     indirect=True,
 )
 @pytest.mark.parametrize("resources_specified", [True, False])
-async def test_get_scheduling_strategy(call_ray_start, monkeypatch, resources_specified):  # noqa: F811
+async def test_get_scheduling_strategy(
+    call_ray_start, monkeypatch, resources_specified  # noqa: F811
+):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
