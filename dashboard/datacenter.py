@@ -107,6 +107,7 @@ class DataOrganizer:
 
     @classmethod
     async def get_node_workers(cls, node_id):
+        logger.info("get node workers")
         workers = []
         node_ip = DataSource.node_id_to_ip[node_id]
         node_log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
@@ -129,7 +130,7 @@ class DataOrganizer:
         dead_pids = set(node_log_counts.keys()) - pids_on_node
         for dead_pid in dead_pids:
             if dead_pid in node_log_counts:
-                node_log_counts.mutable().pop(dead_pid)
+                node_log_counts.pop(dead_pid)
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
