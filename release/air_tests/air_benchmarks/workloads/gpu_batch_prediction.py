@@ -43,9 +43,7 @@ def main(data_size_gb: int):
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-    predictor.predict(
-        dataset, num_gpus_per_worker=1, feature_columns=["image"], batch_size=512
-    )
+    predictor.predict(dataset, num_gpus_per_worker=1, feature_columns=["image"])
     total_time_s = round(time.time() - start, 2)
 
     # For structured output integration with internal tooling
