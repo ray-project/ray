@@ -163,8 +163,8 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
-def test_predict_batch(ray_start_4_cpus, batch_type):
+@pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
+def test_predict_dataset_block(ray_start_4_cpus, block_type, use_state_dict):
     checkpoint = TensorflowCheckpoint.from_model(model=build_model_multi_input())
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model_multi_input
@@ -172,12 +172,9 @@ def test_predict_batch(ray_start_4_cpus, batch_type):
 
     dummy_data = pd.DataFrame([[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["A", "B"])
 
-    # Todo: Ray data does not support numpy dicts
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data.to_numpy())
-    elif batch_type == pd.DataFrame:
+    if block_type == pd.DataFrame:
         dataset = ray.data.from_pandas(dummy_data)
-    elif batch_type == pa.Table:
+    elif block_type == pa.Table:
         dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
     else:
         raise RuntimeError("Invalid batch_type")
