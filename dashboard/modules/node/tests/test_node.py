@@ -209,12 +209,9 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         assert len(node.get("actors")) == 2
         # Workers information should be in the detailed payload
         assert "workers" in node
-        assert "logCount" in node
         # Two lines printed by ActorWithObjs
-        assert node["logCount"] >= 2
         print(node["workers"])
         assert len(node["workers"]) == 2
-        assert node["workers"][0]["logCount"] == 1
 
     while True:
         time.sleep(1)
