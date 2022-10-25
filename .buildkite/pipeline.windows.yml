@@ -28,7 +28,7 @@ upload_wheels_if_needed: &upload_wheels_if_needed |-
 
 steps:
 - label: ":windows: Build & Test"
-  parallelism: 6
+  parallelism: 12
   commands:
     - *prelude_commands
     # conda init should be moved to the docker image setup
