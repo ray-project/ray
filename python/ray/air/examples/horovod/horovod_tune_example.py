@@ -5,6 +5,7 @@ import torch
 import ray
 from ray import tune
 from ray.air import session
+import ray.train.torch
 from ray.train.horovod import HorovodTrainer
 from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
