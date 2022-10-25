@@ -75,7 +75,7 @@ class MockPolicy(RandomPolicy):
 
 class BadPolicy(RandomPolicy):
     @override(RandomPolicy)
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch,
         state_batches=None,
