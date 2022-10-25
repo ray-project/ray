@@ -2691,11 +2691,16 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            policies_dict = state["config"]["multiagent"]["policies"]
-            policies_dict = {
-                pid: spec for pid, spec in policies_dict.items() if pid in policy_ids
-            }
-            state["config"]["multiagent"]["policies"] = policies_dict
+            new_config = AlgorithmConfig.from_dict(state["config"])
+            new_policies = new_config.policies
+            if isinstance(new_policies, (set, list, tuple)):
+                new_policies = {pid for pid in new_policies if pid in policy_ids}
+            else:
+                new_policies = {
+                    pid: spec for pid, spec in new_policies.items() if pid in policy_ids
+                }
+            new_config.multi_agent(policies=new_policies)
+            state["config"] = new_config.to_dict()
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.

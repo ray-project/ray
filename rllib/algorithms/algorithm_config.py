@@ -1706,7 +1706,8 @@ class AlgorithmConfig:
                 policy_class property set to None.
 
         Returns:
-            A new MultiAgentPolicyConfigDict.
+            A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
+            `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
         """
         policies = copy.deepcopy(policies or self.policies)
 
