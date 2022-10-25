@@ -91,10 +91,19 @@ class JobInfo:
     def __post_init__(self):
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = (
-                    "Job has not started yet, likely waiting "
-                    "for the runtime_env to be set up."
-                )
+                self.message = "Job has not started yet."
+                if any(
+                    [
+                        self.num_cpus is not None and self.num_cpus > 0,
+                        self.num_gpus is not None and self.num_gpus > 0,
+                        self.resources not in [None, {}],
+                    ]
+                ):
+                    self.message += " It may be waiting for resources to become available. Check with `ray status`"
+                if self.runtime_env not in [None, {}]:
+                    self.message += (
+                        " It may be waiting for the runtime environment to be set up."
+                    )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
