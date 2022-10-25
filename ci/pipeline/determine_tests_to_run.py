@@ -100,6 +100,9 @@ if __name__ == "__main__":
     RAY_CI_DOC_AFFECTED = 0
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
     RAY_CI_TOOLS_AFFECTED = 0
+    RAY_CI_DATA_AFFECTED = 0
+    RAY_CI_WORKFLOW_AFFECTED = 0
+    RAY_CI_RELEASE_TESTS_AFFECTED = 0
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -135,7 +138,6 @@ if __name__ == "__main__":
             "examples/",
             "dev/",
             "kubernetes/",
-            "release/",
             "site/",
         ]
 
@@ -147,7 +149,16 @@ if __name__ == "__main__":
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/data"):
+                RAY_CI_DATA_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/workflow"):
+                RAY_CI_WORKFLOW_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
@@ -184,6 +195,8 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_WORKFLOW_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -214,6 +227,15 @@ if __name__ == "__main__":
                 # we pass, as the flag RAY_CI_DOC_AFFECTED is only
                 # used to indicate that tests/examples should be run
                 # (documentation will be built always)
+            elif changed_file.startswith("release/"):
+                if changed_file.startswith("release/ray_release"):
+                    # Release test unit tests are ALWAYS RUN, so pass
+                    pass
+                elif not changed_file.endswith(".yaml") and not changed_file.endswith(
+                    ".md"
+                ):
+                    # Do not run on config changes
+                    RAY_CI_RELEASE_TESTS_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
@@ -243,6 +265,7 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
+                RAY_CI_RELEASE_TESTS_AFFECTED = 1
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
@@ -265,6 +288,8 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
+                RAY_CI_RELEASE_TESTS_AFFECTED = 1
+
     else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
@@ -281,6 +306,9 @@ if __name__ == "__main__":
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
         RAY_CI_TOOLS_AFFECTED = 1
+        RAY_CI_WORKFLOW_AFFECTED = 1
+        RAY_CI_DATA_AFFECTED = 1
+        RAY_CI_RELEASE_TESTS_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
     output_string = " ".join(
@@ -305,6 +333,9 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_DEPENDENCIES_AFFECTED
             ),
             "RAY_CI_TOOLS_AFFECTED={}".format(RAY_CI_TOOLS_AFFECTED),
+            "RAY_CI_WORKFLOW_AFFECTED={}".format(RAY_CI_WORKFLOW_AFFECTED),
+            "RAY_CI_DATA_AFFECTED={}".format(RAY_CI_DATA_AFFECTED),
+            "RAY_CI_RELEASE_TESTS_AFFECTED={}".format(RAY_CI_RELEASE_TESTS_AFFECTED),
         ]
     )
 

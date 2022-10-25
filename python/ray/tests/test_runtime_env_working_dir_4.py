@@ -95,7 +95,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
+                "worker_register_timeout_seconds": 0.5,
             },
         },
         {
@@ -105,7 +105,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
+                "worker_register_timeout_seconds": 0.5,
             },
         },
     ],
