@@ -475,9 +475,7 @@ class JobManager:
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
-                        message=(
-                            f"Job supervisor actor could not be scheduled: {e}"
-                        ),
+                        message=(f"Job supervisor actor could not be scheduled: {e}"),
                     )
                 else:
                     logger.warning(

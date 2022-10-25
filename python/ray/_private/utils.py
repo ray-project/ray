@@ -1368,6 +1368,8 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
 def parse_resources_json(resources: str, cli_logger, cf) -> Dict[str, float]:
     try:
         resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
     except Exception:
         cli_logger.error("`{}` is not a valid JSON string.", cf.bold("--resources"))
         cli_logger.abort(

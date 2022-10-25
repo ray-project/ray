@@ -231,6 +231,74 @@ class TestSubmit:
             assert result.exit_code == 0
             assert mock_client_instance.called_with(submission_id="my_job_id")
 
+    def test_num_cpus(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--num-cpus=2", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                num_cpus=2,
+                num_gpus=None,
+                resources=None,
+            )
+
+    def test_num_gpus(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--num-gpus=2", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                num_cpus=None,
+                num_gpus=2,
+                resources=None,
+            )
+
+    @pytest.mark.parametrize(
+        "resources",
+        [
+            ("--num-cpus=2", {"num_cpus": 2}),
+            ("--num-gpus=2", {"num_gpus": 2}),
+            ("""--resources={"Custom":3}""", {"resources": {"Custom": 3}}),
+        ],
+    )
+    def test_resources(self, mock_sdk_client, resources):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", resources[0], "--", "echo hello"],
+            )
+            print(result.output)
+            assert result.exit_code == 0
+            expected_kwargs = {
+                "entrypoint": '"echo hello"',
+                "submission_id": None,
+                "runtime_env": {},
+                "num_cpus": None,
+                "num_gpus": None,
+                "resources": None,
+            }
+            expected_kwargs.update(resources[1])
+            mock_client_instance.submit_job.assert_called_with(**expected_kwargs)
+
 
 if __name__ == "__main__":
     import sys
