@@ -46,24 +46,29 @@ def headers():
 
 @pytest.fixture(scope="module")
 def job_sdk_client(headers):
-    with _ray_start(
-        include_dashboard=True, num_cpus=1, num_gpus=1, resources={"Custom": 1}
-    ) as ctx:
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 @pytest.fixture
-def stop_all_jobs(job_sdk_client):
-    yield
-    for job in job_sdk_client.list_jobs():
-        if job.type == JobType.SUBMISSION:
-            job_sdk_client.stop_job(job.submission_id)
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
-def test_submit_job_with_resources(job_sdk_client, stop_all_jobs):
-    client = job_sdk_client
+def test_submit_job_with_resources(shutdown_only):
+    ctx = ray.init(
+        include_dashboard=True,
+        num_cpus=1,
+        num_gpus=1,
+        resources={"Custom": 1},
+        dashboard_port=8269,
+    )
+    address = ctx.address_info["webui_url"]
+    client = JobSubmissionClient(format_web_url(address))
     # Check the case of too many resources.
     for kwargs in [
         {"num_cpus": 2},
