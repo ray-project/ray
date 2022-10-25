@@ -73,7 +73,9 @@ const Dashboard: React.FC = () => {
       dispatch(setActorGroups(actorGroups));
       dispatch(setError(null));
     } catch (error) {
-      dispatch(setError(error.toString()));
+      if (error instanceof Error) {
+        dispatch(setError(error.toString()));
+      }
     }
   }, [dispatch]);
 

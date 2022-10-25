@@ -51,7 +51,7 @@ const LogicalView: React.FC = () => {
   const filteredGroups =
     debouncedNameFilter === ""
       ? Object.entries(actorGroups)
-      : Object.entries(actorGroups).filter(([key, _]) =>
+      : Object.entries(actorGroups).filter(([key]) =>
           actorClassMatchesSearch(key, debouncedNameFilter),
         );
   return (

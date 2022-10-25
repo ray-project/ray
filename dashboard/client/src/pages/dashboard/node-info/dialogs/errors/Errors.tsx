@@ -55,7 +55,9 @@ class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
       const result = await getErrors(nodeIp, pid);
       this.setState({ result: result.errors, error: null });
     } catch (error) {
-      this.setState({ result: null, error: error.toString() });
+      if (error instanceof Error) {
+        this.setState({ result: null, error: error.toString() });
+      }
     }
   }
 

@@ -90,7 +90,7 @@ const fetchMemoryTable = (
   };
 };
 
-const MemoryInfo: React.FC<{}> = () => {
+const MemoryInfo: React.FC = () => {
   const memoryTable = useSelector(memoryTableSelector);
   const dispatch = useDispatch();
   const mountedAt = new Date();

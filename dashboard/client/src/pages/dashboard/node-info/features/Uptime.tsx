@@ -13,7 +13,7 @@ import {
 
 const getUptime = (bootTime: number) => Date.now() / 1000 - bootTime;
 
-export const ClusterUptime: ClusterFeatureRenderFn = ({ nodes }) => (
+export const ClusterUptime: ClusterFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
