@@ -142,8 +142,6 @@ class TestRLModule(unittest.TestCase):
                     config = get_separate_encoder_config(env)
 
                 module = SimplePPOModule(config)
-                module.to("cpu")
-                module.train()
 
                 # collect a batch of data
                 batch = []
@@ -169,6 +167,10 @@ class TestRLModule(unittest.TestCase):
                 fwd_in = {k: to_tensor(np.array(v)) for k, v in batch.items()}
 
                 # forward train
+                # before training make sure it's on the right device and it's on
+                # trianing mode
+                module.to("cpu")
+                module.train()
                 fwd_out = module.forward_train(fwd_in)
                 loss = get_ppo_loss(fwd_in, fwd_out)
                 loss.backward()
