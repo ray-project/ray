@@ -96,13 +96,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
-    task_counter_.SetOnChangeCallback(
-        [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
-          ray::stats::STATS_tasks.Record(value,
-                                         {{"State", rpc::TaskStatus_Name(key.second)},
-                                          {"Name", key.first},
-                                          {"Source", "owner"}});
-        });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -290,6 +283,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;
+
+  /// Record OCL metrics.
+  void RecordMetrics();
 
  private:
   struct TaskEntry {
