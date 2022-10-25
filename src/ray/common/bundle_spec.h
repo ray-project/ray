@@ -144,4 +144,8 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     const rpc::SchedulingStrategy &scheduling_strategy);
 
+/// Get the group id (as in resources like `CPU_group_${group_id}`) of the placement group
+/// resource.
+std::string GetGroupIDFromResource(const std::string &resource);
+
 }  // namespace ray

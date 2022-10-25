@@ -1306,6 +1306,24 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest(
+      /*name=*/"", /*strategy=*/rpc::PlacementStrategy::SPREAD, /*bundles_count=*/1);
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
+  int wildcard_resource_count = 0;
+  for (const auto &bundle_spec : placement_group->GetBundles()) {
+    for (const auto &resource_entry : bundle_spec->GetFormattedResources()) {
+      if (scheduler_->IsPlacementGroupWildcardResource(resource_entry.first)) {
+        wildcard_resource_count++;
+      }
+    }
+  }
+  // The bundle should have two wildcard resources (CPU_group_{placement_group_id} and
+  // bundle_group_{placement_group_id}).
+  ASSERT_EQ(wildcard_resource_count, 2);
+}
+
 TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
   // This feature is only required by gcs actor scheduler.
   RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");

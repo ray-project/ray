@@ -1181,17 +1181,17 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
 
 bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
+  // Trigger local GC at the next heartbeat interval.
+  if (resource_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
     return false;
-  }
-
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
   }
 
   return true;

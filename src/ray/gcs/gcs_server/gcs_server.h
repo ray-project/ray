@@ -34,6 +34,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -170,6 +171,8 @@ class GcsServer {
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
+  void TryGlobalGC();
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
@@ -268,6 +271,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int task_pending_schedule_detected_ = 0;
+  /// Throttler for global gc
+  std::unique_ptr<Throttler> global_gc_throttler_;
 };
 
 }  // namespace gcs
