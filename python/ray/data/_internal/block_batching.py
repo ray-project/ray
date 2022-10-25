@@ -88,8 +88,7 @@ def batch_blocks(
             # NOTE: Since we add one block at a time and then immediately consume
             # batches, we don't need to check batcher.can_add() before adding the block;
             # it will always be True, and batcher.add() will assert this internally.
-            if BlockAccessor.for_block(block).num_rows() > 0:
-                batcher.add(block)
+            batcher.add(block)
         else:
             batcher.done_adding()
         while batcher.has_batch():
