@@ -193,7 +193,7 @@ class AgentCollector:
 
         # Default to next timestep if not provided in input values
         if SampleBatch.T not in input_values:
-            input_values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
+            values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
