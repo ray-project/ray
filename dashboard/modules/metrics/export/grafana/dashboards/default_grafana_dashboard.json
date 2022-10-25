@@ -87,7 +87,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_tasks) by (State)",
+          "expr": "sum(max_over_time(ray_tasks{State=~\"FINISHED|FAILED\"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~\"FINISHED|FAILED\"}) by (State), 0)",
           "interval": "",
           "legendFormat": "{{State}}",
           "queryType": "randomWalk",
@@ -697,7 +697,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_gpus_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
