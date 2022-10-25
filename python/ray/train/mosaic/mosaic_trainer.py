@@ -210,7 +210,6 @@ def _mosaic_train_loop_per_worker(config):
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))
-    config["loggers"] = ray_logger
 
     # initialize Composer trainer
     trainer: Trainer = trainer_init_per_worker(config)
@@ -219,10 +218,9 @@ def _mosaic_train_loop_per_worker(config):
     # this removes the logging part of the loggers
     filtered_callbacks = list()
     for callback in trainer.state.callbacks:
-        if not isinstance(callback, LoggerDestination) or isinstance(
-            callback, RayLogger
-        ):
+        if not isinstance(callback, LoggerDestination):
             filtered_callbacks.append(callback)
+    filtered_callbacks.append(ray_logger)
     trainer.state.callbacks = filtered_callbacks
 
     # this prevents data to be routed to all the Composer Loggers
