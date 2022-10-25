@@ -105,7 +105,10 @@ class TaskCounter {
     actor_name_ = actor_name;
   }
 
-  bool IsActor() { return actor_name_.size() > 0; }
+  bool IsActor() {
+    absl::MutexLock l(&mu_);
+    return actor_name_.size() > 0;
+  }
 
   void RefreshRunningMetric(const std::string func_name, int64_t running_total)
       EXCLUSIVE_LOCKS_REQUIRED(&mu_) {

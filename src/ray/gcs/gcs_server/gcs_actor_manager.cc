@@ -227,8 +227,8 @@ GcsActorManager::GcsActorManager(
   actor_state_counter_.reset(
       new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
   actor_state_counter_->SetOnChangeCallback(
-      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> pair,
-             int64_t num_actors) mutable {
+      [](const std::pair<rpc::ActorTableData::ActorState, std::string> pair,
+         int64_t num_actors) mutable {
         ray::stats::STATS_actors.Record(
             num_actors,
             {{"State", rpc::ActorTableData::ActorState_Name(pair.first)},
