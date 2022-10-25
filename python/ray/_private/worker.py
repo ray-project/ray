@@ -2139,6 +2139,7 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+
         worker._session_index += 1
 
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
