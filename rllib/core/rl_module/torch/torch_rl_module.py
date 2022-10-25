@@ -4,6 +4,7 @@ from ray.rllib.core.rl_module import RLModule, MultiAgentRLModule
 
 torch, nn = try_import_torch()
 
+
 class TorchRLModule(RLModule, nn.Module):
     def __init__(self, config) -> None:
         RLModule.__init__(self, config)
@@ -34,5 +35,5 @@ class TorchRLModule(RLModule, nn.Module):
     def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
         """Returns the multi-agent wrapper class for this module."""
         from ray.rllib.core.rl_module.torch.torch_marl_module import TorchMARLModule
-        return TorchMARLModule
 
+        return TorchMARLModule
