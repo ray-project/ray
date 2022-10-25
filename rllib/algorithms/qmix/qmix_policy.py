@@ -324,7 +324,7 @@ class QMixTorchPolicy(TorchPolicy):
         return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(TorchPolicy)
-    def compute_actions_from_input_dict(self, *args, **kwargs):
+    def _compute_actions_without_connectors(self, *args, **kwargs):
         return self._compute_actions_without_connectors_from_input_dict(*args, **kwargs)
 
     @override(TorchPolicy)
