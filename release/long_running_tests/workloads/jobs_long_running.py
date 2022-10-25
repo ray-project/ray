@@ -36,7 +36,6 @@ def wait_until_finish(
         # Test calling list_jobs
         client.list_jobs()
         status = client.get_job_status(job_id)
-        # print(f"status for job {job_id}: {status}")
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
@@ -126,9 +125,6 @@ if __name__ == "__main__":
         print(f"Getting logs for randomly chosen job {job_id}...")
         logs = clients[0].get_job_logs(job_id)
         print(logs)
-
-        print("Sleeping for 5 seconds...")
-        time.sleep(5)
 
     time_taken = time.time() - start
     result = {
