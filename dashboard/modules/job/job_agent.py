@@ -153,7 +153,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
-        
+
         return ws
 
     def get_job_manager(self):
