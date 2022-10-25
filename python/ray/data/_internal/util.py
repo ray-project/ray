@@ -1,6 +1,6 @@
 import importlib
 import logging
-from typing import Union, Optional, TYPE_CHECKING
+from typing import Union, Optional, Tuple, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -15,7 +15,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# NOTE: Make sure that these lower and upper bounds stay in sync with version
+# constraints given in python/setup.py.
+# Inclusive minimum pyarrow version.
 MIN_PYARROW_VERSION = (6, 0, 1)
+# Exclusive maximum pyarrow version.
+MAX_PYARROW_VERSION = (7, 0, 0)
 _VERSION_VALIDATED = False
 
 
@@ -35,30 +40,36 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
     return _pyarrow_dataset
 
 
+def _version_tuple_to_str(version: Tuple[int, int, int]) -> str:
+    """Convert version tuple to string."""
+    return ".".join(str(n) for n in version)
+
+
 def _check_pyarrow_version():
     global _VERSION_VALIDATED
+
     if not _VERSION_VALIDATED:
         import pkg_resources
+
+        min_version = _version_tuple_to_str(MIN_PYARROW_VERSION)
+        max_version = _version_tuple_to_str(MAX_PYARROW_VERSION)
 
         try:
             version_info = pkg_resources.require("pyarrow")
             version_str = version_info[0].version
             version = tuple(int(n) for n in version_str.split(".") if "dev" not in n)
-            if version < MIN_PYARROW_VERSION:
+            if version < MIN_PYARROW_VERSION or version >= MAX_PYARROW_VERSION:
                 raise ImportError(
-                    "Datasets requires pyarrow >= "
-                    f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)}, "
+                    f"Datasets requires pyarrow >= {min_version}, < {max_version}, "
                     f"but {version_str} is installed. Upgrade with "
-                    "`pip install -U pyarrow`."
+                    "`pip install -U pyarrow<{max_version}`."
                 )
         except pkg_resources.DistributionNotFound:
             logger.warning(
-                "You are using the 'pyarrow' module, but "
-                "the exact version is unknown (possibly carried as "
-                "an internal component by another module). Please "
-                "make sure you are using pyarrow >= "
-                f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)} "
-                "to ensure compatibility with Ray Datasets."
+                "You are using the 'pyarrow' module, but the exact version is unknown "
+                "(possibly carried as an internal component by another module). Please "
+                f"make sure you are using pyarrow >= {min_version}, < {max_version} to "
+                "ensure compatibility with Ray Datasets."
             )
         else:
             _VERSION_VALIDATED = True
