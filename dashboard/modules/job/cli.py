@@ -174,8 +174,8 @@ def submit(
         cli_logger.warning(
             "--job-id option is deprecated. " "Please use --submission-id instead."
         )
-
-    resources = parse_resources_json(resources, cli_logger, cf)
+    if resources is not None:
+        resources = parse_resources_json(resources, cli_logger, cf)
 
     submission_id = submission_id or job_id
 
