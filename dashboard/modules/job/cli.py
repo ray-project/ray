@@ -162,7 +162,7 @@ def submit(
     entrypoint: Tuple[str],
     num_cpus: Optional[Union[int, float]],
     num_gpus: Optional[Union[int, float]],
-    resources: Optional[str],  # Optional[Dict[str, float]],
+    resources: Optional[str],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.
