@@ -292,7 +292,10 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                data = preprocessor.transform(data)
+                # preprocessor.transform will break for DatasetPipeline due to
+                # missing _dataset_format()
+                batch_fn = preprocessor._transform_batch
+                data = data.map_batches(batch_fn, batch_format=batch_format)
 
         prediction_results = data.map_batches(
             ScoringWrapper,
