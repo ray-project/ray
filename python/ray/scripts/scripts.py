@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray._private.utils
+from ray._private.utils import parse_resources_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -587,21 +587,7 @@ def start(
         include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
-    try:
-        resources = json.loads(resources)
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold("--resources"))
-        cli_logger.abort(
-            "Valid values look like this: `{}`",
-            cf.bold('--resources=\'{"CustomResource3": 1, ' '"CustomResource2": 2}\''),
-        )
-
-        raise Exception(
-            "Unable to parse the --resources argument using "
-            "json.loads. Try using a format like\n\n"
-            '    --resources=\'{"CustomResource1": 3, '
-            '"CustomReseource2": 2}\''
-        )
+    resources = parse_resources_json(resources, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(

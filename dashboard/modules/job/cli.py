@@ -13,7 +13,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
-
+from ray._private.utils import parse_resources_json
 
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
@@ -126,19 +126,19 @@ def job_cli_group():
     "--num-cpus",
     required=False,
     type=float,
-    help="the number of CPU cores to " "reserve for the entrypoint command",
+    help="the quantity of CPU cores to reserve for the entrypoint command",
 )
 @click.option(
     "--num-gpus",
     required=False,
     type=float,
-    help="the number of GPUs to " "reserve for the entrypoint command",
+    help="the quantity of GPUs to reserve for the entrypoint command",
 )
 @click.option(
     "--resources",
     required=False,
     type=str,
-    help="a JSON serialized dictionary mapping resource name to resource quantity "
+    help="a JSON-serialized dictionary mapping resource name to resource quantity "
     "describing resources to reserve for the entrypoint command",
 )
 @click.option(
@@ -161,7 +161,7 @@ def submit(
     entrypoint: Tuple[str],
     num_cpus: Optional[Union[int, float]],
     num_gpus: Optional[Union[int, float]],
-    resources: Optional[Dict[str, float]],
+    resources: Optional[str],  # Optional[Dict[str, float]],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.
@@ -174,6 +174,8 @@ def submit(
         cli_logger.warning(
             "--job-id option is deprecated. " "Please use --submission-id instead."
         )
+
+    resources = parse_resources_json(resources, cli_logger, cf)
 
     submission_id = submission_id or job_id
 
