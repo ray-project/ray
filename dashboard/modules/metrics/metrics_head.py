@@ -163,7 +163,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # one task in one of these states, the worker has not exited. Therefore,
         # we fetch the current count.
         query_for_non_terminal_states = (
-            f"sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State)"
+            "clamp_min(sum("
+            f"ray_tasks{{{filter_for_non_terminal_states_str}}}) by (State), 0)"
         )
         query = f"{query_for_terminal_states} or {query_for_non_terminal_states}"
 
