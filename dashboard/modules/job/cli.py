@@ -3,7 +3,7 @@ import os
 import pprint
 import time
 from subprocess import list2cmdline
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import click
 
@@ -14,6 +14,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
 from ray._private.utils import parse_resources_json
+
 
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
