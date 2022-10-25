@@ -234,7 +234,7 @@ class JobSubmitRequest:
     # The quantity of CPU cores to reserve for the execution
     # of the entrypoint command.
     num_cpus: Optional[Union[int, float]] = None
-    # The quantity of GPU cores to reserve for the execution
+    # The quantity of GPUs to reserve for the execution
     # of the entrypoint command.
     num_gpus: Optional[Union[int, float]] = None
     # The quantity of various custom resources
