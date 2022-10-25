@@ -11,7 +11,7 @@ from ray.rllib.core.examples.simple_ppo_rl_module import (
     get_shared_encoder_config,
     get_ppo_loss,
 )
-from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.test_utils import check
 
 

@@ -5,7 +5,7 @@ import torch.nn as nn
 from typing import List, Mapping, Any
 
 
-from ray.rllib.core.rl_module.torch_rl_module import TorchRLModule
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -275,9 +275,9 @@ class SimplePPOModule(TorchRLModule):
 
         return ModelSpec(
             {
-                "obs": self.encoder.input_specs
+                "obs": self.encoder.input_specs()
                 if self.encoder
-                else self.pi.input_specs,
+                else self.pi.input_specs(),
                 "action": TorchTensorSpec("b, da", da=action_dim),
             }
         )
