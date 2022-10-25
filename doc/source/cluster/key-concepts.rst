@@ -78,7 +78,7 @@ Ray Job
 A Ray Job is a user application that includes a Ray driver. There are two ways of running Ray Jobs on Ray clusters:
 
 The recommended method for running a workload on a Ray cluster is to use Ray Job Submission.
-Ray Job Submission enable users to submit locally developed-and-tested applications to a
+Ray Job submission enables users to submit locally developed and tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
