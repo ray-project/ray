@@ -571,38 +571,6 @@ class JobManager:
             )
         return scheduling_strategy
 
-    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
-        if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
-            logger.info(
-                f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
-                "Using Ray's default actor scheduling strategy for the job "
-                "driver instead of running it on the head node."
-            )
-            scheduling_strategy = "DEFAULT"
-        else:
-            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-                "head_node_id".encode(),
-                namespace=ray_constants.KV_NAMESPACE_JOB,
-                timeout=30,
-            )
-            if head_node_id_bytes is None:
-                logger.info(
-                    "Head node ID not found in GCS. Using Ray's default actor "
-                    "scheduling strategy for the job driver instead of running "
-                    "it on the head node."
-                )
-                scheduling_strategy = "DEFAULT"
-            else:
-                head_node_id = head_node_id_bytes.decode()
-                logger.info(
-                    "Head node ID found in GCS; scheduling job driver on "
-                    f"head node {head_node_id}"
-                )
-                scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=head_node_id, soft=False
-                )
-        return scheduling_strategy
-
     async def submit_job(
         self,
         *,
