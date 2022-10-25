@@ -78,7 +78,7 @@ class FCConfig:
     input_dim: int = None
     output_dim: int = None
     hidden_layers: List[int] = field(default_factory=lambda: [256, 256])
-    activation: str = "relu"
+    activation: str = "ReLU"
     output_activation: str = None
 
 

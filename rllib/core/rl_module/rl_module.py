@@ -11,8 +11,6 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
 
-ModuleID = str
-
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
@@ -118,12 +116,22 @@ class RLModule(abc.ABC):
     )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_inference method."""
+        not be overriden. Instead, override the _forward_inference method.
+        
+        Args:
+            batch: The input batch. This input batch should comply with 
+                input_specs_inference(). 
+            **kwargs: Additional keyword arguments.
+        
+        Returns:
+            The output of the forward pass. This output should comply with the 
+            ouptut_specs_inference().
+        """
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation"""
+        """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_specs(
         input_spec="input_specs_exploration", output_spec="output_specs_exploration"
@@ -132,22 +140,42 @@ class RLModule(abc.ABC):
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
         """Forward-pass during exploration, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_exploration method."""
+        not be overriden. Instead, override the _forward_exploration method.
+        
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_exploration().
+            **kwargs: Additional keyword arguments. 
+
+        Returns:    
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_exploration().
+        """
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during exploration"""
+        """Forward-pass during exploration. See forward_exploration for details."""
 
     @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
-        not be overriden. Instead, override the _forward_train method."""
+        not be overriden. Instead, override the _forward_train method.
+        
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_train().        
+            **kwargs: Additional keyword arguments. 
+            
+        Returns:
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_train().
+        """
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training"""
+        """Forward-pass during training. See forward_train for details."""
 
     @abc.abstractmethod
     def get_state(self) -> Mapping[str, Any]:
