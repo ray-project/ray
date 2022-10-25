@@ -17,11 +17,14 @@ import ray._private.utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from opencensus.stats import stats as stats_module
+import ray._private.prometheus_exporter as prometheus_exporter
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
+from ray._raylet import WorkerID
 
 logger = logging.getLogger(__name__)
 
@@ -246,9 +249,28 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         if not self._metrics_collection_disabled:
+            try:
+                stats_exporter = prometheus_exporter.new_stats_exporter(
+                    prometheus_exporter.Options(
+                        namespace="ray",
+                        port=dashboard_agent.metrics_export_port,
+                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
+                    )
+                )
+            except Exception:
+                # TODO(SongGuyang): Catch the exception here because there is
+                # port conflict issue which brought from static port. We should
+                # remove this after we find better port resolution.
+                logger.exception(
+                    "Failed to start prometheus stats exporter. Agent will stay "
+                    "alive but disable the stats."
+                )
+                stats_exporter = None
+
             self._metrics_agent = MetricsAgent(
-                "127.0.0.1" if self._ip == "127.0.0.1" else "",
-                dashboard_agent.metrics_export_port,
+                stats_module.stats.view_manager,
+                stats_module.stats.stats_recorder,
+                stats_exporter,
             )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
@@ -286,7 +308,9 @@ class ReporterAgent(
         # This function receives a GRPC containing OpenCensus (OC) metrics
         # from a Ray process, then exposes those metrics to Prometheus.
         try:
-            self._metrics_agent.record_metric_points_from_protobuf(request.metrics)
+            worker_id = WorkerID(request.worker_id)
+            worker_id = None if worker_id.is_nil() else worker_id.hex()
+            self._metrics_agent.proxy_export_metrics(request.metrics, worker_id)
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
@@ -809,7 +833,8 @@ class ReporterAgent(
                         else {}
                     )
                     records_reported = self._record_stats(stats, cluster_stats)
-                    self._metrics_agent.record_reporter_stats(records_reported)
+                    self._metrics_agent.record_and_export(records_reported)
+                    self._metrics_agent.clean_all_dead_worker_metrics()
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:

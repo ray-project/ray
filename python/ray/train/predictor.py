@@ -9,6 +9,7 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
     convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
 )
 from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -157,11 +158,19 @@ class Predictor(abc.ABC):
                 f"types: {list(TYPE_TO_ENUM.keys())}"
             )
 
+        has_predict_numpy = self.__class__._predict_numpy != Predictor._predict_numpy
+
         if batch_format == BatchFormat.PANDAS:
             predictions = self._predict_pandas(data, **kwargs)
             return convert_pandas_to_batch_type(predictions, TYPE_TO_ENUM[type(data)])
-        elif batch_format == BatchFormat.NUMPY:
+        elif batch_format == BatchFormat.NUMPY and has_predict_numpy:
             return self._predict_numpy(data, **kwargs)
+        else:
+            # Fallback to convert to pandas batch and call _predict_pandas
+            # ex: xgboost predict with np.ndarray batch data
+            data = convert_batch_type_to_pandas(data)
+            predictions = self._predict_pandas(data, **kwargs)
+            return convert_pandas_to_batch_type(predictions, TYPE_TO_ENUM[type(data)])
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

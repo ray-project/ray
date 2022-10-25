@@ -1,4 +1,3 @@
-from typing import Dict
 import numpy as np
 
 import torch
@@ -9,10 +8,9 @@ import ray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
-from ray.data.datasource import ImageFolderDatasource
 
 
-def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def preprocess(image_batch: np.ndarray) -> np.ndarray:
     """
     User Pytorch code to transform user image with outer dimension of batch size.
     """
@@ -23,17 +21,14 @@ def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    # Outer dimension is batch size such as (8, 256, 256, 3) -> (8, 3, 256, 256)
-    transposed_torch_tensor = torch.Tensor(image_batch["image"].transpose(0, 3, 1, 2))
-    image_batch["image"] = preprocess(transposed_torch_tensor).numpy()
-    return image_batch
+    # Outer dimension is batch size such as (10, 256, 256, 3) -> (10, 3, 256, 256)
+    transposed_torch_tensor = torch.Tensor(image_batch.transpose(0, 3, 1, 2))
+    return preprocess(transposed_torch_tensor).numpy()
 
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
 print(f"Running GPU batch prediction with 1GB data from {data_url}")
-dataset = ray.data.read_datasource(
-    ImageFolderDatasource(), root=data_url, size=(256, 256)
-)
+dataset = ray.data.read_images(data_url, size=(256, 256)).limit(10)
 
 model = resnet18(pretrained=True)
 
@@ -41,4 +36,4 @@ preprocessor = BatchMapper(preprocess, batch_format="numpy")
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, feature_columns=["image"])
+predictor.predict(dataset, batch_size=80)

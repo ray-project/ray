@@ -127,7 +127,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_3,
                                   std::placeholders::_4,
                                   std::placeholders::_5,
-                                  std::placeholders::_6);
+                                  std::placeholders::_6,
+                                  std::placeholders::_7);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -220,14 +221,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
-  // Register a callback to monitor removed nodes.
-  auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      OnNodeRemoved(node_id);
-    }
-  };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
-
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
@@ -271,6 +264,20 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
+
+  // Register a callback to monitor removed nodes.
+  // Note we capture a shared ownership of reference_counter_
+  // here to avoid destruction order fiasco between gcs_client and reference_counter_.
+  auto on_node_change = [reference_counter = this->reference_counter_](
+                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+    if (data.state() == rpc::GcsNodeInfo::DEAD) {
+      RAY_LOG(INFO) << "Node failure from " << node_id
+                    << ". All objects pinned on that node will be lost if object "
+                       "reconstruction is not enabled.";
+      reference_counter->ResetObjectsOnRemovedNode(node_id);
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
@@ -720,16 +727,6 @@ void CoreWorker::RunIOService() {
   SetThreadName("worker.io");
   io_service_.run();
   RAY_LOG(INFO) << "Core worker main io service stopped.";
-}
-
-void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
-  // if (node_id == GetCurrentNodeId()) {
-  //   RAY_LOG(FATAL) << "The raylet for this worker has died. Killing itself...";
-  // }
-  RAY_LOG(INFO) << "Node failure from " << node_id
-                << ". All objects pinned on that node will be lost if object "
-                   "reconstruction is not enabled.";
-  reference_counter_->ResetObjectsOnRemovedNode(node_id);
 }
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
@@ -2234,7 +2231,8 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
-    bool *is_retryable_error) {
+    bool *is_retryable_error,
+    bool *is_application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2336,6 +2334,7 @@ Status CoreWorker::ExecuteTask(
       dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      is_application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0);
@@ -2523,6 +2522,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
+  bool is_application_error;
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   RAY_UNUSED(ExecuteTask(task_spec,
@@ -2530,7 +2530,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &return_objects,
                          &dynamic_return_objects,
                          &borrowed_refs,
-                         &is_retryable_error));
+                         &is_retryable_error,
+                         &is_application_error));
   SetActorId(old_id);
   return returned_refs;
 }

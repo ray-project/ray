@@ -72,7 +72,7 @@ class DLPredictor(Predictor):
             BatchFormat.NUMPY,
             self._cast_tensor_columns,
         )
-        numpy_output = self._predict_numpy(numpy_input)
+        numpy_output = self._predict_numpy(numpy_input, dtype)
         return convert_batch_type_to_pandas(numpy_output)
 
     def _predict_numpy(
