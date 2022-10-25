@@ -299,7 +299,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_session.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

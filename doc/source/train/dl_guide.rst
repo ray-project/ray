@@ -68,12 +68,13 @@ training.
 
         import torch
         from torch.nn.parallel import DistributedDataParallel
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -         torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -82,7 +83,7 @@ training.
 
         -   model = model.to(device)
         -   model = DistributedDataParallel(model,
-        -       device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+        -       device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
 
         +   model = train.torch.prepare_model(model)
 
@@ -97,12 +98,13 @@ training.
 
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -          torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -123,7 +125,7 @@ training.
 
         .. code-block::
 
-            global_batch_size = worker_batch_size * train.world_size()
+            global_batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: TensorFlow
 
@@ -160,7 +162,7 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * train.world_size()
+        +batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: Horovod
 
@@ -629,13 +631,13 @@ As an example, to completely disable writing checkpoints to disk:
 .. code-block:: python
     :emphasize-lines: 9,14
 
-    from ray import train
-    from ray.air import RunConfig, CheckpointConfig, ScalingConfig
+    from ray.air import session, RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
         for epoch in range(3):
-            train.save_checkpoint(epoch=epoch)
+            checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
+            session.report({}, checkpoint=checkpoint)
 
     checkpoint_config = CheckpointConfig(num_to_keep=0)
 

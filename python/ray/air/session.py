@@ -1,14 +1,43 @@
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+import warnings
+import functools
 
 from ray.air._internal.session import _get_session
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train.session import _TrainSessionImpl
+from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
+def _warn_session_misuse(default_value: Any = None):
+    """Warns if fn is being used outside of session and returns ``default_value``."""
+
+    def inner(fn: Callable):
+        fn_name = fn.__name__
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            session = _get_session()
+            if not session:
+                if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
+                    warnings.warn(
+                        f"`{fn_name}` is meant to only be "
+                        "called inside a function that is executed by a Tuner"
+                        f" or Trainer. Returning `{default_value}`."
+                    )
+                return default_value
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return inner
+
+
+@_warn_session_misuse()
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
 
@@ -61,6 +90,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     _get_session().report(metrics, checkpoint=checkpoint)
 
 
+@_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the session's last checkpoint to resume from if applicable.
 
@@ -110,21 +140,25 @@ def get_checkpoint() -> Optional[Checkpoint]:
     return _get_session().loaded_checkpoint
 
 
+@_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
     return _get_session().trial_name
 
 
+@_warn_session_misuse()
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
     return _get_session().trial_id
 
 
+@_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
     """Trial resources for the corresponding trial."""
     return _get_session().trial_resources
 
 
+@_warn_session_misuse()
 def get_trial_dir() -> str:
     """Log directory corresponding to the trial directory for a Tune session.
     If calling from a Train session, this will give the trial directory of its parent
@@ -146,6 +180,7 @@ def get_trial_dir() -> str:
     return _get_session().trial_dir
 
 
+@_warn_session_misuse(default_value=1)
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 
@@ -175,6 +210,7 @@ def get_world_size() -> int:
     return session.world_size
 
 
+@_warn_session_misuse(default_value=0)
 def get_world_rank() -> int:
     """Get the world rank of this worker.
 
@@ -207,6 +243,7 @@ def get_world_rank() -> int:
     return session.world_rank
 
 
+@_warn_session_misuse(default_value=0)
 def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
@@ -238,6 +275,7 @@ def get_local_rank() -> int:
     return session.local_rank
 
 
+@_warn_session_misuse()
 def get_dataset_shard(
     dataset_name: Optional[str] = None,
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:

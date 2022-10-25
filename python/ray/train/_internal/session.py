@@ -324,7 +324,9 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():

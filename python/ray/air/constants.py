@@ -31,3 +31,7 @@ _RESULT_FETCH_TIMEOUT = 0.2
 
 # Timeout for fetching exceptions raised by the training function.
 _ERROR_FETCH_TIMEOUT = 1
+
+# The key used to identify whether we have already warned about ray.air.session
+# functions being used outside of the session
+SESSION_MISUSE_LOG_ONCE_KEY = "air_warn_session_misuse"
