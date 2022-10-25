@@ -385,8 +385,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
              // - N1 stop spilling because it thought N2 is full.
              // - N2 doesn't broadcast the resource because the resource never change.
              // - And thus hangs forever.
-             raylet_address != nullptr  // Skip the optimization if it's spillback
-  ) {
+             (raylet_address == nullptr ||
+              scheduling_key_entry.raylet_ongoing_lease_loads.count(
+                  raylet_address->raylet_id()) != 0)) {
     // All tasks have corresponding pending leases, no need to request more
     RAY_LOG(DEBUG) << "Skip leasing from "
                    << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
