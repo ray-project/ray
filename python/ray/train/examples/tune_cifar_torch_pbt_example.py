@@ -66,6 +66,8 @@ def update_optimizer_config(optimizer, config):
 
 
 def train_func(config):
+    epochs = config.get("epochs", 3)
+
     model = resnet18()
     model = train.torch.prepare_model(model)
 
@@ -76,7 +78,7 @@ def train_func(config):
     }
     optimizer = torch.optim.SGD(model.parameters(), **optimizer_config)
 
-    epoch = 0
+    starting_epoch = 0
     if session.get_checkpoint():
         checkpoint_dict = session.get_checkpoint().to_dict()
 
@@ -94,7 +96,7 @@ def train_func(config):
 
         # The current epoch increments the loaded epoch by 1
         checkpoint_epoch = checkpoint_dict["epoch"]
-        epoch = checkpoint_epoch + 1
+        starting_epoch = checkpoint_epoch + 1
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -138,7 +140,7 @@ def train_func(config):
     # Create loss.
     criterion = nn.CrossEntropyLoss()
 
-    while True:
+    for epoch in range(starting_epoch, epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
         checkpoint = Checkpoint.from_dict(
@@ -150,7 +152,6 @@ def train_func(config):
         )
 
         session.report(result, checkpoint=checkpoint)
-        epoch += 1
 
 
 if __name__ == "__main__":
@@ -223,6 +224,7 @@ if __name__ == "__main__":
                 "batch_size": 128 * args.num_workers,
                 "test_mode": args.smoke_test,  # whether to to subset the data
                 "data_dir": args.data_dir,
+                "epochs": args.num_epochs,
             }
         },
         tune_config=TuneConfig(
