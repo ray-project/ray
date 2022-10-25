@@ -59,25 +59,24 @@ namespace core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
-/// Simple container for per function task counters. The counters will be
-/// keyed by the function name in task spec.
+/// Tracks stats for inbound tasks (tasks this worker is executing).
+/// The counters are keyed by the function name in task spec.
 class TaskCounter {
   /// A task can only be one of the following state. Received state in particular
   /// covers from the point of RPC call to beginning execution.
   enum TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  TaskCounter() {
+  void RecordMetrics() {
     // Track the number of running tasks per name.
-    counter_.SetOnChangeCallback(
-        [this](const std::pair<std::string, TaskStatusType> &key, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-              if (key.second == kRunning) {
-                RefreshRunningMetric(key.first, value);
-              }
-            });
+    counter_.ForEachEntry([this](const std::pair<std::string, TaskStatusType> &key,
+                                 int64_t value) EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
+      if (key.second == kRunning) {
+        RefreshRunningMetric(key.first, value);
+      }
+    });
     // Track the sub-state of tasks running but blocked in ray.get().
-    running_in_get_counter_.SetOnChangeCallback(
+    running_in_get_counter_.ForEachEntry(
         [this](const std::string &func_name, int64_t value)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
@@ -85,10 +84,9 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
                    {"Name", func_name},
                    {"Source", "executor"}});
-              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
             });
     // Track the sub-state of tasks running but blocked in ray.wait().
-    running_in_wait_counter_.SetOnChangeCallback(
+    running_in_wait_counter_.ForEachEntry(
         [this](const std::string &func_name, int64_t value)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
@@ -96,7 +94,6 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
                    {"Name", func_name},
                    {"Source", "executor"}});
-              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
             });
   }
 

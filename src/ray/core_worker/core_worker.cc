@@ -826,6 +826,11 @@ void CoreWorker::InternalHeartbeat() {
   if (options_.worker_type == WorkerType::DRIVER && options_.interactive) {
     memory_store_->NotifyUnhandledErrors();
   }
+
+  // Record metrics for owned tasks.
+  task_manager_->RecordMetrics();
+  // Record metrics for executed tasks.
+  task_counter_.RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
