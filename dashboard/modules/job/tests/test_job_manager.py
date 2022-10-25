@@ -57,7 +57,7 @@ async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F8
         "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
     )
     strategy = await job_manager._get_scheduling_strategy()
-    expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=True)
+    expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
     assert expected_strategy.node_id == strategy.node_id
     assert expected_strategy.soft == strategy.soft
 
