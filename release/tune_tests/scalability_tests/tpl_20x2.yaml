@@ -5,11 +5,11 @@ max_workers: 19
 
 head_node_type:
     name: head_node
-    instance_type: m5.large
+    instance_type: m5a.large
 
 worker_node_types:
     - name: worker_node
-      instance_type: m5.large
+      instance_type: m5a.large
       min_workers: 19
       max_workers: 19
       use_spot: true
