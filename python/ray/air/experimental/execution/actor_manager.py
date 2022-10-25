@@ -470,7 +470,10 @@ class ActorManager:
         if self._async_futures.has_future(ready_future):
             actor, cls = self._async_futures.pop_future(ready_future)
             return _resolve_future(
-                actor_info=self._actor_to_info[actor], future=ready_future, cls=cls
+                actor=actor,
+                actor_info=self._actor_to_info[actor],
+                future=ready_future,
+                cls=cls,
             )
 
         # Else, this is a sync future
