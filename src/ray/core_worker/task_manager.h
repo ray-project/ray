@@ -20,8 +20,6 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/stats/metric_defs.h"
-#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -295,25 +293,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
               int num_retries_left_arg,
-              size_t num_returns,
-              TaskStatusCounter &counter,
-              int64_t num_oom_retries_left)
-        : spec(spec_arg),
-          num_retries_left(num_retries_left_arg),
-          counter(counter),
-          num_oom_retries_left(num_oom_retries_left) {
+              size_t num_returns)
+        : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
     }
-
-    void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
-      status = new_status;
-    }
-
-    rpc::TaskStatus GetStatus() const { return status; }
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
@@ -335,14 +320,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int32_t num_retries_left;
-    // Reference to the task stats tracker.
-    TaskStatusCounter &counter;
-    // Number of times this task may be resubmitted if the task failed
-    // due to out of memory failure.
-    int32_t num_oom_retries_left;
+    int num_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
+    // The task's current execution status.
+    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
     // Objects returned by this task that are reconstructable. This is set
     // initially to the task's return objects, since if the task fails, these
     // objects may be reconstructed by resubmitting the task. Once the task
@@ -360,10 +342,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
-
-   private:
-    // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
   /// Update nested ref count info and store the in-memory value for a task's
@@ -442,9 +420,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
-
-  /// Tracks per-task-state counters for metric purposes.
-  TaskStatusCounter task_counter_ GUARDED_BY(mu_);
 
   /// This map contains one entry per task that may be submitted for
   /// execution. This includes both tasks that are currently pending execution

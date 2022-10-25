@@ -124,8 +124,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::WorkerIdKey, worker_id_.Hex()},
-      {ray::stats::JobIdKey, process_job_id.Hex()},
       {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, options_.node_ip_address}};
 

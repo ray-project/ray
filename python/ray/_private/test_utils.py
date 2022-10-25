@@ -14,7 +14,6 @@ import tempfile
 import time
 import timeit
 import traceback
-from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 import uuid
@@ -939,36 +938,6 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
-
-
-def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from the given addresses.
-
-    Args:
-        prom_addresses: List of metrics_agent addresses to collect metrics from.
-
-    Returns:
-        Dict mapping from metric name to list of samples for the metric.
-    """
-    _, _, samples = fetch_prometheus(prom_addresses)
-    samples_by_name = defaultdict(list)
-    for sample in samples:
-        samples_by_name[sample.name].append(sample)
-    return samples_by_name
-
-
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
-    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
 
 
 def load_test_config(config_file_name):

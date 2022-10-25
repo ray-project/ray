@@ -29,7 +29,6 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -2239,8 +2238,10 @@ Status CoreWorker::ExecuteTask(
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
-  if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name);
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, -1);
+    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
   }
 
   if (!options_.is_local_mode) {
@@ -2381,9 +2382,13 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  if (!options_.is_local_mode) {
-    task_counter_.MoveRunningToFinished(func_name);
+  // Modify the worker's per function counters.
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
+    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
   }
+
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 
@@ -2407,6 +2412,7 @@ Status CoreWorker::ExecuteTask(
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
+
   return status;
 }
 
@@ -2642,7 +2648,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  task_counter_.IncPending(func_name);
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, 1);
+  }
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.

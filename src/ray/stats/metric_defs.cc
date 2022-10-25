@@ -31,6 +31,7 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+<<<<<<< HEAD
 /// Tracks tasks by state, including pending, running, and finished tasks.
 /// This metric may be recorded from multiple components processing the task in Ray,
 /// including the submitting core worker, executor core worker, and pull manager.
@@ -47,6 +48,8 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+=======
+>>>>>>> parent of 371866db2... Add a simple `ray_tasks` metric for tracking active and completed tasks. (#28459)
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(

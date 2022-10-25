@@ -99,8 +99,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.try_emplace(
-        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
+    auto inserted = submissible_tasks_.emplace(spec.TaskId(),
+                                               TaskEntry(spec, max_retries, num_returns));
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -123,7 +123,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -284,57 +284,13 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     }
   }
 
-  rpc::Address owner_address;
-  if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
-    std::vector<ObjectID> nested_ids;
-    for (const auto &nested_ref : nested_refs) {
-      nested_ids.emplace_back(ObjectRefToId(nested_ref));
-    }
-    reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
-  }
-  return direct_return;
-}
-
-void TaskManager::CompletePendingTask(const TaskID &task_id,
-                                      const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr,
-                                      bool is_application_error) {
-  RAY_LOG(DEBUG) << "Completing task " << task_id;
-
-  bool first_execution = false;
-  const auto store_in_plasma_ids =
-      GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
-  std::vector<ObjectID> dynamic_return_ids;
-  std::vector<ObjectID> dynamic_returns_in_plasma;
-  std::vector<ObjectID> direct_return_ids;
-  if (reply.dynamic_return_objects_size() > 0) {
-    RAY_CHECK(reply.return_objects_size() == 1)
-        << "Dynamic generators only supported for num_returns=1";
-    const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
-    for (const auto &return_object : reply.dynamic_return_objects()) {
-      const auto object_id = ObjectID::FromBinary(return_object.object_id());
-      if (first_execution) {
-        reference_counter_->AddDynamicReturn(object_id, generator_id);
-        dynamic_return_ids.push_back(object_id);
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+      std::vector<ObjectID> nested_ids;
+      for (const auto &nested_ref : nested_refs) {
+        nested_ids.emplace_back(ObjectRefToId(nested_ref));
       }
-      if (!HandleTaskReturn(object_id,
-                            return_object,
-                            NodeID::FromBinary(worker_addr.raylet_id()),
-                            store_in_plasma_ids.count(object_id))) {
-        if (first_execution) {
-          dynamic_returns_in_plasma.push_back(object_id);
-        }
-      }
-    }
-  }
-
-  for (const auto &return_object : reply.return_objects()) {
-    const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    if (HandleTaskReturn(object_id,
-                         return_object,
-                         NodeID::FromBinary(worker_addr.raylet_id()),
-                         store_in_plasma_ids.count(object_id))) {
-      direct_return_ids.push_back(object_id);
+      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
   }
 
@@ -375,11 +331,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    if (is_application_error) {
-      it->second.SetStatus(rpc::TaskStatus::FAILED);
-    } else {
-      it->second.SetStatus(rpc::TaskStatus::FINISHED);
-    }
+    it->second.status = rpc::TaskStatus::FINISHED;
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -429,25 +381,12 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         << "Tried to retry task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
-    num_oom_retries_left = it->second.num_oom_retries_left;
-    if (task_failed_due_to_oom) {
-      if (num_oom_retries_left > 0) {
-        will_retry = true;
-        it->second.num_oom_retries_left--;
-      }
+    if (num_retries_left > 0) {
+      it->second.num_retries_left--;
     } else {
-      if (num_retries_left > 0) {
-        will_retry = true;
-        it->second.num_retries_left--;
-      } else if (num_retries_left == -1) {
-        will_retry = true;
-      } else {
-        RAY_CHECK(num_retries_left == 0);
-      }
+      RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
-    if (will_retry) {
-      it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-    }
+    it->second.status = rpc::TaskStatus::SCHEDULED;
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -748,7 +687,7 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
     if (it == submissible_tasks_.end()) {
       continue;
     }
-    ref->set_task_status(it->second.GetStatus());
+    ref->set_task_status(it->second.status);
     ref->set_attempt_number(it->second.spec.AttemptNumber());
   }
 }
@@ -759,8 +698,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
+    it->second.status = rpc::TaskStatus::SCHEDULED;
   }
 }
 
@@ -770,8 +709,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -788,7 +727,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
-    const auto &task_state = task_entry.GetStatus();
+    const auto &task_state = task_entry.status;
     rpc::TaskType type;
     if (task_spec.IsNormalTask()) {
       type = rpc::TaskType::NORMAL_TASK;

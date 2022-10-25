@@ -1423,6 +1423,36 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
+  struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
+    enum TaskStatusType { kPending, kRunning, kFinished };
+
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
+      }
+    }
+  };
   TaskCounter task_counter_;
 
   /// Used to guarantee that submitting actor task is thread safe.

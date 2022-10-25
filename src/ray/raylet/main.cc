@@ -258,8 +258,6 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::WorkerIdKey, ""},
-            {ray::stats::JobIdKey, ""},
             {ray::stats::VersionKey, kRayVersion},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
