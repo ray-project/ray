@@ -1,10 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 debian_packages: []
-# Test fails due to excessive retry from memory monitor. Re-enable after https://github.com/ray-project/ray/pull/28714
-# Tests this would address:
-# dask_on_ray_1tb
-# dask_on_ray_100gb_sort
-env_vars: {"RAY_memory_monitor_interval_ms": "0"}
 
 python:
   pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, boto, s3fs, pyarrow, pytest]
