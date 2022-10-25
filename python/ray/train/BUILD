@@ -247,6 +247,14 @@ py_test(
 )
 
 py_test(
+    name = "test_mosaic_trainer",
+    size = "medium",
+    srcs = ["tests/test_mosaic_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "mosaic"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
