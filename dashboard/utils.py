@@ -484,6 +484,7 @@ class Dict(dict, MutableMapping):
         for key, value in d.items():
             self[key] = value
 
+
 # class Dict(ImmutableDict, MutableMapping):
 #     """A simple descriptor for dict type to notify data changes.
 #     :note: Only the first level data report change.

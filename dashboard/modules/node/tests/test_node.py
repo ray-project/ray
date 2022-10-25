@@ -101,6 +101,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             response.raise_for_status()
             detail = response.json()
             from pprint import pprint
+
             pprint(detail)
             assert detail["result"] is True, detail["msg"]
             detail = detail["data"]["detail"]
