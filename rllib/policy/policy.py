@@ -716,7 +716,7 @@ class Policy(metaclass=ABCMeta):
             actions.extend(_action)
             rnn_states.append(np.array(_rnn_state))
             for key, item in _fetches.items():
-                fetches[key].append(np.array(item))
+                fetches[key].extend(item)
 
         # Turn fetches into a dict and conform all batches inside into TensorType
         fetches = dict(fetches)
@@ -1697,13 +1697,12 @@ class Policy(metaclass=ABCMeta):
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size, original_space=self.config["enable_connectors"]
+            sample_batch_size
         )
 
-        if not self.config["enable_connectors"]:
-            self._lazy_tensor_dict(self._dummy_batch)
+        self._lazy_tensor_dict(self._dummy_batch)
 
-        actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
+        actions, state_outs, extra_outs = self._compute_actions_without_connectors_from_input_dict(
             self._dummy_batch, explore=False
         )
 
@@ -1729,7 +1728,7 @@ class Policy(metaclass=ABCMeta):
         # Get a dummy batch that is transformed from the original space to the model
         # input space already to initialize the loss with it
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size, original_space=False
+            sample_batch_size
         )
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
@@ -1854,7 +1853,7 @@ class Policy(metaclass=ABCMeta):
             )
 
     def _get_dummy_batch_from_view_requirements(
-        self, batch_size: int = 1, original_space: bool = True
+        self, batch_size: int = 1,
     ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
@@ -1868,12 +1867,7 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if original_space:
-                # If there is an original space, we want to sample from it instead if
-                # we are using connectors, because these do the preprocessing
-                space = getattr(view_req.space, "original_space", view_req.space)
-            else:
-                space = view_req.space
+            space = view_req.space
 
             data_col = view_req.data_col or view_col
             # Flattened dummy batch.
