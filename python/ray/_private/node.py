@@ -482,7 +482,7 @@ class Node:
 
     @property
     def session_name(self):
-        """Get the cluster ID."""
+        """Get the session name (cluster ID)."""
         return self._session_name
 
     @property
