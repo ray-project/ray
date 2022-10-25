@@ -440,10 +440,12 @@ class Policy(metaclass=ABCMeta):
                 # Agent connectors require this field to be empty
                 del input_dict[SampleBatch.OBS]
             elif input_dict.get(SampleBatch.NEXT_OBS) is None:
-                assert SampleBatch.OBS in input_dict, "Input dict must contain a " \
-                                                      "value for key " \
-                                                      "`SampleBatch.NEXT_OBS` or at " \
-                                                      "least for `SampleBatch.OBS`."
+                assert SampleBatch.OBS in input_dict, (
+                    "Input dict must contain a "
+                    "value for key "
+                    "`SampleBatch.NEXT_OBS` or at "
+                    "least for `SampleBatch.OBS`."
+                )
                 # Interpret observation as next observation if need be here
                 input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
 
@@ -623,19 +625,43 @@ class Policy(metaclass=ABCMeta):
         if not self._check_compute_action_env_id_arg(env_ids):
             # Assume there is only one env
             env_ids = np.zeros(len(next_obs_batch))
-        _reward_batch = [None] * len(next_obs_batch) if reward_batch is None else reward_batch
-        _dones_batch = [None] * len(next_obs_batch) if dones_batch is None else dones_batch
+        _reward_batch = (
+            [None] * len(next_obs_batch) if reward_batch is None else reward_batch
+        )
+        _dones_batch = (
+            [None] * len(next_obs_batch) if dones_batch is None else dones_batch
+        )
         _info_batch = [None] * len(next_obs_batch) if info_batch is None else info_batch
         _t_batch = [None] * len(next_obs_batch) if t_batch is None else t_batch
 
-        assert len(agent_ids) == len(env_ids) == len(next_obs_batch) == len(
-            _reward_batch) == len(_dones_batch) == len(_info_batch) == len(_t_batch), "All batched inputs must have the same first dimension"
+        assert (
+            len(agent_ids)
+            == len(env_ids)
+            == len(next_obs_batch)
+            == len(_reward_batch)
+            == len(_dones_batch)
+            == len(_info_batch)
+            == len(_t_batch)
+        ), "All batched inputs must have the same first dimension"
 
         # Compute ACD list
         acd_list: List[AgentConnectorDataType] = []
-        for agent_obs, agent_reward, agent_done, agent_info, agent_t, env_id, agent_id in zip(
-            next_obs_batch, _reward_batch, _dones_batch, _info_batch, _t_batch, env_ids,
-            agent_ids
+        for (
+            agent_obs,
+            agent_reward,
+            agent_done,
+            agent_info,
+            agent_t,
+            env_id,
+            agent_id,
+        ) in zip(
+            next_obs_batch,
+            _reward_batch,
+            _dones_batch,
+            _info_batch,
+            _t_batch,
+            env_ids,
+            agent_ids,
         ):
             values_dict = {
                 SampleBatch.ENV_ID: env_id,
@@ -682,16 +708,16 @@ class Policy(metaclass=ABCMeta):
         fetches = defaultdict(list)  # We return a dict shaped similarly as
         # {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
 
-        for output_data, env_id, agent_id, agent_idx in zip(action_connector_input_data,
-                                                   env_ids,
-                                         agent_ids, range(len(env_ids))):  # All
+        for output_data, env_id, agent_id, agent_idx in zip(
+            action_connector_input_data, env_ids, agent_ids, range(len(env_ids))
+        ):  # All
             # lengths of batched inputs assumed to be equal here, choice of env_ids is
             # arbitrary
 
             # Construct the "input_dict" manually here, since we have one input dict
             # per agent
             input_dict = {
-                    SampleBatch.NEXT_OBS: next_obs_batch,
+                SampleBatch.NEXT_OBS: next_obs_batch,
             }
             if reward_batch is not None:
                 input_dict[SampleBatch.REWARDS] = reward_batch[agent_idx]
@@ -1702,7 +1728,11 @@ class Policy(metaclass=ABCMeta):
 
         self._lazy_tensor_dict(self._dummy_batch)
 
-        actions, state_outs, extra_outs = self._compute_actions_without_connectors_from_input_dict(
+        (
+            actions,
+            state_outs,
+            extra_outs,
+        ) = self._compute_actions_without_connectors_from_input_dict(
             self._dummy_batch, explore=False
         )
 
@@ -1853,7 +1883,8 @@ class Policy(metaclass=ABCMeta):
             )
 
     def _get_dummy_batch_from_view_requirements(
-        self, batch_size: int = 1,
+        self,
+        batch_size: int = 1,
     ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
