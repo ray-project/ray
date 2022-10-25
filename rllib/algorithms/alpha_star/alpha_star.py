@@ -262,7 +262,7 @@ class AlphaStar(appo.APPO):
         # Construct a dummy LeagueBuilder, such that it gets the opportunity to
         # adjust the multiagent config, according to its setup, and we can then
         # properly infer the resources to allocate.
-        from_config(cf["league_builder_config"], trainer=None, trainer_config=cf)
+        from_config(cf["league_builder_config"], algo=None, algo_config=cf)
 
         max_num_policies_to_train = cf["max_num_policies_to_train"] or len(
             cf["multiagent"].get("policies_to_train") or cf["multiagent"]["policies"]
