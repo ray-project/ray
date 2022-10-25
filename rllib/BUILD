@@ -1751,6 +1751,13 @@ py_test(
 )
 
 py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
     name = "test_conv2d_default_stacks",
     tags = ["team:rllib", "models"],
     size = "small",
@@ -1802,10 +1809,10 @@ py_test(
 
 # Test Tensor specs
 py_test(
-    name = "test_tensor_specs",
+    name = "test_tensor_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs.py"]
+    srcs = ["models/specs/tests/test_tensor_spec.py"]
 )
 
 # test abstract base models
@@ -1824,12 +1831,12 @@ py_test(
     srcs = ["models/tests/test_torch_model.py"]
 )
 
-# test ModelSpecDict
+# test ModelSpec
 py_test(
-    name = "test_tensor_specs_dict",
+    name = "test_model_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
+    srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
 
