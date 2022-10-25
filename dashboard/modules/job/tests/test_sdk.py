@@ -272,7 +272,7 @@ def test_job_head_choose_job_agent_E2E(
     node_try_to_kill.kill_raylet()
 
     # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
 
     # Make sure the third JobAgent will be called here.
     wait_for_condition(
