@@ -4,6 +4,8 @@ import os
 import sys
 import random
 import math
+import time
+import fcntl
 
 
 _MEMORY_BUFFER_OFFSET = 0.8
@@ -367,3 +369,43 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
+
+
+def _port_acquisition_delay():
+    """
+    Use a file lock to delay the worker processes to ensure that port acquisition does not
+    create a resource contention issue due to a race condition
+
+    Returns: None
+    """
+
+    def acquire_lock(file):
+        mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
+        file_ref = os.open(file, mode)
+        locked_file_ref = None
+        lock_time = 10.0
+        start = current = time.time()
+        while current < start + lock_time:
+            try:
+                fcntl.flock(file_ref, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (IOError, OSError):
+                pass
+            else:
+                locked_file_ref = file_ref
+                break
+            time.sleep(1.0)
+            current = time.time()
+        if locked_file_ref is None:
+            os.close(file_ref)
+        return locked_file_ref
+
+    def release_lock(locked_file):
+        fcntl.flock(locked_file, fcntl.LOCK_UN)
+        os.close(locked_file)
+
+    file_lock = acquire_lock("/tmp/port_waiting_lock.lock")
+    if file_lock is None:
+        raise RuntimeError(
+            "Failed to acquire lock for port assignment contention resolution."
+        )
+    release_lock(file_lock)

@@ -22,7 +22,7 @@ from .utils import (
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
-    _resolve_target_spark_tasks,
+    _resolve_target_spark_tasks, _port_acquisition_delay,
 )
 
 if not sys.platform.startswith("linux"):
@@ -188,7 +188,7 @@ def init_cluster(
     """
     Initialize a ray cluster on the spark cluster by starting a ray head node in the spark
     application's driver side node.
-    After creating the head node, a background spark barrier mode job is created that
+    After creating the head node, a background spark job is created that
     generates an instance of `RayClusterOnSpark` that contains configuration for the ray cluster
     that will run on the Spark cluster's worker nodes.
     The returned instance can be used to connect to, disconnect from and shutdown the ray cluster.
@@ -394,16 +394,15 @@ def init_cluster(
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
     # We launch a background spark job:
-    #  1. it is a barrier mode spark job, i.e. all spark tasks in the job run concurrently.
-    #     If the spark cluster resources are not sufficient to launch all tasks concurrently,
-    #     the spark job will hang and retry. If spark exceeds the maximum retry count, the
-    #     submitted operation will fail.
-    #  2. Each spark task launches one ray worker node. This design ensures all ray worker nodes
+    #  1. Each spark task launches one ray worker node. This design ensures all ray worker nodes
     #     have the same shape (same cpus / gpus / memory configuration). If ray worker nodes have a
     #     non-uniform shape, the Ray cluster setup will be non-deterministic and could create
     #     issues with node sizing.
-    #  3. A ray worker node is started via the `ray start` CLI. In each spark task, a child
+    #  2. A ray worker node is started via the `ray start` CLI. In each spark task, a child
     #     process is started and will execute a `ray start ...` command in blocking mode.
+    #  3. Each task will acquire a file lock for 10s to ensure that the ray worker init will
+    #     acquire a port connection to the ray head node that does not contend with other
+    #     worker processes on the same Spark worker node.
     #  4. When the ray cluster is shutdown, killing ray worker nodes is implemented by:
     #     Installing a PR_SET_PDEATHSIG signal for the `ray start ...` child processes
     #     so that when parent process (pyspark task) is killed, the child processes
@@ -425,7 +424,8 @@ def init_cluster(
         #  it might cause Raylet to have a port conflict, likely due to a race condition.
         #  A sleep is added here to attempt to avoid resource allocation contention with available
         #  ports.
-        time.sleep(task_id + 5.0)
+        if sys.platform.startswith("linux"):
+            _port_acquisition_delay()
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
@@ -556,8 +556,8 @@ def init_cluster(
             # NB:
             # The background spark job is designed to running forever until it is killed,
             # So this `finally` block is reachable only when:
-            #  1. The background job raises unexpected exception (i.e. ray worker nodes
-            #    failed unexpectedly)
+            #  1. The background job raises unexpected exception (i.e. ray cluster dies
+            #    unexpectedly)
             #  2. User explicitly orders shutting down the ray cluster.
             #  3. On Databricks runtime, when a notebook is detached, it triggers python REPL
             #    `onCancel` event, cancelling the background running spark job
