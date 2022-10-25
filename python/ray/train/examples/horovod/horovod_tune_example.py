@@ -5,6 +5,7 @@ import torch
 import ray
 from ray import tune
 from ray.air import session
+import ray.train.torch
 from ray.train.horovod import HorovodTrainer
 from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
@@ -52,7 +53,7 @@ def train_loop_per_worker(config):
     import horovod.torch as hvd
 
     hvd.init()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = ray.train.torch.get_device()
     mode = config["mode"]
     net = Net(mode).to(device)
     optimizer = torch.optim.SGD(
