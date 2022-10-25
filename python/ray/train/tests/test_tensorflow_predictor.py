@@ -164,7 +164,7 @@ def test_predict(batch_type):
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
-def test_predict_dataset_block(ray_start_4_cpus, block_type, use_state_dict):
+def test_predict_dataset_block(ray_start_4_cpus, block_type):
     checkpoint = TensorflowCheckpoint.from_model(model=build_model_multi_input())
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model_multi_input

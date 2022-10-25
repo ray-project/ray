@@ -73,13 +73,15 @@ def test_predict(convert_to_pandas_mock, convert_from_pandas_mock):
     pd.testing.assert_frame_equal(actual_output, expected_output)
 
     # Ensure the proper conversion functions are called.
-    convert_to_pandas_mock.assert_called_once_with(input, False)
+    # Input data is already pandas batch type, thus no conversion needed.
+    convert_to_pandas_mock.assert_not_called()
+    # One conversion from output path
     convert_from_pandas_mock.assert_called_once()
 
     pd.testing.assert_frame_equal(
         convert_from_pandas_mock.call_args[0][0], expected_output
     )
-    assert convert_from_pandas_mock.call_args[1]["type"] == BatchFormat.PANDAS
+    assert convert_from_pandas_mock.call_args[0][1] == BatchFormat.PANDAS
 
 
 def test_from_udf():
