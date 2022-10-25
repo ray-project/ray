@@ -342,7 +342,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", "//python/ray/air:train_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
