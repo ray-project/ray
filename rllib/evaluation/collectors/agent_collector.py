@@ -182,12 +182,12 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-
         # Next obs -> obs.
         # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
         values = deepcopy(input_values)
-        assert SampleBatch.OBS not in values, "AgentColletor only uses NEXT_OBS to " \
-                                              "build trajectories."
+        assert SampleBatch.OBS not in values, (
+            "AgentColletor only uses NEXT_OBS to " "build trajectories."
+        )
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
