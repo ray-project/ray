@@ -353,7 +353,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for the Jobs SDK client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                f"{sdk_version}. Please upgrade Ray to latest version "
                 "for this feature."
             )
     else:
