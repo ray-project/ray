@@ -66,10 +66,38 @@ class TestBackwardCompatibility(unittest.TestCase):
 
                     # Also test restoring a Policy from an algo checkpoint.
                     policies = Policy.from_checkpoint(path_to_checkpoint)
-                    assert "default_policy" in policies
+                    self.assertTrue("default_policy" in policies)
 
                 print(algo.train())
                 algo.stop()
+
+    def test_v1_policy_from_checkpoint(self):
+        """Tests, whether we can load Policy checkpoints for different frameworks."""
+
+        # We wouldn't need this test once we get rid of V1 policy implementations.
+
+        rllib_dir = Path(__file__).parent.parent.parent
+        print(f"rllib dir={rllib_dir} exists={os.path.isdir(rllib_dir)}")
+
+        for fw in framework_iterator(with_eager_tracing=True):
+            path_to_checkpoint = os.path.join(
+                rllib_dir,
+                "tests",
+                "backward_compat",
+                "checkpoints",
+                "v1.0",
+                "dqn_frozenlake_" + fw,
+                "policies",
+                "default_policy",
+            )
+
+            print(
+                f"path_to_checkpoint={path_to_checkpoint} "
+                f"exists={os.path.isdir(path_to_checkpoint)}"
+            )
+
+            policy = Policy.from_checkpoint(path_to_checkpoint)
+            self.assertTrue(isinstance(policy, Policy))
 
 
 if __name__ == "__main__":
