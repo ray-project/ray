@@ -386,10 +386,12 @@ class AlgorithmConfig:
                 self.multi_agent(**kwargs)
             # Some keys must use `.update()` from given config dict (to not lose
             # any sub-keys).
-            elif key == "model":
-                self.training(model=value)
+            elif key == "callbacks_class":
+                self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
+            elif key == "model":
+                self.training(model=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -960,6 +962,8 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        if callbacks_class is None:
+            callbacks_class = DefaultCallbacks
         # Check, whether given `callbacks` is a callable.
         if not callable(callbacks_class):
             raise ValueError(
