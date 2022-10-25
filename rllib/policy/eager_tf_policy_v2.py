@@ -44,6 +44,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
+    TensorStructType,
 )
 from ray.util.debug import log_once
 
@@ -479,16 +480,16 @@ class EagerTFPolicyV2(Policy):
     @override(Policy)
     def _compute_actions_without_connectors(
         self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        info_batch=None,
-        episodes=None,
-        explore=None,
-        timestep=None,
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["Episode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
         **kwargs,
-    ):
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         # Create input dict to simply pass the entire call to
         # self.compute_actions_from_input_dict().
         input_dict = SampleBatch(

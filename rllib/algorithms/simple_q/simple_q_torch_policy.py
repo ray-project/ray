@@ -1,7 +1,7 @@
 """PyTorch policy class used for Simple Q-Learning"""
 
 import logging
-from typing import Any, Dict, List, Tuple, Type, Union
+from typing import Any, Dict, List, Tuple, Type, Union, Optional
 
 import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
@@ -60,13 +60,11 @@ class SimpleQTorchPolicy(
         return model
 
     @override(TorchPolicyV2)
-    def _compute_actions_without_connectors(
+    def _compute_actions_without_connectors_from_input_dict(
         self,
-        *,
-        input_dict,
-        explore=True,
-        timestep=None,
-        episodes=None,
+        input_dict: Dict[str, TensorType],
+        explore: bool = True,
+        timestep: Optional[int] = None,
         is_training=False,
         **kwargs
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
