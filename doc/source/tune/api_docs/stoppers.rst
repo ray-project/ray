@@ -26,6 +26,11 @@ Stopper (tune.Stopper)
 .. autoclass:: ray.tune.Stopper
     :members: __call__, stop_all
 
+CombinedStopper (tune.stopper.CombinedStopper)
+--------------------------------------------------------------
+
+.. autoclass:: ray.tune.stopper.CombinedStopper
+
 MaximumIterationStopper (tune.stopper.MaximumIterationStopper)
 --------------------------------------------------------------
 
