@@ -133,6 +133,7 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         # Add checkpoint class metadata
         # A bit of a hack but this will be removed with the rest
         # of this special case eventually
+        # TODO(ml-team): remove this when HF checkpointing is refactored
         checkpoint = HuggingFaceCheckpoint.from_directory(path)
         checkpoint._save_checkpoint_metadata_in_directory(path)
 

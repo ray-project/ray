@@ -70,7 +70,7 @@ class _TrainSession:
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        checkpoint: Optional[Union[Dict, Checkpoint]] = None,
+        checkpoint: Optional[Checkpoint] = None,
         # Deprecated
         encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
@@ -83,7 +83,7 @@ class _TrainSession:
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
+        self.loaded_checkpoint = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -243,20 +243,6 @@ class _TrainSession:
         if self.ignore_report:
             return
 
-        # Special case: early fail for Torch tensors
-        if "torch" in sys.modules:
-            from ray.air._internal.torch_utils import contains_tensor
-
-            if contains_tensor(kwargs):
-                raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
-                    "is not supported as it will throw an exception on "
-                    "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.air.session.report` to "
-                    "store your Torch objects."
-                )
-
         kwargs = self._auto_fill_metrics(kwargs)
 
         result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
@@ -285,13 +271,6 @@ class _TrainSession:
             raise StartTraceback from e
         except queue.Empty:
             pass
-
-    # TODO(ml-team): Remove alongside ray.train.save_checkpoint
-    def _legacy_checkpoint(self, checkpoint_dict: dict):
-        """Logic for legacy checkpointing.
-
-        Should be removed alongside ``ray.train.save_checkpoint``."""
-        return self.checkpoint(Checkpoint.from_dict(checkpoint_dict))
 
     def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
@@ -322,6 +301,21 @@ class _TrainSession:
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
+
+        # Special case: early fail for Torch tensors
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "store your Torch objects."
+                )
+
         if checkpoint:
             self.checkpoint(checkpoint)
         self._report_legacy(**metrics)

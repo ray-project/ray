@@ -218,6 +218,7 @@ def test_load_checkpoint_after_save():
     session.start()
     for i in range(2):
         session.get_next()
+        session.get_next()
     session.finish()
     shutdown_session()
 

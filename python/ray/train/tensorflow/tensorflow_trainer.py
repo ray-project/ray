@@ -92,12 +92,8 @@ class TensorflowTrainer(DataParallelTrainer):
         import tensorflow as tf
 
         import ray
-        from ray.air import session
-        from ray.train.tensorflow import (
-            prepare_dataset_shard,
-            TensorflowTrainer,
-            TensorflowCheckpoint,
-        )
+        from ray.air import session, Checkpoint
+        from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
         from ray.air.config import ScalingConfig
 
         input_size = 1
@@ -140,8 +136,8 @@ class TensorflowTrainer(DataParallelTrainer):
                 # for reporting and checkpointing instead of reporting manually.
                 session.report(
                     {},
-                    checkpoint=TensorflowCheckpoint.from_model(
-                        model=model
+                    checkpoint=Checkpoint.from_dict(
+                        dict(epoch=epoch, model=model.get_weights())
                     ),
                 )
 
