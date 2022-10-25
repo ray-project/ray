@@ -85,9 +85,14 @@ trainer_init_per_worker.__test__ = False
 def test_mosaic_cifar10(ray_start_4_cpus):
     from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
-    _ = train_mosaic_cifar10()
+    result = train_mosaic_cifar10().metrics_dataframe
 
-    # TODO : add asserts once reporting has been integrated
+    # check the max epoch value
+    assert result["epoch"][result.index[-1]] == 1
+
+    # check loss/train/total has increased
+    acc = list(result["metrics/train/Accuracy"])
+    assert acc[-1] > acc[0]
 
 
 def test_init_errors(ray_start_4_cpus):
