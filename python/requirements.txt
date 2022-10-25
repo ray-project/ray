@@ -12,8 +12,7 @@ click<=8.0.4,>=7.0
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-protobuf<4.0.0,>=3.15.35; platform_system != "Windows"
-protobuf>= 3.15.3, != 3.19.55; platform_system == "Windows"
+protobuf>= 3.15.3, != 3.19.55
 pyyaml
 aiosignal
 frozenlist
@@ -40,11 +39,11 @@ kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
-gym<0.24.0,>=0.21.0
+gym<0.24.1,>=0.21.0
 opencensus
 fsspec
 dm_tree
-matplotlib!=3.4.3
+matplotlib!=3.4.3; platform_system != "Windows"
 tensorboardX>=1.9
 smart_open
 requests

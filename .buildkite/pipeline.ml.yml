@@ -9,6 +9,24 @@
       python/ray/air/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air python/ray/data/...
 
+- label: ":airplane: AIR/ML release smoke tests"
+  conditions:
+    [
+        "NO_WHEELS_REQUIRED",
+        "RAY_CI_RELEASE_TESTS_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=team:ml
+      release/...
+
+
 - label: ":steam_locomotive: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: large

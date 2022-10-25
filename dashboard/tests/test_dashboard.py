@@ -1014,10 +1014,10 @@ def test_dashboard_module_load(tmpdir):
 
 
 @pytest.mark.skipif(
-    sys.version_info == (3, 10, 0),
+    sys.version_info >= (3, 10, 0),
     reason=(
         "six >= 1.16 and urllib3 >= 1.26.5 "
-        "(it has its own forked six internally that's verion 1.12) "
+        "(it has its own forked six internally that's version 1.12) "
         "are required to pass this test on Python 3.10. "
         "It's because six < 1.16 doesn't have a `find_spec` API, "
         "which is required from Python 3.10 "
