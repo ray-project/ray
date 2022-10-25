@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import torch
 import torch.nn as nn
@@ -112,8 +113,9 @@ def train_func(config):
         ]
     )
 
-    with FileLock(".ray.lock"):
-        data_dir = config.get("data_dir", "~/data")
+    data_dir = config.get("data_dir", os.path.expanduser("~/data"))
+    os.makedirs(data_dir, exist_ok=True)
+    with FileLock(os.path.join(data_dir, ".ray.lock")):
         train_dataset = CIFAR10(
             root=data_dir, train=True, download=True, transform=transform_train
         )
