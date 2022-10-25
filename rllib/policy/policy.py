@@ -370,6 +370,50 @@ class Policy(metaclass=ABCMeta):
             self._compute_actions_without_connectors_from_input_dict
         )
 
+    def compute_actions(
+        self,
+        next_obs_batch: List[TensorStructType],
+        reward_batch: Optional[List[TensorStructType]] = None,
+        dones_batch: Optional[List[TensorStructType]] = None,
+        info_batch: Optional[List[Dict[str, list]]] = None,
+        t_batch: Optional[List[int]] = None,
+        explore: bool = None,
+        agent_ids: Optional[int] = None,
+        env_ids: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from observations.
+
+        Args:
+            next_obs_batch: Batch of observations, one per agent.
+            reward_batch: Batch of rewards, one per agent.
+            dones_batch: batch of dones, one per agent.
+            info_batch: Batch of infos, one per agent.
+            t_batch: Batch of timesteps, one per agent. If None, we assume the
+                subsequent timestep when building trajectories from this input data.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            agent_ids: Batch of agent_ids, matching the agents that generated the
+                observations.
+            env_ids: Batch of env_ids, matching the environments that generated the
+                observations.
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
+
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        raise NotImplementedError
+
     # TODO: (Artur) Resolve this logic once we have fully migrated
     @DeveloperAPI
     def compute_actions_from_input_dict(
