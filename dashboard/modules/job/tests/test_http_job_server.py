@@ -23,7 +23,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
@@ -51,21 +51,15 @@ def job_sdk_client(headers):
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
-
 @pytest.fixture
 def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
-
 def test_submit_job_with_resources(shutdown_only):
     ctx = ray.init(
-        include_dashboard=True,
-        num_cpus=1,
-        num_gpus=1,
-        resources={"Custom": 1},
-        dashboard_port=8269,
+        include_dashboard=True, num_cpus=1, num_gpus=1, resources={"Custom": 1}, dashboard_port=8269
     )
     address = ctx.address_info["webui_url"]
     client = JobSubmissionClient(format_web_url(address))
