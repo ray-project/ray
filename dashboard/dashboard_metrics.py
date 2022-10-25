@@ -67,7 +67,7 @@ try:
                 registry=self.registry,
             )
             self.metrics_dashboard_cpu = Gauge(
-                "dashboard_cpu",
+                "cpu_percentage",
                 "Dashboard CPU percentage usage.",
                 (),
                 unit="percentage",
@@ -75,7 +75,7 @@ try:
                 registry=self.registry,
             )
             self.metrics_dashboard_mem = Gauge(
-                "dashboard_mem",
+                "mem_usage",
                 "Dashboard RSS usage.",
                 (),
                 unit="MB",

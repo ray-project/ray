@@ -14,6 +14,7 @@ from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
     fetch_prometheus,
+    fetch_prometheus_metrics,
     get_log_batch,
     wait_for_condition,
     raw_metrics,
@@ -109,6 +110,8 @@ _AUTOSCALER_METRICS = [
 _DASHBOARD_METRICS = [
     "dashboard_api_requests_duration_seconds",
     "dashboard_api_requests_count",
+    "dashboard_cpu_percentage",
+    "dashboard_mem_usage_MB",
 ]
 
 _NODE_METRICS = [
@@ -235,8 +238,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
+    dashboard_export_addr = "{}:{}".format(
+        addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
+    )
 
-    def verify():
+    def verify_node_metrics():
         avail_metrics = raw_metrics(addr)
         avail_metrics = set(avail_metrics)
 
@@ -244,7 +250,22 @@ def test_metrics_export_node_metrics(shutdown_only):
             assert node_metric in avail_metrics
         return True
 
-    wait_for_condition(verify)
+    def verify_dashboard_metrics():
+        avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
+        # Run list nodes to trigger dashboard API.
+        ray.experimental.state.api.list_nodes()
+        avail_metrics = set(avail_metrics)
+
+        for metric in _DASHBOARD_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(
+                name.startswith(metric) for name in avail_metrics
+            ), f"{metric} not in {avail_metrics}"
+        return True
+
+    wait_for_condition(verify_node_metrics)
+    wait_for_condition(verify_dashboard_metrics)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
