@@ -11,6 +11,7 @@ import ray
 import ray.rllib.algorithms.appo.appo as appo
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -335,19 +336,19 @@ class AlphaStar(appo.APPO):
         super().validate_config(config)
 
     @override(appo.APPO)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
         num_gpus_saved = config["num_gpus"]
         config["num_gpus"] = min(config["num_gpus"], 1)
         super().setup(config)
         self.config["num_gpus"] = num_gpus_saved
+        local_worker = self.workers.local_worker()
 
         # - Create n policy learner actors (@ray.remote-converted Policies) on
         #   one or more GPU nodes.
         # - On each such node, also locate one replay buffer shard.
 
-        ma_cfg = self.config["multiagent"]
         # By default, set max_num_policies_to_train to the number of policy IDs
         # provided in the multiagent config.
         if self.config["max_num_policies_to_train"] is None:
@@ -380,8 +381,15 @@ class AlphaStar(appo.APPO):
             replay_actor_class=ReplayActor,
             replay_actor_args=replay_actor_args,
         )
-        for pid, policy_spec in ma_cfg["policies"].items():
-            if pid in self.workers.local_worker().get_policies_to_train():
+        policies, _ = self.config.get_multi_agent_setup(
+            spaces=local_worker.spaces,
+            default_policy_class=local_worker.default_policy_class,
+        )
+        for pid, policy_spec in policies.items():
+            if (
+                local_worker.is_policy_to_train is None
+                or local_worker.is_policy_to_train(pid)
+            ):
                 distributed_learners.add_policy(pid, policy_spec)
 
         # Store distributed_learners on all RolloutWorkers
