@@ -16,10 +16,6 @@ from typing import (
 
 import numpy as np
 
-from ray.air.util.transform_pyarrow import (
-    _concatenate_extension_column,
-    _is_column_extension_type,
-)
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
@@ -171,7 +167,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
-        # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
@@ -188,11 +183,22 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        return self._table.to_pandas()
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
+        df = self._table.to_pandas()
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_tensor_columns_to_ndarrays(df)
+        return df
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        from ray.air.util.transform_pyarrow import (
+            _concatenate_extension_column,
+            _is_column_extension_type,
+        )
+
         if columns is None:
             columns = self._table.column_names
         if not isinstance(columns, list):
@@ -597,6 +603,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
     import pyarrow as pa
+    from ray.air.util.transform_pyarrow import (
+        _concatenate_extension_column,
+        _is_column_extension_type,
+    )
 
     # Copy the table by copying each column and constructing a new table with
     # the same schema.
