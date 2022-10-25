@@ -356,3 +356,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+
+
+def gcs_actor_scheduling_enabled():
+    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
