@@ -1,16 +1,12 @@
 """Job submission long running test
 
-Submits many jobs on a long running cluster.
-
-5 jobs every 30 seconds for 8 hours (or 10 minutes if smoke test).
-Each job is a simple Ray job (~10s). Total of ~5k jobs.
+Submits many simple jobs on a long running cluster.
 
 Test owner: architkulkarni
 
 Acceptance criteria: Should run through and print "PASSED"
 """
 
-# XXX: Move to long_running folder (do I need to?)
 import argparse
 import json
 import os
@@ -23,7 +19,7 @@ import ray
 from ray.job_submission import JobSubmissionClient
 
 NUM_CLIENTS = 4
-NUM_JOBS_PER_BATCH = 5
+NUM_JOBS_PER_BATCH = 10
 
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
@@ -58,7 +54,6 @@ def submit_batch_jobs(
         # Cycle through clients arbitrarily
         client = clients[i % len(clients)]
         job_id = client.submit_job(
-            # runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
             entrypoint="echo hello",
         )
         job_ids.append(job_id)
@@ -86,6 +81,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing."
     )
+
+    parser.add_argument("--num-clients", type=int, default=NUM_CLIENTS)
+    parser.add_argument("--num-jobs-per-batch", type=int, default=NUM_JOBS_PER_BATCH)
 
     args = parser.parse_args()
     if args.smoke_test:
