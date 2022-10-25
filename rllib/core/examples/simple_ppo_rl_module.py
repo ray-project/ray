@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.torch.torch_action_dist_v2 import (
+from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,

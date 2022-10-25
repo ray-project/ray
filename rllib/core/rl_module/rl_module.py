@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import (
 )
 
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
-from ray.rllib.models.action_dist_v2 import ActionDistributionV2
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
@@ -86,10 +86,10 @@ class RLModule(abc.ABC):
 
         Override this method to customize the output specs of the inference call.
         The default implementation requires the forward_inference to reutn a dict that
-        has `action_dist` key and its value is an instance of `ActionDistributionV2`.
+        has `action_dist` key and its value is an instance of `Distribution`.
         This assumption must always hold.
         """
-        return ModelSpec({"action_dist": ActionDistributionV2})
+        return ModelSpec({"action_dist": Distribution})
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> ModelSpec:
@@ -98,9 +98,9 @@ class RLModule(abc.ABC):
         Override this method to customize the output specs of the inference call.
         The default implementation requires the forward_exploration to reutn a dict
         that has `action_dist` key and its value is an instance of
-        `ActionDistributionV2`. This assumption must always hold.
+        `Distribution`. This assumption must always hold.
         """
-        return ModelSpec({"action_dist": ActionDistributionV2})
+        return ModelSpec({"action_dist": Distribution})
 
     def output_specs_train(self) -> ModelSpec:
         """Returns the output specs of the forward_train method."""

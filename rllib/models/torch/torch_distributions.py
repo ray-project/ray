@@ -220,7 +220,7 @@ class TorchDeterministic(Distribution):
         if sample_shape is None:
             sample_shape = torch.Size()
         loc_shape = self.loc.shape
-        return torch.ones(sample_shape + loc_shape, device=self.loc.device) * self.loc
+        return torch.ones(sample_shape + loc_shape, device=self.loc.device, dtype=self.loc.dtype) * self.loc
 
     def rsample(
         self,
