@@ -1881,6 +1881,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
 
+def test_iter_batches_empty_block(ray_start_regular_shared):
+    ds = ray.data.range(1).repartition(10)
+    assert list(ds.iter_batches(batch_size=None)) == [[0]]
+    assert list(ds.iter_batches(batch_size=1, local_shuffle_buffer_size=1)) == [[0]]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas", "simple"])
 def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
