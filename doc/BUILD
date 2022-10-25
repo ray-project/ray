@@ -201,6 +201,7 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
