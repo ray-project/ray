@@ -316,7 +316,7 @@ def test_jobs_run_on_head_by_default_E2E(
             assert len(list_nodes()) == num_nodes
             return True
         except Exception as ex:
-            logger.info(ex)
+            print(ex)
             return False
 
     wait_for_condition(lambda: _check_nodes(num_nodes=3), timeout=15)
