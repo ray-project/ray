@@ -6,8 +6,10 @@ import pandas as pd
 from ray.data.preprocessor import Preprocessor
 
 from ray.data.preprocessors.utils import simple_hash
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class FeatureHasher(Preprocessor):
     """Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
