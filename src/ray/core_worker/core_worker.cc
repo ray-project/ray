@@ -1980,9 +1980,11 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries(),
-        /*enable_metrics=*/false);
+    returned_refs = task_manager_->AddPendingTask(rpc_address_,
+                                                  task_spec,
+                                                  CurrentCallSite(),
+                                                  actor_handle->MaxTaskRetries(),
+                                                  /*enable_metrics=*/false);
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};
