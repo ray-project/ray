@@ -1,6 +1,7 @@
 import importlib
 import logging
-from typing import Union, Optional, Tuple, TYPE_CHECKING
+import os
+from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 MIN_PYARROW_VERSION = "6.0.1"
 # Exclusive maximum pyarrow version.
 MAX_PYARROW_VERSION = "7.0.0"
+RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
 
 
@@ -40,15 +42,14 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
     return _pyarrow_dataset
 
 
-def _version_tuple_to_str(version: Tuple[int, int, int]) -> str:
-    """Convert version tuple to string."""
-    return ".".join(str(n) for n in version)
-
-
 def _check_pyarrow_version():
     global _VERSION_VALIDATED
 
     if not _VERSION_VALIDATED:
+        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
+            _VERSION_VALIDATED = True
+            return
+
         from pkg_resources import require, packaging, DistributionNotFound
 
         try:
