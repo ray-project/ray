@@ -108,6 +108,7 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
+        DataOrganizer.head_node_ip = self.ip
         ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))

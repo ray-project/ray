@@ -2,8 +2,7 @@
 import logging
 from typing import Callable, Optional
 
-from ray.tune.result import TRAINING_ITERATION
-from ray.air.config import CheckpointConfig, MIN, MAX
+from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,
@@ -31,31 +30,18 @@ class _CheckpointManager(CommonCheckpointManager):
 
     def __init__(
         self,
-        keep_checkpoints_num: int,
-        checkpoint_score_attr: Optional[str],
+        checkpoint_config: Optional[CheckpointConfig] = None,
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
-        if keep_checkpoints_num == 0:
+        checkpoint_config = checkpoint_config or CheckpointConfig()
+
+        if checkpoint_config.num_to_keep == 0:
             raise RuntimeError(
                 "If checkpointing is enabled, Ray Tune requires `keep_checkpoints_num` "
                 "to be None or a number greater than 0"
             )
 
-        checkpoint_score_attr = checkpoint_score_attr or TRAINING_ITERATION
-
-        checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
-        if checkpoint_score_desc:
-            checkpoint_score_attr = checkpoint_score_attr[4:]
-        else:
-            checkpoint_score_attr = checkpoint_score_attr
-
-        checkpoint_strategy = CheckpointConfig(
-            num_to_keep=keep_checkpoints_num,
-            checkpoint_score_attribute=checkpoint_score_attr,
-            checkpoint_score_order=MIN if checkpoint_score_desc else MAX,
-        )
-
-        super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
+        super().__init__(checkpoint_strategy=checkpoint_config, delete_fn=delete_fn)
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
         # Set checkpoint ID

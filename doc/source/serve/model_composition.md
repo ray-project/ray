@@ -208,7 +208,7 @@ Here's the graph:
 :linenos: true
 ```
 
-Lines 29 and 30 bind two `ClassNodes` from the `AddCls` deployment. Line 32 starts the call graph:
+Lines 31 and 32 bind two `ClassNodes` from the `AddCls` deployment. Line 34 starts the call graph:
 
 ```python
 with InputNode() as http_request:
@@ -235,10 +235,10 @@ The graph then passes `request_number` into a `bind` call on `add_2`'s `add` met
 
 The rest of the call graph uses another `FunctionNode` and `MethodNode` to finish the chain of arithmetic. `add_2_output` is bound to the `subtract_one_fn` deployment, producing the `subtract_1_output` `FunctionNode`. Then, the `subtract_1_output` is bound to the `add_3.add` method, producing the `add_3_output` `MethodNode`. This `add_3_output` `MethodNode` represents the final output from the chain of arithmetic operations.
 
-To run the call graph, you need to use a driver. Drivers are deployments that process the call graph that you've written and route incoming requests through your deployments based on that graph. Ray Serve provides a driver called `DAGDriver` used on line 38:
+To run the call graph, you need to use a driver. Drivers are deployments that process the call graph that you've written and route incoming requests through your deployments based on that graph. Ray Serve provides a driver called `DAGDriver` used on line 40:
 
 ```python
-deployment_graph = DAGDriver.bind(add_3_output)
+graph = DAGDriver.bind(add_3_output)
 ```
 
 Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.

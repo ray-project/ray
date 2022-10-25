@@ -37,7 +37,7 @@ const columns = [
   { label: "Submission ID" },
   { label: "Status" },
   {
-    label: "Progress",
+    label: "Tasks",
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
@@ -57,6 +57,7 @@ const columns = [
   },
   { label: "StartTime" },
   { label: "EndTime" },
+  { label: "Duration" },
   { label: "Driver Pid" },
 ];
 

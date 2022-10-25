@@ -308,6 +308,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
+    @routes.get("/api/v0/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_cluster_events(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
