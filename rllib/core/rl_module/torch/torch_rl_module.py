@@ -11,8 +11,11 @@ class TorchRLModule(RLModule, nn.Module):
         nn.Module.__init__(self)
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
-        """This is only done because Torch DDP requires a forward method to be
-        implemented for backpropagation to work."""
+        """forward pass of the module.
+
+        This is aliased to forward_train because Torch DDP requires a forward method to
+        be implemented for backpropagation to work.
+        """
         return self.forward_train(batch, **kwargs)
 
     def get_state(self) -> Mapping[str, Any]:
