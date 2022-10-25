@@ -44,7 +44,7 @@ extern const TagKeyType WorkerIdKey;
 
 extern const TagKeyType JobIdKey;
 
-extern const TagKeyType ClusterIdKey;
+extern const TagKeyType SessionNameKey;
 
 extern const TagKeyType NameKey;
 

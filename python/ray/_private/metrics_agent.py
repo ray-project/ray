@@ -183,8 +183,6 @@ class MetricsAgent:
             self.view_manager.register_view(gauge.view)
             # Reobtain the view.
         view = self.view_manager.get_view(gauge.name).view
-        logger.info(gauge.name)
-        logger.info(tags)
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():

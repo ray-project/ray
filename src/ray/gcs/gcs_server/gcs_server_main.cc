@@ -33,7 +33,9 @@ DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 DEFINE_string(node_ip_address, "", "The ip address of the node.");
-DEFINE_string(cluster_id, "", "cluster_id: The unique ID of this cluster.");
+DEFINE_string(session_name,
+              "",
+              "session_name: The session name (ClusterID) of the cluster.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -56,7 +58,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
-  const std::string cluster_id = FLAGS_cluster_id;
+  const std::string session_name = FLAGS_session_name;
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -72,7 +74,7 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::JobIdKey, ""},
                                             {ray::stats::VersionKey, kRayVersion},
                                             {ray::stats::NodeAddressKey, node_ip_address},
-                                            {ray::stats::ClusterIdKey, cluster_id}};
+                                            {ray::stats::SessionNameKey, session_name}};
   ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.

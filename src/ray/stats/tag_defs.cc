@@ -40,7 +40,7 @@ const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
 const TagKeyType JobIdKey = TagKeyType::Register("JobId");
 
-const TagKeyType ClusterIdKey = TagKeyType::Register("ClusterId");
+const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
 
 const TagKeyType NameKey = TagKeyType::Register("Name");
 

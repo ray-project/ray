@@ -1528,7 +1528,7 @@ def init(
 
     connect(
         _global_node,
-        _global_node.cluster_id,
+        _global_node.session_name,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
@@ -1854,7 +1854,7 @@ def is_initialized() -> bool:
 
 def connect(
     node,
-    cluster_id,
+    session_name: str,
     mode=WORKER_MODE,
     log_to_driver: bool = False,
     worker=global_worker,
@@ -1870,6 +1870,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
+        session_name: The session name (cluster id) of this cluster.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2027,7 +2028,7 @@ def connect(
         node.metrics_agent_port,
         runtime_env_hash,
         startup_token,
-        cluster_id,
+        session_name,
     )
 
     # Notify raylet that the core worker is ready.
