@@ -525,36 +525,57 @@ class JobManager:
         if result is None:
             return
 
-    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
+    async def _get_scheduling_strategy(
+        self, resources_specified: bool
+    ) -> SchedulingStrategyT:
+        """Get the scheduling strategy for the job.
+
+        If resources_specified is true, or if the environment variable is set to
+        allow the job to run on worker nodes, we will use Ray's default actor
+        placement strategy. Otherwise, we will force the job to use the head node.
+
+        Args:
+            resources_specified: Whether the job specified any resources
+                (CPUs, GPUs, or custom).
+
+        Returns:
+            SchedulingStrategyT: The scheduling strategy to use for the job.
+        """
+        if resources_specified:
+            return "DEFAULT"
+
         if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
             logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
                 "driver instead of running it on the head node."
             )
+            return "DEFAULT"
+
+        # If the user did not specify any resources or set the driver on worker nodes
+        # env var, we will run the driver on the head node.
+
+        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
+            "head_node_id".encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=30,
+        )
+        if head_node_id_bytes is None:
+            logger.info(
+                "Head node ID not found in GCS. Using Ray's default actor "
+                "scheduling strategy for the job driver instead of running "
+                "it on the head node."
+            )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-                "head_node_id".encode(),
-                namespace=ray_constants.KV_NAMESPACE_JOB,
-                timeout=30,
+            head_node_id = head_node_id_bytes.decode()
+            logger.info(
+                "Head node ID found in GCS; scheduling job driver on "
+                f"head node {head_node_id}"
             )
-            if head_node_id_bytes is None:
-                logger.info(
-                    "Head node ID not found in GCS. Using Ray's default actor "
-                    "scheduling strategy for the job driver instead of running "
-                    "it on the head node."
-                )
-                scheduling_strategy = "DEFAULT"
-            else:
-                head_node_id = head_node_id_bytes.decode()
-                logger.info(
-                    "Head node ID found in GCS; scheduling job driver on "
-                    f"head node {head_node_id}"
-                )
-                scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=head_node_id, soft=False
-                )
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
         return scheduling_strategy
 
     async def submit_job(
@@ -630,7 +651,10 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            scheduling_strategy = await self._get_scheduling_strategy()
+            resources_specified = num_cpus > 0 or num_gpus > 0 or resources
+            scheduling_strategy = await self._get_scheduling_strategy(
+                resources_specified
+            )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
@@ -650,7 +674,7 @@ class JobManager:
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start job supervisor: {e}.",
+                message=f"Failed to start Job Supervisor actor: {e}.",
             )
 
         return submission_id

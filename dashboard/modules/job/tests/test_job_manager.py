@@ -36,7 +36,8 @@ TEST_NAMESPACE = "jobs_test_namespace"
     ["""ray start --head"""],
     indirect=True,
 )
-async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("resources_specified", [True, False])
+async def test_get_scheduling_strategy(call_ray_start, monkeypatch, resources_specified):  # noqa: F811
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
@@ -49,21 +50,24 @@ async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F8
     await gcs_aio_client.internal_kv_del(
         "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy()
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_aio_client.internal_kv_put(
         "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy()
-    expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=True)
-    assert expected_strategy.node_id == strategy.node_id
-    assert expected_strategy.soft == strategy.soft
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    if resources_specified:
+        assert strategy == "DEFAULT"
+    else:
+        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        assert expected_strategy.node_id == strategy.node_id
+        assert expected_strategy.soft == strategy.soft
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy()
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
 
