@@ -455,7 +455,6 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
-                job_info = await self._job_info_client.get_info(job_id)
                 job_status = await self._job_info_client.get_status(job_id)
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
@@ -473,16 +472,12 @@ class JobManager:
                         f"Failed to schedule job {job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
-                    # TODO(architkulkarni): Once job entrypoints run on worker nodes,
-                    # make this error message more actionable, distinguishing between
-                    # the two cases driver_on_current_node = True or False.
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
-                        message=f"Could not fulfill resource request {{'CPU': "
-                        f"{job_info.num_cpus}, 'GPU': {job_info.num_gpus}, "
-                        f"'resources': {job_info.resources}}} for "
-                        f"the entrypoint command.",
+                        message=(
+                            f"Job supervisor actor could not be scheduled: {e}"
+                        ),
                     )
                 else:
                     logger.warning(
@@ -651,7 +646,13 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            resources_specified = num_cpus > 0 or num_gpus > 0 or resources
+            resources_specified = any(
+                [
+                    num_cpus is not None and num_cpus > 0,
+                    num_gpus is not None and num_gpus > 0,
+                    resources not in [None, {}],
+                ]
+            )
             scheduling_strategy = await self._get_scheduling_strategy(
                 resources_specified
             )

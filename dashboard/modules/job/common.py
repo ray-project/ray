@@ -99,7 +99,8 @@ class JobInfo:
                         self.resources not in [None, {}],
                     ]
                 ):
-                    self.message += " It may be waiting for resources to become available. Check with `ray status`"
+                    self.message += " It may be waiting for resources "
+                    "(CPUs, GPUs) to become available."
                 if self.runtime_env not in [None, {}]:
                     self.message += (
                         " It may be waiting for the runtime environment to be set up."
