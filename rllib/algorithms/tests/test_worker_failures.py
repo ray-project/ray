@@ -411,7 +411,8 @@ class TestWorkerFailures(unittest.TestCase):
                 algorithm.add_policy(
                     policy_id="test_policy",
                     policy_cls=(
-                        PGTorchPolicy if algorithm.config.framework_str == "torch"
+                        PGTorchPolicy
+                        if algorithm.config.framework_str == "torch"
                         else PGTF2Policy
                     ),
                     observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),

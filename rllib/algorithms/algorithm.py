@@ -2319,7 +2319,10 @@ class Algorithm(Trainable):
 
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
         if config.get("num_gpus", 0) > 1:
-            if framework in ["tfe", "tf2"]:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            if framework in ["tfe", "tf2"] and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)

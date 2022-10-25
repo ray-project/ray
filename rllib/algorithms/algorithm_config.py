@@ -286,15 +286,7 @@ class AlgorithmConfig:
 
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
-        for k in [
-            "policies",
-            "policy_map_capacity",
-            "policy_map_cache",
-            "policy_mapping_fn",
-            "policies_to_train",
-            "observation_fn",
-            "count_steps_by",
-        ]:
+        for k in self.multiagent.keys():
             config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
@@ -1118,6 +1110,7 @@ class AlgorithmConfig:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
             from ray.rllib.algorithms.algorithm import Algorithm
+
             self.evaluation_config = deep_update(
                 self.evaluation_config or {},
                 evaluation_config,

@@ -327,8 +327,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             default_policy_class=StatefulPolicy,
             config=(
-                AlgorithmConfig()
-                .rollouts(
+                AlgorithmConfig().rollouts(
                     rollout_fragment_length=5, num_rollout_workers=0
                 )
                 # Force `state_in_0` to be repeated every ts in the collected batch

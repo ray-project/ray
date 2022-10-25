@@ -227,9 +227,9 @@ class AlphaStarConfig(appo.APPOConfig):
                 ["league_builder_config"],
                 ["league_builder_config"],
             )
-            self.league_builder_config = (
-                new_league_builder_config["league_builder_config"]
-            )
+            self.league_builder_config = new_league_builder_config[
+                "league_builder_config"
+            ]
         if max_num_policies_to_train is not None:
             self.max_num_policies_to_train = max_num_policies_to_train
         if max_requests_in_flight_per_sampler_worker is not None:
@@ -339,10 +339,7 @@ class AlphaStar(appo.APPO):
     def setup(self, config: AlgorithmConfig):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
-        num_gpus_saved = config["num_gpus"]
-        config["num_gpus"] = min(config["num_gpus"], 1)
         super().setup(config)
-        self.config["num_gpus"] = num_gpus_saved
         local_worker = self.workers.local_worker()
 
         # - Create n policy learner actors (@ray.remote-converted Policies) on
