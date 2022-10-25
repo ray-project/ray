@@ -664,12 +664,12 @@ def test_object_directory_failure(ray_start_cluster):
     def task(x):
         pass
 
+    cluster.remove_node(node_to_kill, allow_graceful=False)
     tasks = []
     repeat = 3
     for i in range(num_nodes):
         for _ in range(repeat):
             tasks.append(task.options(resources={str(i): 1}).remote(obj))
-    cluster.remove_node(node_to_kill, allow_graceful=False)
 
     for t in tasks:
         with pytest.raises(ray.exceptions.RayTaskError):
