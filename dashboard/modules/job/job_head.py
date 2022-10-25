@@ -1,8 +1,10 @@
+import asyncio
 import dataclasses
 import json
 import logging
 import traceback
-from typing import Iterator
+from random import sample
+from typing import Iterator, Optional
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -10,6 +12,8 @@ from aiohttp.client import ClientResponse
 
 import ray
 import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.consts as dashboard_consts
+from ray.dashboard.datacenter import DataOrganizer
 import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
@@ -22,6 +26,7 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
+    JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.pydantic_models import (
     JobDetails,
@@ -36,7 +41,6 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-from ray.dashboard.modules.job.job_manager import JobManager
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -125,10 +129,71 @@ class JobAgentSubmissionClient:
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
+    """Runs on the head node of a Ray cluster and handles Ray Jobs APIs."""
+
+    # Time that we sleep while tailing logs while waiting for
+    # the supervisor actor to start. We don't know which node
+    # to read the logs from until then.
+    WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 1
+
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
-        self._job_manager = None
+        self._job_info_client = None
+
+        # It contains all `JobAgentSubmissionClient` that
+        # `JobHead` has ever used, and will not be deleted
+        # from it unless `JobAgentSubmissionClient` is no
+        # longer available (the corresponding agent process is dead)
+        self._agents = dict()
+
+    async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
+        """
+        Try to disperse as much as possible to select one of
+        the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
+        the agents will not pop from `self._agents` unless
+        it's dead. Saved in `self._agents` is the agent that was
+        used before.
+        Strategy:
+            1. if the number of `self._agents` has reached
+               `CANDIDATE_AGENT_NUMBER`, randomly select one agent from
+               `self._agents`.
+            2. if not, randomly select one agent from all available agents,
+               it is possible that the selected one already exists in
+               `self._agents`.
+        """
+        # the number of agents which has an available HTTP port.
+        while True:
+            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
+            agent_infos = {
+                key: value
+                for key, value in raw_agent_infos.items()
+                if value.get("httpPort", -1) > 0
+            }
+            if len(agent_infos) > 0:
+                break
+            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        # delete dead agents.
+        for dead_node in set(self._agents) - set(agent_infos):
+            client = self._agents.pop(dead_node)
+            await client.close()
+
+        if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+            node_id = sample(set(self._agents), 1)[0]
+            return self._agents[node_id]
+        else:
+            # Randomly select one from among all agents, it is possible that
+            # the selected one already exists in `self._agents`
+            node_id = sample(set(agent_infos), 1)[0]
+            agent_info = agent_infos[node_id]
+
+            if node_id not in self._agents:
+                node_ip = agent_info["ipAddress"]
+                http_port = agent_info["httpPort"]
+                agent_http_address = f"http://{node_ip}:{http_port}"
+                self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
+
+            return self._agents[node_id]
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -146,7 +211,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -171,7 +235,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -189,28 +252,25 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
         result = await parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
         if isinstance(result, Response):
             return result
         else:
-            submit_request = result
-
-        request_submission_id = submit_request.submission_id or submit_request.job_id
+            submit_request: JobSubmitRequest = result
 
         try:
-            ray._private.usage.usage_lib.record_library_usage("job_submission")
-
-            submission_id = await self._job_manager.submit_job(
-                entrypoint=submit_request.entrypoint,
-                submission_id=request_submission_id,
-                runtime_env=submit_request.runtime_env,
-                metadata=submit_request.metadata,
+            job_agent_client = await asyncio.wait_for(
+                self.choose_agent(),
+                timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
-
-            resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
+            resp = await job_agent_client.submit_job_internal(submit_request)
+        except asyncio.TimeoutError:
+            return Response(
+                text="No available agent to submit job, please try again later.",
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),
@@ -229,11 +289,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_or_submission_id}/stop")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client,
+            self._job_info_client,
+            job_or_submission_id,
         )
         if not job:
             return Response(
@@ -247,8 +308,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            stopped = self._job_manager.stop_job(job.submission_id)
-            resp = JobStopResponse(stopped=stopped)
+            job_agent_client = await asyncio.wait_for(
+                self.choose_agent(),
+                timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
+            )
+            resp = await job_agent_client.stop_job_internal(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
@@ -263,7 +327,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client,
+            self._job_info_client,
+            job_or_submission_id,
         )
         if not job:
             return Response(
@@ -277,13 +343,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
             self._dashboard_head.gcs_aio_client
         )
 
-        submission_jobs = await self._job_manager.list_jobs()
+        submission_jobs = await self._job_info_client.get_all_jobs()
         submission_jobs = [
             JobDetails(
                 **dataclasses.asdict(job),
@@ -307,11 +372,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client,
+            self._job_info_client,
+            job_or_submission_id,
         )
         if not job:
             return Response(
@@ -325,17 +391,35 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
+        try:
+            driver_agent_http_address = job.driver_agent_http_address
+            driver_node_id = job.driver_node_id
+            if driver_agent_http_address is None:
+                resp = JobLogsResponse("")
+            else:
+                if driver_node_id not in self._agents:
+                    self._agents[driver_node_id] = JobAgentSubmissionClient(
+                        driver_agent_http_address
+                    )
+                job_agent_client = self._agents[driver_node_id]
+                resp = await job_agent_client.get_job_logs_internal(job.submission_id)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client,
+            self._job_info_client,
+            job_or_submission_id,
         )
         if not job:
             return Response(
@@ -352,12 +436,35 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
 
-        async for lines in self._job_manager.tail_job_logs(job.submission_id):
+        driver_agent_http_address = None
+        while driver_agent_http_address is None:
+            job = await find_job_by_ids(
+                self._dashboard_head.gcs_aio_client,
+                self._job_info_client,
+                job_or_submission_id,
+            )
+            driver_agent_http_address = job.driver_agent_http_address
+            status = job.status
+            if status.is_terminal() and driver_agent_http_address is None:
+                # Job exited before supervisor actor started.
+                return
+            await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
+
+        driver_node_id = job.driver_node_id
+        if driver_node_id not in self._agents:
+            self._agents[driver_node_id] = JobAgentSubmissionClient(
+                driver_agent_http_address
+            )
+        job_agent_client = self._agents[driver_node_id]
+
+        async for lines in job_agent_client.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
     async def run(self, server):
-        if not self._job_manager:
-            self._job_manager = JobManager(self._dashboard_head.gcs_aio_client)
+        if not self._job_info_client:
+            self._job_info_client = JobInfoStorageClient(
+                self._dashboard_head.gcs_aio_client
+            )
 
     @staticmethod
     def is_minimal_module():

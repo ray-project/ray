@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import traceback
-
+import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
@@ -40,12 +40,12 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
+            ray._private.usage.usage_lib.record_library_usage("job_submission")
             submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
-                _driver_on_current_node=False,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
@@ -72,7 +72,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -105,7 +105,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -133,7 +133,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:

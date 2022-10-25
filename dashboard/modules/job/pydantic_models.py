@@ -79,3 +79,10 @@ class JobDetails(BaseModel):
     runtime_env: Optional[Dict[str, Any]] = Field(
         None, description="The runtime environment for the job."
     )
+    # the node info where the driver running on.
+    #     - driver_agent_http_address: this node's agent http address
+    #     - driver_node_id: this node's id.
+    driver_agent_http_address: Optional[str] = Field(
+        None, description="Driver agent http address."
+    )
+    driver_node_id: Optional[str] = Field(None, description="Driver node id.")

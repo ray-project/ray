@@ -101,7 +101,7 @@ def test_successful_job_status(
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest123": "123"}}
                 assert entry["metadata"] == {"rayTest456": "456"}
                 assert entry["errorType"] is None
-                assert abs(entry["startTime"] - start_time_s * 1000) <= 2000
+                assert abs(entry["startTime"] - start_time_s * 1000) <= 10000
                 if entry["status"] == "SUCCEEDED":
                     job_succeeded = True
                     assert (
@@ -170,7 +170,7 @@ def test_failed_job_status(
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest456": "456"}}
                 assert entry["metadata"] == {"rayTest789": "789"}
                 assert entry["errorType"] is None
-                assert abs(entry["startTime"] - start_time_s * 1000) <= 2000
+                assert abs(entry["startTime"] - start_time_s * 1000) <= 10000
                 if entry["status"] == "FAILED":
                     job_failed = True
                     assert (

@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 def mock_sdk_client():
     class AsyncIterator:
         def __init__(self, seq):
-            self.iter = iter(seq)
+            self._seq = seq
+            self.iter = iter(self._seq)
 
         def __aiter__(self):
             return self
@@ -30,6 +31,7 @@ def mock_sdk_client():
             try:
                 return next(self.iter)
             except StopIteration:
+                self.iter = iter(self._seq)
                 raise StopAsyncIteration
 
     if "RAY_ADDRESS" in os.environ:

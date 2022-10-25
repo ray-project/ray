@@ -164,6 +164,16 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
                         )
+                        # Put head node ID in the internal KV to be read by JobAgent.
+                        # TODO(architkulkarni): Remove once State API exposes which
+                        # node is the head node.
+                        await self._gcs_aio_client.internal_kv_put(
+                            "head_node_id".encode(),
+                            node_id.encode(),
+                            overwrite=True,
+                            namespace=ray_constants.KV_NAMESPACE_JOB,
+                            timeout=2,
+                        )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]

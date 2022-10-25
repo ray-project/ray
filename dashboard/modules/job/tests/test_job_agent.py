@@ -473,7 +473,7 @@ async def test_job_log_in_multiple_node(
         return True
 
     st = time.time()
-    while time.time() - st <= 15:
+    while time.time() - st <= 30:
         try:
             await _check_all_jobs_log()
             break
