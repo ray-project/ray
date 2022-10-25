@@ -23,7 +23,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
@@ -46,10 +46,39 @@ def headers():
 
 @pytest.fixture(scope="module")
 def job_sdk_client(headers):
-    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
+    with _ray_start(
+        include_dashboard=True, num_cpus=1, num_gpus=1, resources={"Custom": 1}
+    ) as ctx:
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
+
+
+@pytest.fixture
+def stop_all_jobs(job_sdk_client):
+    yield
+    for job in job_sdk_client.list_jobs():
+        if job.type == JobType.SUBMISSION:
+            job_sdk_client.stop_job(job.submission_id)
+
+
+def test_submit_job_with_resources(job_sdk_client, stop_all_jobs):
+    client = job_sdk_client
+    # Check the case of too many resources.
+    for kwargs in [
+        {"num_cpus": 2},
+        {"num_gpus": 2},
+        {"resources": {"Custom": 2}},
+    ]:
+        job_id = client.submit_job(entrypoint="echo hello", **kwargs)
+        data = client.get_job_info(job_id)
+        assert "waiting for resources" in data.message
+
+    # Check the case of sufficient resources.
+    job_id = client.submit_job(
+        entrypoint="echo hello", num_cpus=1, num_gpus=1, resources={"Custom": 1}
+    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
 
 
 @pytest.mark.parametrize("use_sdk", [True, False])
