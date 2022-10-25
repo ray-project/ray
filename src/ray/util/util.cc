@@ -89,7 +89,8 @@ std::string EndpointToUrl(
     result = ss.str();
     break;
   }
-#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+
+#if !defined(_WIN32) && defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
   case AF_UNIX:
     scheme = "unix://";
     result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
