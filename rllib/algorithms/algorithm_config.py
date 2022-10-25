@@ -1111,7 +1111,9 @@ class AlgorithmConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            self.evaluation_config = evaluation_config
+            self.evaluation_config = merge_dicts(
+                self.evaluation_config or {}, evaluation_config
+            )
         if off_policy_estimation_methods is not None:
             self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
