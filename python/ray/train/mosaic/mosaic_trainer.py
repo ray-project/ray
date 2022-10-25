@@ -213,6 +213,7 @@ def _mosaic_train_loop_per_worker(config):
 
     # initialize Composer trainer
     config["progress_bar"] = False
+    config["log_to_console"] = False
     trainer: Trainer = trainer_init_per_worker(config)
 
     # Remove Composer's Loggers if there are any added in the trainer_init_per_worker
