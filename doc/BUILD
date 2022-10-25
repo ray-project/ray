@@ -19,24 +19,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
-### Ray Data
-py_test(
-    name = "quick_start",
-    size = "small",
-    srcs = ["source/data/doc_code/quick_start.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "big_data_ingestion",
-    size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:core", "py37"]
-)
-
 py_test(
     name = "datasets_train",
     size = "medium",
@@ -210,4 +192,15 @@ py_test_run_all_subdirectory(
     exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/data/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/data/doc_code/*.py"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:core"],
 )
