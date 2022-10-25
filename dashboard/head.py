@@ -219,7 +219,7 @@ class DashboardHead:
 
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
-        address = f"{self.head_node_ip}:{DASHBOARD_METRIC_PORT}"
+        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
         internal_kv._internal_kv_put("DashboardMetricsAddress", address, True)
         if prometheus_client:
             try:
@@ -228,9 +228,7 @@ class DashboardHead:
                         DASHBOARD_METRIC_PORT
                     )
                 )
-                kwargs = (
-                    {"addr": "127.0.0.1"} if self.head_node_ip == "127.0.0.1" else {}
-                )
+                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
                 prometheus_client.start_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,

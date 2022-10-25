@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 import pathlib
@@ -110,6 +111,47 @@ _DASHBOARD_METRICS = [
     "dashboard_api_requests_count",
 ]
 
+_NODE_METRICS = [
+    "ray_raylet_cpu",
+    "ray_raylet_mem",
+    "ray_workers_cpu",
+    "ray_workers_mem",
+    "ray_agent_cpu",
+    "ray_agent_mem",
+    "ray_agent_mem_uss",
+    "ray_node_cpu_utilization",
+    "ray_node_cpu_count",
+    "ray_node_mem_used",
+    "ray_node_mem_available",
+    "ray_node_mem_total",
+    "ray_node_disk_io_read",
+    "ray_node_disk_io_write",
+    "ray_node_disk_io_read_count",
+    "ray_node_disk_io_write_count",
+    "ray_node_disk_io_read_speed",
+    "ray_node_disk_io_write_speed",
+    "ray_node_disk_read_iops",
+    "ray_node_disk_write_iops",
+    "ray_node_disk_usage",
+    "ray_node_disk_free",
+    "ray_node_disk_utilization_percentage",
+    "ray_node_network_sent",
+    "ray_node_network_received",
+    "ray_node_network_send_speed",
+    "ray_node_network_receive_speed",
+]
+
+if sys.platform == "linux":
+    # Below metrics are only available in Linux.
+    _NODE_METRICS += [
+        "ray_agent_mem_pss",
+        "raylet_mem_shm",
+        "raylet_mem_pss",
+        "raylet_mem_swap",
+        "workers_mem_shm",
+        "workers_mem_pss",
+    ]
+
 
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
@@ -187,6 +229,22 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     ray.get(obj_refs)
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+def test_metrics_export_node_metrics(shutdown_only):
+    # Verify node metrics are available.
+    addr = ray.init()
+
+    def verify():
+        avail_metrics = raw_metrics(addr)
+        avail_metrics = set(avail_metrics)
+
+        for node_metric in _NODE_METRICS:
+            assert node_metric in avail_metrics
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")

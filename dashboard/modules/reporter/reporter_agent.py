@@ -23,6 +23,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.util.debug import log_once
+from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
 logger = logging.getLogger(__name__)
@@ -369,8 +370,11 @@ class ReporterAgent(
         return reporter_pb2.ReportOCMetricsReply()
 
     @staticmethod
-    def _get_cpu_percent():
-        return ray._private.utils.get_system_cpu_percent(IN_KUBERNETES_POD)
+    def _get_cpu_percent(in_k8s: bool):
+        if in_k8s:
+            return k8s_utils.cpu_percent()
+        else:
+            return psutil.cpu_percent()
 
     @staticmethod
     def _get_gpu_usage():
@@ -564,7 +568,7 @@ class ReporterAgent(
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
-            "cpu": self._get_cpu_percent(),
+            "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
             "workers": self._get_workers(),
@@ -814,20 +818,22 @@ class ReporterAgent(
                     tags={"ip": ip, "pid": raylet_pid},
                 )
             )
-            raylet_shm = float(raylet_stats["memory_info"].shared) / 1.0e6
-            if raylet_shm > 0.0:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem_shm"],
-                        value=raylet_shm,
-                        tags={"ip": ip, "pid": raylet_pid},
+            if sys.platform == "linux":
+                raylet_shm = float(raylet_stats["memory_info"].shared) / 1.0e6
+                if raylet_shm > 0.0:
+                    records_reported.append(
+                        Record(
+                            gauge=METRICS_GAUGES["raylet_mem_shm"],
+                            value=raylet_shm,
+                            tags={"ip": ip, "pid": raylet_pid},
+                        )
                     )
-                )
             raylet_mem_full_info = raylet_stats.get("memory_full_info")
             if raylet_mem_full_info is not None:
                 raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
-                raylet_pss = float(raylet_mem_full_info.pss) / 1.0e6
-                raylet_swap = float(raylet_mem_full_info.swap) / 1.0e6
+                if sys.platform == "linux":
+                    raylet_pss = float(raylet_mem_full_info.pss) / 1.0e6
+                    raylet_swap = float(raylet_mem_full_info.swap) / 1.0e6
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["raylet_mem_uss"],
@@ -861,11 +867,13 @@ class ReporterAgent(
             for worker in workers_stats:
                 total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
                 total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
-                total_workers_shm += float(worker["memory_info"].shared) / 1.0e6
+                if sys.platform == "linux":
+                    total_workers_shm += float(worker["memory_info"].shared) / 1.0e6
                 worker_mem_full_info = worker.get("memory_full_info")
                 if worker_mem_full_info is not None:
                     total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
-                    total_workers_pss += float(worker_mem_full_info.pss) / 1.0e6
+                    if sys.platform == "linux":
+                        total_workers_pss += float(worker_mem_full_info.pss) / 1.0e6
 
             records_reported.append(
                 Record(
@@ -934,7 +942,6 @@ class ReporterAgent(
             agent_mem_full_info = agent_stats.get("memory_full_info")
             if agent_mem_full_info is not None:
                 agent_uss = float(agent_mem_full_info.uss) / 1.0e6
-                agent_pss = float(agent_mem_full_info.pss) / 1.0e6
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["agent_mem_uss"],
@@ -942,13 +949,15 @@ class ReporterAgent(
                         tags={"ip": ip, "pid": agent_pid},
                     )
                 )
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["agent_mem_pss"],
-                        value=agent_pss,
-                        tags={"ip": ip, "pid": agent_pid},
+                if sys.platform == "linux":
+                    agent_pss = float(agent_mem_full_info.pss) / 1.0e6
+                    records_reported.append(
+                        Record(
+                            gauge=METRICS_GAUGES["agent_mem_pss"],
+                            value=agent_pss,
+                            tags={"ip": ip, "pid": agent_pid},
+                        )
                     )
-                )
 
         # NOTE: For GCS / dashboard, they are recorded within the process,
         # not within an agent.
