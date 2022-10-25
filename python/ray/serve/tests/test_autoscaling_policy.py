@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -17,6 +18,7 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
+import ray.experimental.state.api as state_api
 
 import ray
 from ray import serve
@@ -873,6 +875,61 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_preserve_prev_replicas(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_concurrent_queries=1,
+        # The config will trigger scale up really quickly and then
+        # wait close to forever to downscale.
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=2,
+            downscale_delay_s=600,
+            upscale_delay_s=0,
+            metrics_interval_s=1,
+            look_back_period_s=1,
+        ),
+    )
+    def f():
+        ray.get(signal.wait.remote())
+        time.sleep(0.2)
+        return os.getpid()
+
+    handle = serve.run(f.bind())
+    refs = [handle.remote() for _ in range(10)]
+
+    def check_two_replicas():
+        actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+        print(actors)
+        return len(actors) == 2
+
+    wait_for_condition(check_two_replicas, retry_interval_ms=1000, timeout=20)
+
+    signal.send.remote()
+
+    assert len(set(ray.get(refs))) == 2
+
+    handle = serve.run(f.bind())
+
+    def check_two_new_replicas_two_old():
+        live_actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+        dead_actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+
+        return len(live_actors) == 2 and len(dead_actors) == 2
+
+    wait_for_condition(
+        check_two_new_replicas_two_old, retry_interval_ms=1000, timeout=20
+    )
 
 
 if __name__ == "__main__":
