@@ -331,7 +331,7 @@ class AlphaStar(appo.APPO):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
         self.league_builder = from_config(
-            config["league_builder_config"], trainer=self, trainer_config=config
+            config["league_builder_config"], algo=self, algo_config=config
         )
         super().validate_config(config)
 
