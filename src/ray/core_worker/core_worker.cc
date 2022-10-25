@@ -1981,7 +1981,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries(),
+        /*enable_metrics=*/false);
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};
@@ -2293,6 +2294,7 @@ Status CoreWorker::ExecuteTask(
     return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    task_counter_.BecomeActor();
     {
       std::unique_ptr<ActorHandle> self_actor_handle(
           new ActorHandle(task_spec.GetSerializedActorHandle()));

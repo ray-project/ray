@@ -231,6 +231,7 @@ ray.get(a)
     proc.kill()
 
 
+@pytest.mark.skipif(True, reason="actor metrics disabled temporarily")
 def test_actor_tasks_queued(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
@@ -370,6 +371,7 @@ time.sleep(999)
     proc.kill()
 
 
+@pytest.mark.skipif(True, reason="actor metrics disabled temporarily")
 def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 

@@ -121,11 +121,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
+  /// \param[in] enable_metrics Whether to emit metrics for this task. This can be
+  /// disabled to improved performance.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
-                                                   int max_retries = 0);
+                                                   int max_retries = 0,
+                                                   bool enable_metrics = true);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -297,19 +300,25 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               int num_retries_left_arg,
               size_t num_returns,
               TaskStatusCounter &counter,
-              int64_t num_oom_retries_left)
+              int64_t num_oom_retries_left,
+              bool enable_metrics)
         : spec(spec_arg),
           num_retries_left(num_retries_left_arg),
           counter(counter),
-          num_oom_retries_left(num_oom_retries_left) {
+          num_oom_retries_left(num_oom_retries_left),
+          enable_metrics(enable_metrics) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
+      if (enable_metrics) {
+        counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
+      }
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
+      if (enable_metrics) {
+        counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
+      }
       status = new_status;
     }
 
@@ -360,6 +369,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
+    // Whether to enable metrics tracking for this task entry.
+    bool enable_metrics = true;
 
    private:
     // The task's current execution status.

@@ -32,7 +32,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
     const std::string &call_site,
-    int max_retries) {
+    int max_retries,
+    bool enable_metrics) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
@@ -99,8 +100,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.try_emplace(
-        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
+    auto inserted = submissible_tasks_.try_emplace(spec.TaskId(),
+                                                   spec,
+                                                   max_retries,
+                                                   num_returns,
+                                                   task_counter_,
+                                                   max_oom_retries,
+                                                   enable_metrics);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }

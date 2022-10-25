@@ -100,6 +100,13 @@ class TaskCounter {
             });
   }
 
+  void BecomeActor() {
+    absl::MutexLock l(&mu_);
+    is_actor_ = true;
+  }
+
+  bool IsActor() EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return is_actor_; }
+
   void RefreshRunningMetric(const std::string func_name, int64_t running_total)
       EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
     // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
@@ -120,21 +127,33 @@ class TaskCounter {
 
   void IncPending(const std::string &func_name) {
     absl::MutexLock l(&mu_);
+    if (IsActor()) {
+      return;
+    }
     counter_.Increment({func_name, kPending});
   }
 
   void MovePendingToRunning(const std::string &func_name) {
     absl::MutexLock l(&mu_);
+    if (IsActor()) {
+      return;
+    }
     counter_.Swap({func_name, kPending}, {func_name, kRunning});
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
     absl::MutexLock l(&mu_);
+    if (IsActor()) {
+      return;
+    }
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
     absl::MutexLock l(&mu_);
+    if (IsActor()) {
+      return;
+    }
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Increment(func_name);
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -146,6 +165,9 @@ class TaskCounter {
 
   void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
     absl::MutexLock l(&mu_);
+    if (IsActor()) {
+      return;
+    }
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Decrement(func_name);
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -179,6 +201,8 @@ class TaskCounter {
 
  private:
   mutable absl::Mutex mu_;
+  // Whether this process has become an actor.
+  bool is_actor_ = false;
   // Tracks all tasks submitted to this worker by state.
   CounterMap<std::pair<std::string, TaskStatusType>> counter_ GUARDED_BY(&mu_);
 
