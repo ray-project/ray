@@ -181,7 +181,7 @@ def test_loggers(ray_start_4_cpus):
         assert e == "Composer Callback object exists."
 
 
-def test_metrics_key(ray_start_4_cpus_mosaic):
+def test_metrics_key(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     """Tests if `log_keys` defined in `trianer_init_config` appears in result
@@ -205,7 +205,7 @@ def test_metrics_key(ray_start_4_cpus_mosaic):
     assert "metrics/my_evaluator/Accuracy" in result.metrics_dataframe.columns
 
 
-def test_monitor_callbacks(ray_start_4_cpus_mosaic):
+def test_monitor_callbacks(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
