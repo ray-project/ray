@@ -541,8 +541,8 @@ class Algorithm(Trainable):
                 self.workers = WorkerSet(
                     env_creator=self.env_creator,
                     validate_env=self.validate_env,
-                    policy_class=self.get_default_policy_class(self.config),
-                    trainer_config=self.config,
+                    default_policy_class=self.get_default_policy_class(self.config),
+                    config=self.config,
                     num_workers=self.config["num_workers"],
                     local_worker=True,
                     logdir=self.logdir,
@@ -609,8 +609,8 @@ class Algorithm(Trainable):
             self.evaluation_workers: WorkerSet = WorkerSet(
                 env_creator=env_creator,
                 validate_env=None,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.evaluation_config,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -3057,8 +3057,8 @@ class Algorithm(Trainable):
         return WorkerSet(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
+            default_policy_class=policy_class,
+            config=config,
             num_workers=num_workers,
             local_worker=local_worker,
             logdir=self.logdir,

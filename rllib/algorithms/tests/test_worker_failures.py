@@ -1,9 +1,8 @@
-import time
-import unittest
 from collections import defaultdict
-
 import gym
 import numpy as np
+import time
+import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -13,6 +12,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
@@ -328,6 +328,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .evaluation(
+                evaluation_num_workers=1,
                 enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
@@ -409,7 +410,10 @@ class TestWorkerFailures(unittest.TestCase):
                 # Add a custom policy to algorithm
                 algorithm.add_policy(
                     policy_id="test_policy",
-                    policy_cls=PGTorchPolicy,
+                    policy_cls=(
+                        PGTorchPolicy if algorithm.config.framework_str == "torch"
+                        else PGTF2Policy
+                    ),
                     observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
                     action_space=gym.spaces.Discrete(2),
                     config={},
@@ -464,7 +468,7 @@ class TestWorkerFailures(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
+            # Reset interaction counter.
             ray.wait([counter.reset.remote()])
 
             a = config.build()
