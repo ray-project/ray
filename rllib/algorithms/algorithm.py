@@ -2699,7 +2699,10 @@ class Algorithm(Trainable):
                 new_policies = {
                     pid: spec for pid, spec in new_policies.items() if pid in policy_ids
                 }
-            new_config.multi_agent(policies=new_policies)
+            new_config.multi_agent(
+                policies=new_policies,
+                policies_to_train=policies_to_train,
+            )
             state["config"] = new_config.to_dict()
 
             # Prepare local `worker` state to add policies' states into it,
