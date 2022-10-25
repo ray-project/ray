@@ -11,7 +11,7 @@ from ray.train.examples.horovod.horovod_example import (
 from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.torch_fashion_mnist_example import (
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.horovod.horovod_trainer import HorovodTrainer
