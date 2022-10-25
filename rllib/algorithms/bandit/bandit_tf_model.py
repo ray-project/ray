@@ -59,12 +59,13 @@ class OnlineLinearRegression(tf.Module if tf else object):
             self.covariance.assign(tf.linalg.inv(self.precision))
             self.theta.assign(tf.linalg.matvec(self.covariance, self.f))
             self.covariance.assign(self.covariance * self.alpha)
+            # the multivariate norm needs to be reconstructed every time
+            # its parameters are updated.the parameters of the dist do not
+            #  update every time the stored self.covariance and self.theta
+            # (the mean) are updated.
+            self.dist = self._make_dist()
 
     def sample_theta(self):
-        # the multivariate norm needs to be reconstructed every time it is
-        # sampled from since the parameters of the dist do not update every
-        # time the stored self.covariance and self.theta (the mean) are updated
-        self.dist = self._make_dist()
         theta = self.dist.sample()
         return theta
 

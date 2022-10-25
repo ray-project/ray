@@ -71,9 +71,13 @@ class OnlineLinearRegression(nn.Module):
             torch.inverse(self.precision, out=self.covariance)
             torch.matmul(self.covariance, self.f, out=self.theta)
             self.covariance.mul_(self.alpha)
+            # the multivariate norm needs to be reconstructed every time
+            # its parameters are updated.the parameters of the dist do not
+            #  update every time the stored self.covariance and self.theta
+            # (the mean) are updated
+            self.dist = self._make_dist()
 
     def sample_theta(self):
-        self.dist = self._make_dist()
         theta = self.dist.sample()
         return theta
 
