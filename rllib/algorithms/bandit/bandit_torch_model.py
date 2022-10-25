@@ -44,9 +44,16 @@ class OnlineLinearRegression(nn.Module):
         self.delta_b = 0
         self.time = 0
         self.covariance.mul_(self.alpha)
-        self.dist = torch.distributions.multivariate_normal.MultivariateNormal(
+        self.dist = self._make_dist()
+
+    def _make_dist(self):
+        # the multivariate norm needs to be reconstructed every time it is
+        # sampled from since the parameters of the dist do not update every
+        # time the stored self.covariance and self.theta (the mean) are updated
+        dist = torch.distributions.multivariate_normal.MultivariateNormal(
             self.theta, self.covariance
         )
+        return dist
 
     def partial_fit(self, x, y):
         x, y = self._check_inputs(x, y)
@@ -66,6 +73,7 @@ class OnlineLinearRegression(nn.Module):
             self.covariance.mul_(self.alpha)
 
     def sample_theta(self):
+        self.dist = self._make_dist()
         theta = self.dist.sample()
         return theta
 
