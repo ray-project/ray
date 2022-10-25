@@ -74,8 +74,8 @@ def get_example_file(example_id):
         raise example_error(example_id)
 
     example = EXAMPLES[example_id]
-    assert hasattr(
-        example, "file"
+    assert (
+        "file" in example.keys()
     ), f"Example {example_id} does not have a 'file' attribute."
     return example.get("file")
 

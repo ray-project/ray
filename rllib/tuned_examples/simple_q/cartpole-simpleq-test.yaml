@@ -1,4 +1,3 @@
-# config for quick cli testing. does not give meaningful results.
 cartpole-simpleq-test:
     env: CartPole-v1
     run: SimpleQ
