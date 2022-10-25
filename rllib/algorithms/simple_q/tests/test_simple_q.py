@@ -66,11 +66,11 @@ class TestSimpleQ(unittest.TestCase):
                 "fcnet_activation": "linear",
             },
             num_steps_sampled_before_learning_starts=0,
-        )
+        ).environment("CartPole-v0")
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
-            trainer = simple_q.SimpleQ(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
             # Batch of size=2.
             input_ = SampleBatch(
