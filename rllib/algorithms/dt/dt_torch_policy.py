@@ -321,7 +321,9 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         *args,
         **kwargs,
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
-        raise ValueError("Please use _compute_actions_without_connectors_from_input_dict instead.")
+        raise ValueError(
+            "Please use _compute_actions_without_connectors_from_input_dict instead."
+        )
 
     @override(TorchPolicyV2)
     def _compute_actions_without_connectors_from_input_dict(

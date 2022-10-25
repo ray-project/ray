@@ -11,7 +11,7 @@ from typing import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ModelWeights
+from ray.rllib.utils.typing import ModelWeights, TensorStructType, TensorType
 
 
 class RandomPolicy(Policy):
