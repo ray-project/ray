@@ -437,6 +437,27 @@ def test_arrow_tensor_array_concat(a1, a2):
             np.testing.assert_array_equal(arr, expected)
 
 
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_arrow_tensor_array_concat(a1, a2):
+    ta1 = ArrowTensorArray.from_numpy(a1)
+    ta2 = ArrowTensorArray.from_numpy(a2)
+    ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+    assert len(ta) == a1.shape[0] + a2.shape[0]
+    if a1.shape[1:] == a2.shape[1:]:
+        assert isinstance(ta.type, ArrowTensorType)
+        assert ta.type.storage_type == ta1.type.storage_type
+        assert ta.type.storage_type == ta2.type.storage_type
+        assert ta.type.shape == a1.shape[1:]
+        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+    else:
+        assert isinstance(ta.type, ArrowVariableShapedTensorType)
+        assert pa.types.is_struct(ta.type.storage_type)
+        for arr, expected in zip(
+            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+        ):
+            np.testing.assert_array_equal(arr, expected)
+
+
 def test_variable_shaped_tensor_array_uniform_dim():
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
