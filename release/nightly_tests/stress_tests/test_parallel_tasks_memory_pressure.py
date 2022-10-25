@@ -10,7 +10,7 @@ def allocate_memory(
     total_allocate_bytes: int,
     num_chunks: int = 10,
     allocate_interval_s: float = 0,
-)-> int:
+) -> int:
     chunks = []
     # divide by 8 as each element in the array occupies 8 bytes
     bytes_per_chunk = total_allocate_bytes / 8 / num_chunks

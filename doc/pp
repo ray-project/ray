@@ -1,0 +1,157 @@
+From 907f2c1ffe6f47887880edfbefd6c2d2defd4f7d Mon Sep 17 00:00:00 2001
+From: Clarence Ng <clarence@anyscale.com>
+Date: Mon, 24 Oct 2022 20:19:46 -0700
+Subject: [PATCH] [core] add nightly test for oom
+
+Signed-off-by: Clarence Ng <clarence@anyscale.com>
+---
+ ...ress_tests_single_node_oom_app_config.yaml | 12 ++++
+ .../stress_tests_single_node_oom_compute.yaml |  8 +++
+ .../test_parallel_tasks_memory_pressure.py    | 67 +++++++++++++++++++
+ release/release_tests.yaml                    | 20 ++++++
+ 4 files changed, 107 insertions(+)
+ create mode 100644 release/nightly_tests/stress_tests/stress_tests_single_node_oom_app_config.yaml
+ create mode 100644 release/nightly_tests/stress_tests/stress_tests_single_node_oom_compute.yaml
+ create mode 100644 release/nightly_tests/stress_tests/test_parallel_tasks_memory_pressure.py
+
+diff --git a/release/nightly_tests/stress_tests/stress_tests_single_node_oom_app_config.yaml b/release/nightly_tests/stress_tests/stress_tests_single_node_oom_app_config.yaml
+new file mode 100644
+index 0000000000000..acf6e2445ddd8
+--- /dev/null
++++ b/release/nightly_tests/stress_tests/stress_tests_single_node_oom_app_config.yaml
+@@ -0,0 +1,12 @@
++base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
++env_vars: {"RAY_task_oom_retries": "30", "RAY_DISABLE_MEMORY_MONITOR": "1", "RAY_memory_monitor_interval_ms": "100", "RAY_min_memory_free_bytes": "1000000000"}
++debian_packages: []
++
++python:
++  conda_packages: []
++
++post_build_cmds:
++  - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
++  - pip3 install ray[default]
++  - echo {{env["DATESTAMP"]}}
++  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+diff --git a/release/nightly_tests/stress_tests/stress_tests_single_node_oom_compute.yaml b/release/nightly_tests/stress_tests/stress_tests_single_node_oom_compute.yaml
+new file mode 100644
+index 0000000000000..e7e325bf334b0
+--- /dev/null
++++ b/release/nightly_tests/stress_tests/stress_tests_single_node_oom_compute.yaml
+@@ -0,0 +1,8 @@
++cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
++region: us-west-2
++
++max_workers: 0
++
++head_node_type:
++    name: head_node
++    instance_type: m4.xlarge
+diff --git a/release/nightly_tests/stress_tests/test_parallel_tasks_memory_pressure.py b/release/nightly_tests/stress_tests/test_parallel_tasks_memory_pressure.py
+new file mode 100644
+index 0000000000000..6a1820ce044aa
+--- /dev/null
++++ b/release/nightly_tests/stress_tests/test_parallel_tasks_memory_pressure.py
+@@ -0,0 +1,67 @@
++from math import ceil
++import ray
++import time
++import psutil
++import multiprocessing
++
++
++@ray.remote
++def allocate_memory(
++    total_allocate_bytes: int,
++    num_chunks: int = 10,
++    allocate_interval_s: float = 0,
++)-> int:
++    chunks = []
++    # divide by 8 as each element in the array occupies 8 bytes
++    bytes_per_chunk = total_allocate_bytes / 8 / num_chunks
++    for _ in range(num_chunks):
++        chunks.append([0] * ceil(bytes_per_chunk))
++        time.sleep(allocate_interval_s)
++    return 1
++
++
++def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
++    node_mem = psutil.virtual_memory()
++    used = node_mem.total - node_mem.available
++    bytes_needed = node_mem.total * pct - used
++    assert bytes_needed > 0, "node has less memory than what is requested"
++    return int(bytes_needed)
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser()
++    parser.add_argument(
++        "--num-tasks",
++        help="number of tasks to process in total",
++        default="20",
++        type=int,
++    )
++
++    parser.add_argument(
++        "--mem-pct-per-task",
++        help="memory to allocate per task as a fraction of the node's available memory",
++        default="0.4",
++        type=float,
++    )
++
++    args = parser.parse_args()
++
++    cpu_per_task = 1
++
++    bytes_per_task = get_additional_bytes_to_reach_memory_usage_pct(
++        args.mem_pct_per_task
++    )
++
++    start = time.time()
++    task_refs = [
++        allocate_memory.options(num_cpus=cpu_per_task).remote(
++            total_allocate_bytes=bytes_per_task, allocate_interval_s=1
++        )
++        for _ in range(args.num_tasks)
++    ]
++    results = [ray.get(ref) for ref in task_refs]
++    end = time.time()
++
++    print(f"processed {args.num_tasks} tasks in {end-start} seconds")
+\ No newline at end of file
+diff --git a/release/release_tests.yaml b/release/release_tests.yaml
+index 1a929a4e29a2e..70c67747a0ff0 100644
+--- a/release/release_tests.yaml
++++ b/release/release_tests.yaml
+@@ -3816,6 +3816,26 @@
+ #         num_nodes: 5
+ #         timeout: 600
+ 
++- name: single_node_oom
++  group: core-daily-test
++  working_dir: nightly_tests
++  legacy:
++    test_name: single_node_oom
++    test_suite: nightly_tests
++
++  frequency: nightly
++  team: core
++  cluster:
++    cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
++    cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
++
++  run:
++    timeout: 500
++    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.6
++
++    type: sdk_command
++    file_manager: sdk
++
+ - name: dask_on_ray_1tb_sort
+   group: core-daily-test
+   working_dir: nightly_tests
+-- 
+2.25.1
+
+
