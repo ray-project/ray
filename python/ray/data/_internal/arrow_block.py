@@ -167,7 +167,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
-        # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
@@ -184,7 +183,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        return self._table.to_pandas()
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
+        df = self._table.to_pandas()
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_tensor_columns_to_ndarrays(df)
+        return df
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None

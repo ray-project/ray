@@ -28,7 +28,7 @@ When you deploy a Serve application, the [ingress deployment](serve-key-concepts
 
 Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers).
 
-Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simply the request parsing.
+Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simplify the request parsing.
 
 ```{literalinclude} ../serve/doc_code/http_guide.py
 :start-after: __begin_dagdriver__

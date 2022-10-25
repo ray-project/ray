@@ -41,6 +41,7 @@ class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
@@ -53,6 +54,7 @@ class AlgorithmConfig:
         >>> rllib_algo = config.build()
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()

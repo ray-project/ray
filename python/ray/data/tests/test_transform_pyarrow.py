@@ -1,5 +1,6 @@
 import numpy as np
 import pyarrow as pa
+import pytest
 
 from ray.data.extensions import (
     ArrowTensorArray,
@@ -108,7 +109,7 @@ def test_arrow_concat_tensor_extension_variable_shaped():
     assert len(out) == 4
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64())]
+    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
@@ -136,7 +137,7 @@ def test_arrow_concat_tensor_extension_uniform_and_variable_shaped():
     assert len(out) == 5
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64())]
+    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
@@ -161,7 +162,7 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
     assert len(out) == 6
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64())]
+    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
@@ -170,3 +171,9 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
     np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
