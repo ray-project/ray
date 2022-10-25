@@ -50,11 +50,47 @@ def _patch_path(path: str):
         return path
 
 
-def load_experiments_from_file(config_file: str, file_type: SupportedFileType = None):
-    """Load experiments from a file. Currently only supports YAML."""
-    # TODO use file type to load JSON and Python files (i.e. from config objects).
-    with open(config_file) as f:
-        experiments = yaml.safe_load(f)
+def load_experiments_from_file(config_file: str, file_type: SupportedFileType) -> dict:
+    """Load experiments from a file. Supports YAML, JSON and Python files.
+    If you want to use a Python file, it has to have a 'config' variable
+    that is an AlgorithmConfig object."""
+
+    if file_type == SupportedFileType.yaml:
+        with open(config_file) as f:
+            experiments = yaml.safe_load(f)
+    elif file_type == SupportedFileType.json:
+        with open(config_file) as f:
+            experiments = json.load(f)
+    else:  # Python file case (ensured by file type enum)
+        import importlib
+
+        module_qualifier = config_file.replace("/", ".").replace(".py", "")
+        module = importlib.import_module(module_qualifier)
+
+        if not hasattr(module, "config"):
+            raise ValueError(
+                "Your Python file must contain a 'config' variable "
+                "that is an AlgorithmConfig object."
+            )
+        algo_config = getattr(module, "config")
+
+        # Note: we do this gymnastics to support the old format that
+        # "run_rllib_experiments" expects. Ideally, we'd just build the config and
+        # run the algo.
+        config = algo_config.to_dict()
+        experiments = {
+            "default": {
+                "run": algo_config.__class__.__name__.replace("Config", ""),
+                "env": config.get("env"),
+                "config": config,
+            }
+        }
+
+        # If there's a "stop" dict, add it to the experiment.
+        if hasattr(module, "stop"):
+            stop = getattr(module, "stop")
+            experiments["default"]["stop"] = stop
+
     return experiments
 
 
@@ -62,6 +98,7 @@ def load_experiments_from_file(config_file: str, file_type: SupportedFileType = 
 def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
+    file_type: SupportedFileType = cli.FileType,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -100,7 +137,7 @@ def file(
     import_backends()
     framework = framework.value if framework else None
 
-    experiments = load_experiments_from_file(config_file)
+    experiments = load_experiments_from_file(config_file, file_type)
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
 
@@ -230,7 +267,7 @@ def run(
 
 
 def run_rllib_experiments(
-    experiments,
+    experiments: dict,
     v: cli.V,
     vv: cli.VV,
     framework: str,
