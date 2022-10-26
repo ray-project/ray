@@ -15,7 +15,11 @@ DATA_DIR=/home/ray/data
 
 SHARD_URL_PREFIX=https://air-example-data.s3.us-west-2.amazonaws.com/air-benchmarks
 MAX_FILES=$( \
+<<<<<<< HEAD
     echo "$NUM_FILES" \
+=======
+    echo $NUM_FILES \
+>>>>>>> 82175fba77 (Script)
         | sed 's/ /\n/g' \
         | python -c "import sys; print(max([int(line) for line in sys.stdin]))")
 rm -rf $DATA_DIR
