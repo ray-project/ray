@@ -636,18 +636,18 @@ def test_add_column(ray_start_regular_shared):
     ]
 
 
-def test_drop_columns(ray_start_regular_shared):
-    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
-    ds = ray.data.from_pandas(df)
-    pipe = ds.repeat()
-    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
-
-
 def test_select_columns(ray_start_regular_shared):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds = ray.data.from_pandas(df)
     pipe = ds.repeat()
     assert pipe.select_columns(["col2", "col3"]).take(1) == [{"col2": 2, "col3": 3}]
+
+
+def test_drop_columns(ray_start_regular_shared):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds = ray.data.from_pandas(df)
+    pipe = ds.repeat()
+    assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
 
 
 def test_random_shuffle_each_window_with_custom_resource(ray_start_cluster):
