@@ -265,7 +265,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(num_returns="dynamic")
@@ -284,12 +284,12 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
     # Test recovery of all dynamic objects through re-execution.
     gen = ray.get(dynamic_generator.remote(10))
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     refs = list(gen)
     for i, ref in enumerate(refs):
         assert ray.get(fetch.remote(ref)) == i
 
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
 
     # Fetch one of the ObjectRefs to another node. We should try to reuse this
     # copy during recovery.
@@ -321,7 +321,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, resources={"head": 1})
@@ -386,7 +386,7 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster):
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, resources={"head": 1})
@@ -450,7 +450,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=0, resources={"head": 1})
@@ -479,7 +479,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
     gen = maybe_empty_generator.remote(exec_counter)
     assert ray.get(check.remote(gen))
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     assert ray.get(check.remote(gen))
 
     # We should never reconstruct an empty generator.

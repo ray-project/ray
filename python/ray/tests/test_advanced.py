@@ -258,7 +258,7 @@ def test_object_transfer_dump(ray_start_cluster_enabled):
 
     num_nodes = 3
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10 ** 9)
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -283,7 +283,7 @@ def test_object_transfer_dump(ray_start_cluster_enabled):
     transfer_dump = ray._private.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
-    assert len(transfer_dump) >= num_nodes ** 2
+    assert len(transfer_dump) >= num_nodes**2
     assert (
         len(
             {
