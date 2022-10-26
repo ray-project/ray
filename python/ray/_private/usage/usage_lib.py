@@ -661,7 +661,7 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2 ** 30
+        to_GiB = 1 / 2**30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
