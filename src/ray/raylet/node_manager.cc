@@ -1181,17 +1181,17 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
 
 bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
+  // Trigger local GC at the next heartbeat interval.
+  if (resource_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
     return false;
-  }
-
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
   }
 
   return true;
@@ -2976,7 +2976,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                  "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
+          RAY_LOG_EVERY_MS(INFO, 10000) << worker_exit_message;
 
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);

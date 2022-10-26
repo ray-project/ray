@@ -398,7 +398,7 @@ class TestGC:
                 print("Created local_dir path.")
 
                 def local_dir_size_near_4mb():
-                    return 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                    return 3 < get_directory_size_bytes(local_dir) / (1024**2) < 5
 
                 wait_for_condition(local_dir_size_near_4mb)
 

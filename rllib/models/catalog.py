@@ -305,14 +305,10 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif (
-            dist_type
-            in (
-                MultiActionDistribution,
-                TorchMultiActionDistribution,
-            )
-            or isinstance(action_space, (Tuple, Dict))
-        ):
+        elif dist_type in (
+            MultiActionDistribution,
+            TorchMultiActionDistribution,
+        ) or isinstance(action_space, (Tuple, Dict)):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution

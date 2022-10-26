@@ -626,6 +626,8 @@ void CoreWorker::Disconnect(
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
+  task_manager_->RecordMetrics();
+  task_counter_.RecordMetrics();
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
@@ -826,6 +828,11 @@ void CoreWorker::InternalHeartbeat() {
   if (options_.worker_type == WorkerType::DRIVER && options_.interactive) {
     memory_store_->NotifyUnhandledErrors();
   }
+
+  // Record metrics for owned tasks.
+  task_manager_->RecordMetrics();
+  // Record metrics for executed tasks.
+  task_counter_.RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>

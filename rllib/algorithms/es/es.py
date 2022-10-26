@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import random
 import time
-from typing import Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, PolicyID
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,8 @@ class ESConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
@@ -96,13 +96,17 @@ class ESConfig(AlgorithmConfig):
         self.train_batch_size = 10000
         self.num_workers = 10
         self.observation_filter = "MeanStdFilter"
-        # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
-        # Therefore, we must be careful not to use more than 1 env per eval worker
-        # (would break ARSPolicy's compute_single_action method) and to not do
-        # obs-filtering.
-        self.evaluation_config["num_envs_per_worker"] = 1
-        self.evaluation_config["observation_filter"] = "NoFilter"
 
+        # ES will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
+        # Therefore, we must be careful not to use more than 1 env per eval worker
+        # (would break ESPolicy's compute_single_action method) and to not do
+        # obs-filtering.
+        self.evaluation(
+            evaluation_config={
+                "num_envs_per_worker": 1,
+                "observation_filter": "NoFilter",
+            }
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -552,16 +556,22 @@ class ES(Algorithm):
 
         return results, num_episodes, num_timesteps
 
+    def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
+        return self.policy.get_flat_weights()
+
+    def set_weights(self, weights: Dict[PolicyID, dict]):
+        self.policy.set_flat_weights(weights)
+
     def __getstate__(self):
         return {
-            "weights": self.policy.get_flat_weights(),
+            "weights": self.get_weights(),
             "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_flat_weights(state["weights"])
+        self.set_weights(state["weights"])
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers

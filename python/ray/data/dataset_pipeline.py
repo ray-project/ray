@@ -810,6 +810,19 @@ class DatasetPipeline(Generic[T]):
             lambda ds: ds.drop_columns(cols, compute=compute, **ray_remote_args)
         )
 
+    def select_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "DatasetPipeline[U]":
+        """Apply :py:meth:`Dataset.select_columns <ray.data.Dataset.select_columns>` to
+        each dataset/window in this pipeline."""
+        return self.foreach_window(
+            lambda ds: ds.select_columns(cols, compute=compute, **ray_remote_args)
+        )
+
     def repartition_each_window(
         self, num_blocks: int, *, shuffle: bool = False
     ) -> "DatasetPipeline[U]":
@@ -824,11 +837,14 @@ class DatasetPipeline(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
+        **ray_remote_args,
     ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to
         each dataset/window in this pipeline."""
         return self.foreach_window(
-            lambda ds: ds.random_shuffle(seed=seed, num_blocks=num_blocks)
+            lambda ds: ds.random_shuffle(
+                seed=seed, num_blocks=num_blocks, **ray_remote_args
+            )
         )
 
     def sort_each_window(

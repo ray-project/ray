@@ -34,7 +34,7 @@ class QMixConfig(SimpleQConfig):
         >>> from ray.rllib.algorithms.qmix import QMixConfig
         >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=TwoStepGame)
@@ -136,11 +136,9 @@ class QMixConfig(SimpleQConfig):
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
-        self.evaluation_interval = None
-        self.evaluation_duration = 10
-        self.evaluation_config = {
-            "explore": False,
-        }
+        self.evaluation(
+            evaluation_config={"explore": False}
+        )
         # __sphinx_doc_end__
         # fmt: on
 

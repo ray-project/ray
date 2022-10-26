@@ -1,0 +1,24 @@
+atari-ppo:
+    env: BreakoutNoFrameskip-v4
+    run: PPO
+    config:
+        # Works for both torch and tf.
+        framework: torch
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: True
+        clip_param: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        train_batch_size: 5000
+        rollout_fragment_length: 100
+        sgd_minibatch_size: 500
+        num_sgd_iter: 10
+        num_workers: 80
+        num_cpus_per_worker: 1
+        num_envs_per_worker: 5
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+        model:
+            vf_share_layers: true
+        num_gpus: 0

@@ -150,10 +150,11 @@ class NodeProviderAvailabilityTracker:
         Returns
             A summary of node availabilities and their staleness.
         """
-        self._remove_old_entries()
-        return NodeAvailabilitySummary(
-            {node_type: record for node_type, (_, record) in self.store.items()}
-        )
+        with self.lock:
+            self._remove_old_entries()
+            return NodeAvailabilitySummary(
+                {node_type: record for node_type, (_, record) in self.store.items()}
+            )
 
     def _remove_old_entries(self):
         """Remove any expired entries from the cache."""
