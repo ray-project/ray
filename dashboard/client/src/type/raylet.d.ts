@@ -10,13 +10,7 @@ export type ViewMeasures = {
   distribution_bucket_counts?: number[];
 };
 
-export type ViewData = {
-  viewName: string;
-  measures: ViewMeasures[];
-};
-
 export type Raylet = {
-  viewData: ViewData[];
   numWorkers: number;
   pid: number;
   nodeId: string;
