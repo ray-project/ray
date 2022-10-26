@@ -639,6 +639,7 @@ def get_cgroupv1_used_memory(filename):
             return working_set
         return None
 
+
 def get_cgroupv2_used_memory(stat_file, usage_file):
     inactive_file_bytes = -1
     current_usage = -1
@@ -672,8 +673,12 @@ def get_used_memory():
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
         docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
-    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(memory_stat_filename_v2):
-        docker_usage = get_cgroupv2_used_memory(memory_stat_filename_v2, memory_usage_filename_v2)
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
         return docker_usage
