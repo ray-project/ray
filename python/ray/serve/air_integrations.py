@@ -70,6 +70,10 @@ def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame"
     for col in output_df.columns:
         if isinstance(output_df.dtypes[col], TensorDtype):
             output_df[col] = output_df[col].to_numpy()
+        # DL predictor outputs raw ndarray outputs as opaque numpy object.
+        # ex: output_df = pd.DataFrame({"predictions": [np.ndarray(1)]})
+        elif output_df.dtypes[col] == np.dtype(object):
+            output_df[col] = np.array([np.asarray(v) for v in output_df[col]]).tolist()
 
     return output_df
 
