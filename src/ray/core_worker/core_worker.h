@@ -77,8 +77,8 @@ class TaskCounter {
               }
             });
     // Track the sub-state of tasks running but blocked in ray.get().
-    running_in_get_counter_.SetOnChangeCallback(
-        [this](const std::string &func_name, int64_t value)
+    running_in_get_counter_.ForEachEntry(
+        [](const std::string &func_name, int64_t value)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
@@ -88,8 +88,8 @@ class TaskCounter {
               RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
             });
     // Track the sub-state of tasks running but blocked in ray.wait().
-    running_in_wait_counter_.SetOnChangeCallback(
-        [this](const std::string &func_name, int64_t value)
+    running_in_wait_counter_.ForEachEntry(
+        [](const std::string &func_name, int64_t value)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
