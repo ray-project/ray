@@ -3,8 +3,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class Concatenator(Preprocessor):
     """Combine numeric columns into a column of type
     :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.

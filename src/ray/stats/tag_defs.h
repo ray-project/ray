@@ -44,6 +44,8 @@ extern const TagKeyType WorkerIdKey;
 
 extern const TagKeyType JobIdKey;
 
+extern const TagKeyType SessionNameKey;
+
 extern const TagKeyType NameKey;
 
 // Object store memory location tag constants

@@ -2,7 +2,6 @@
 cartpole-simpleq-test:
     env: CartPole-v1
     run: SimpleQ
-    checkpoint_freq: 1
     stop:
         episode_reward_mean: 15
         timesteps_total: 500
