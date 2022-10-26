@@ -633,7 +633,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1200
+    timeout: 1800
     script: NUM_IMAGES_PER_FILE="6144" bash file_size_benchmark.sh
     type: sdk_command
     file_manager: sdk
