@@ -69,7 +69,8 @@
     "parser": "@typescript-eslint/parser",
     "extends": [
       "plugin:import/warnings",
-      "plugin:@typescript-eslint/recommended"
+      "plugin:@typescript-eslint/recommended",
+      "react-app"
     ],
     "plugins": [
       "prefer-arrow",
