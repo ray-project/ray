@@ -77,6 +77,8 @@ Quick Start
       :language: python
 
 
+.. _train-framework-catalog:
+
 Framework Catalog
 -----------------
 
