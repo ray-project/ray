@@ -215,7 +215,7 @@ Then you can install the dependencies and build the dashboard:
 
 .. code-block:: bash
 
-  npm install
+  npm ci
   npm run build
 
 After that, you can now move back to the top level Ray directory:
