@@ -499,8 +499,8 @@ class EagerTFPolicyV2(Policy):
             _is_training=tf.constant(False),
         )
         if state_batches is not None:
-            for s in enumerate(state_batches):
-                input_dict["state_in_{i}"] = s
+            for i, s in enumerate(state_batches):
+                input_dict[f"state_in_{i}"] = s
         if prev_action_batch is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
         if prev_reward_batch is not None:
