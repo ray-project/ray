@@ -348,8 +348,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       scheduling_key_entries_.erase(scheduling_key);
     }
     return;
-  } else if (scheduling_key_entry.task_queue.size() <=
-             scheduling_key_entry.pending_lease_requests.size()) {
+  } else if ((scheduling_key_entry.task_queue.size() <=
+              scheduling_key_entry.pending_lease_requests.size()) &&
+             (raylet_address == nullptr)) {
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
