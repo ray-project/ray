@@ -14,7 +14,6 @@ msrestazure==0.6.4
 boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
-crc32c==2.3
 cryptography==38.0.1
 cython==0.29.32
 dataclasses; python_version < '3.7'
