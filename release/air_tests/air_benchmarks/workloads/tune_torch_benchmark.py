@@ -171,7 +171,9 @@ def main(
 
     print("Full results:", full_results)
 
-    factor = 1.2
+    # NOTE: The value of `factor` is mostly arbitrary. It was previously `1.2`, but
+    # that value turned out to be too low. For more context, see #29682.
+    factor = 1.35
     threshold = mean_train_time * factor
 
     assert (

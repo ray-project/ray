@@ -59,8 +59,8 @@ namespace core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
-/// Simple container for per function task counters. The counters will be
-/// keyed by the function name in task spec.
+/// Tracks stats for inbound tasks (tasks this worker is executing).
+/// The counters are keyed by the function name in task spec.
 class TaskCounter {
   /// A task can only be one of the following state. Received state in particular
   /// covers from the point of RPC call to beginning execution.
@@ -68,35 +68,12 @@ class TaskCounter {
 
  public:
   TaskCounter() {
-    // Track the number of running tasks per name.
     counter_.SetOnChangeCallback(
         [this](const std::pair<std::string, TaskStatusType> &key, int64_t value)
             EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               if (key.second == kRunning) {
-                RefreshRunningMetric(key.first, value);
+                counter_changes_.insert(key);
               }
-            });
-    // Track the sub-state of tasks running but blocked in ray.get().
-    running_in_get_counter_.SetOnChangeCallback(
-        [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-              ray::stats::STATS_tasks.Record(
-                  value,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-                   {"Name", func_name},
-                   {"Source", "executor"}});
-              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
-            });
-    // Track the sub-state of tasks running but blocked in ray.wait().
-    running_in_wait_counter_.SetOnChangeCallback(
-        [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-              ray::stats::STATS_tasks.Record(
-                  value,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-                   {"Name", func_name},
-                   {"Source", "executor"}});
-              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
             });
   }
 
@@ -107,22 +84,65 @@ class TaskCounter {
 
   bool IsActor() EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
 
-  void RefreshRunningMetric(const std::string func_name, int64_t running_total)
-      EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-    // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
-    // out to avoid double-counting.
-    ray::stats::STATS_tasks.Record(
-        running_total - running_in_get_counter_.Get(func_name) -
-            running_in_wait_counter_.Get(func_name),
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-         {"Name", func_name},
-         {"Source", "executor"}});
-    // Negate the metrics recorded from the submitter process for these tasks.
-    ray::stats::STATS_tasks.Record(
-        -running_total,
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-         {"Name", func_name},
-         {"Source", "executor"}});
+  void RecordMetrics() {
+    absl::MutexLock l(&mu_);
+    for (const auto &key : counter_changes_) {
+      auto func_name = key.first;
+      int64_t running_total = counter_.Get(key);
+      int64_t num_in_get = running_in_get_counter_.Get(func_name);
+      int64_t num_in_wait = running_in_wait_counter_.Get(func_name);
+      // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
+      // out to avoid double-counting.
+      ray::stats::STATS_tasks.Record(
+          running_total - num_in_get - num_in_wait,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+           {"Name", func_name},
+           {"Source", "executor"}});
+      // Negate the metrics recorded from the submitter process for these tasks.
+      ray::stats::STATS_tasks.Record(
+          -running_total,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+           {"Name", func_name},
+           {"Source", "executor"}});
+      // Record sub-state for get.
+      ray::stats::STATS_tasks.Record(
+          num_in_get,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+           {"Name", func_name},
+           {"Source", "executor"}});
+      // Record sub-state for wait.
+      ray::stats::STATS_tasks.Record(
+          num_in_wait,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+           {"Name", func_name},
+           {"Source", "executor"}});
+    }
+    counter_changes_.clear();
+    if (IsActor()) {
+      float running = 0.0;
+      float in_get = 0.0;
+      float in_wait = 0.0;
+      if (running_in_wait_counter_.Total() > 0) {
+        in_wait = 1.0;
+      } else if (running_in_get_counter_.Total() > 0) {
+        in_get = 1.0;
+      } else if (num_running_ > 0) {
+        running = 1.0;
+      }
+      ray::stats::STATS_actors.Record(
+          -(running + in_get + in_wait),
+          {{"State", "ALIVE"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(
+          running,
+          {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(
+          in_get,
+          {{"State", "RUNNING_IN_RAY_GET"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(in_wait,
+                                      {{"State", "RUNNING_IN_RAY_WAIT"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"}});
+    }
   }
 
   void IncPending(const std::string &func_name) {
@@ -134,18 +154,12 @@ class TaskCounter {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kPending}, {func_name, kRunning});
     num_running_++;
-    if (IsActor()) {
-      RefreshActorStateMetric();
-    }
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
     num_running_--;
-    if (IsActor()) {
-      RefreshActorStateMetric();
-    }
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
@@ -156,9 +170,6 @@ class TaskCounter {
       running_in_wait_counter_.Increment(func_name);
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
-    }
-    if (IsActor()) {
-      RefreshActorStateMetric();
     }
   }
 
@@ -171,36 +182,6 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
-    if (IsActor()) {
-      RefreshActorStateMetric();
-    }
-  }
-
-  void RefreshActorStateMetric() EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-    RAY_CHECK(IsActor());
-    float running = 0.0;
-    float in_get = 0.0;
-    float in_wait = 0.0;
-    if (running_in_wait_counter_.Total() > 0) {
-      in_wait = 1.0;
-    } else if (running_in_get_counter_.Total() > 0) {
-      in_get = 1.0;
-    } else if (num_running_ > 0) {
-      running = 1.0;
-    }
-    ray::stats::STATS_actors.Record(
-        -(running + in_get + in_wait),
-        {{"State", "ALIVE"}, {"Name", actor_name_}, {"Source", "executor"}});
-    ray::stats::STATS_actors.Record(
-        running,
-        {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
-    ray::stats::STATS_actors.Record(
-        in_get,
-        {{"State", "RUNNING_IN_RAY_GET"}, {"Name", actor_name_}, {"Source", "executor"}});
-    ray::stats::STATS_actors.Record(in_wait,
-                                    {{"State", "RUNNING_IN_RAY_WAIT"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"}});
   }
 
   std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
@@ -234,6 +215,11 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
   CounterMap<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
+
+  /// Tracks changes to the above counters that need to be flushed to OCL. We cannot
+  /// simply iterate over the counter since entries are deleted once they are zeroed.
+  absl::flat_hash_set<std::pair<std::string, TaskStatusType>> counter_changes_
+      GUARDED_BY(&mu_);
 
   // Used for actor state tracking.
   std::string actor_name_ GUARDED_BY(&mu_) = "";

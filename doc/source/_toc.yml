@@ -99,6 +99,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/examples/tune_analyze_results
               - file: tune/tutorials/tune-advanced-tutorial
                 sections:
                   - file: tune/examples/pbt_visualization/pbt_visualization
@@ -298,7 +299,6 @@ parts:
           title: User Guides
           sections:
           - file: cluster/vms/user-guides/launching-clusters/index
-            title: Launching Clusters
           - file: cluster/vms/user-guides/large-cluster-best-practices
           - file: cluster/vms/user-guides/configuring-autoscaling
           - file: cluster/vms/user-guides/community/index
