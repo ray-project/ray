@@ -133,6 +133,12 @@ ray.shutdown()
         def exit_with_exit_code(self):
             sys.exit(0)
 
+        def sleep_forever(self):
+            import time
+
+            # RIP
+            time.sleep(999999)
+
     a = A.remote()
     pid = ray.get(a.pid.remote())
     with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
@@ -163,6 +169,8 @@ ray.shutdown()
 
     a = A.remote()
     pid = ray.get(a.pid.remote())
+    # This prevents the actor method from normal exiting as task(a.pid()) finishes
+    a.sleep_forever.remote()
     ray.kill(a)
     with pytest.raises(ray.exceptions.RayActorError, match="ray.kill"):
         ray.get(a.exit_with_exit_code.remote())
