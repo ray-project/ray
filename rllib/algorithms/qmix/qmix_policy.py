@@ -1,14 +1,16 @@
-import gym
 import logging
+from typing import Dict, List, Optional, Tuple, Union
+
+import gym
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.rllib.algorithms.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.algorithms.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -18,8 +20,9 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.torch_utils import apply_grad_clipping
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType, TensorStructType
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
@@ -324,8 +327,41 @@ class QMixTorchPolicy(TorchPolicy):
         return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(TorchPolicy)
-    def _compute_actions_without_connectors(self, *args, **kwargs):
-        return self._compute_actions_without_connectors_from_input_dict(*args, **kwargs)
+    def _compute_actions_without_connectors(
+        self,
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["Episode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+        with torch.no_grad():
+            input_dict = self._lazy_tensor_dict(
+                {
+                    SampleBatch.CUR_OBS: obs_batch,
+                    "is_training": False,
+                    SampleBatch.SEQ_LENS: torch.ones(len(obs_batch), dtype=torch.int32),
+                }
+            )
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = np.asarray(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = np.asarray(prev_reward_batch)
+            if state_batches:
+                state_batches = [
+                    convert_to_torch_tensor(s, self.device)
+                    for s in (state_batches or [])
+                ]
+                for i in range(len(state_batches)):
+                    input_dict[f"state_in_{i}"] = state_batches[i]
+
+            return self._compute_actions_without_connectors_from_input_dict(
+                input_dict=input_dict, explore=explore, timestep=timestep
+            )
 
     @override(TorchPolicy)
     def compute_log_likelihoods(
