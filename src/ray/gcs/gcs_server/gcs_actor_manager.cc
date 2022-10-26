@@ -227,8 +227,8 @@ GcsActorManager::GcsActorManager(
   actor_state_counter_.reset(
       new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
   actor_state_counter_->SetOnChangeCallback(
-      [](const std::pair<rpc::ActorTableData::ActorState, std::string> pair,
-         int64_t num_actors) mutable {
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> pair) mutable {
+        int64_t num_actors = actor_state_counter_.Get(pair);
         ray::stats::STATS_actors.Record(
             num_actors,
             {{"State", rpc::ActorTableData::ActorState_Name(pair.first)},
@@ -1588,6 +1588,7 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  actor_state_counter_->FlushOnChangeCallbacks();
 }
 
 }  // namespace gcs
