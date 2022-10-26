@@ -689,7 +689,7 @@ class Dataset(Generic[T]):
             >>> # Select only "col1" and "col2" columns.
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
+            Dataset(num_blocks=1, num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
