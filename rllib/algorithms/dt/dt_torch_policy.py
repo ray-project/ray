@@ -333,6 +333,18 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        return self._compute_actions_without_connectors_from_input_dict(
+            input_dict, explore, timestep, **kwargs
+        )
+
+    @override(TorchPolicyV2)
+    def _compute_actions_without_connectors_from_input_dict(
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """
         Args:
             input_dict: input_dict (that contains a batch dimension for each value).
