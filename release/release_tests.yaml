@@ -615,7 +615,7 @@
 
   run:
     timeout: 900
-    script: NUM_IMAGES_PER_FILE="32 512 2048" bash file_size_benchmark.sh
+    script: bash file_size_benchmark.sh
     type: sdk_command
     file_manager: sdk
 
