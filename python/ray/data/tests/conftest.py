@@ -270,3 +270,10 @@ def unsupported_pyarrow_version(request):
     pa.__version__ = request.param
     yield request.param
     pa.__version__ = orig_version
+
+
+@pytest.fixture
+def disable_pyarrow_version_check():
+    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
+    yield
+    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]

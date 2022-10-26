@@ -4678,6 +4678,46 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
         ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
 
 
+def test_unsupported_pyarrow_versions_check_disabled(
+    shutdown_only,
+    unsupported_pyarrow_version,
+    disable_pyarrow_version_check,
+):
+    # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
+    # initial pyarrow use when the version check is disabled.
+    ray.init(
+        runtime_env={
+            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
+            "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
+        },
+    )
+
+    # Test Arrow-native creation APIs.
+    # Test range_table.
+    try:
+        ray.data.range_table(10).take_all()
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test from_arrow.
+    try:
+        ray.data.from_arrow(pa.table({"a": [1, 2]}))
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test read_parquet.
+    try:
+        ray.data.read_parquet("example://iris.parquet").take_all()
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test from_numpy (we use Arrow for representing the tensors).
+    try:
+        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     def range(n, parallelism=200):

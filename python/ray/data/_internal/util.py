@@ -43,6 +43,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
+    """Check that pyarrow's version is within the supported bounds."""
     global _VERSION_VALIDATED
 
     if not _VERSION_VALIDATED:
@@ -78,8 +79,8 @@ def _check_pyarrow_version():
             ):
                 raise ImportError(
                     f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
-                    f"{MAX_PYARROW_VERSION}, but {version} is installed. Upgrade with "
-                    f"`pip install -U pyarrow<{MAX_PYARROW_VERSION}`."
+                    f"{MAX_PYARROW_VERSION}, but {version} is installed. Reinstall "
+                    f'with `pip install -U "pyarrow<{MAX_PYARROW_VERSION}"`.'
                     "If you want to disable this pyarrow version check, set the "
                     f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
                 )
