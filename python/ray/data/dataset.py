@@ -670,6 +670,44 @@ class Dataset(Generic[T]):
             lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
         )
 
+    def select_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Select one or more columns from the dataset.
+
+        All input columns used to select need to be in the schema of the dataset.
+
+        Examples:
+            >>> import ray
+            >>> # Create a dataset with 3 columns
+            >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
+            ...      for i in range(10)])
+            >>> # Select only "col1" and "col2" columns.
+            >>> ds = ds.select_columns(cols=["col1", "col2"])
+            >>> ds
+            Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            cols: Names of the columns to select. If any name is not included in the
+                dataset schema, an exception will be raised.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+        return self.map_batches(
+            lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            compute=compute,
+            **ray_remote_args,
+        )
+
     def flat_map(
         self,
         fn: RowUDF[T, U],

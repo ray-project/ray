@@ -17,6 +17,7 @@ DatasetPipeline API
     ray.data.DatasetPipeline.filter
     ray.data.DatasetPipeline.add_column
     ray.data.DatasetPipeline.drop_columns
+    ray.data.DatasetPipeline.select_columns
 
 **Sorting, Shuffling, Repartitioning**
 
@@ -97,6 +98,8 @@ Basic transformations
 .. automethod:: ray.data.DatasetPipeline.add_column
 
 .. automethod:: ray.data.DatasetPipeline.drop_columns
+
+.. automethod:: ray.data.DatasetPipeline.select_columns
 
 Sorting, Shuffling, Repartitioning
 ----------------------------------
