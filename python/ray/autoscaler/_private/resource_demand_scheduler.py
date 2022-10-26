@@ -840,7 +840,7 @@ def _resource_based_utilization_scorer(
         if k in resource_types:
             num_matching_resource_types += 1
         util = (v - remaining[k]) / v
-        util_by_resources.append(v * (util ** 3))
+        util_by_resources.append(v * (util**3))
 
     # Could happen if node_resources has only zero values.
     if not util_by_resources:
