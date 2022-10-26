@@ -1,9 +1,9 @@
 .. _launching-vm-clusters:
 
-Launching Ray Clusters in the Cloud (AWS, GCP, Azure) or On-Premise
-===================================================================
+Launching Ray Clusters on AWS, GCP, Azure, On-Prem
+==================================================
 
-In this section, you can find guides for launching Ray clusters in various clouds or on-premise.
+In this section, you can find guides for launching Ray clusters in various clouds or on-premises.
 
 Table of Contents
 -----------------
