@@ -42,8 +42,7 @@ class ResultGrid:
          )
          result_grid = tuner.fit()
 
-         for i in range(len(result_grid)):
-             result = result_grid[i]
+         for result in result_grid:
              if not result.error:
                  print(f"Trial finishes successfully with metric {result.metric}.")
              else:
@@ -64,7 +63,7 @@ class ResultGrid:
          df = result_grid.get_dataframe()
 
          # Get a dataframe for the minimum loss seen for each trial
-         df = result_grid.get_dataframe(metric="loss", mode="min")
+         df = result_grid.get_dataframe(filter_metric="loss", filter_mode="min")
 
      Note that trials of all statuses are included in the final result grid.
      If a trial is not in terminated state, its latest result and checkpoint as
@@ -177,7 +176,9 @@ class ResultGrid:
                 df = result_grid.get_dataframe()
 
                 # Get best ever reported accuracy per trial
-                df = result_grid.get_dataframe(metric="accuracy", mode="max")
+                df = result_grid.get_dataframe(
+                    filter_metric="accuracy", filter_mode="max"
+                )
 
         Args:
             filter_metric: Metric to filter best result for.

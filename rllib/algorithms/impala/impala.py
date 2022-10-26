@@ -608,6 +608,10 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        # First, check, whether our learner thread is still healthy.
+        if not self._learner_thread.is_alive():
+            raise RuntimeError("The learner thread died while training!")
+
         # Get references to sampled SampleBatches from our workers.
         unprocessed_sample_batches_refs = self.get_samples_from_workers()
         # Tag workers that actually produced ready sample batches this iteration.
@@ -765,18 +769,15 @@ class Impala(Algorithm):
 
         # Loop through output queue and update our counts.
         for _ in range(self._learner_thread.outqueue.qsize()):
-            if self._learner_thread.is_alive():
-                (
-                    env_steps,
-                    agent_steps,
-                    learner_results,
-                ) = self._learner_thread.outqueue.get(timeout=0.001)
-                num_env_steps_trained += env_steps
-                num_agent_steps_trained += agent_steps
-                if learner_results:
-                    learner_infos.append(learner_results)
-            else:
-                raise RuntimeError("The learner thread died while training")
+            (
+                env_steps,
+                agent_steps,
+                learner_results,
+            ) = self._learner_thread.outqueue.get(timeout=0.001)
+            num_env_steps_trained += env_steps
+            num_agent_steps_trained += agent_steps
+            if learner_results:
+                learner_infos.append(learner_results)
         # Nothing new happened since last time, use the same learner stats.
         if not learner_infos:
             final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
