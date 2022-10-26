@@ -24,10 +24,17 @@ namespace plasma {
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
+
+  if (kAllocation.fallback_allocated) {
+    bytes_by_loc_seal_.Increment({/*fallback_allocated*/ true, /*sealed*/ false},
+                                 kObjectSize);
+  } else {
+    bytes_by_loc_seal_.Increment({/*fallback_allocated*/ false, /*sealed*/ false},
+                                 kObjectSize);
+  }
 
   num_bytes_created_total_ += kObjectSize;
-  // TODO(rickyx):
-  // Add fallback memory accounting here.
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -52,6 +59,17 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   RAY_CHECK(obj.Sealed());
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
+  const auto &kAllocation = obj.GetAllocation();
+  if (kAllocation.fallback_allocated) {
+    bytes_by_loc_seal_.Swap({/*fallback_allocated*/ true, /* sealed */ false},
+                            {/*fallback_allocated*/ true, /* sealed */ true},
+                            kObjectSize);
+  } else {
+    bytes_by_loc_seal_.Swap({/*fallback_allocated*/ false, /* sealed */ false},
+                            {/*fallback_allocated*/ false, /* sealed */ true},
+                            kObjectSize);
+  }
+
   num_objects_unsealed_--;
   num_bytes_unsealed_ -= kObjectSize;
 
@@ -72,6 +90,20 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
+
+  auto counter_type = std::make_pair(false, false);
+  if (kAllocation.fallback_allocated) {
+    counter_type = obj.Sealed()
+                       ? std::make_pair(/* fallback_allocated */ true, /* sealed*/ true)
+                       : std::make_pair(/* fallback_allocated */ true, /* sealed*/ false);
+  } else {
+    counter_type =
+        obj.Sealed() ? std::make_pair(/* fallback_allocated */ false, /* sealed*/ true)
+                     : std::make_pair(/* fallback_allocated */ false, /* sealed*/ false);
+  }
+
+  bytes_by_loc_seal_.Decrement(counter_type, kObjectSize);
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
@@ -176,16 +208,29 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
+  // Shared memory sealed
   ray::stats::STATS_object_store_memory.Record(
-      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocInMemory}});
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ true}),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectSealed}});
 
+  // Shared memory unsealed
   ray::stats::STATS_object_store_memory.Record(
-      num_bytes_unsealed_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocUnsealed}});
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ false}),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectUnsealed}});
 
-  // TODO(rickyx):
-  // Add fallback memory recording here.
+  // Fallback memory sealed
+  ray::stats::STATS_object_store_memory.Record(
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ true}),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectSealed}});
+
+  // Fallback memory unsealed
+  ray::stats::STATS_object_store_memory.Record(
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ false}),
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectUnsealed}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
