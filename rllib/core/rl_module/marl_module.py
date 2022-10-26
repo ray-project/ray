@@ -16,6 +16,37 @@ ModuleID = str
 
 
 class MultiAgentRLModule(RLModule):
+    """Base class for multi-agent RLModules.
+
+    This class holds a mapping from module_ids to RLModules. It provides a convenient
+    way of accessing each individual module as well as all of with only one call.
+
+    The default implementation assumes the data communicated as input and output of
+    RLModule APIs are multi-agent batches. Each RLModule simply takes its own input and
+    produces its own output. It also assumes that the RLModules do not share any
+    parameters or communication with one another. The behavior of modules with such
+    advanced communication would be undefined. To share parameters or communication
+    between RLModules, you should implement your own MultiAgentRLModule.
+
+    Input config keys:
+        `modules`: Mapping from module_id to RLModule config.
+        `trainable_modules`: Set of module_ids that are trainable. If not specified,
+            all modules are trainable.
+
+    RLModule config values can be of the following forms:
+        1. The RLModule instance itself.
+        2. A dict with the following keys:
+            `module_class`: The RLModule class Type or full path separate by `.`.
+                (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
+            `module_config`: The config object for the RLModule.
+        3. A tuple of (RLModule class Type, config object). The RLModule class Type can
+            be the type itself or the full path separate by `.`.
+
+
+    Args:
+        config: The config dict for the multi-agent RLModule (see above).
+    """
+
     def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
         super().__init__(config, **kwargs)
 
@@ -29,20 +60,38 @@ class MultiAgentRLModule(RLModule):
         return self._rl_modules.keys()
 
     def get_trainable_module_ids(self) -> Set[ModuleID]:
-        """Returns the ids of the trainable modules."""
+        """Returns the set of ids of the trainable modules."""
         return self._trainable_rl_modules
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
+        """Makes the module distributed.
+
+        It loops through all the modules and calls their make_distributed method.
+
+        Args:
+            dist_config: The optional distributed configuration to use for all make
+                distributed calls.
+        """
         for module in self._rl_modules.values():
             module.make_distributed(dist_config)
 
     @override(RLModule)
     def is_distributed(self) -> bool:
+        """Returns True if all sub-modules are distributed."""
         return all(module.is_distributed() for module in self._rl_modules.values())
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
+        """Returns the state of the multi-agent module.
+
+        The default implementation loops all modules and calls their get_state method.
+        Override this method if you want to change the get_state behavior.
+
+        Returns:
+            A nested state dict with the first layer being the module ID and the second
+            is the state of the module.
+        """
         return {
             module_id: module.get_state()
             for module_id, module in self._rl_modules.items()
@@ -114,7 +163,8 @@ class MultiAgentRLModule(RLModule):
             raise_err_if_not_found: Whether to raise an error if the module ID is not
                 found.
         Raises:
-            ValueError: If the module ID does not exist.
+            ValueError: If the module ID does not exist and raise_err_if_not_found is
+                True.
         """
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
@@ -231,7 +281,7 @@ class MultiAgentRLModule(RLModule):
         for module_id in module_ids:
             rl_module = self._rl_modules[module_id]
             forward_fn = getattr(rl_module, forward_fn_name)
-            outputs[module_id] = forward_fn(batch.get(module_id), **kwargs)
+            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
         return outputs
 
     def _check_module_exists(self, module_id: ModuleID) -> None:
