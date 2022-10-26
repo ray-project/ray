@@ -106,6 +106,10 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     train_module.file(
         config_file=example_file,
         file_type=file_type,
+        checkpoint_freq=1,
+        checkpoint_at_end=True,
+        keep_checkpoints_num=None,
+        checkpoint_score_attr="training_iteration",
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,

@@ -205,7 +205,7 @@ class CLIArguments:
     Resume = typer.Option(False, help=train_help.get("resume"))
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
-    CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
+    CheckpointAtEnd = typer.Option(True, help=get_help("checkpoint_at_end"))
     LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))

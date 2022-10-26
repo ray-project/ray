@@ -123,6 +123,23 @@ in the log, something must have gone wrong.
 +-----------------------------+----------+----------------+
 ```
 
+Also, when the training run finishes, you should see the following output:
+
+```text
+Your training finished.
+Best available checkpoint for each trial:
+  <path-to-a-checkpoint>/checkpoint_000008
+
+You can now evaluate your trained algorithm from any checkpoint, e.g. by running:
+╭────────────────────────────────────────────────────────────────────────────────────────────╮
+│   rllib evaluate <path-to-a-checkpoint>/checkpoint_000008 --algo PPO                       │
+╰────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+In other words, you can now evaluate your trained algorithm from this (or any other)
+checkpoint with the `rllib evaluate` command.
+We'll come back to this command later.
+
 This completes your first example with the RLlib CLI.
 You now know about the `list`, `get`, and `run` sub-commands, and how to use them
 to run _tuned_ examples with RLlib.
@@ -276,9 +293,15 @@ Probably the best way to get familiar with `rllib train` is to run
 
 Successful training runs generate _checkpoints_ whose performance you can evaluate
 with the `rllib evaluate` command.
-By default, checkpoints are generated in `~/ray_results/<experiment>/checkpoints/`,
+By default, checkpoints are generated in `~/ray_results/<experiment>/checkpoints/...`,
 and you can use can provide the full path to a checkpoint as argument to the evaluate
 command.
+
+```{margin}
+As you've seen earlier, every successful `rllib example run` generates an 
+`rllib evaluate` command automatically for you from a checkpoint.
+The same holds true for `rllib train` runs.
+```
 
 If you've run an `rllib train` run locally, you could use such a checkpoint to evaluate
 its performance, but for testing purposes you can also evaluate an untrained algorithm

@@ -306,11 +306,13 @@ class Experiment:
         try:
             exp = cls(name, run_value, **spec)
         except TypeError as e:
-            raise TuneError(f"Failed to load the following Tune experiment "
-                            f"specification:\n\n {pp.pformat(spec)}.\n\n"
-                            f"Please check that the arguments are valid. "
-                            f"Experiment creation failed with the following "
-                            f"error:\n {e}")
+            raise TuneError(
+                f"Failed to load the following Tune experiment "
+                f"specification:\n\n {pp.pformat(spec)}.\n\n"
+                f"Please check that the arguments are valid. "
+                f"Experiment creation failed with the following "
+                f"error:\n {e}"
+            )
         return exp
 
     @classmethod
