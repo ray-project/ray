@@ -25,7 +25,15 @@ def to_tensor(array, device=None):
     return torch.from_numpy(array).float()
 
 
-def get_policy_data_from_agent_data(agent_data, policy_map_fn, debug=False):
+def get_policy_data_from_agent_data(agent_data, policy_map_fn):
+    """Utility function to get policy data from agent data and policy map function.
+
+    It also keeps track of agent_id for each row so that we can retreive the agent
+    level information after the forward pass.
+
+    Returns:
+        dict of module_id to module data
+    """
     policy_data = {}
     for agent_id, data in agent_data.items():
         policy_id = policy_map_fn(agent_id)
@@ -53,6 +61,14 @@ def get_policy_data_from_agent_data(agent_data, policy_map_fn, debug=False):
 
 
 def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
+    """Utility function to get action from policy level data to agent data format.
+
+    Using agen_ids in agent_obs and the correspondance of fwd_out, and fwd_in, it maps
+    the policy level output to agent level output.
+
+    Returns:
+        dict of agent_id to action
+    """
     policy_to_agent_to_action = {}
     for policy_id, policy_out in fwd_out.items():
         policy_to_agent_to_action[policy_id] = {}
