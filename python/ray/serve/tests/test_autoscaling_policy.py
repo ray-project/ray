@@ -882,7 +882,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=1,
+        max_concurrent_queries=5,
         # The config will trigger scale up really quickly and then
         # wait close to forever to downscale.
         autoscaling_config=AutoscalingConfig(
@@ -913,9 +913,14 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     signal.send.remote()
 
-    assert len(set(ray.get(refs))) == 2
+    old_pids = set(ray.get(refs))
+    assert len(old_pids) == 2
 
+    # Now re-deploy the application, make sure it is still 2 replicas and it shouldn't
+    # be scaled down.
     handle = serve.run(f.bind())
+    new_pids = set(ray.get([handle.remote() for _ in range(10)]))
+    assert len(new_pids) == 2
 
     def check_two_new_replicas_two_old():
         live_actors = state_api.list_actors(
