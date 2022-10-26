@@ -40,8 +40,8 @@ class ImportanceSampling(OffPolicyEstimator):
         v_behavior = 0.0
         v_target = 0.0
         for t in range(episode.count):
-            v_behavior += rewards[t] * self.gamma ** t
-            v_target += p[t] * rewards[t] * self.gamma ** t
+            v_behavior += rewards[t] * self.gamma**t
+            v_target += p[t] * rewards[t] * self.gamma**t
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target
