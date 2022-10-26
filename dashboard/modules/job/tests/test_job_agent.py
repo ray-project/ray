@@ -223,7 +223,6 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
         JobSubmitRequest,
     )
-
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
