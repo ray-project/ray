@@ -29,15 +29,16 @@ def _objects_by_tag(info: RayContext, tag: str) -> Dict:
         for sample in res["ray_object_store_memory"]:
             # NOTE: SPILLED sample doesn't report sealing states. So need to
             # filter those empty label value out.
-            if sample.labels[tag] != "":
+            print(sample)
+            if tag in sample.labels and sample.labels[tag] != "":
                 objects_info[sample.labels[tag]] += sample.value
 
     print(f"Objects by {tag}: {objects_info}")
     return objects_info
 
 
-def objects_by_if_seal(info: RayContext) -> Dict:
-    return _objects_by_tag(info, "ObjectSealed")
+def objects_by_seal_state(info: RayContext) -> Dict:
+    return _objects_by_tag(info, "ObjectState")
 
 
 def objects_by_loc(info: RayContext) -> Dict:
@@ -311,7 +312,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_if_seal(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -325,7 +326,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_if_seal(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
