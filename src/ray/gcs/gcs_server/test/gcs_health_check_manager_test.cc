@@ -99,6 +99,9 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     for (auto [_, server] : servers) {
       server->Shutdown();
     }
+
+    // Allow gRPC to cleanup.
+    boost::this_thread::sleep_for(boost::chrono::seconds(2));
   }
 
   NodeID AddServer() {
