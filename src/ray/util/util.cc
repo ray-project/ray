@@ -35,9 +35,6 @@
 
 #define PRINT_MACRO_HELPER(x) #x
 #define PRINT_MACRO(x) #x "=" PRINT_MACRO_HELPER(x)
-#ifdef _WIN32
-#define BOOST_ASIO_HAS_LOCAL_SOCKETS 0
-#endif
 
 #pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 #pragma message(PRINT_MACRO(BOOST_ASIO_DISABLE_LOCAL_SOCKETS))
@@ -123,7 +120,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
     scheme = "tcp://";
   }
   if (scheme == "unix://") {
-#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+#if !defined(_WIN32) && defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     size_t maxlen = sizeof(sockaddr_un().sun_path) / sizeof(*sockaddr_un().sun_path) - 1;
     RAY_CHECK(address.size() <= maxlen)
         << "AF_UNIX path length cannot exceed " << maxlen << " bytes: " << address;
@@ -415,6 +412,3 @@ std::string FormatFloat(float value, int32_t precision) {
 }
 
 }  // namespace ray
-#ifdef _WIN32
-#define BOOST_ASIO_HAS_LOCAL_SOCKETS 1
-#endif
