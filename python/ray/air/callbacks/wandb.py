@@ -14,8 +14,6 @@ from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
-import yaml
-
 try:
     import wandb
 except ImportError:
@@ -77,6 +75,9 @@ def _is_allowed_type(obj):
 
 def _clean_log(obj: Any):
     # Fixes https://github.com/ray-project/ray/issues/10631
+    if isinstance(obj, set):
+        # Sets are not JSON serializable.
+        obj = list(obj)
     if isinstance(obj, dict):
         return {k: _clean_log(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -87,15 +88,16 @@ def _clean_log(obj: Any):
         return obj
 
     # Else
+    from wandb.util import json_dumps_safer
+
     try:
+        # This is what wandb uses internally. If we cannot dump
+        # an object using this method, wandb will raise an exception.
+        json_dumps_safer(obj)
+
+        # This is probably unnecessary, but left here to be extra sure.
         pickle.dumps(obj)
-        yaml.dump(
-            obj,
-            Dumper=yaml.SafeDumper,
-            default_flow_style=False,
-            allow_unicode=True,
-            encoding="utf-8",
-        )
+
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder
