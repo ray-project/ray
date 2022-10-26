@@ -25,7 +25,7 @@ def objective(config):
         vol3 = config["NaClO4_vol"]  # NaClO4
         vol4 = 10 - (vol1 + vol2 + vol3)  # Water
         # Synthetic functions
-        conductivity = vol1 + 0.1 * (vol2 + vol3) ** 2 + 2.3 * vol4 * (vol1 ** 1.5)
+        conductivity = vol1 + 0.1 * (vol2 + vol3) ** 2 + 2.3 * vol4 * (vol1**1.5)
         # Add Gaussian noise to simulate experimental noise
         conductivity += np.random.normal() * 0.01
         session.report({"timesteps_total": i, "objective": conductivity})

@@ -68,7 +68,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         for j in range(1, n_step):
             if i + j < len_:
                 batch[SampleBatch.REWARDS][i] += (
-                    gamma ** j * batch[SampleBatch.REWARDS][i + j]
+                    gamma**j * batch[SampleBatch.REWARDS][i + j]
                 )
 
 

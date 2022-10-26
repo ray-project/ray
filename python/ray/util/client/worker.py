@@ -62,7 +62,7 @@ MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
-MESSAGE_SIZE_THRESHOLD = 10 * 2 ** 20  # 10 MB
+MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -463,7 +463,7 @@ class Worker:
                 if chunk.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
                     "client_object_transfer_size_warning"
                 ):
-                    size_gb = chunk.total_size / 2 ** 30
+                    size_gb = chunk.total_size / 2**30
                     warnings.warn(
                         "Ray Client is attempting to retrieve a "
                         f"{size_gb:.2f} GiB object over the network, which may "

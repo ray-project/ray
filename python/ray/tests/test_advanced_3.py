@@ -182,11 +182,11 @@ def test_object_ref_properties():
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10 ** 8))
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
-        return np.zeros(6 * 10 ** 7, dtype=np.uint8)
+        return np.zeros(6 * 10**7, dtype=np.uint8)
 
     x_id = f.remote()
     ray.wait([x_id])

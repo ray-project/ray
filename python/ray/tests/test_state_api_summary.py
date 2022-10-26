@@ -221,7 +221,7 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[0].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
@@ -233,7 +233,7 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[1].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
@@ -259,7 +259,7 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[3].binary(),
-                    size_bytes=1024 ** 2 * 2,  # 2MB,
+                    size_bytes=1024**2 * 2,  # 2MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=1,
@@ -270,7 +270,7 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[4].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=second_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=4,

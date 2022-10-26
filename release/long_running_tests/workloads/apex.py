@@ -5,8 +5,8 @@ from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
-redis_max_memory = 10 ** 8
-object_store_memory = 10 ** 9
+redis_max_memory = 10**8
+object_store_memory = 10**9
 num_nodes = 3
 
 message = (

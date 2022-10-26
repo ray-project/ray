@@ -83,7 +83,7 @@ class MyCallbacks(DefaultCallbacks):
             )
             delta_t = (
                 postprocessed_batch[SampleBatch.REWARDS]
-                + gamma ** d_ts * vpred_t[1:]
+                + gamma**d_ts * vpred_t[1:]
                 - vpred_t[:-1]
             )
             # This formula for the advantage is an adaption of

@@ -13,7 +13,7 @@ TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 
 
 def _to_gb(n_bytes):
-    return round(n_bytes / (1024 ** 3), 2)
+    return round(n_bytes / (1024**3), 2)
 
 
 class _ResourceUpdater:

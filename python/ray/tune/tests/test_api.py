@@ -916,7 +916,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i ** 2, done=i == 4)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
             for i in range(5)
         ]
 
@@ -940,7 +940,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoDoneReceived(self):
         # repeat same test but without explicitly reporting done=True
-        results1 = [dict(timesteps_total=(i + 1), my_score=i ** 2) for i in range(5)]
+        results1 = [dict(timesteps_total=(i + 1), my_score=i**2) for i in range(5)]
 
         logs1, trials = self.checkAndReturnConsistentLogs(results1)
 

@@ -367,11 +367,11 @@ def test_exception_chain(ray_start_regular):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
@@ -412,11 +412,11 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.

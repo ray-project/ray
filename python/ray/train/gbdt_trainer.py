@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from ray.data.preprocessor import Preprocessor
 
-_WARN_REPARTITION_THRESHOLD = 10 * 1024 ** 3
+_WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 
 
 def _convert_scaling_config_to_ray_params(
