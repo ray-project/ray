@@ -250,7 +250,7 @@ class TestMARLModule(unittest.TestCase):
         # convert a list of similarly structured nested dicts that end with np.array
         # leaves to a nested dict of the same structure that ends with stacked np.arrays
         batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *batch)
-        fwd_in = get_policy_data_from_agent_data(batch, policy_map, debug=True)
+        fwd_in = get_policy_data_from_agent_data(batch, policy_map)
         fwd_in = tree.map_structure(
             lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, fwd_in
         )
