@@ -25,6 +25,7 @@ parts:
       sections:
         - file: ray-air/examples/torch_image_example
         - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        - file: ray-air/examples/convert_existing_tf_code_to_ray_air
         - file: ray-air/examples/tfx_tabular_train_to_serve
         - file: ray-air/examples/huggingface_text_classification
         - file: ray-air/examples/sklearn_example
@@ -101,6 +102,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/examples/tune_analyze_results
               - file: tune/tutorials/tune-advanced-tutorial
                 sections:
                   - file: tune/examples/pbt_visualization/pbt_visualization
@@ -217,6 +219,7 @@ parts:
           - file: rllib/user-guides
             sections:
               - file: rllib/rllib-models
+              - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
@@ -299,7 +302,6 @@ parts:
           title: User Guides
           sections:
           - file: cluster/vms/user-guides/launching-clusters/index
-            title: Launching Clusters
           - file: cluster/vms/user-guides/large-cluster-best-practices
           - file: cluster/vms/user-guides/configuring-autoscaling
           - file: cluster/vms/user-guides/community/index
@@ -315,6 +317,7 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
 
   - caption: Monitoring and Debugging
     chapters:

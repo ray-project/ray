@@ -15,6 +15,7 @@ from ray._private.test_utils import (
     fetch_prometheus,
     get_log_batch,
     wait_for_condition,
+    raw_metrics,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -31,6 +32,10 @@ except ImportError:
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
+    "ray_node_disk_usage",
+    "ray_node_mem_used",
+    "ray_node_mem_total",
+    "ray_node_cpu_utilization",
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
     # , e.g. need to see how users currently depend on them.
     "ray_object_store_available_memory",
@@ -49,10 +54,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_operation_count",
-    "ray_operation_run_time_ms",
-    "ray_operation_queue_time_ms",
-    "ray_operation_active_count",
     "ray_grpc_server_req_process_time_ms",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
@@ -204,6 +205,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        session_name = ray._private.worker.global_worker.node.session_name
 
         # Raylet should be on every node
         assert all("raylet" in components for components in components_dict.values())
@@ -225,6 +227,10 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure metrics are recorded.
         for metric in _METRICS:
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
+
+        for sample in metric_samples:
+            if sample.name in _METRICS:
+                assert sample.labels["SessionName"] == session_name
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
@@ -251,6 +257,19 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         hist_sum = [m for m in test_histogram_samples if "_sum" in m.name][0].value
         assert hist_count == 1
         assert hist_sum == 1.5
+
+        # Make sure the gRPC stats are not reported from workers. We disabled
+        # it there because it has too high cardinality.
+        grpc_metrics = [
+            "ray_grpc_server_req_process_time_ms",
+            "ray_grpc_server_req_new_total",
+            "ray_grpc_server_req_handling_total",
+            "ray_grpc_server_req_finished_total",
+        ]
+        for grpc_metric in grpc_metrics:
+            grpc_samples = [m for m in metric_samples if grpc_metric in m.name]
+            for grpc_sample in grpc_samples:
+                assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
         _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
@@ -286,6 +305,39 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     except RuntimeError:
         print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+def test_operation_stats(monkeypatch, shutdown_only):
+    # Test operation stats are available when flag is on.
+    operation_metrics = [
+        "ray_operation_count",
+        "ray_operation_run_time_ms",
+        "ray_operation_queue_time_ms",
+        "ray_operation_active_count",
+    ]
+    with monkeypatch.context() as m:
+        m.setenv("RAY_event_stats_metrics", "1")
+        addr = ray.init()
+
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        def verify():
+            metrics = raw_metrics(addr)
+            metric_names = set(metrics.keys())
+            for op_metric in operation_metrics:
+                assert op_metric in metric_names
+                samples = metrics[op_metric]
+                components = set()
+                for sample in samples:
+                    components.add(sample.labels["Component"])
+            assert {"raylet", "gcs_server", "core_worker"} == components
+            return True
+
+        wait_for_condition(verify, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):

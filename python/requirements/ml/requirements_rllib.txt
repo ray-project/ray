@@ -33,10 +33,6 @@ higher==0.2.1
 # For auto-generating an env-rendering Window.
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
-# Ray Serve example
-# Newer of version of starlette unfortunately segfault the tests in Windows CI environment
-starlette==0.18.0; sys_platform == 'win32'
-starlette; sys_platform != 'win32'
 # ONNX
 onnx==1.9.0
 onnxruntime==1.9.0

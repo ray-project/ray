@@ -105,15 +105,12 @@ def test_basic_actors(shutdown_only, pipelined):
     # Test setting custom max inflight tasks.
     ds = ray.data.range(10, parallelism=5)
     ds = maybe_pipeline(ds, pipelined)
-    assert (
-        sorted(
-            ds.map(
-                lambda x: x + 1,
-                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-            ).take()
-        )
-        == list(range(1, 11))
-    )
+    assert sorted(
+        ds.map(
+            lambda x: x + 1,
+            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+        ).take()
+    ) == list(range(1, 11))
 
     # Test invalid max tasks inflight arg.
     with pytest.raises(ValueError):
@@ -743,7 +740,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
-        "schema={a: TensorDtype(shape=None, dtype=float64)})"
+        "schema={a: TensorDtype(shape=(None, None), dtype=float64)})"
     )
 
 
@@ -1881,6 +1878,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
 
+def test_iter_batches_empty_block(ray_start_regular_shared):
+    ds = ray.data.range(1).repartition(10)
+    assert list(ds.iter_batches(batch_size=None)) == [[0]]
+    assert list(ds.iter_batches(batch_size=1, local_shuffle_buffer_size=1)) == [[0]]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas", "simple"])
 def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
@@ -2215,6 +2218,43 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         # Test dropping non-existent column
         with pytest.raises(KeyError):
             ds.drop_columns(["dummy_col", "col1", "col2"])
+
+
+def test_select_columns(ray_start_regular_shared):
+    # Test pandas and arrow
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+    assert ds1._dataset_format() == "pandas"
+
+    ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "arrow"
+
+    for each_ds in [ds1, ds2]:
+        assert each_ds.select_columns(cols=[]).take(1) == [{}]
+        assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
+            {"col1": 1, "col2": 2, "col3": 3}
+        ]
+        assert each_ds.select_columns(cols=["col1", "col2"]).take(1) == [
+            {"col1": 1, "col2": 2}
+        ]
+        assert each_ds.select_columns(cols=["col2", "col1"]).take(1) == [
+            {"col1": 1, "col2": 2}
+        ]
+        # Test selecting columns with duplicates
+        assert each_ds.select_columns(cols=["col1", "col2", "col2"]).schema().names == [
+            "col1",
+            "col2",
+            "col2",
+        ]
+        # Test selecting a column that is not in the dataset schema
+        with pytest.raises(KeyError):
+            each_ds.select_columns(cols=["col1", "col2", "dummy_col"])
+
+    # Test simple
+    ds3 = ray.data.range(10)
+    assert ds3._dataset_format() == "simple"
+    with pytest.raises(ValueError):
+        ds3.select_columns(cols=[])
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
@@ -2738,6 +2778,47 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_to_dask_tensor_column_cast_pandas(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Dask
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_df = pd.DataFrame({"a": TensorArray(data)})
+        ds = ray.data.from_pandas(in_df)
+        dtypes = ds.schema().types
+        assert len(dtypes) == 1
+        assert isinstance(dtypes[0], TensorDtype)
+        out_df = ds.to_dask().compute()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
+
+
+def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Dask
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
+        ds = ray.data.from_arrow(in_table)
+        dtype = ds.schema().field(0).type
+        assert isinstance(dtype, ArrowTensorType)
+        out_df = ds.to_dask().compute()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
 
 
 def test_from_modin(ray_start_regular_shared):
@@ -4675,6 +4756,28 @@ def test_random_shuffle_check_random(shutdown_only):
                 ), f"{part} contains non-shuffled rows from input blocks"
                 num_increasing = 0
             prev = x
+
+
+def test_random_shuffle_with_custom_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create two nodes which have different custom resources.
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    # Run dataset in "bar" nodes.
+    ds = ray.data.read_parquet(
+        "example://parquet_images_mini",
+        parallelism=2,
+        ray_remote_args={"resources": {"bar": 1}},
+    )
+    ds = ds.random_shuffle(resources={"bar": 1}).fully_executed()
+    assert "1 nodes used" in ds.stats()
+    assert "2 nodes used" not in ds.stats()
 
 
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):

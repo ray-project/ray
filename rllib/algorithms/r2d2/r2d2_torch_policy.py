@@ -233,12 +233,12 @@ def h_inverse(x, epsilon=1.0):
         two_epsilon * x
         + (two_epsilon + 1.0)
         - torch.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-    ) / (2.0 * epsilon ** 2)
+    ) / (2.0 * epsilon**2)
     if_x_neg = (
         two_epsilon * x
         - (two_epsilon + 1.0)
         + torch.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-    ) / (2.0 * epsilon ** 2)
+    ) / (2.0 * epsilon**2)
     return torch.where(x < 0.0, if_x_neg, if_x_pos)
 
 
