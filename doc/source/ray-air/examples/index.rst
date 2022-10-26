@@ -14,10 +14,9 @@ Framework-specific Examples
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
 - :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: How to get started with Ray AIR from your code base
 
-
-Tabular Data
-------------
-- :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.
+AutoML
+------
+- :doc:`/ray-air/examples/automl_with_ray_air`: Build an AutoML system for time-series forecasting with Ray AIR
 
 Text/NLP
 --------
