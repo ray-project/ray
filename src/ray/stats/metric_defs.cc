@@ -231,17 +231,19 @@ DEFINE_stats(gcs_storage_operation_count,
 DEFINE_stats(object_store_memory,
              "Object store memory by various sub-kinds on this node",
              /// Location:
-             ///    TODO(rickyx): spill fallback from in memory
-             ///    - IN_MEMORY: currently in shared memory(e.g. /dev/shm) and
-             ///      fallback allocated. This is memory already sealed.
+             ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
+             ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
+             ///      e.g. /tmp.
              ///    - SPILLED: current number of bytes from objects spilled
              ///      to external storage. Note this might be smaller than
              ///      the physical storage incurred on the external storage because
              ///      Ray might fuse spilled objects into a single file, so a deleted
              ///      spill object might still exist in the spilled file. Check
              ///      spilled object fusing for more details.
-             ///    - UNSEALED: unsealed bytes that come from objects just created.
-             ("Location"),
+             /// ObjectState:
+             ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+             ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+             (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
              (),
              ray::stats::GAUGE);
 
