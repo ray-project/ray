@@ -1,0 +1,97 @@
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-cluster-ingress
+  namespace: ray
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster
+  policyTypes:
+    - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6380
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 52365
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8265
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8076
+      endPort: 8079
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+      endPort: 10007
+
+# Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-cluster-egress
+  namespace: ray
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster
+  policyTypes:
+    - Egress
+  egress:
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6380
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 52365
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8265 
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8076
+      endPort: 8079
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+      endPort: 10007

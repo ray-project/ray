@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: ray
+  name: service-ray-cluster
+  labels:
+    app: ray-cluster
+spec:
+  ports:
+  - name: client
+    protocol: TCP
+    port: 10001
+    targetPort: 10001
+  - name: dashboard
+    protocol: TCP
+    port: 8265
+    targetPort: 8265
+  - name: gcs-server
+    protocol: TCP
+    port: 6380
+    targetPort: 6380
+  - name: object-manager-port
+    protocol: TCP
+    port: 8076
+    targetPort: 8076
+  - name: node-manager-port
+    protocol: TCP
+    port: 8077
+    targetPort: 8077
+  - name: dashboard-agent-grpc-port
+    protocol: TCP
+    port: 8078
+    targetPort: 8078
+  - name: dashboard-agent-listen-port
+    protocol: TCP
+    port: 8079
+    targetPort: 8079
+  - name: worker-port-1
+    protocol: TCP
+    port: 10002
+    targetPort: 10002
+  - name: worker-port-2
+    protocol: TCP
+    port: 10003
+    targetPort: 10003
+  - name: worker-port-3
+    protocol: TCP
+    port: 10004
+    targetPort: 10004
+  - name: worker-port-4
+    protocol: TCP
+    port: 10005
+    targetPort: 10005
+  - name: worker-port-5
+    protocol: TCP
+    port: 10006
+    targetPort: 10006
+  - name: worker-port-6
+    protocol: TCP
+    port: 10007
+    targetPort: 10007
+  selector:
+    app: ray-cluster
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ray
+  name: deployment-ray-head
+  labels:
+    app: ray-cluster
+spec:
+  # Do not change this - Ray currently only supports one head node per cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      component: ray-head
+      type: ray
+      app: ray-cluster
+  template:
+    metadata:
+      labels:
+        component: ray-head
+        type: ray
+        app: ray-cluster
+    spec:
+      # If the head node goes down, the entire cluster (including all worker
+      # nodes) will go down as well. If you want Kubernetes to bring up a new
+      # head node in this case, set this to "Always," else set it to "Never."
+      restartPolicy: Always
+
+      # This volume allocates shared memory for Ray to use for its plasma
+      # object store. If you do not provide this, Ray will fall back to
+      # /tmp which cause slowdowns if is not a shared memory volume.
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+        - name: ray-head
+          image: rayproject/ray:latest
+          imagePullPolicy: IfNotPresent
+          command: [ "/bin/bash", "-c", "--" ]
+          args:
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10007 --redis-password='' --block"
+          ports:
+            - containerPort: 6380 # GCS server
+            - containerPort: 10001 # Used by Ray Client
+            - containerPort: 8265 # Used by Ray Dashboard
+            - containerPort: 8076
+            - containerPort: 8077
+            - containerPort: 8078
+            - containerPort: 8079
+            - containerPort: 10002
+            - containerPort: 10003
+            - containerPort: 10004
+            - containerPort: 10005
+            - containerPort: 10006
+            - containerPort: 10007
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+            # RAY_REDIS_ADDRESS can force ray to use external redis
+            - name: RAY_REDIS_ADDRESS
+              value: "service-redis:6379"
+            # This is used in the ray start command so that Ray can spawn the
+            # correct number of processes. Omitting this may lead to degraded
+            # performance.
+            - name: MY_CPU_REQUEST
+              # valueFrom:
+              #   resourceFieldRef:
+              #     resource: requests.cpu
+              value: "0"
+          resources:
+            requests:
+              cpu: 1
+              memory: 2Gi
+            limits:
+              cpu: 1
+              memory: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ray
+  name: deployment-ray-worker
+  labels:
+    app: ray-cluster
+spec:
+  # Change this to scale the number of worker nodes started in the Ray cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      component: ray-worker
+      type: ray
+      app: ray-cluster
+  template:
+    metadata:
+      labels:
+        component: ray-worker
+        type: ray
+        app: ray-cluster
+    spec:
+      restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+      - name: ray-worker
+        image: rayproject/ray:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/bash", "-c", "--"]
+        args:
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10007 --block"
+        ports:
+          - containerPort: 8076
+          - containerPort: 8077
+          - containerPort: 8078
+          - containerPort: 8079
+          - containerPort: 10002
+          - containerPort: 10003
+          - containerPort: 10004
+          - containerPort: 10005
+          - containerPort: 10006
+          - containerPort: 10007
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          # This is used in the ray start command so that Ray can spawn the
+          # correct number of processes. Omitting this may lead to degraded
+          # performance.
+          - name: MY_CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                resource: requests.cpu
+        resources:
+          requests:
+            cpu: 2
+            memory: 4Gi
+          limits:
+            cpu: 4
+            memory: 30Gi
