@@ -220,6 +220,9 @@ DEFINE_stats(object_store_memory,
              ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
              ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
              ///      e.g. /tmp.
+             ///    - WORKER_HEAP: memory incurred due to inline objects, i.e.
+             ///      inlined return values, placeholders for objects stored in plasma
+             ///      store.
              ///    - SPILLED: current number of bytes from objects spilled
              ///      to external storage. Note this might be smaller than
              ///      the physical storage incurred on the external storage because
