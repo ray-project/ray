@@ -22,13 +22,13 @@ class TestApexDDPG(unittest.TestCase):
         """Test whether APEX-DDPG can be built on all frameworks."""
         config = (
             apex_ddpg.ApexDDPGConfig()
+            .environment(env="Pendulum-v1")
             .rollouts(num_rollout_workers=2)
             .reporting(min_sample_timesteps_per_iteration=100)
             .training(
                 num_steps_sampled_before_learning_starts=0,
                 optimizer={"num_replay_buffer_shards": 1},
             )
-            .environment(env="Pendulum-v1")
         )
 
         num_iterations = 1

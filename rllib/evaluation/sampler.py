@@ -938,12 +938,12 @@ def _process_observations(
             # Record transition info if applicable.
             if last_observation is None:
                 sample_collector.add_init_obs(
-                    episode,
-                    agent_id,
-                    env_id,
-                    policy_id,
-                    episode.length - 1,
-                    filtered_obs,
+                    episode=episode,
+                    agent_id=agent_id,
+                    env_id=env_id,
+                    policy_id=policy_id,
+                    init_obs=filtered_obs,
+                    t=episode.length - 1,
                 )
             else:
                 # Add actions, rewards, next-obs to collectors.
@@ -1130,12 +1130,12 @@ def _process_observations(
 
                     # Add initial obs to buffer.
                     sample_collector.add_init_obs(
-                        new_episode,
-                        agent_id,
-                        env_id,
-                        policy_id,
-                        new_episode.length - 1,
-                        filtered_obs,
+                        episode=new_episode,
+                        agent_id=agent_id,
+                        env_id=env_id,
+                        policy_id=policy_id,
+                        init_obs=filtered_obs,
+                        t=new_episode.length - 1,
                     )
 
                     item = _PolicyEvalData(

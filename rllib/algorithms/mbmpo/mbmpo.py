@@ -231,7 +231,7 @@ class MBMPOConfig(AlgorithmConfig):
         if horizon is not None:
             self.horizon = horizon
         if dynamics_model is not None:
-            self.dynamics_model = dynamics_model
+            self.dynamics_model.update(dynamics_model)
         if custom_vector_env is not None:
             self.custom_vector_env = custom_vector_env
         if num_maml_steps is not None:

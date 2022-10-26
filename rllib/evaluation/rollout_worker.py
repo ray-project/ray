@@ -1,9 +1,13 @@
 from collections import defaultdict
 import copy
+import gym
+from gym.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
+import numpy as np
 import os
 import platform
+import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -18,11 +22,6 @@ from typing import (
     Type,
     Union,
 )
-
-import gym
-from gym.spaces import Discrete, MultiDiscrete, Space
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -518,8 +517,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.callbacks: DefaultCallbacks = self.config.callbacks_class()
         self.recreated_worker: bool = recreated_worker
 
-        # Setup current policy_mapping_fn (start with the one from the config).
-        self.policy_mapping_fn = None
+        # Setup current policy_mapping_fn. Start with the one from the config, which
+        # might be None in older checkpoints (nowadays AlgorithmConfig has a proper
+        # default for this); Need to cover this situation via the backup lambda here.
+        self.policy_mapping_fn = (
+            lambda agent_id, episode, worker, **kw: DEFAULT_POLICY_ID
+        )
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
@@ -979,7 +982,9 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
+                ):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -992,7 +997,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
-            if self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
+            if self.is_policy_to_train is None or self.is_policy_to_train(
+                DEFAULT_POLICY_ID, samples
+            ):
                 info_out.update(
                     {
                         DEFAULT_POLICY_ID: self.policy_map[
@@ -1105,7 +1112,9 @@ class RolloutWorker(ParallelIteratorWorker):
         grad_out, info_out = {}, {}
         if self.config.framework_str == "tf":
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
+                ):
                     continue
                 policy = self.policy_map[pid]
                 builder = _TFRunBuilder(policy.get_session(), "compute_gradients")
@@ -1116,7 +1125,9 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out = {k: builder.get(v) for k, v in info_out.items()}
         else:
             for pid, batch in samples.policy_batches.items():
-                if self.is_policy_to_train is not None and not self.is_policy_to_train(pid, samples):
+                if self.is_policy_to_train is not None and not self.is_policy_to_train(
+                    pid, samples
+                ):
                     continue
                 grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
                     batch
@@ -1160,10 +1171,14 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
+                if self.is_policy_to_train is None or self.is_policy_to_train(
+                    pid, None
+                ):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif self.is_policy_to_train is None or self.is_policy_to_train(DEFAULT_POLICY_ID, None):
+        elif self.is_policy_to_train is None or self.is_policy_to_train(
+            DEFAULT_POLICY_ID, None
+        ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
@@ -1453,7 +1468,9 @@ class RolloutWorker(ParallelIteratorWorker):
             `batch`.
         """
         return {
-            pid for pid in self.policy_map.keys() if self.is_policy_to_train(pid, batch)
+            pid
+            for pid in self.policy_map.keys()
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, batch)
         }
 
     @DeveloperAPI
@@ -1634,7 +1651,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     )
                 else:
                     policy_spec = (
-                        PolicySpec.deserialize(spec) if connector_enabled else spec
+                        PolicySpec.deserialize(spec)
+                        if connector_enabled or isinstance(spec, dict)
+                        else spec
                     )
                     self.add_policy(
                         policy_id=pid,
@@ -1649,7 +1668,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Also restore mapping fn and which policies to train.
         if "policy_mapping_fn" in state:
             self.set_policy_mapping_fn(state["policy_mapping_fn"])
-        if "is_policy_to_train" in state:
+        if state.get("is_policy_to_train") is not None:
             self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
@@ -1878,13 +1897,14 @@ class RolloutWorker(ParallelIteratorWorker):
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
             worker_index=self.worker_index,
             num_workers=self.num_workers,
             capacity=config.policy_map_capacity,
             path=config.policy_map_cache,
-            policy_config=config,
             session_creator=session_creator,
             seed=seed,
         )
@@ -1896,9 +1916,13 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.debug("Creating policy for {}".format(name))
             # Update the general config with the specific config
             # for this particular policy.
-            merged_conf: "AlgorithmConfig" = copy.deepcopy(config)
-            merged_conf._is_frozen = False
-            merged_conf.update_from_dict(policy_spec.config or {})
+            merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+            update_dict = (
+                policy_spec.config.to_dict()
+                if isinstance(policy_spec.config, AlgorithmConfig)
+                else policy_spec.config
+            )
+            merged_conf.update_from_dict(update_dict or {})
 
             # Update num_workers and worker_index.
             merged_conf.worker_index = self.worker_index

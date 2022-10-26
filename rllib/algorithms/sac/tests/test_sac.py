@@ -132,6 +132,7 @@ class TestSAC(unittest.TestCase):
                 "CartPole-v0",
             ]:
                 print("Env={}".format(env))
+                config.environment(env)
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config.q_model_config["custom_model"] = (
@@ -139,7 +140,7 @@ class TestSAC(unittest.TestCase):
                     if env == "CartPole-v0"
                     else None
                 )
-                algo = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
                     check_train_results(results)
@@ -151,7 +152,7 @@ class TestSAC(unittest.TestCase):
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
                     checkpoint = algo.save()
-                    new_algo = sac.SAC(config, env=env)
+                    new_algo = config.build()
                     new_algo.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = algo.local_replay_buffer.replay_buffers[
@@ -169,6 +170,10 @@ class TestSAC(unittest.TestCase):
         """Tests SAC loss function results across all frameworks."""
         config = (
             sac.SACConfig()
+            .environment(
+                SimpleEnv,
+                env_config={"simplex_actions": True},
+            )
             .training(
                 twin_q=False,
                 gamma=0.99,
@@ -180,9 +185,6 @@ class TestSAC(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .reporting(
                 min_time_s_per_iteration=0,
-            )
-            .environment(
-                env_config={"simplex_actions": True},
             )
             .debugging(seed=42)
         )
@@ -230,7 +232,6 @@ class TestSAC(unittest.TestCase):
             "default_policy/log_alpha_1": "log_alpha",
         }
 
-        env = SimpleEnv
         batch_size = 64
         obs_size = (batch_size, 1)
         actions = np.random.random(size=(batch_size, 2))
@@ -250,7 +251,7 @@ class TestSAC(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Algorithm and get its default Policy object.
-            algo = config.build(env=env)
+            algo = config.build()
             policy = algo.get_policy()
             p_sess = None
             if sess:
@@ -534,6 +535,7 @@ class TestSAC(unittest.TestCase):
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (
             sac.SACConfig()
+            .environment("nested")
             .training(
                 replay_buffer_config={
                     "capacity": 10,
@@ -550,7 +552,7 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="nested")
+            algo = config.build()
             for _ in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)

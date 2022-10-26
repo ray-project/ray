@@ -60,7 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -541,8 +541,8 @@ class Algorithm(Trainable):
                 self.workers = WorkerSet(
                     env_creator=self.env_creator,
                     validate_env=self.validate_env,
-                    policy_class=self.get_default_policy_class(self.config),
-                    trainer_config=self.config,
+                    default_policy_class=self.get_default_policy_class(self.config),
+                    config=self.config,
                     num_workers=self.config["num_workers"],
                     local_worker=True,
                     logdir=self.logdir,
@@ -591,13 +591,13 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
+        # Validate evaluation config.
+        self.evaluation_config = self.config.get_evaluation_config_object()
+        self.validate_config(self.evaluation_config)
+
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
         if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
-            # Validate evaluation config.
-            self.evaluation_config = self.config.get_evaluation_config_object()
-            self.validate_config(self.evaluation_config)
-
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
             )
@@ -609,8 +609,8 @@ class Algorithm(Trainable):
             self.evaluation_workers: WorkerSet = WorkerSet(
                 env_creator=env_creator,
                 validate_env=None,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.evaluation_config,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -2082,7 +2082,7 @@ class Algorithm(Trainable):
         elif isinstance(env_specifier, type):
             env_id = env_specifier  # .__name__
 
-            if config.remote_worker_envs:
+            if config["remote_worker_envs"]:
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.
@@ -2312,14 +2312,17 @@ class Algorithm(Trainable):
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-        if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework", "tf")
 
+        if simple_optim_setting is True:
+            pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config.get("num_gpus", 0) > 1:
-            if framework in ["tfe", "tf2"]:
+        elif config.get("num_gpus", 0) > 1:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            if framework in ["tfe", "tf2"] and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)
@@ -2348,13 +2351,23 @@ class Algorithm(Trainable):
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
                 default_policy_cls = self.get_default_policy_class(config)
+                policies = config["multiagent"]["policies"]
+                policy_specs = (
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
                 if any(
-                    (p.policy_class or default_policy_cls) is None
+                    (spec.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p.policy_class or default_policy_cls,
+                        spec.policy_class or default_policy_cls,
                         (DynamicTFPolicy, TorchPolicy),
                     )
-                    for p in config["multiagent"]["policies"].values()
+                    for spec in policy_specs
                 ):
                     config["simple_optimizer"] = True
                 else:
@@ -2562,6 +2575,8 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
+        else:
+            state["counters"] = self._counters
 
         return state
 
@@ -2610,6 +2625,8 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
+        elif "counters" in state:
+            self._counters = state["counters"]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
@@ -2677,11 +2694,19 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            policies_dict = state["config"]["multiagent"]["policies"]
-            policies_dict = {
-                pid: spec for pid, spec in policies_dict.items() if pid in policy_ids
-            }
-            state["config"]["multiagent"]["policies"] = policies_dict
+            new_config = AlgorithmConfig.from_dict(state["config"])
+            new_policies = new_config.policies
+            if isinstance(new_policies, (set, list, tuple)):
+                new_policies = {pid for pid in new_policies if pid in policy_ids}
+            else:
+                new_policies = {
+                    pid: spec for pid, spec in new_policies.items() if pid in policy_ids
+                }
+            new_config.multi_agent(
+                policies=new_policies,
+                policies_to_train=policies_to_train,
+            )
+            state["config"] = new_config.to_dict()
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
@@ -2978,6 +3003,7 @@ class Algorithm(Trainable):
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
             # TODO: Backward compatibility.
             results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
@@ -3034,8 +3060,8 @@ class Algorithm(Trainable):
         return WorkerSet(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
+            default_policy_class=policy_class,
+            config=config,
             num_workers=num_workers,
             local_worker=local_worker,
             logdir=self.logdir,

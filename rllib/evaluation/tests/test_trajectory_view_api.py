@@ -272,16 +272,22 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            config=ppo.PPOConfig().rollouts(
+            config=ppo.PPOConfig()
+            .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
                 num_rollout_workers=0,
-            ).multi_agent(
+            )
+            .multi_agent(
                 policies=policies,
                 policy_mapping_fn=policy_fn,
-            ).environment(normalize_actions=False).training(model={
-                "use_lstm": True,
-                "max_seq_len": max_seq_len,
-            }),
+            )
+            .environment(normalize_actions=False)
+            .training(
+                model={
+                    "use_lstm": True,
+                    "max_seq_len": max_seq_len,
+                }
+            ),
         )
 
         for iteration in range(20):
@@ -307,12 +313,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
-        config = ppo.PPOConfig().multi_agent(
-            policies=policies, policy_mapping_fn=policy_fn
-        ).training(model={"max_seq_len": max_seq_len}).rollouts(
-            num_rollout_workers=0,
-            rollout_fragment_length=rollout_fragment_length,
-        ).environment(normalize_actions=False)
+        config = (
+            ppo.PPOConfig()
+            .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
+            .training(model={"max_seq_len": max_seq_len})
+            .rollouts(
+                num_rollout_workers=0,
+                rollout_fragment_length=rollout_fragment_length,
+            )
+            .environment(normalize_actions=False)
+        )
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),

@@ -298,7 +298,8 @@ class SimpleQ(Algorithm):
                     " used at the same time!"
                 )
 
-        validate_buffer_config(config)
+        if not config.get("in_evaluation"):
+            validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

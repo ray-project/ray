@@ -17,16 +17,11 @@ from ray.rllib.algorithms.dqn.dqn import DQNConfig
 # __sphinx_doc_replay_buffer_type_specification__begin__
 config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer})
 
-another_config = (
-    DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
-)
+another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
 
 
-yet_another_config = (
-    DQNConfig()
-    .training(
-        replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
-    )
+yet_another_config = DQNConfig().training(
+    replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
 )
 
 validate_buffer_config(config)
@@ -35,7 +30,9 @@ validate_buffer_config(yet_another_config)
 
 # After validation, all three configs yield the same effective config
 assert (
-    config.replay_buffer_config == another_config.replay_buffer_config == yet_another_config.replay_buffer_config
+    config.replay_buffer_config
+    == another_config.replay_buffer_config
+    == yet_another_config.replay_buffer_config
 )
 
 # __sphinx_doc_replay_buffer_type_specification__end__
@@ -124,14 +121,17 @@ assert len(less_sampled_buffer._storage) == 0
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
 config = (
     DQNConfig()
-    .training(replay_buffer_config={
-        "type": "MultiAgentReplayBuffer",
-        "underlying_replay_buffer_config": {
-            "type": LessSampledReplayBuffer,
-            "evict_sampled_more_then": 20  # We can specify the default call argument
-            # for the sample method of the underlying buffer method here
-        },
-    })
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentReplayBuffer",
+            "underlying_replay_buffer_config": {
+                "type": LessSampledReplayBuffer,
+                # We can specify the default call argument
+                # for the sample method of the underlying buffer method here.
+                "evict_sampled_more_then": 20,
+            },
+        }
+    )
     .environment(env="CartPole-v1")
 )
 

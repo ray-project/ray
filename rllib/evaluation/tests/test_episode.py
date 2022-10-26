@@ -112,9 +112,9 @@ class TestEpisodeLastValues(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
             default_policy_class=EchoPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0
-            ).callbacks(LastInfoCallback),
+            config=AlgorithmConfig()
+            .rollouts(num_rollout_workers=0)
+            .callbacks(LastInfoCallback),
         )
         ev.sample()
 
@@ -122,12 +122,13 @@ class TestEpisodeLastValues(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: EpisodeEnv(NUM_STEPS, NUM_AGENTS),
             default_policy_class=EchoPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0
-            ).callbacks(LastInfoCallback).multi_agent(
+            config=AlgorithmConfig()
+            .rollouts(num_rollout_workers=0)
+            .callbacks(LastInfoCallback)
+            .multi_agent(
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
                 policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
-            )
+            ),
         )
         ev.sample()
 

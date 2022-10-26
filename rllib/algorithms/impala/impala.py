@@ -104,8 +104,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = ((1 / self.replay_proportion)
-                             if self.replay_proportion > 0 else 0.0)
+        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -205,8 +204,7 @@ class ImpalaConfig(AlgorithmConfig):
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
-                be replayed with a p:1 proportion to new data samples. Used in the
-                execution plan API.
+                be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
                 The number of transitions saved total will be
                 (replay_buffer_num_slots * rollout_fragment_length).
@@ -288,6 +286,9 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not None:
             self.replay_proportion = replay_proportion
+            self.replay_ratio = (
+                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
+            )
         if replay_buffer_num_slots is not None:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not None:
@@ -608,6 +609,10 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        # First, check, whether our learner thread is still healthy.
+        if not self._learner_thread.is_alive():
+            raise RuntimeError("The learner thread died while training!")
+
         # Get references to sampled SampleBatches from our workers.
         unprocessed_sample_batches_refs = self.get_samples_from_workers()
         # Tag workers that actually produced ready sample batches this iteration.
@@ -765,18 +770,15 @@ class Impala(Algorithm):
 
         # Loop through output queue and update our counts.
         for _ in range(self._learner_thread.outqueue.qsize()):
-            if self._learner_thread.is_alive():
-                (
-                    env_steps,
-                    agent_steps,
-                    learner_results,
-                ) = self._learner_thread.outqueue.get(timeout=0.001)
-                num_env_steps_trained += env_steps
-                num_agent_steps_trained += agent_steps
-                if learner_results:
-                    learner_infos.append(learner_results)
-            else:
-                raise RuntimeError("The learner thread died while training")
+            (
+                env_steps,
+                agent_steps,
+                learner_results,
+            ) = self._learner_thread.outqueue.get(timeout=0.001)
+            num_env_steps_trained += env_steps
+            num_agent_steps_trained += agent_steps
+            if learner_results:
+                learner_infos.append(learner_results)
         # Nothing new happened since last time, use the same learner stats.
         if not learner_infos:
             final_learner_info = copy.deepcopy(self._learner_thread.learner_info)

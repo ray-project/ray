@@ -41,6 +41,7 @@ class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
@@ -53,6 +54,7 @@ class AlgorithmConfig:
         >>> rllib_algo = config.build()
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()
@@ -286,15 +288,7 @@ class AlgorithmConfig:
 
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
-        for k in [
-            "policies",
-            "policy_map_capacity",
-            "policy_map_cache",
-            "policy_mapping_fn",
-            "policies_to_train",
-            "observation_fn",
-            "count_steps_by",
-        ]:
+        for k in self.multiagent.keys():
             config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
@@ -303,6 +297,29 @@ class AlgorithmConfig:
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+
+        for dep_k in [
+            "monitor",
+            "evaluation_num_episodes",
+            "metrics_smoothing_episodes",
+            "timesteps_per_iteration",
+            "min_iter_time_s",
+            "collect_metrics_timeout",
+            "buffer_size",
+            "prioritized_replay",
+            "learning_starts",
+            "replay_batch_size",
+            "replay_mode",
+            "prioritized_replay_alpha",
+            "prioritized_replay_beta",
+            "prioritized_replay_eps",
+            "min_time_s_per_reporting",
+            "min_train_timesteps_per_reporting",
+            "min_sample_timesteps_per_reporting",
+            "input_evaluation",
+        ]:
+            if config.get(dep_k) == DEPRECATED_VALUE:
+                config.pop(dep_k, None)
 
         return config
 
@@ -354,19 +371,29 @@ class AlgorithmConfig:
             key = self._translate_special_keys(key, warn_deprecated=False)
 
             # Set our multi-agent settings.
-            if key == "_multi_agent_legacy_dict":
-                for k in [
-                    "policies",
-                    "policy_map_capacity",
-                    "policy_map_cache",
-                    "policy_mapping_fn",
-                    "policies_to_train",
-                    "observation_fn",
-                    "replay_mode",
-                    "count_steps_by",
-                ]:
-                    if k in value:
-                        setattr(self, k, value[k])
+            if key == "multiagent":
+                kwargs = {
+                    k: value[k]
+                    for k in [
+                        "policies",
+                        "policy_map_capacity",
+                        "policy_map_cache",
+                        "policy_mapping_fn",
+                        "policies_to_train",
+                        "observation_fn",
+                        "count_steps_by",
+                    ]
+                    if k in value
+                }
+                self.multi_agent(**kwargs)
+            # Some keys must use `.update()` from given config dict (to not lose
+            # any sub-keys).
+            elif key == "callbacks_class":
+                self.callbacks(callbacks_class=value)
+            elif key == "env_config":
+                self.environment(env_config=value)
+            elif key == "model":
+                self.training(model=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -379,6 +406,25 @@ class AlgorithmConfig:
                 setattr(self, key, value)
 
         return self
+
+    def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
+        """Creates a deep copy of this config and (un)freezes if necessary.
+
+        Args:
+            copy_frozen: Whether the created deep copy will be frozen or not. If None,
+                keep the same frozen status that `self` currently has.
+
+        Returns:
+            A deep copy of `self` that is (un)frozen.
+        """
+        cp = copy.deepcopy(self)
+        if copy_frozen is True:
+            cp.freeze()
+        elif copy_frozen is False:
+            cp._is_frozen = False
+            if isinstance(cp.evaluation_config, AlgorithmConfig):
+                cp.evaluation_config._is_frozen = False
+        return cp
 
     def freeze(self) -> None:
         """Freezes this config object, such that no attributes can be set anymore.
@@ -626,7 +672,11 @@ class AlgorithmConfig:
         if env is not None:
             self.env = env
         if env_config is not None:
-            self.env_config = env_config
+            deep_update(
+                self.env_config,
+                env_config,
+                True,
+            )
         if observation_space is not None:
             self.observation_space = observation_space
         if action_space is not None:
@@ -914,6 +964,8 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        if callbacks_class is None:
+            callbacks_class = DefaultCallbacks
         # Check, whether given `callbacks` is a callable.
         if not callable(callbacks_class):
             raise ValueError(
@@ -1063,7 +1115,16 @@ class AlgorithmConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            self.evaluation_config = evaluation_config
+            from ray.rllib.algorithms.algorithm import Algorithm
+
+            self.evaluation_config = deep_update(
+                self.evaluation_config or {},
+                evaluation_config,
+                True,
+                Algorithm._allow_unknown_subkeys,
+                Algorithm._override_all_subkeys_if_type_changes,
+                Algorithm._override_all_key_list,
+            )
         if off_policy_estimation_methods is not None:
             self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
@@ -1116,11 +1177,6 @@ class AlgorithmConfig:
                 f"`evaluation_duration` ({self.evaluation_duration}) must be an "
                 f"int and >0!"
             )
-
-        ## Merge user-provided eval config overrides with `self`. This makes sure
-        ## the eval config is always complete, no matter whether we have eval
-        ## workers or perform evaluation on the (non-eval) local worker.
-        #self._recompile_eval_config(evaluation_config or self.evaluation_config)
 
         return self
 
@@ -1300,22 +1356,24 @@ class AlgorithmConfig:
                     )
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
-                for pid, policy_spec in policies.items():
+                for pid, spec in policies.items():
                     # If not a PolicySpec object, values must be lists/tuples of len 4.
-                    if not isinstance(policy_spec, PolicySpec):
-                        if not isinstance(policy_spec, (list, tuple)) or len(
-                            policy_spec) != 4:
+                    if not isinstance(spec, PolicySpec):
+                        if not isinstance(spec, (list, tuple)) or len(spec) != 4:
                             raise ValueError(
                                 "Policy specs must be tuples/lists of "
                                 "(cls or None, obs_space, action_space, config), "
-                                f"got {policy_spec} for PolicyID={pid}"
+                                f"got {spec} for PolicyID={pid}"
                             )
                     # TODO: Switch from dict to AlgorithmConfigOverride, once available.
                     # Config not a dict.
-                    elif not isinstance(policy_spec.config, dict) and policy_spec.config is not None:
+                    elif (
+                        not isinstance(spec.config, (AlgorithmConfig, dict))
+                        and spec.config is not None
+                    ):
                         raise ValueError(
-                            f"Multi-agent policy config for {pid} must be a dict, "
-                            f"but got {type(policy_spec.config)}!"
+                            f"Multi-agent policy config for {pid} must be a dict or "
+                            f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
             self.policies = policies
 
@@ -1352,7 +1410,9 @@ class AlgorithmConfig:
             self.count_steps_by = count_steps_by
 
         if policies_to_train is not None:
-            assert isinstance(policies_to_train, (list, set, tuple)) or callable(policies_to_train), (
+            assert isinstance(policies_to_train, (list, set, tuple)) or callable(
+                policies_to_train
+            ), (
                 "ERROR: `policies_to_train`must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
@@ -1379,8 +1439,6 @@ class AlgorithmConfig:
         self._is_multi_agent = (
             len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
         )
-
-        self._set_ma_legacy_dict()
 
         return self
 
@@ -1599,11 +1657,14 @@ class AlgorithmConfig:
         if isinstance(evaluation_config, AlgorithmConfig):
             evaluation_config = evaluation_config.to_dict()
 
-        # Update with evaluation settings:
-        eval_config_obj = copy.deepcopy(self)
-        # Switch on the `in_evaluation` flag.
+        # Create unfrozen copy of self to be used as the to-be-returned eval
+        # AlgorithmConfig.
+        eval_config_obj = self.copy(copy_frozen=False)
+        # Switch on the `in_evaluation` flag and remove `evaluation_config`
+        # (set to None).
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
+        # Update with evaluation settings:
         eval_config_obj.update_from_dict(evaluation_config or {})
 
         # Evaluation duration unit: episodes.
@@ -1660,7 +1721,8 @@ class AlgorithmConfig:
                 policy_class property set to None.
 
         Returns:
-            A new MultiAgentPolicyConfigDict.
+            A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
+            `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
         """
         policies = copy.deepcopy(policies or self.policies)
 
@@ -1686,8 +1748,7 @@ class AlgorithmConfig:
             ):
                 env_obs_space = env.observation_space
 
-            if hasattr(env, "action_space") and isinstance(env.action_space,
-                                                           gym.Space):
+            if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
                 env_act_space = env.action_space
         # Last resort: Try getting the env's spaces from the spaces
         # dict's special __env__ key.
@@ -1724,7 +1785,7 @@ class AlgorithmConfig:
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the policy ID.
+                                # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
@@ -1733,10 +1794,10 @@ class AlgorithmConfig:
                                         and env_obs_space[aid] != obs_space
                                     ):
                                         raise ValueError(
-                                            "Two agents in your environment map to the same"
-                                            " policyID (as per your `policy_mapping_fn`), "
-                                            "however, these agents also have different "
-                                            "observation spaces!"
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different observation spaces!"
                                         )
                                     obs_space = env_obs_space[aid]
                     # Otherwise, just use env's obs space as-is.
@@ -1772,7 +1833,7 @@ class AlgorithmConfig:
                         mapping_fn = self.policy_mapping_fn
                         if mapping_fn:
                             for aid in env.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the policy ID.
+                                # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
@@ -1781,10 +1842,10 @@ class AlgorithmConfig:
                                         and env_act_space[aid] != act_space
                                     ):
                                         raise ValueError(
-                                            "Two agents in your environment map to the same"
-                                            " policyID (as per your `policy_mapping_fn`), "
-                                            "however, these agents also have different "
-                                            "action spaces!"
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different action spaces!"
                                         )
                                     act_space = env_act_space[aid]
                     # Otherwise, just use env's action space as-is.
@@ -1860,6 +1921,15 @@ class AlgorithmConfig:
     def pop(self, key, default=None):
         return self.get(key, default)
 
+    def keys(self):
+        return self.to_dict().keys()
+
+    def values(self):
+        return self.to_dict().values()
+
+    def items(self):
+        return self.to_dict().items()
+
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
         # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
@@ -1879,9 +1949,6 @@ class AlgorithmConfig:
             key = "num_cpus_for_local_worker"
 
         # Deprecated keys.
-        elif key == "multiagent":
-            key = "_multi_agent_legacy_dict"
-
         if warn_deprecated:
             if key == "collect_metrics_timeout":
                 deprecation_warning(
@@ -1936,15 +2003,14 @@ class AlgorithmConfig:
 
         return key
 
-    def _set_ma_legacy_dict(self):
-        self._multi_agent_legacy_dict.update(
-            {
-                "policies": self.policies,
-                "policy_mapping_fn": self.policy_mapping_fn,
-                "policies_to_train": self.policies_to_train,
-                "policy_map_capacity": self.policy_map_capacity,
-                "policy_map_cache": self.policy_map_cache,
-                "count_steps_by": self.count_steps_by,
-                "observation_fn": self.observation_fn,
-            }
-        )
+    @property
+    def multiagent(self):
+        return {
+            "policies": self.policies,
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "policies_to_train": self.policies_to_train,
+            "policy_map_capacity": self.policy_map_capacity,
+            "policy_map_cache": self.policy_map_cache,
+            "count_steps_by": self.count_steps_by,
+            "observation_fn": self.observation_fn,
+        }
