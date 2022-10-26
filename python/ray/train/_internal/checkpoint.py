@@ -105,11 +105,6 @@ class CheckpointManager(CommonCheckpointManager):
 
         # TODO(ml-team): Remove once we remove Backend.decode_data
         checkpoint_data = decode_checkpoint_fn(checkpoint_data).to_dict()
-        # This is too risky for now (will be saved to a tmp dir)
-        # if checkpoint_data.uri:
-        #     # TODO: ensure that the dir is created in the proper place
-        #     checkpoint_data = checkpoint_data.to_directory()
-        #     checkpoint_data_dict = {}
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (

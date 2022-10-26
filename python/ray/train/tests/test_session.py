@@ -183,7 +183,6 @@ def test_encode_data():
         data = next.data
         if isinstance(data, Checkpoint):
             data = data.to_dict()
-        print(data)
         assert data["encoded"] is True
 
     init_session(
@@ -198,9 +197,6 @@ def test_encode_data():
     session.start()
     # Validate checkpoint is encoded.
     validate_encoded(TrainingResultType.CHECKPOINT)
-    # No longer supported.
-    # Validate report is encoded.
-    # validate_encoded(TrainingResultType.REPORT)
     session.get_next()
     session.finish()
     shutdown_session()
