@@ -14,6 +14,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
+from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -174,9 +175,33 @@ class DashboardAgent:
             """Check if raylet is dead and fate-share if it is."""
             try:
                 curr_proc = psutil.Process()
+                parent_death_cnt = 0
                 while True:
                     parent = curr_proc.parent()
-                    if parent is None or parent.pid == 1 or self.ppid != parent.pid:
+                    # If the parent is dead, it is None.
+                    parent_gone = parent is None
+                    # Sometimes, the parent is changed to the `init` process.
+                    # In this case, the parent.pid is 1.
+                    init_assigned_for_parent = parent.pid == 1
+                    # Sometimes, the parent is dead, and the pid is reused
+                    # by other processes. In this case, this condition is triggered.
+                    parent_changed = self.ppid != parent.pid
+                    if parent_gone or init_assigned_for_parent or parent_changed:
+                        parent_death_cnt += 1
+                        logger.warning(
+                            f"Raylet is considered dead {parent_death_cnt} X. "
+                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
+                            f"will kill itself. Parent: {parent}, "
+                            f"parent_gone: {parent_gone}, "
+                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
+                            f"parent_changed: {parent_changed}."
+                        )
+                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
+                            await asyncio.sleep(
+                                dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
+                            )
+                            continue
+
                         log_path = os.path.join(self.log_dir, "raylet.out")
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
@@ -226,8 +251,10 @@ class DashboardAgent:
                         else:
                             logger.info(msg)
                         sys.exit(0)
+                    else:
+                        parent_death_cnt = 0
                     await asyncio.sleep(
-                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
+                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
                 logger.error("Failed to check parent PID, exiting.")

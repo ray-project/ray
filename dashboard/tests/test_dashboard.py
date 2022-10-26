@@ -174,7 +174,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.terminate()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # No error should be reported for graceful termination.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -195,7 +195,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The raylet should be dead if agent exits.
     agent_proc.kill()
     agent_proc.wait()
-    raylet_proc.wait(5)
+    raylet_proc.wait(15)
 
 
 def test_agent_report_unexpected_raylet_death(shutdown_only):
@@ -218,7 +218,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
@@ -258,7 +258,7 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # Reading and publishing logs should still work.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -892,7 +892,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
 
 @pytest.mark.skipif(
