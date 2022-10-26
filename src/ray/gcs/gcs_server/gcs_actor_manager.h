@@ -42,6 +42,7 @@ class GcsActor {
   /// Create a GcsActor by actor_table_data.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
+  /// \param counter The counter to report metrics to.
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
@@ -55,6 +56,7 @@ class GcsActor {
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   /// \param task_spec Task spec of the actor.
+  /// \param counter The counter to report metrics to.
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
       rpc::TaskSpec task_spec,
@@ -70,6 +72,8 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
+  /// \param ray_namespace Namespace of the actor.
+  /// \param counter The counter to report metrics to.
   explicit GcsActor(
       const ray::rpc::TaskSpec &task_spec,
       std::string ray_namespace,

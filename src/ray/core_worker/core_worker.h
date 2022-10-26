@@ -126,7 +126,7 @@ class TaskCounter {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
         in_get = 1.0;
-      } else if (num_running_ > 0) {
+      } else if (num_tasks_running_ > 0) {
         running = 1.0;
       }
       ray::stats::STATS_actors.Record(
@@ -154,13 +154,14 @@ class TaskCounter {
   void MovePendingToRunning(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kPending}, {func_name, kRunning});
-    num_running_++;
+    num_tasks_running_++;
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
-    num_running_--;
+    num_tasks_running_--;
+    RAY_CHECK(num_tasks_running_ > 0);
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
@@ -224,7 +225,7 @@ class TaskCounter {
 
   // Used for actor state tracking.
   std::string actor_name_ GUARDED_BY(&mu_) = "";
-  int64_t num_running_ GUARDED_BY(&mu_) = 0;
+  int64_t num_tasks_running_ GUARDED_BY(&mu_) = 0;
 };
 
 /// The root class that contains all the core and language-independent functionalities
