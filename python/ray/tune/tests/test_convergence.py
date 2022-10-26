@@ -11,7 +11,7 @@ import unittest
 
 def loss(config, reporter):
     x = config.get("x")
-    reporter(loss=x ** 2)  # A simple function to optimize
+    reporter(loss=x**2)  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):

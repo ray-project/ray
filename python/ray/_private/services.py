@@ -1204,6 +1204,7 @@ def start_api_server(
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
+    session_name: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1218,6 +1219,7 @@ def start_gcs_server(
     Args:
         redis_address: The address that the Redis server is listening on.
         log_dir: The path of the dir where log files are created.
+        session_name: The session name (cluster id) of this cluster.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1241,6 +1243,7 @@ def start_gcs_server(
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
+        f"--session-name={session_name}",
     ]
     if redis_address:
         parts = redis_address.split("://", 1)
@@ -1288,6 +1291,7 @@ def start_raylet(
     resource_spec,
     plasma_directory: str,
     object_store_memory: int,
+    session_name: str,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1332,6 +1336,7 @@ def start_raylet(
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
+        session_name: The session name (cluster id) of this cluster.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
         min_worker_port: The lowest port number that workers will bind
@@ -1477,6 +1482,7 @@ def start_raylet(
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
+        f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
     ]
     if stdout_file is None and stderr_file is None:
@@ -1521,6 +1527,7 @@ def start_raylet(
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
+        f"--session-name={session_name}",
     ]
 
     if worker_port_list is not None:
@@ -1738,7 +1745,7 @@ def determine_plasma_store_config(
                     "sure to set this to more than 30% of available RAM.".format(
                         ray._private.utils.get_user_temp_dir(),
                         shm_avail,
-                        object_store_memory * (1.1) / (2 ** 30),
+                        object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
@@ -1788,16 +1795,16 @@ def determine_plasma_store_config(
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
             "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
-                object_store_memory / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+                object_store_memory / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
             )
         )
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(round(object_store_memory / 10 ** 9, 2), plasma_directory)
+        "using {}.".format(round(object_store_memory / 10**9, 2), plasma_directory)
     )
 
     return plasma_directory, object_store_memory

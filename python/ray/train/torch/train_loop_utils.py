@@ -9,7 +9,6 @@ from distutils.version import LooseVersion
 from typing import Any, Dict, Optional
 
 import ray
-from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
@@ -282,12 +281,7 @@ class _TorchAccelerator(Accelerator):
         """
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
-        # Backwards compatibility
-        try:
-            rank = session.get_local_rank()
-        except Exception:
-            rank = train.local_rank()
-
+        rank = session.get_local_rank()
         device = self.get_device()
 
         if torch.cuda.is_available():
@@ -334,11 +328,7 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-        except Exception:
-            world_size = train.world_size()
+        world_size = session.get_world_size()
 
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
@@ -393,13 +383,8 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-            world_rank = session.get_world_rank()
-        except Exception:
-            world_size = train.world_size()
-            world_rank = train.world_rank()
+        world_size = session.get_world_size()
+        world_rank = session.get_world_rank()
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -432,7 +417,7 @@ class _TorchAccelerator(Accelerator):
 
                 def seeded_worker_init_fn(worker_init_fn):
                     def wrapper(worker_id):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
                         worker_init_fn(worker_id)
@@ -614,7 +599,7 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.info(
+                logger.debug(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
                 item_on_device = item
