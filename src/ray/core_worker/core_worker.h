@@ -159,7 +159,7 @@ class TaskCounter {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
     num_tasks_running_--;
-    RAY_CHECK(num_tasks_running_ > 0);
+    RAY_CHECK(num_tasks_running_ >= 0);
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
