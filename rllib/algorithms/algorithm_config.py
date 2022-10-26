@@ -1950,6 +1950,8 @@ class AlgorithmConfig:
             key = "lambda_"
         elif key == "num_cpus_for_driver":
             key = "num_cpus_for_local_worker"
+        elif key == "num_workers":
+            key = "num_rollout_workers"
 
         # Deprecated keys.
         if warn_deprecated:
