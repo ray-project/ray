@@ -11,6 +11,7 @@ import ray
 import ray.rllib.algorithms.appo.appo as appo
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -18,6 +19,7 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentRepla
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
@@ -54,8 +56,8 @@ class AlphaStarConfig(appo.APPOConfig):
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
@@ -140,6 +142,8 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
+        self.policies = None
+        self.simple_optimizer = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -215,7 +219,18 @@ class AlphaStarConfig(appo.APPOConfig):
         if timeout_s_learner_manager is not None:
             self.timeout_s_learner_manager = timeout_s_learner_manager
         if league_builder_config is not None:
-            self.league_builder_config = league_builder_config
+            # Override entire `league_builder_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_league_builder_config = deep_update(
+                {"league_builder_config": self.league_builder_config},
+                {"league_builder_config": league_builder_config},
+                False,
+                ["league_builder_config"],
+                ["league_builder_config"],
+            )
+            self.league_builder_config = new_league_builder_config[
+                "league_builder_config"
+            ]
         if max_num_policies_to_train is not None:
             self.max_num_policies_to_train = max_num_policies_to_train
         if max_requests_in_flight_per_sampler_worker is not None:
@@ -248,7 +263,7 @@ class AlphaStar(appo.APPO):
         # Construct a dummy LeagueBuilder, such that it gets the opportunity to
         # adjust the multiagent config, according to its setup, and we can then
         # properly infer the resources to allocate.
-        from_config(cf["league_builder_config"], trainer=None, trainer_config=cf)
+        from_config(cf["league_builder_config"], algo=None, algo_config=cf)
 
         max_num_policies_to_train = cf["max_num_policies_to_train"] or len(
             cf["multiagent"].get("policies_to_train") or cf["multiagent"]["policies"]
@@ -316,25 +331,23 @@ class AlphaStar(appo.APPO):
     def validate_config(self, config: AlgorithmConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
-        self.league_builder = from_config(
-            config["league_builder_config"], trainer=self, trainer_config=config
-        )
+        if not config.get("in_evaluation"):
+            self.league_builder = from_config(
+                config["league_builder_config"], algo=self, algo_config=config
+            )
         super().validate_config(config)
 
     @override(appo.APPO)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
-        num_gpus_saved = config["num_gpus"]
-        config["num_gpus"] = min(config["num_gpus"], 1)
         super().setup(config)
-        self.config["num_gpus"] = num_gpus_saved
+        local_worker = self.workers.local_worker()
 
         # - Create n policy learner actors (@ray.remote-converted Policies) on
         #   one or more GPU nodes.
         # - On each such node, also locate one replay buffer shard.
 
-        ma_cfg = self.config["multiagent"]
         # By default, set max_num_policies_to_train to the number of policy IDs
         # provided in the multiagent config.
         if self.config["max_num_policies_to_train"] is None:
@@ -367,8 +380,15 @@ class AlphaStar(appo.APPO):
             replay_actor_class=ReplayActor,
             replay_actor_args=replay_actor_args,
         )
-        for pid, policy_spec in ma_cfg["policies"].items():
-            if pid in self.workers.local_worker().get_policies_to_train():
+        policies, _ = self.config.get_multi_agent_setup(
+            spaces=local_worker.spaces,
+            default_policy_class=local_worker.default_policy_class,
+        )
+        for pid, policy_spec in policies.items():
+            if (
+                local_worker.is_policy_to_train is None
+                or local_worker.is_policy_to_train(pid)
+            ):
                 distributed_learners.add_policy(pid, policy_spec)
 
         # Store distributed_learners on all RolloutWorkers
