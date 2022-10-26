@@ -3,7 +3,12 @@ from ray._private.ray_constants import env_integer
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
 DASHBOARD_AGENT_LOG_FILENAME = "dashboard_agent.log"
-DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = 1
+DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
+    "RAY_DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S"  # noqa
+)
+DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = env_integer(
+    DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME, 0.4
+)
 # The maximum time that parent can be considered
 # as dead before agent kills itself.
 _PARENT_DEATH_THREASHOLD = 5
