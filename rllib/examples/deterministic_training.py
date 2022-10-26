@@ -6,6 +6,8 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
@@ -28,35 +30,45 @@ if __name__ == "__main__":
 
     param_storage = ParameterStorage.options(name="param-server").remote()
 
-    config = {
-        "env": CartPoleWithRemoteParamServer,
-        "env_config": {
-            "param_server": "param-server",
-        },
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": args.num_gpus,
-        "num_workers": 1,  # parallelism
-        "num_gpus_per_worker": args.num_gpus_per_worker,
-        "num_envs_per_worker": 2,
-        "framework": args.framework,
+    config = (
+        AlgorithmConfig()
+        .environment(
+            CartPoleWithRemoteParamServer,
+            env_config={"param_server": "param-server"},
+        )
+        .framework(args.framework)
+        .rollouts(
+            num_rollout_workers=1,
+            num_envs_per_worker=2,
+            rollout_fragment_length=50,
+        )
+        .resources(num_gpus=args.num_gpus, num_gpus_per_worker=args.num_gpus_per_worker)
         # Make sure every environment gets a fixed seed.
-        "seed": args.seed,
+        .debugging(seed=args.seed)
+        .training(
+            train_batch_size=100,
+        )
+    )
+
+    if args.run == "PPO":
         # Simplify to run this example script faster.
-        "train_batch_size": 100,
-        "sgd_minibatch_size": 10,
-        "num_sgd_iter": 5,
-        "rollout_fragment_length": 50,
-    }
+        config = PPOConfig().update_from_dict(config.to_dict()).training(
+            sgd_minibatch_size=10, num_sgd_iter=5
+        )
 
     stop = {
         "training_iteration": args.stop_iters,
     }
 
     results1 = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
     results2 = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

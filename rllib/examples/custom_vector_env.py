@@ -3,6 +3,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.mock_env import MockVectorEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -45,13 +46,14 @@ if __name__ == "__main__":
     # carries a single CartPole sub-env in it).
     tune.register_env("custom_vec_env", lambda env_ctx: MockVectorEnv(100, 4))
 
-    config = {
-        "env": "custom_vec_env",
+    config = (
+        AlgorithmConfig()
+        .environment("custom_vec_env")
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=2)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 2,  # parallelism
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -60,7 +62,9 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

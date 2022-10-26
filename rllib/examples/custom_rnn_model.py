@@ -6,6 +6,8 @@ import os
 import ray
 from ray import air, tune
 from ray.tune.registry import register_env
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
@@ -56,28 +58,26 @@ if __name__ == "__main__":
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
-    config = {
-        "env": args.env,
-        "env_config": {
-            "repeat_delay": 2,
-        },
-        "gamma": 0.9,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "num_envs_per_worker": 20,
-        "entropy_coeff": 0.001,
-        "num_sgd_iter": 5,
-        "vf_loss_coeff": 1e-5,
-        "model": {
+    config = (
+        AlgorithmConfig()
+        .environment(args.env, env_config={"repeat_delay": 2})
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
+        .training(model={
             "custom_model": "rnn",
             "max_seq_len": 20,
             "custom_model_config": {
                 "cell_size": 32,
             },
-        },
-        "framework": args.framework,
-    }
+        }, gamma=0.9)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    if args.run == "PPO":
+        config = PPOConfig().update_from_dict(config.to_dict()).training(
+            entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5
+        )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -92,8 +92,8 @@ if __name__ == "__main__":
     # >> import numpy as np
     # >> from ray.rllib.algorithms.ppo import PPO
     # >>
-    # >> algo = PPO(config)
-    # >> lstm_cell_size = config["model"]["custom_model_config"]["cell_size"]
+    # >> algo = config.build()
+    # >> lstm_cell_size = config.model["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
     # >> obs = env.reset()
     # >>
@@ -112,7 +112,9 @@ if __name__ == "__main__":
     # >>         state = state_out
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

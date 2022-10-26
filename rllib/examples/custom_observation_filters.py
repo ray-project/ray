@@ -9,6 +9,7 @@ import argparse
 import numpy as np
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
 
@@ -129,15 +130,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    config = {
-        "env": "CartPole-v0",
-        "observation_filter": lambda size: CustomFilter(size),
-        "num_workers": 0,
-    }
+    config = (
+        AlgorithmConfig()
+        .environment("CartPole-v0")
+        .rollouts(
+            num_rollout_workers=0,
+            # Specify our custom filter here.
+            observation_filter=lambda size: CustomFilter(size),
+        )
+    )
 
     tuner = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(stop={"training_iteration": args.stop_iters}),
     )
     tuner.fit()

@@ -12,6 +12,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
 from ray.rllib.examples.models.simple_rpg_model import (
@@ -35,24 +36,23 @@ if __name__ == "__main__":
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
 
-    config = {
-        "framework": args.framework,
-        "env": SimpleRPG,
-        "rollout_fragment_length": 1,
-        "train_batch_size": 2,
+    config = (
+        PGConfig()
+        .environment(SimpleRPG)
+        .framework(args.framework)
+        .rollouts(rollout_fragment_length=1, num_rollout_workers=0)
+        .training(train_batch_size=2, model={"custom_model": "my_model"})
+        .experimental(_disable_preprocessor_api=False)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "model": {
-            "custom_model": "my_model",
-        },
-        "_disable_preprocessor_api": False,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "timesteps_total": 1,
     }
 
     tuner = tune.Tuner(
-        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        "PG",
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )

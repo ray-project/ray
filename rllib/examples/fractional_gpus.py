@@ -11,6 +11,7 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.gpu_requiring_env import GPURequiringEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -74,26 +75,33 @@ if __name__ == "__main__":
     # - num_gpus=0.4 + num_gpus_per_worker=0.1 (2 workers) -> 0.6
     #   -> 1 tune trial should run in parallel.
 
-    config = {
+    config = (
+        AlgorithmConfig()
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
-        "env": GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v0",
-        # How many GPUs does the local worker (driver) need? For most algos,
-        # this is where the learning updates happen.
-        # Set this to > 1 for multi-GPU learning.
-        "num_gpus": args.num_gpus,
+        .environment(
+            GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v0"
+        )
+        .framework(args.framework)
+        .resources(
+            # How many GPUs does the local worker (driver) need? For most algos,
+            # this is where the learning updates happen.
+            # Set this to > 1 for multi-GPU learning.
+            num_gpus=args.num_gpus,
+            # How many GPUs does each RolloutWorker (`num_workers`) need?
+            num_gpus_per_worker=args.num_gpus_per_worker,
+        )
         # How many RolloutWorkers (each with n environment copies:
         # `num_envs_per_worker`)?
-        "num_workers": args.num_workers,
-        # How many GPUs does each RolloutWorker (`num_workers`) need?
-        "num_gpus_per_worker": args.num_gpus_per_worker,
-        # This setting should not really matter as it does not affect the
-        # number of GPUs reserved for each worker.
-        "num_envs_per_worker": args.num_envs_per_worker,
+        .rollouts(
+            num_rollout_workers=args.num_workers,
+            # This setting should not really matter as it does not affect the
+            # number of GPUs reserved for each worker.
+            num_envs_per_worker=args.num_envs_per_worker,
+        )
         # 4 tune trials altogether.
-        "lr": tune.grid_search([0.005, 0.003, 0.001, 0.0001]),
-        "framework": args.framework,
-    }
+        .training(lr=tune.grid_search([0.005, 0.003, 0.001, 0.0001]))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -111,7 +119,7 @@ if __name__ == "__main__":
     # >>     print(results)
 
     results = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop)
+        args.run, param_space=config.to_dict(), run_config=air.RunConfig(stop=stop)
     ).fit()
 
     if args.as_test:
