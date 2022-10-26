@@ -48,14 +48,14 @@ class TFRecordDatasource(FileBasedDatasource):
 
         _check_import(self, module="crc32c", package="crc32c")
 
-        arrow = block.to_arrow()
+        arrow_table = block.to_arrow()
 
         # It seems like TFRecords are typically row-based,
         # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
         # so we must iterate through the rows of the block,
         # serialize to tf.train.Example proto, and write to file.
 
-        examples = _convert_arrow_to_examples(arrow)
+        examples = _convert_arrow_table_to_examples(arrow_table)
 
         # Write each example to the arrow file in the TFRecord format.
         for example in examples:
@@ -74,18 +74,18 @@ def _convert_example_to_dict(
     return record
 
 
-def _convert_arrow_to_examples(
-    arrow: "pyarrow.Table",
+def _convert_arrow_table_to_examples(
+    arrow_table: "pyarrow.Table",
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
 
     # Serialize each row[i] of the block to a tf.train.Example and yield it.
-    for i in range(arrow.num_rows):
+    for i in range(arrow_table.num_rows):
 
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
-        for name in arrow.column_names:
-            features[name] = _value_to_feature(arrow[name][i].as_py())
+        for name in arrow_table.column_names:
+            features[name] = _value_to_feature(arrow_table[name][i].as_py())
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
