@@ -1737,6 +1737,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
