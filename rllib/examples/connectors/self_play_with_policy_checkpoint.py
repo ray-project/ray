@@ -77,7 +77,6 @@ if __name__ == "__main__":
         # main policy plays against opponent policy.
         return "main" if episode.episode_id % 2 == agent_id else "opponent"
 
-
     config = (
         SACConfig()
         .environment("open_spiel_env")

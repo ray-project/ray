@@ -130,9 +130,7 @@ if __name__ == "__main__":
     }
 
     # Make sure, the non-1st policies are not updated anymore.
-    config.policies_to_train = [
-        pid for pid in policy_ids if pid != "policy_0"
-    ]
+    config.policies_to_train = [pid for pid in policy_ids if pid != "policy_0"]
 
     results = tune.run(
         "PPO",

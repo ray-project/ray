@@ -32,13 +32,15 @@ if __name__ == "__main__":
         # - InterestExplorationRecSimEnv
         # - InterestEvolutionRecSimEnv
         # Then: "env": [the imported RecSim class]
-        .environment("RecSim-v1", env_config={
-            "num_candidates": 10,
-            "slate_size": 1,
-            "convert_to_discrete_action_space": True,
-            "wrap_for_bandits": True,
-        })
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .environment(
+            "RecSim-v1",
+            env_config={
+                "num_candidates": 10,
+                "slate_size": 1,
+                "convert_to_discrete_action_space": True,
+                "wrap_for_bandits": True,
+            },
+        ).framework(args.framework, eager_tracing=args.framework == "tf2")
     )
 
     # Actual env timesteps per `train()` call will be

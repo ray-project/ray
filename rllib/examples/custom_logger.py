@@ -77,8 +77,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig()
-        .environment(
+        AlgorithmConfig().environment(
             "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )
         # Run with tracing enabled for tfe/tf2.
@@ -101,16 +100,18 @@ if __name__ == "__main__":
         #     "logdir": "/tmp",
         # },
         # 3) Custom logger (see `MyPrintLogger` class above).
-        .debugging(logger_config={
-            # Provide the class directly or via fully qualified class
-            # path.
-            "type": MyPrintLogger,
-            # `config` keys:
-            "prefix": "ABC",
-            # Optional: Custom logdir (do not define this here
-            # for using ~/ray_results/...).
-            # "logdir": "/somewhere/on/my/file/system/"
-        })
+        .debugging(
+            logger_config={
+                # Provide the class directly or via fully qualified class
+                # path.
+                "type": MyPrintLogger,
+                # `config` keys:
+                "prefix": "ABC",
+                # Optional: Custom logdir (do not define this here
+                # for using ~/ray_results/...).
+                # "logdir": "/somewhere/on/my/file/system/"
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

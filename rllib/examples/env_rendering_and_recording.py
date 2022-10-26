@@ -94,8 +94,9 @@ if __name__ == "__main__":
         # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
         .environment(
             MultiAgentCustomRenderedEnv if args.multi_agent else CustomRenderedEnv,
-            env_config={"corridor_length": 10, "max_steps": 100}
-        ).framework(args.framework)
+            env_config={"corridor_length": 10, "max_steps": 100},
+        )
+        .framework(args.framework)
         # Use a vectorized env with 2 sub-envs.
         .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
         .evaluation(
@@ -114,7 +115,7 @@ if __name__ == "__main__":
                 # Note that this will always only render the 1st RolloutWorker's
                 # env and only the 1st sub-env in a vectorized env.
                 "render_env": True,
-            }
+            },
         )
     )
 

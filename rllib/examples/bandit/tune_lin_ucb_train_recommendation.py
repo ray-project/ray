@@ -46,14 +46,17 @@ if __name__ == "__main__":
 
     config = (
         BanditLinUCBConfig()
-        .environment("ParametricRecSysEnv", env_config={
-            "embedding_size": 20,
-            "num_docs_to_select_from": 10,
-            "slate_size": 1,
-            "num_docs_in_db": 100,
-            "num_users_in_db": 1,
-            "user_time_budget": 1.0,
-        })
+        .environment(
+            "ParametricRecSysEnv",
+            env_config={
+                "embedding_size": 20,
+                "num_docs_to_select_from": 10,
+                "slate_size": 1,
+                "num_docs_in_db": 100,
+                "num_users_in_db": 1,
+                "user_time_budget": 1.0,
+            },
+        )
         .framework(args.framework, eager_tracing=args.framework == "tf2")
         # Test with batched inference.
         .rollouts(num_envs_per_worker=2)

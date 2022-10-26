@@ -25,7 +25,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             "multiagent": {
                 "policies": {"pol1", "pol2"},
                 "policies_to_train": ["pol1"],
-                "policy_mapping_fn": lambda aid, episode, worker, **kwargs: "pol1"
+                "policy_mapping_fn": lambda aid, episode, worker, **kwargs: "pol1",
             },
         }
         config = AlgorithmConfig.from_dict(config_dict)

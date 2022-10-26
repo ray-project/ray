@@ -63,20 +63,25 @@ if __name__ == "__main__":
         .environment(args.env, env_config={"repeat_delay": 2})
         .framework(args.framework)
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
-        .training(model={
-            "custom_model": "rnn",
-            "max_seq_len": 20,
-            "custom_model_config": {
-                "cell_size": 32,
+        .training(
+            model={
+                "custom_model": "rnn",
+                "max_seq_len": 20,
+                "custom_model_config": {
+                    "cell_size": 32,
+                },
             },
-        }, gamma=0.9)
+            gamma=0.9,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     if args.run == "PPO":
-        config = PPOConfig().update_from_dict(config.to_dict()).training(
-            entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5
+        config = (
+            PPOConfig()
+            .update_from_dict(config.to_dict())
+            .training(entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5)
         )
 
     stop = {

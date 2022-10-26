@@ -163,10 +163,12 @@ if __name__ == "__main__":
         .environment(SimpleCorridor, env_config={"corridor_length": 5})
         .framework(args.framework)
         .rollouts(num_rollout_workers=1)
-        .training(model={
-            "custom_model": "my_model",
-            "vf_share_layers": True,
-        })
+        .training(
+            model={
+                "custom_model": "my_model",
+                "vf_share_layers": True,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

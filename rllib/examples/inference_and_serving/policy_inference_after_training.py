@@ -64,8 +64,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig()
-        .environment("FrozenLake-v1")
+        AlgorithmConfig().environment("FrozenLake-v1")
         # Run with tracing enabled for tfe/tf2?
         .framework(args.framework, eager_tracing=args.eager_tracing)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
