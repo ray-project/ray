@@ -108,12 +108,9 @@ def test_parse_cluster_info(
 
 
 def test_parse_cluster_info_default_address():
-    assert (
-        parse_cluster_info(
-            address=None,
-        )
-        == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
-    )
+    assert parse_cluster_info(
+        address=None,
+    ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
 
 
 @pytest.mark.parametrize("expiration_s", [0, 10])

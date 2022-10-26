@@ -49,7 +49,7 @@ class PendulumWrapper(PendulumEnv):
         # reward values).
         a = np.clip(action, -self.max_torque, self.max_torque)[0]
         costs = (
-            self.angle_normalize(theta) ** 2 + 0.1 * obs[:, 2] ** 2 + 0.001 * (a ** 2)
+            self.angle_normalize(theta) ** 2 + 0.1 * obs[:, 2] ** 2 + 0.001 * (a**2)
         )
         return -costs
 

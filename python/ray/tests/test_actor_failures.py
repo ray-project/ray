@@ -450,7 +450,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
         # Kill a node.
         cluster.remove_node(node)
 
@@ -458,7 +458,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():
