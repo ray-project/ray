@@ -199,11 +199,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         action_space = Discrete(2)
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_config=ppo.DEFAULT_CONFIG,
-            rollout_fragment_length=200,
-            policy_spec=ppo.PPOTorchPolicy,
-            policy_mapping_fn=None,
-            num_envs=1,
+            default_policy_class=ppo.PPOTorchPolicy,
+            config=ppo.PPOConfig().rollouts(
+                rollout_fragment_length=200, num_rollout_workers=0
+            ),
         )
         # Add the next action (a') and 2nd next action (a'') to the view
         # requirements of the policy.
@@ -271,25 +270,24 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
-        config = {
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_fn,
-            },
-            "model": {
-                "use_lstm": True,
-                "max_seq_len": max_seq_len,
-            },
-        }
-
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=config,
-            rollout_fragment_length=rollout_fragment_length,
-            policy_spec=policies,
-            policy_mapping_fn=policy_fn,
-            normalize_actions=False,
-            num_envs=1,
+            config=ppo.PPOConfig()
+            .rollouts(
+                rollout_fragment_length=rollout_fragment_length,
+                num_rollout_workers=0,
+            )
+            .multi_agent(
+                policies=policies,
+                policy_mapping_fn=policy_fn,
+            )
+            .environment(normalize_actions=False)
+            .training(
+                model={
+                    "use_lstm": True,
+                    "max_seq_len": max_seq_len,
+                }
+            ),
         )
 
         for iteration in range(20):
@@ -315,24 +313,20 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
-        config = {
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_fn,
-            },
-            "model": {
-                "max_seq_len": max_seq_len,
-            },
-        }
+        config = (
+            ppo.PPOConfig()
+            .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
+            .training(model={"max_seq_len": max_seq_len})
+            .rollouts(
+                num_rollout_workers=0,
+                rollout_fragment_length=rollout_fragment_length,
+            )
+            .environment(normalize_actions=False)
+        )
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=config,
-            rollout_fragment_length=rollout_fragment_length,
-            policy_spec=policies,
-            policy_mapping_fn=policy_fn,
-            normalize_actions=False,
-            num_envs=1,
+            config=config,
         )
         batch = rollout_worker_w_api.sample()  # noqa: F841
 
