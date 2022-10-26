@@ -1,6 +1,9 @@
 import argparse
 import os
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
@@ -37,11 +40,10 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "VizdoomBasic-v0",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
+    config = (
+        AlgorithmConfig()
+        .environment("VizdoomBasic-v0")
+        .training(model={
             "conv_filters": [],
             "use_attention": True,
             "attention_num_transformer_units": 1,
@@ -52,13 +54,17 @@ if __name__ == "__main__":
             "vf_share_layers": True,
             "attention_use_n_prev_actions": args.use_n_prev_actions,
             "attention_use_n_prev_rewards": args.use_n_prev_rewards,
-        },
-        "framework": args.framework,
+        })
         # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
-        "num_workers": args.num_workers,
-        "vf_loss_coeff": 0.01,
-    }
+        .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])
+        .rollouts(num_rollout_workers=args.num_workers)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+    if args.run == "PPO":
+        config = PPOConfig().update_from_dict(config.to_dict()).training(
+            vf_loss_coeff=0.01
+        )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -68,7 +74,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop,
             verbose=2,
