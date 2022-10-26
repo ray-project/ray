@@ -2954,12 +2954,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                                          << oom_kill_details << "\n\n"
                                          << oom_kill_suggestions;
 
-          std::stringstream error_message_ss;
-          error_message_ss << oom_kill_title << oom_kill_details << oom_kill_suggestions;
-          std::string error_message = error_message_ss.str();
+          std::stringstream worker_exit_message_ss;
+          worker_exit_message_ss << oom_kill_title << oom_kill_details << oom_kill_suggestions;
+          std::string worker_exit_message = worker_exit_message_ss.str();
 
           rpc::RayErrorInfo task_failure_reason;
-          task_failure_reason.set_error_message(error_message);
+          task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
                                std::move(task_failure_reason));
@@ -2968,7 +2968,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
                         rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
-                        error_message,
+                        worker_exit_message,
                         true /* force */);
 
           if (worker_to_kill->GetActorId().IsNil()) {
