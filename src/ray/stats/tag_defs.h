@@ -53,6 +53,6 @@ constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
 constexpr char kObjectLocSpilled[] = "SPILLED";
 
 // Object store memory sealed/unsealed tag
-extern const TagKeyType ObjectSealedKey;
+extern const TagKeyType ObjectStateKey;
 constexpr char kObjectSealed[] = "SEALED";
 constexpr char kObjectUnsealed[] = "UNSEALED";

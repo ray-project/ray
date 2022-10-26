@@ -44,6 +44,6 @@ const TagKeyType NameKey = TagKeyType::Register("Name");
 
 const TagKeyType LocationKey = TagKeyType::Register("Location");
 
-const TagKeyType ObjectSealedKey = TagKeyType::Register("ObjectSealed");
+const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
 }  // namespace stats
 }  // namespace ray

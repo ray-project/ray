@@ -226,10 +226,10 @@ DEFINE_stats(object_store_memory,
              ///      Ray might fuse spilled objects into a single file, so a deleted
              ///      spill object might still exist in the spilled file. Check
              ///      spilled object fusing for more details.
-             /// ObjectSeal:
+             /// ObjectState:
              ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
              ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
-             (ray::stats::LocationKey.name(), ray::stats::ObjectSealedKey.name()),
+             (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
              (),
              ray::stats::GAUGE);
 

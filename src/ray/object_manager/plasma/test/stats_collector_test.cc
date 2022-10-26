@@ -151,14 +151,14 @@ struct ObjectStatsCollectorTest : public Test {
     // Expect counter map containing the correct values
     const auto &counters = collector_->bytes_by_loc_seal_;
     EXPECT_EQ(collector_->GetNumBytesCreatedCurrent(),
-              counters.Get(ObjectStoreCounterType::MMAP_DISK_SEAL) +
-                  counters.Get(ObjectStoreCounterType::MMAP_DISK_UNSEAL) +
-                  counters.Get(ObjectStoreCounterType::MMAP_SHM_SEAL) +
-                  counters.Get(ObjectStoreCounterType::MMAP_SHM_UNSEAL));
+              counters.Get({/*fallback_allocated*/ true, /*sealed*/ true}) +
+                  counters.Get({/*fallback_allocated*/ true, /*sealed*/ false}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ true}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ false}));
 
     EXPECT_EQ(num_bytes_unsealed,
-              counters.Get(ObjectStoreCounterType::MMAP_SHM_UNSEAL) +
-                  counters.Get(ObjectStoreCounterType::MMAP_DISK_UNSEAL));
+              counters.Get({/*fallback_allocated*/ true, /*sealed*/ false}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ false}));
   }
 
   ray::ObjectInfo CreateNewObjectInfo(int64_t data_size) {

@@ -17,17 +17,12 @@
 
 #pragma once
 
+#include <utility>  // std::pair
+
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/counter_map.h"  // CounterMap
 
 namespace plasma {
-
-enum class ObjectStoreCounterType : int8_t {
-  MMAP_SHM_SEAL = 0,
-  MMAP_DISK_SEAL = 1,
-  MMAP_SHM_UNSEAL = 2,
-  MMAP_DISK_UNSEAL = 3,
-};
 
 // ObjectStatsCollector subscribes to plasma store state changes
 // and calculate the store statistics.
@@ -75,7 +70,7 @@ class ObjectStatsCollector {
 
   int64_t GetNumBytesCreatedCurrent() const;
 
-  CounterMap<ObjectStoreCounterType> bytes_by_loc_seal_;
+  CounterMap<std::pair</* fallback_allocated*/ bool, /*sealed*/ bool>> bytes_by_loc_seal_;
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;
   int64_t num_objects_unsealed_ = 0;

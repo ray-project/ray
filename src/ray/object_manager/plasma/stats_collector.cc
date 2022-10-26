@@ -27,9 +27,11 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto &kAllocation = obj.GetAllocation();
 
   if (kAllocation.fallback_allocated) {
-    bytes_by_loc_seal_.Increment(ObjectStoreCounterType::MMAP_DISK_UNSEAL, kObjectSize);
+    bytes_by_loc_seal_.Increment({/*fallback_allocated*/ true, /*sealed*/ false},
+                                 kObjectSize);
   } else {
-    bytes_by_loc_seal_.Increment(ObjectStoreCounterType::MMAP_SHM_UNSEAL, kObjectSize);
+    bytes_by_loc_seal_.Increment({/*fallback_allocated*/ false, /*sealed*/ false},
+                                 kObjectSize);
   }
 
   num_bytes_created_total_ += kObjectSize;
@@ -59,12 +61,12 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 
   const auto &kAllocation = obj.GetAllocation();
   if (kAllocation.fallback_allocated) {
-    bytes_by_loc_seal_.Swap(ObjectStoreCounterType::MMAP_DISK_UNSEAL,
-                            ObjectStoreCounterType::MMAP_DISK_SEAL,
+    bytes_by_loc_seal_.Swap({/*fallback_allocated*/ true, /* sealed */ false},
+                            {/*fallback_allocated*/ true, /* sealed */ true},
                             kObjectSize);
   } else {
-    bytes_by_loc_seal_.Swap(ObjectStoreCounterType::MMAP_SHM_UNSEAL,
-                            ObjectStoreCounterType::MMAP_SHM_SEAL,
+    bytes_by_loc_seal_.Swap({/*fallback_allocated*/ false, /* sealed */ false},
+                            {/*fallback_allocated*/ false, /* sealed */ true},
                             kObjectSize);
   }
 
@@ -90,13 +92,15 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
   const auto &kAllocation = obj.GetAllocation();
 
-  auto counter_type = ObjectStoreCounterType::MMAP_DISK_SEAL;
+  auto counter_type = std::make_pair(false, false);
   if (kAllocation.fallback_allocated) {
-    counter_type = obj.Sealed() ? ObjectStoreCounterType::MMAP_DISK_SEAL
-                                : ObjectStoreCounterType::MMAP_DISK_UNSEAL;
+    counter_type = obj.Sealed()
+                       ? std::make_pair(/* fallback_allocated */ true, /* sealed*/ true)
+                       : std::make_pair(/* fallback_allocated */ true, /* sealed*/ false);
   } else {
-    counter_type = obj.Sealed() ? ObjectStoreCounterType::MMAP_SHM_SEAL
-                                : ObjectStoreCounterType::MMAP_SHM_UNSEAL;
+    counter_type =
+        obj.Sealed() ? std::make_pair(/* fallback_allocated */ false, /* sealed*/ true)
+                     : std::make_pair(/* fallback_allocated */ false, /* sealed*/ false);
   }
 
   bytes_by_loc_seal_.Decrement(counter_type, kObjectSize);
@@ -206,27 +210,27 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 void ObjectStatsCollector::RecordMetrics() const {
   // Shared memory sealed
   ray::stats::STATS_object_store_memory.Record(
-      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAP_SHM_SEAL),
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ true}),
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectSealed}});
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectSealed}});
 
   // Shared memory unsealed
   ray::stats::STATS_object_store_memory.Record(
-      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAP_SHM_UNSEAL),
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ false}),
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectUnsealed}});
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectUnsealed}});
 
   // Fallback memory sealed
   ray::stats::STATS_object_store_memory.Record(
-      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAP_DISK_SEAL),
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ true}),
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectSealed}});
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectSealed}});
 
   // Fallback memory unsealed
   ray::stats::STATS_object_store_memory.Record(
-      bytes_by_loc_seal_.Get(ObjectStoreCounterType::MMAP_DISK_UNSEAL),
+      bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ false}),
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectSealedKey.name(), ray::stats::kObjectUnsealed}});
+       {ray::stats::ObjectStateKey.name(), ray::stats::kObjectUnsealed}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
