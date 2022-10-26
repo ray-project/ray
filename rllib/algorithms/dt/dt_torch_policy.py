@@ -326,7 +326,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         )
 
     @override(TorchPolicyV2)
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,

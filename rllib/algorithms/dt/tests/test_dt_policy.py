@@ -186,8 +186,8 @@ class TestDTPolicy(unittest.TestCase):
 
     def test_torch_action(self):
         """Test policy's action_distribution_fn and extra_action_out methods by
-        calling compute_actions_from_input_dict which works those two methods
-        in conjunction.
+        calling _compute_actions_without_connectors_from_input_dict which works those
+        two methods in conjunction.
         """
         config = _default_config()
 
@@ -229,7 +229,11 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Run compute_actions_from_input_dict
-            actions, _, extras = policy.compute_actions_from_input_dict(
+            (
+                actions,
+                _,
+                extras,
+            ) = policy._compute_actions_without_connectors_from_input_dict(
                 input_dict,
                 explore=False,
                 timestep=None,
@@ -281,7 +285,11 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Run compute_actions_from_input_dict
-            actions, _, extras = policy.compute_actions_from_input_dict(
+            (
+                actions,
+                _,
+                extras,
+            ) = policy._compute_actions_without_connectors_from_input_dict(
                 input_dict,
                 explore=False,
                 timestep=None,
