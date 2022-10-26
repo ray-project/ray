@@ -178,6 +178,7 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+# This is tested in test_gpu_examples!
 # py_test(
 #     name = "torch_fashion_mnist_example_gpu",
 #     size = "medium",
