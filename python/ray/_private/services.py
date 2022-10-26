@@ -1745,7 +1745,7 @@ def determine_plasma_store_config(
                     "sure to set this to more than 30% of available RAM.".format(
                         ray._private.utils.get_user_temp_dir(),
                         shm_avail,
-                        object_store_memory * (1.1) / (2 ** 30),
+                        object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
@@ -1795,16 +1795,16 @@ def determine_plasma_store_config(
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
             "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
-                object_store_memory / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+                object_store_memory / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
             )
         )
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(round(object_store_memory / 10 ** 9, 2), plasma_directory)
+        "using {}.".format(round(object_store_memory / 10**9, 2), plasma_directory)
     )
 
     return plasma_directory, object_store_memory
