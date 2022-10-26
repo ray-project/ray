@@ -197,7 +197,7 @@ class UpdateTargetAndKL:
 
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
-        """Initializes a DDPPO instance."""
+        """Initializes an APPO instance."""
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.

@@ -180,7 +180,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
 
     @override(LeagueBuilder)
     def build_league(self, result: ResultDict) -> None:
-        local_worker = self.trainer.workers.local_worker()
+        local_worker = self.algo.workers.local_worker()
 
         # If no evaluation results -> Use hist data gathered for training.
         if "evaluation" in result:
@@ -195,7 +195,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             set(local_worker.policy_map.keys()) - trainable_policies
         )
 
-        logger.info(f"League building after iter {self.trainer.iteration}:")
+        logger.info(f"League building after iter {self.algo.iteration}:")
 
         # Calculate current win-rates.
         for policy_id, rew in hist_stats.items():
@@ -367,10 +367,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
                         return "main_0"
 
                 # Add and set the weights of the new polic(y/ies).
-                state = self.trainer.get_policy(policy_id).get_state()
-                self.trainer.add_policy(
+                state = self.algo.get_policy(policy_id).get_state()
+                self.algo.add_policy(
                     policy_id=new_pol_id,
-                    policy_cls=type(self.trainer.get_policy(policy_id)),
+                    policy_cls=type(self.algo.get_policy(policy_id)),
                     policy_state=state,
                     policy_mapping_fn=policy_mapping_fn,
                     policies_to_train=trainable_policies,

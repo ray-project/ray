@@ -143,6 +143,7 @@ class AlphaStarConfig(appo.APPOConfig):
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
         self.policies = None
+        self.simple_optimizer = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -330,9 +331,10 @@ class AlphaStar(appo.APPO):
     def validate_config(self, config: AlgorithmConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
-        self.league_builder = from_config(
-            config["league_builder_config"], algo=self, algo_config=config
-        )
+        if not config.get("in_evaluation"):
+            self.league_builder = from_config(
+                config["league_builder_config"], algo=self, algo_config=config
+            )
         super().validate_config(config)
 
     @override(appo.APPO)

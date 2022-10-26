@@ -2312,13 +2312,13 @@ class Algorithm(Trainable):
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-        if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework", "tf")
 
+        if simple_optim_setting is True:
+            pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config.get("num_gpus", 0) > 1:
+        elif config.get("num_gpus", 0) > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the RLTrainer API.
