@@ -116,6 +116,21 @@ Scikit-Learn
     :exclude-members: SklearnTrainer
     :show-inheritance:
 
+Mosaic
+~~~~~~
+
+.. autoclass:: ray.train.mosaic.MosaicTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.mosaic
+    :members:
+    :exclude-members: MosaicTrainer
+    :show-inheritance:
+
 
 Reinforcement Learning (RLlib)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

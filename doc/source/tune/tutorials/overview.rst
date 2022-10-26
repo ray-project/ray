@@ -79,6 +79,14 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
+    .. link-button:: ../examples/tune_analyze_results
+        :type: ref
+        :text: Analyzing Tune Experiment Results
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
     .. link-button:: tune-advanced-tutorial
         :type: ref
         :text: Using Population-Based Training

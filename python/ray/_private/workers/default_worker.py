@@ -203,6 +203,7 @@ if __name__ == "__main__":
     ray._private.worker._global_node = node
     ray._private.worker.connect(
         node,
+        node.session_name,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,

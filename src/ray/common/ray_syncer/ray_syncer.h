@@ -137,6 +137,12 @@ class RaySyncer {
   /// version of message, false will be returned.
   bool OnDemandBroadcasting(MessageType message_type);
 
+  /// Request trigger a broadcasting for a constructed message immediately instead of
+  /// waiting for ray syncer to poll the message.
+  ///
+  /// \param message The message to be broadcasted.
+  void BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message);
+
  private:
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
