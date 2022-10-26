@@ -319,8 +319,8 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlphaZeroConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaZeroConfig()
 
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings."""

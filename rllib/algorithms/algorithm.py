@@ -308,7 +308,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+        config: AlgorithmConfig,
         env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
@@ -322,8 +322,10 @@ class Algorithm(Trainable):
             **kwargs: Arguments passed to the Trainable base class.
         """
 
-        # Resolve possible dict into an AlgorithmConfig object.
-        # TODO: In the future, only support AlgorithmConfig objects here.
+        # Resolve possible dict into an AlgorithmConfig object as well as
+        # resolving generic config objects into specific ones (e.g. passing
+        # an `AlgorithmConfig` super-class instance into a PPO constructor,
+        # which normally would expect a PPOConfig object).
         if isinstance(config, dict):
             default_config = self.get_default_config()
             # `self.get_default_config()` also returned a dict ->
@@ -334,6 +336,10 @@ class Algorithm(Trainable):
                 )
             else:
                 config = default_config.update_from_dict(config)
+        else:
+            default_config = self.get_default_config()
+            if not isinstance(config, type(default_config)):
+                config = default_config.update_from_dict(config.to_dict())
 
         if env is not None:
             deprecation_warning(
@@ -440,12 +446,12 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> Union[AlgorithmConfig, AlgorithmConfigDict]:
+    def get_default_config(cls) -> AlgorithmConfig:
         return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]):
+    def setup(self, config: AlgorithmConfig) -> None:
 
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.

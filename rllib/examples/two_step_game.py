@@ -16,6 +16,8 @@ import os
 import ray
 from ray import air, tune
 from ray.tune import register_env
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.maddpg import MADDPGConfig
 from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -107,17 +109,25 @@ if __name__ == "__main__":
         ),
     )
 
+    generic_config = (
+        AlgorithmConfig()
+        .environment(TwoStepGame)
+        .framework(args.framework)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     if args.run == "MADDPG":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
-        config = {
-            "env": TwoStepGame,
-            "env_config": {
-                "actions_are_logits": True,
-            },
-            "num_steps_sampled_before_learning_starts": 100,
-            "multiagent": {
-                "policies": {
+        config = (
+            MADDPGConfig()
+            .update_from_dict(generic_config.to_dict())
+            .framework("tf")
+            .environment(env_config={"actions_are_logits": True})
+            .training(num_steps_sampled_before_learning_starts=100)
+            .multi_agent(
+                policies={
                     "pol1": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
@@ -129,15 +139,14 @@ if __name__ == "__main__":
                         config={"agent_id": 1},
                     ),
                 },
-                "policy_mapping_fn": (lambda aid, **kwargs: "pol2" if aid else "pol1"),
-            },
-            "framework": args.framework,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        }
+                policy_mapping_fn=lambda aid, **kwargs: "pol2" if aid else "pol1",
+            )
+        )
     elif args.run == "QMIX":
         config = (
             QMixConfig()
+            .update_from_dict(generic_config.to_dict())
+            .framework("torch")
             .training(mixer=args.mixer, train_batch_size=32)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
             .exploration(
@@ -152,16 +161,9 @@ if __name__ == "__main__":
                     "one_hot_state_encoding": True,
                 },
             )
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         )
-        config = config.to_dict()
     else:
-        config = {
-            "env": TwoStepGame,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        }
+        config = generic_config
 
     stop = {
         "episode_reward_mean": args.stop_reward,
@@ -172,7 +174,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         args.run,
         run_config=air.RunConfig(stop=stop, verbose=2),
-        param_space=config,
+        param_space=config.to_dict(),
     ).fit()
 
     if args.as_test:

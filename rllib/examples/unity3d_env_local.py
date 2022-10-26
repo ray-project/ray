@@ -119,10 +119,13 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .environment("unity3d", env_config={
-            "file_name": args.file_name,
-            "episode_horizon": args.horizon,
-        })
+        .environment(
+            "unity3d",
+            env_config={
+                "file_name": args.file_name,
+                "episode_horizon": args.horizon,
+            },
+        )
         .framework("tf" if args.env != "Pyramids" else "torch")
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
@@ -139,7 +142,7 @@ if __name__ == "__main__":
             train_batch_size=4000,
             num_sgd_iter=20,
             clip_param=0.2,
-            model={"fcnet_hiddens": [512, 512]}
+            model={"fcnet_hiddens": [512, 512]},
         )
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -149,26 +152,30 @@ if __name__ == "__main__":
     # Switch on Curiosity based exploration for Pyramids env
     # (not solvable otherwise).
     if args.env == "Pyramids":
-        config.exploration(exploration_config={
-            "type": "Curiosity",
-            "eta": 0.1,
-            "lr": 0.001,
-            # No actual feature net: map directly from observations to feature
-            # vector (linearly).
-            "feature_net_config": {
-                "fcnet_hiddens": [],
-                "fcnet_activation": "relu",
-            },
-            "sub_exploration": {
-                "type": "StochasticSampling",
-            },
-            "forward_net_activation": "relu",
-            "inverse_net_activation": "relu",
-        })
+        config.exploration(
+            exploration_config={
+                "type": "Curiosity",
+                "eta": 0.1,
+                "lr": 0.001,
+                # No actual feature net: map directly from observations to feature
+                # vector (linearly).
+                "feature_net_config": {
+                    "fcnet_hiddens": [],
+                    "fcnet_activation": "relu",
+                },
+                "sub_exploration": {
+                    "type": "StochasticSampling",
+                },
+                "forward_net_activation": "relu",
+                "inverse_net_activation": "relu",
+            }
+        )
     elif args.env == "GridFoodCollector":
-        config.training(model={
-            "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [256, [10, 10], 1]],
-        })
+        config.training(
+            model={
+                "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [256, [10, 10], 1]],
+            }
+        )
     elif args.env == "Sorter":
         config.training(model={"use_attention": True})
 

@@ -20,7 +20,8 @@ class TestLSTMs(unittest.TestCase):
 
     def test_lstm_w_prev_action_and_prev_reward(self):
         """Tests LSTM prev-a/r input insertions using complex actions."""
-        config = ppo.PPOConfig()\
+        config = (
+            ppo.PPOConfig()
             .environment(
                 RandomEnv,
                 env_config={
@@ -38,7 +39,7 @@ class TestLSTMs(unittest.TestCase):
                         }
                     ),
                 },
-            )\
+            )
             .training(
                 # Need to set this to True to enable complex (prev.) actions
                 # as inputs to the LSTM.
@@ -52,14 +53,15 @@ class TestLSTMs(unittest.TestCase):
                 num_sgd_iter=1,
                 train_batch_size=200,
                 sgd_minibatch_size=50,
-            )\
+            )
             .rollouts(
                 rollout_fragment_length=100,
                 num_rollout_workers=1,
-            )\
+            )
             .experimental(
                 _disable_action_flattening=True,
             )
+        )
 
         for _ in framework_iterator(config):
             tune.Tuner(

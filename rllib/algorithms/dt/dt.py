@@ -295,8 +295,8 @@ class DT(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DTConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DTConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

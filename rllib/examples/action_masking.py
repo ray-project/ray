@@ -112,26 +112,32 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # main part: configure the ActionMaskEnv and ActionMaskModel
-    config = ppo.PPOConfig().environment(
-        # random env with 100 discrete actions and 5x [-1,1] observations
-        # some actions are declared invalid and lead to errors
-        ActionMaskEnv,
-        env_config={
-            "action_space": Discrete(100),
-            "observation_space": Box(-1.0, 1.0, (5,)),
-        },
-    ).training(
-        # the ActionMaskModel retrieves the invalid actions and avoids them
-        model={
-            "custom_model": ActionMaskModel
-            if args.framework != "torch"
-            else TorchActionMaskModel,
-            # disable action masking according to CLI
-            "custom_model_config": {"no_masking": args.no_masking},
-        },
-    ).framework(args.framework, eager_tracing=args.eager_tracing).resources(
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+    config = (
+        ppo.PPOConfig()
+        .environment(
+            # random env with 100 discrete actions and 5x [-1,1] observations
+            # some actions are declared invalid and lead to errors
+            ActionMaskEnv,
+            env_config={
+                "action_space": Discrete(100),
+                "observation_space": Box(-1.0, 1.0, (5,)),
+            },
+        )
+        .training(
+            # the ActionMaskModel retrieves the invalid actions and avoids them
+            model={
+                "custom_model": ActionMaskModel
+                if args.framework != "torch"
+                else TorchActionMaskModel,
+                # disable action masking according to CLI
+                "custom_model_config": {"no_masking": args.no_masking},
+            },
+        )
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        )
     )
 
     stop = {

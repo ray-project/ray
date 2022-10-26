@@ -229,8 +229,8 @@ def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SlateQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SlateQConfig()
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

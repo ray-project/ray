@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()

@@ -43,18 +43,20 @@ if __name__ == "__main__":
     config = (
         AlgorithmConfig()
         .environment("VizdoomBasic-v0")
-        .training(model={
-            "conv_filters": [],
-            "use_attention": True,
-            "attention_num_transformer_units": 1,
-            "attention_dim": 64,
-            "attention_num_heads": 2,
-            "attention_memory_inference": 100,
-            "attention_memory_training": 50,
-            "vf_share_layers": True,
-            "attention_use_n_prev_actions": args.use_n_prev_actions,
-            "attention_use_n_prev_rewards": args.use_n_prev_rewards,
-        })
+        .training(
+            model={
+                "conv_filters": [],
+                "use_attention": True,
+                "attention_num_transformer_units": 1,
+                "attention_dim": 64,
+                "attention_num_heads": 2,
+                "attention_memory_inference": 100,
+                "attention_memory_training": 50,
+                "vf_share_layers": True,
+                "attention_use_n_prev_actions": args.use_n_prev_actions,
+                "attention_use_n_prev_rewards": args.use_n_prev_rewards,
+            }
+        )
         # Run with tracing enabled for tfe/tf2.
         .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])
         .rollouts(num_rollout_workers=args.num_workers)
@@ -62,8 +64,8 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     if args.run == "PPO":
-        config = PPOConfig().update_from_dict(config.to_dict()).training(
-            vf_loss_coeff=0.01
+        config = (
+            PPOConfig().update_from_dict(config.to_dict()).training(vf_loss_coeff=0.01)
         )
 
     stop = {

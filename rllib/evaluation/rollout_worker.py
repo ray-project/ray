@@ -1,6 +1,5 @@
 from collections import defaultdict
 import copy
-import gym
 from gym.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging

@@ -101,24 +101,24 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model, TorchVisionNet)
+                        assert isinstance(algo.get_policy().model, TorchVisionNet)
                     else:
-                        assert isinstance(a.get_policy().model, VisionNet)
+                        assert isinstance(algo.get_policy().model, VisionNet)
                 # 1D input: Expect FCNet.
                 elif o_name == "vector1d":
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model, TorchFCNet)
+                        assert isinstance(algo.get_policy().model, TorchFCNet)
                     else:
-                        assert isinstance(a.get_policy().model, FCNet)
+                        assert isinstance(algo.get_policy().model, FCNet)
                 # Could be either one: ComplexNet (if disabled Preprocessor)
                 # or FCNet (w/ Preprocessor).
                 elif o_name == "vector2d":
                     if fw == "torch":
                         assert isinstance(
-                            a.get_policy().model, (TorchComplexNet, TorchFCNet)
+                            algo.get_policy().model, (TorchComplexNet, TorchFCNet)
                         )
                     else:
-                        assert isinstance(a.get_policy().model, (ComplexNet, FCNet))
+                        assert isinstance(algo.get_policy().model, (ComplexNet, FCNet))
             if train:
                 algo.train()
             algo.stop()
@@ -152,8 +152,12 @@ class TestSupportedSpacesPG(unittest.TestCase):
         ray.shutdown()
 
     def test_a3c(self):
-        config = A3CConfig().rollouts(num_rollout_workers=1).training(
-            optimizer={"grads_per_step": 1},
+        config = (
+            A3CConfig()
+            .rollouts(num_rollout_workers=1)
+            .training(
+                optimizer={"grads_per_step": 1},
+            )
         )
         check_support("A3C", config, check_bounds=True)
 
@@ -167,12 +171,14 @@ class TestSupportedSpacesPG(unittest.TestCase):
         check_support("IMPALA", ImpalaConfig().resources(num_gpus=0))
 
     def test_ppo(self):
-        config = PPOConfig().rollouts(
-            num_rollout_workers=0, rollout_fragment_length=10
-        ).training(
-            train_batch_size=100,
-            num_sgd_iter=1,
-            sgd_minibatch_size=10,
+        config = (
+            PPOConfig()
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .training(
+                train_batch_size=100,
+                num_sgd_iter=1,
+                sgd_minibatch_size=10,
+            )
         )
         check_support("PPO", config, check_bounds=True, tfe=True)
 
@@ -198,9 +204,10 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
     def test_ddpg(self):
         check_support(
             "DDPG",
-            DDPGConfig().exploration(exploration_config={"ou_base_scale": 100.0}).reporting(
-                min_sample_timesteps_per_iteration=1
-            ).training(
+            DDPGConfig()
+            .exploration(exploration_config={"ou_base_scale": 100.0})
+            .reporting(min_sample_timesteps_per_iteration=1)
+            .training(
                 replay_buffer_config={"capacity": 1000},
                 use_state_preprocessor=True,
             ),
@@ -208,10 +215,14 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         )
 
     def test_dqn(self):
-        config = DQNConfig().reporting(min_sample_timesteps_per_iteration=1).training(
-            replay_buffer_config={
-                "capacity": 1000,
-            }
+        config = (
+            DQNConfig()
+            .reporting(min_sample_timesteps_per_iteration=1)
+            .training(
+                replay_buffer_config={
+                    "capacity": 1000,
+                }
+            )
         )
         check_support("DQN", config, tfe=True)
 
@@ -235,17 +246,17 @@ class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
     def test_ars(self):
         check_support(
             "ARS",
-            ARSConfig().rollouts(num_rollout_workers=1).training(
-                noise_size=1500000, num_rollouts=1, rollouts_used=1
-            ),
+            ARSConfig()
+            .rollouts(num_rollout_workers=1)
+            .training(noise_size=1500000, num_rollouts=1, rollouts_used=1),
         )
 
     def test_es(self):
         check_support(
             "ES",
-            ESConfig().rollouts(num_rollout_workers=1).training(
-                noise_size=1500000, episodes_per_batch=1, train_batch_size=1
-            ),
+            ESConfig()
+            .rollouts(num_rollout_workers=1)
+            .training(noise_size=1500000, episodes_per_batch=1, train_batch_size=1),
         )
 
 

@@ -16,6 +16,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
@@ -102,18 +103,19 @@ if __name__ == "__main__":
     # register_env(
     #     "curriculum_env", lambda config: CurriculumCapableEnv(config))
 
-    config = {
-        "env": CurriculumCapableEnv,  # or "curriculum_env" if registered above
-        "env_config": {
-            "start_level": 1,
-        },
-        "num_workers": 2,  # parallelism
-        "num_envs_per_worker": 5,
-        "env_task_fn": curriculum_fn,
+    config = (
+        AlgorithmConfig()
+        # or "curriculum_env" if registered above
+        .environment(
+            CurriculumCapableEnv,
+            env_config={"start_level": 1},
+            env_task_fn=curriculum_fn,
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=2, num_envs_per_worker=5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -122,7 +124,9 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=2),
     )
     results = tuner.fit()
 

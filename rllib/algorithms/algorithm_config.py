@@ -178,8 +178,6 @@ class AlgorithmConfig:
         self.policies_to_train = None
         self.observation_fn = None
         self.count_steps_by = "env_steps"
-        self._multi_agent_legacy_dict = {}
-        self._set_ma_legacy_dict()
 
         # `self.offline_data()`
         self.input_ = "sampler"
