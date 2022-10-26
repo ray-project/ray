@@ -135,9 +135,10 @@ class TaskCounter {
       ray::stats::STATS_actors.Record(
           running,
           {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
-      ray::stats::STATS_actors.Record(
-          in_get,
-          {{"State", "RUNNING_IN_RAY_GET"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(in_get,
+                                      {{"State", "RUNNING_IN_RAY_GET"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"}});
       ray::stats::STATS_actors.Record(in_wait,
                                       {{"State", "RUNNING_IN_RAY_WAIT"},
                                        {"Name", actor_name_},
