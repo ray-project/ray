@@ -84,7 +84,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        session_name("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -177,6 +178,8 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
+  /// Session name (Cluster ID) of the cluster.
+  std::string session_name;
 };
 }  // namespace core
 }  // namespace ray
