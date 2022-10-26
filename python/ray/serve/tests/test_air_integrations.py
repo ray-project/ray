@@ -99,6 +99,52 @@ class TestBatchingFunctionFunctions:
             check_dtype=check_dtype,
         )
 
+    @pytest.mark.parametrize(
+        "batched_df",
+        [
+            pd.DataFrame(
+                {
+                    "a": TensorArray([1, 2, 3, 4]),
+                    "b": TensorArray([5, 6, 7, 8]),
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "a": TensorArray(
+                        [np.array(1), np.array(2), np.array(3), np.array(4)]
+                    ),
+                    "b": TensorArray(
+                        [np.array(5), np.array(6), np.array(7), np.array(8)]
+                    ),
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "a": [np.array(1), np.array(2), np.array(3), np.array(4)],
+                    "b": [np.array(5), np.array(6), np.array(7), np.array(8)],
+                }
+            ),
+        ],
+    )
+    def test_unpack_dataframe_with_tensorarray(self, batched_df):
+        """Test _unpack_dataframe_to_serializable with TensorArray and python object."""
+        split_df = pd.DataFrame(
+            {
+                "a": [1, 2, 3, 4],
+                "b": [5, 6, 7, 8],
+            }
+        )
+
+        unpacked_list = _BatchingManager.split_dataframe(batched_df, 1)
+        assert len(unpacked_list) == 1
+        # On windows, conversion dtype is not preserved.
+        check_dtype = not os.name == "nt"
+        pd.testing.assert_frame_equal(
+            unpacked_list[0].reset_index(drop=True),
+            split_df.reset_index(drop=True),
+            check_dtype=check_dtype,
+        )
+
 
 class AdderPredictor(Predictor):
     def __init__(self, increment: int, do_double: bool) -> None:
