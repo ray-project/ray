@@ -162,7 +162,11 @@ class Predictor(abc.ABC):
 
         if batch_format == BatchFormat.PANDAS:
             predictions = self._predict_pandas(data, **kwargs)
-            return convert_pandas_to_batch_type(predictions, TYPE_TO_ENUM[type(data)])
+            return convert_pandas_to_batch_type(
+                predictions,
+                BatchFormat.PANDAS,
+                cast_tensor_columns=self._cast_tensor_columns,
+            )
         elif batch_format == BatchFormat.NUMPY and has_predict_numpy:
             return self._predict_numpy(data, **kwargs)
         else:
@@ -170,7 +174,11 @@ class Predictor(abc.ABC):
             # ex: xgboost predict with np.ndarray batch data
             data = convert_batch_type_to_pandas(data)
             predictions = self._predict_pandas(data, **kwargs)
-            return convert_pandas_to_batch_type(predictions, TYPE_TO_ENUM[type(data)])
+            return convert_pandas_to_batch_type(
+                predictions,
+                BatchFormat.PANDAS,
+                cast_tensor_columns=self._cast_tensor_columns,
+            )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
