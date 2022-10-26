@@ -4,7 +4,6 @@ import inspect
 import os
 import logging
 from pathlib import Path
-import traceback
 
 from typing import (
     Tuple,
@@ -59,23 +58,6 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                # If exception is raised in the serialization module,
-                # we guide the user to look for that
-                # test_data_parallel_trainer.py::test_serialization_errors
-                # tests that this is being printed
-                if "serialization.py" in traceback.format_exc():
-                    logger.error(
-                        "An exception raised here from the serialization module "
-                        "is most likely caused by an issue with deserialization "
-                        "(eg. with Torch models or tensors). "
-                        "Ensure that you are reporting a Checkpoint type specific "
-                        "to the framework you are using (eg. `TorchCheckpoint` if "
-                        "checkpointing a Torch model). Those Checkpoint types "
-                        "contain special serialization/deserialization logic "
-                        "that helps avoid deserialization exceptions. "
-                        "No special handling logic is applied for objects "
-                        "passed in the `metrics` dict in the `report()` method!"
-                    )
                 raise StartTraceback from exc
 
     return True, None
