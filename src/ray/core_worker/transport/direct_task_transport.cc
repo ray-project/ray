@@ -335,68 +335,43 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   RAY_CHECK(scheduling_key_entry.inflight_lease_requests.size() <
             max_inflight_lease_requests_per_scheduling_category_);
 
-  if (!scheduling_key_entry.AllWorkersBusy()) {
-    // There are idle workers, so we don't need more.
-    RAY_LOG(DEBUG) << "Skip leasing from "
-                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
-                                      : NodeID::Nil())
-                   << " since there are idle workers";
-    return;
-  }
-
-  const auto &task_queue = scheduling_key_entry.task_queue;
-  if (task_queue.empty()) {
-    if (scheduling_key_entry.CanDelete()) {
-      // We can safely remove the entry keyed by scheduling_key from the
-      // scheduling_key_entries_ hashmap.
-      scheduling_key_entries_.erase(scheduling_key);
+  // To make the protocol easier to understand and avoid false positive, if it's
+  // a spillback, we always lease.
+  bool is_spillback = raylet_address != nullptr;
+  if (!is_spillback) {
+    if (!scheduling_key_entry.AllWorkersBusy()) {
+      // There are idle workers, so we don't need more.
+      RAY_LOG(DEBUG) << "Skip leasing from "
+                     << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                        : NodeID::Nil())
+                     << " since there are idle workers";
+      return;
     }
-    RAY_LOG(DEBUG) << "Skip leasing from "
-                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
-                                      : NodeID::Nil())
-                   << " since task queue is empty.";
-    return;
-  } else if ((scheduling_key_entry.task_queue.size() <=
-              scheduling_key_entry.inflight_lease_requests.size()) &&
-             // When raylet_address != nullptr it means it's a spillback request
-             // from the original raylet. If there is no ongoing leasing requests
-             // running on that node, we should just run this, otherwise, there might
-             // be a deadlock: the original raylet has deducted the resources because
-             // of the redirection, and if the destination raylet is full of resource
-             // it won't do the redirection anymore. So it could happen that:
-             //    - The original raylet has leasing requests but it can't find a node
-             //      having resources.
-             //    - The core worker will fail to do the leasing because the leasing
-             //      requests is bigger than the task queue.
-             // And this will make the scheduler hanging. With resource broadcasting,
-             // it's kind of mitigating the problem, but it has uncessary cost too (
-             // no progress until resource is refreshed).
-             // To make it easier to understand, let's think the following case:
-             // - N1 and N2 both has 1 CPU and suppose we have 10 tasks.
-             // - 10 tasks go to N1.
-             // - N1 leased one worker and the task_queue.size() = 9
-             //   and inflight_lease_requests.size() = 9.
-             // - The worker finished the work and started the next one, then
-             //   task_queue.size() = 8. And think it's an actor task, so it'll hold
-             //   it forever.
-             // - N1 spill one request to N2, so inflight_lease_requests.size() = 8.
-             // - But the core worker doesn't spill it to N2, because
-             //       task_queue.size() <= inflight_lease_requests.size()
-             // - N1 stop spilling because it thought N2 is full.
-             // - N2 doesn't broadcast the resource because the resource never change.
-             // - And thus hangs forever.
-             (raylet_address == nullptr ||
-              scheduling_key_entry.raylet_ongoing_lease_loads.count(
-                  raylet_address->raylet_id()) != 0)) {
-    // All tasks have corresponding pending leases, no need to request more
-    RAY_LOG(DEBUG) << "Skip leasing from "
-                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
-                                      : NodeID::Nil())
-                   << " since task queue size is "
-                   << scheduling_key_entry.task_queue.size()
-                   << " which is bigger than the pending leasing requests size "
-                   << scheduling_key_entry.inflight_lease_requests.size();
-    return;
+
+    const auto &task_queue = scheduling_key_entry.task_queue;
+    if (task_queue.empty()) {
+      if (scheduling_key_entry.CanDelete()) {
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
+        scheduling_key_entries_.erase(scheduling_key);
+      }
+      RAY_LOG(DEBUG) << "Skip leasing from "
+                     << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                        : NodeID::Nil())
+                     << " since task queue is empty.";
+      return;
+    } else if (scheduling_key_entry.task_queue.size() <=
+               scheduling_key_entry.inflight_lease_requests.size()) {
+      // All tasks have corresponding pending leases, no need to request more
+      RAY_LOG(DEBUG) << "Skip leasing from "
+                     << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                        : NodeID::Nil())
+                     << " since task queue size is "
+                     << scheduling_key_entry.task_queue.size()
+                     << " which is bigger than the pending leasing requests size "
+                     << scheduling_key_entry.inflight_lease_requests.size();
+      return;
+    }
   }
 
   num_leases_requested_++;
