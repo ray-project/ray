@@ -369,7 +369,10 @@ class SelectExperiences:
                     {
                         pid: batch
                         for pid, batch in samples.policy_batches.items()
-                        if self.local_worker.is_policy_to_train(pid, batch)
+                        if (
+                            self.local_worker.is_policy_to_train is None
+                            or self.local_worker.is_policy_to_train(pid, batch)
+                        )
                     },
                     samples.count,
                 )

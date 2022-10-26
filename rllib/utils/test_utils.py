@@ -521,7 +521,6 @@ def check_train_results(train_results):
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -554,7 +553,7 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    _, is_multi_agent = check_multi_agent(train_results["config"])
+    is_multi_agent = train_results["config"].is_multi_agent()
 
     # Check in particular the "info" dict.
     info = train_results["info"]

@@ -35,11 +35,12 @@ class A2CConfig(A3CConfig):
         >>> from ray import tune
         >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=2)
+        ...     .rollouts(num_rollout_workers=2)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> import ray.air as air

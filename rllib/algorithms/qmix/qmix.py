@@ -136,11 +136,9 @@ class QMixConfig(SimpleQConfig):
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
-        self.evaluation_interval = None
-        self.evaluation_duration = 10
-        self.evaluation_config = {
-            "explore": False,
-        }
+        self.evaluation(
+            evaluation_config={"explore": False}
+        )
         # __sphinx_doc_end__
         # fmt: on
 

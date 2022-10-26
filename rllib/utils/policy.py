@@ -83,6 +83,11 @@ def create_policy_for_framework(
         session_creator: An optional tf1.Session creation callable.
         seed: Optional random seed.
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    if isinstance(merged_config, AlgorithmConfig):
+        merged_config = merged_config.to_dict()
+
     framework = merged_config.get("framework", "tf")
     # Tf.
     if framework in ["tf2", "tf", "tfe"]:

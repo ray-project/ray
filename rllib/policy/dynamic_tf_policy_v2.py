@@ -61,7 +61,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         self.observation_space = obs_space
         self.action_space = action_space
-        config = dict(self.get_default_config(), **config)
         self.config = config
         self.framework = "tf"
         self._seq_lens = None
@@ -140,11 +139,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # This is static graph TF policy.
         # Simply do nothing.
         pass
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
