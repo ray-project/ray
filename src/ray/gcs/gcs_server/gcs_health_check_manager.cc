@@ -62,40 +62,45 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
-  context = std::make_shared<grpc::ClientContext>();
+  context_ = std::make_shared<grpc::ClientContext>();
 
   auto deadline =
-      std::chrono::system_clock::now() + std::chrono::milliseconds(manager->timeout_ms_);
-  context->set_deadline(deadline);
-  stub->async()->Check(
-      context.get(),
-      &request,
-      &response,
-      [this, context = this->context](::grpc::Status status) {
+      std::chrono::system_clock::now() + std::chrono::milliseconds(manager_->timeout_ms_);
+  context_->set_deadline(deadline);
+  stub_->async()->Check(
+      context_.get(),
+      &request_,
+      &response_,
+      [this, stopped = this->stopped_, context = this->context_](::grpc::Status status) {
         if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
           return;
         }
 
-        manager->io_service_.post(
-            [this, status]() {
-              RAY_LOG(DEBUG) << "Health check status: " << int(response.status());
+        manager_->io_service_.post(
+            [this, stopped, status]() {
+              // Stopped has to be read in the same thread where it's updated.
+              if (*stopped) {
+                return;
+              }
+              RAY_LOG(DEBUG) << "Health check status: " << int(response_.status());
 
-              if (status.ok() && response.status() == HealthCheckResponse::SERVING) {
+              if (status.ok() && response_.status() == HealthCheckResponse::SERVING) {
                 // Health check passed
-                health_check_remaining = manager->failure_threshold_;
+                health_check_remaining_ = manager_->failure_threshold_;
               } else {
-                --health_check_remaining;
-                RAY_LOG(WARNING) << "Health check failed for node " << node_id
-                                 << ", remaining checks " << health_check_remaining;
+                --health_check_remaining_;
+                RAY_LOG(WARNING) << "Health check failed for node " << node_id_
+                                 << ", remaining checks " << health_check_remaining_;
               }
 
-              if (health_check_remaining == 0) {
-                manager->io_service_.post([this]() { manager->FailNode(node_id); }, "");
+              if (health_check_remaining_ == 0) {
+                manager_->io_service_.post([this]() { manager_->FailNode(node_id_); },
+                                           "");
               } else {
                 // Do another health check.
-                timer.expires_from_now(
-                    boost::posix_time::milliseconds(manager->period_ms_));
-                timer.async_wait([this](auto ec) {
+                timer_.expires_from_now(
+                    boost::posix_time::milliseconds(manager_->period_ms_));
+                timer_.async_wait([this](auto ec) {
                   if (ec != boost::asio::error::operation_aborted) {
                     StartHealthCheck();
                   }

@@ -89,16 +89,18 @@ class GcsHealthCheckManager {
   /// It can be updated to support streaming call for efficiency.
   class HealthCheckContext {
    public:
-    HealthCheckContext(GcsHealthCheckManager *_manager,
+    HealthCheckContext(GcsHealthCheckManager *manager,
                        std::shared_ptr<grpc::Channel> channel,
                        NodeID node_id)
-        : manager(_manager),
-          node_id(node_id),
-          timer(manager->io_service_),
-          health_check_remaining(manager->failure_threshold_) {
-      stub = grpc::health::v1::Health::NewStub(channel);
-      timer.expires_from_now(boost::posix_time::milliseconds(manager->initial_delay_ms_));
-      timer.async_wait([this](auto ec) {
+        : manager_(manager),
+          node_id_(node_id),
+          stopped_(std::make_shared<bool>(false)),
+          timer_(manager->io_service_),
+          health_check_remaining_(manager->failure_threshold_) {
+      stub_ = grpc::health::v1::Health::NewStub(channel);
+      timer_.expires_from_now(
+          boost::posix_time::milliseconds(manager_->initial_delay_ms_));
+      timer_.async_wait([this](auto ec) {
         if (ec != boost::asio::error::operation_aborted) {
           StartHealthCheck();
         }
@@ -106,33 +108,37 @@ class GcsHealthCheckManager {
     }
 
     ~HealthCheckContext() {
-      timer.cancel();
-      if (context != nullptr) {
-        context->TryCancel();
+      timer_.cancel();
+      if (context_ != nullptr) {
+        context_->TryCancel();
       }
+      *stopped_ = true;
     }
 
    private:
     void StartHealthCheck();
 
-    GcsHealthCheckManager *manager;
+    GcsHealthCheckManager *manager_;
 
-    NodeID node_id;
+    NodeID node_id_;
+
+    // Whether the health check has stopped.
+    std::shared_ptr<bool> stopped_;
 
     /// gRPC related fields
-    std::unique_ptr<::grpc::health::v1::Health::Stub> stub;
+    std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
 
     // The context is used in the gRPC callback which is in another
     // thread, so we need it to be a shared_ptr.
-    std::shared_ptr<grpc::ClientContext> context;
-    ::grpc::health::v1::HealthCheckRequest request;
-    ::grpc::health::v1::HealthCheckResponse response;
+    std::shared_ptr<grpc::ClientContext> context_;
+    ::grpc::health::v1::HealthCheckRequest request_;
+    ::grpc::health::v1::HealthCheckResponse response_;
 
     /// The timer is used to do async wait before the next try.
-    Timer timer;
+    Timer timer_;
 
     /// The remaining check left. If it reaches 0, the node will be marked as dead.
-    int64_t health_check_remaining;
+    int64_t health_check_remaining_;
   };
 
   /// The main service. All method needs to run on this thread.
