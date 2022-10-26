@@ -85,11 +85,11 @@ class ARSTFPolicy(Policy):
         )
 
     def _compute_actions_without_connectors(
-        self, observation, add_noise=False, update=True, **kwargs
+        self, obs_batch, add_noise=False, update=True, **kwargs
     ):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
+        observation = obs_batch[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 
