@@ -378,8 +378,8 @@ class Policy(metaclass=ABCMeta):
         explore: bool = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
-        agent_ids: Optional[str] = None,
-        env_ids: Optional[str] = None,
+        agent_ids: Optional[List[str]] = None,
+        env_ids: Optional[List[str]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -423,9 +423,9 @@ class Policy(metaclass=ABCMeta):
                 "episodes argument can not be used together with connectors. Episodes "
                 "are built internally and make this arg redundant."
             )
-            if not (
-                input_dict.get(SampleBatch.OBS) is not None
-                and input_dict.get(SampleBatch.NEXT_OBS) is not None
+            if (
+                input_dict.get(SampleBatch.OBS) is None
+                and input_dict.get(SampleBatch.NEXT_OBS) is None
             ):
                 if log_once("compute_actions_obs_and_next_obs_provided"):
                     logger.debug(
@@ -691,7 +691,9 @@ class Policy(metaclass=ABCMeta):
         processed = self.agent_connectors(acd_list)
 
         # Set interceptors for every batch
-        [self._lazy_tensor_dict(step_out.data.sample_batch) for step_out in processed]
+        if self.config["framework"] == "torch":
+            # Actually convert to torch tensors.
+            [self._lazy_tensor_dict(step_out.data.sample_batch) for step_out in processed]
 
         action_connector_input_data = [
             self._compute_action_connectors_input_from_agent_connectors_output(
@@ -1378,11 +1380,11 @@ class Policy(metaclass=ABCMeta):
 
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:
-            self.agent_connectors = _restore(self, connector_configs["agent"])
+            self.agent_connectors = _restore(connector_configs["agent"])
             logger.info("restoring agent connectors:")
             logger.info(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
-            self.action_connectors = _restore(self, connector_configs["action"])
+            self.action_connectors = _restore(connector_configs["action"])
             logger.info("restoring action connectors:")
             logger.info(self.action_connectors.__str__(indentation=4))
 
