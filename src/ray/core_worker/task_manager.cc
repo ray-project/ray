@@ -816,13 +816,13 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  task_counter_.ForEachEntry(
-      [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
-        ray::stats::STATS_tasks.Record(value,
-                                       {{"State", rpc::TaskStatus_Name(key.second)},
-                                        {"Name", key.first},
-                                        {"Source", "owner"}});
-      });
+  for (const auto &key : task_counter_changes_) {
+    ray::stats::STATS_tasks.Record(task_counter_.Get(key),
+                                   {{"State", rpc::TaskStatus_Name(key.second)},
+                                    {"Name", key.first},
+                                    {"Source", "owner"}});
+  }
+  task_counter_changes_.clear();
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
