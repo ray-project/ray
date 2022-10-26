@@ -198,7 +198,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   .. tabbed:: Python
 
-      .. literalinclude:: doc_code/original_resource_unavailable_example.py
+      .. literalinclude:: ../doc_code/original_resource_unavailable_example.py
         :language: python
 
   .. tabbed:: Java
@@ -499,7 +499,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
   .. tabbed:: Python
 
-      .. literalinclude:: doc_code/placement_group_capture_child_tasks_example.py
+      .. literalinclude:: ../doc_code/placement_group_capture_child_tasks_example.py
         :language: python
 
   .. tabbed:: Java

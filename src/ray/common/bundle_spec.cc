@@ -219,4 +219,10 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return AddPlacementGroupConstraint(resources, placement_group_id, bundle_index);
 }
 
+std::string GetGroupIDFromResource(const std::string &resource) {
+  size_t pg_suffix_len = 2 * PlacementGroupID::Size();
+  RAY_CHECK(resource.size() > pg_suffix_len);
+  return resource.substr(resource.size() - pg_suffix_len, pg_suffix_len);
+}
+
 }  // namespace ray
