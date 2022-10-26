@@ -11,6 +11,7 @@ import gym
 import os
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -103,26 +104,29 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
+    config = (
+        AlgorithmConfig()
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.
-        "env": NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv,
+        .environment(NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv)
+        .framework(args.framework)
         # Set up our own callbacks.
-        "callbacks": TaskSettingCallback,
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # How many RolloutWorkers (each with n environment copies:
-        # `num_envs_per_worker`)?
-        "num_workers": args.num_workers,
-        # This setting should not really matter as it does not affect the
-        # number of GPUs reserved for each worker.
-        "num_envs_per_worker": args.num_envs_per_worker,
+        .callbacks(TaskSettingCallback)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            # How many RolloutWorkers (each with n environment copies:
+            # `num_envs_per_worker`)?
+            num_rollout_workers=args.num_workers,
+            # This setting should not really matter as it does not affect the
+            # number of GPUs reserved for each worker.
+            num_envs_per_worker=args.num_envs_per_worker,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -131,7 +135,9 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

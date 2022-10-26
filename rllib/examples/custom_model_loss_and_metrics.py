@@ -16,6 +16,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
@@ -63,26 +64,29 @@ if __name__ == "__main__":
         TorchCustomLossModel if args.framework == "torch" else CustomLossModel,
     )
 
-    config = {
-        "env": "CartPole-v0",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "model": {
+    config = (
+        AlgorithmConfig()
+        .environment("CartPole-v0")
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0)
+        .training(model={
             "custom_model": "custom_loss",
             "custom_model_config": {
                 "input_files": args.input_files,
             },
-        },
-        "framework": args.framework,
-    }
+        })
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
     info = results.get_best_result().metrics["info"]

@@ -12,6 +12,8 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import get_algorithm_class
 
 parser = argparse.ArgumentParser()
@@ -79,11 +81,11 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "FrozenLake-v1",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
+    config = (
+        AlgorithmConfig()
+        .environment("FrozenLake-v1")
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .training(model={
             "use_attention": True,
             "attention_num_transformer_units": 1,
             "attention_use_n_prev_actions": args.prev_n_actions,
@@ -91,11 +93,10 @@ if __name__ == "__main__":
             "attention_dim": 32,
             "attention_memory_inference": 10,
             "attention_memory_training": 10,
-        },
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
-        "eager_tracing": args.eager_tracing,
-    }
+        })
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -182,5 +183,7 @@ if __name__ == "__main__":
                 prev_a = a
             if init_prev_r is not None:
                 prev_r = reward
+
+    algo.stop()
 
     ray.shutdown()

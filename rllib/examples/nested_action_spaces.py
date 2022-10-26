@@ -5,6 +5,8 @@ import os
 import ray
 from ray import air, tune
 from ray.tune.registry import register_env
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
@@ -49,28 +51,33 @@ if __name__ == "__main__":
         "NestedSpaceRepeatAfterMeEnv", lambda c: NestedSpaceRepeatAfterMeEnv(c)
     )
 
-    config = {
-        "env": "NestedSpaceRepeatAfterMeEnv",
-        "env_config": {
-            "space": Dict(
-                {
-                    "a": Tuple([Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]),
-                    "b": Box(-10.0, 10.0, (2,)),
-                    "c": Discrete(4),
-                }
-            ),
-        },
-        "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
-        "gamma": 0.0,  # No history in Env (bandit problem).
-        "lr": 0.0005,
-        "num_envs_per_worker": 20,
+    config = (
+        AlgorithmConfig()
+        .environment(
+            "NestedSpaceRepeatAfterMeEnv",
+            env_config={
+                "space": Dict(
+                    {
+                        "a": Tuple([Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]),
+                        "b": Box(-10.0, 10.0, (2,)),
+                        "c": Discrete(4),
+                    }
+                ),
+            }
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
+        # No history in Env (bandit problem).
+        .training(gamma=0.0, lr=0.0005)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_sgd_iter": 4,
-        "num_workers": 0,
-        "vf_loss_coeff": 0.01,
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    if args.run == "PPO":
+        config = PPOConfig().update_from_dict(config.to_dict()).training(
+            # We don't want high entropy in this Env.
+            entropy_coeff=0.00005, num_sgd_iter=4, vf_loss_coeff=0.01
+        )
 
     stop = {
         "training_iteration": args.stop_iters,

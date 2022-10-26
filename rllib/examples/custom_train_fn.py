@@ -10,7 +10,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
