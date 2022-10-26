@@ -42,8 +42,6 @@
 #pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 #pragma message(PRINT_MACRO(BOOST_ASIO_DISABLE_LOCAL_SOCKETS))
 #pragma message(PRINT_MACRO(BOOST_ASIO_WINDOWS_RUNTIME))
-#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
-#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
