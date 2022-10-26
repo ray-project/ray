@@ -5,7 +5,8 @@ If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick St
 
 This user guide will help you navigate the Ray Serve project and show you how to achieve several key tasks:
 - [HTTP Handling](http-guide)
-- [Scaling and Resource Allocation](scaling-and-resource-allocation)
+- [Scaling](scaling)
+- [CPU & GPU support](serve-cpus-gpus)
 - [Model Composition](serve-model-composition)
 - [Development Workflow](dev-workflow)
 - [Production Guide](serve-in-production)

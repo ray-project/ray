@@ -185,7 +185,8 @@ parts:
           - file: serve/user-guide
             sections:
               - file: serve/http-guide
-              - file: serve/scaling-and-resource-allocation
+              - file: serve/scaling
+              - file: serve/resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
               - file: serve/production-guide/index
