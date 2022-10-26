@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Iterator, Mapping, Any, Union, Dict, Set
 import pprint
 
@@ -238,10 +237,11 @@ class MultiAgentRLModule(RLModule):
     def input_specs_exploration(self) -> ModelSpec:
         return self._get_specs_for_modules("input_specs_exploration")
 
-    def _get_specs_for_modules(self, property_name: str) -> ModelSpec:
+    def _get_specs_for_modules(self, method_name: str) -> ModelSpec:
+        """Returns the specs for the given property name."""
         return ModelSpec(
             {
-                module_id: getattr(module, property_name)()
+                module_id: getattr(module, method_name)()
                 for module_id, module in self._rl_modules.items()
             }
         )
@@ -293,51 +293,3 @@ class MultiAgentRLModule(RLModule):
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
-
-
-# TODO (Kourosh): I don't know if this will be used at all in the future, but let's
-# keep it for now
-class MultiAgentRLModuleWithSimpleSharedSubmodules(MultiAgentRLModule):
-    def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
-        self._shared_module_infos = self._make_shared_module_infos()
-        super().__init__(config, **kwargs)
-
-    def _make_shared_module_infos(self):
-        config = self.configs
-        shared_config = config["shared_submodules"]
-
-        shared_mod_infos = defaultdict({})  # mapping from module_id to kwarg and value
-        for mod_info in shared_config.values():
-            mod_class = mod_info["class"]
-            mod_config = mod_info["config"]
-            mod_obj = mod_class(mod_config)
-
-            for module_id, kw in mod_info["shared_between"].items():
-                shared_mod_infos[module_id][kw] = mod_obj
-
-        """
-        shared_mod_infos = 'policy_kwargs'{
-            'A': {'encoder': encoder, 'dynamics': dyna},
-            'B': {'encoder': encoder, 'dynamics': dyna},
-            '__all__': {'mixer': mixer}
-        }
-        """
-        return shared_mod_infos
-
-    @override(MultiAgentRLModule)
-    def _make_modules(self):
-        shared_mod_info = self.shared_module_infos
-        policies = self.config["multi_agent"]["modules"]
-        modules = {}
-        for pid, pid_info in policies.items():
-            # prepare the module parameters and class type
-            rl_mod_class = pid_info["module_class"]
-            rl_mod_config = pid_info["module_config"]
-            kwargs = shared_mod_info[pid]
-            rl_mod_config.update(**kwargs)
-
-            # create the module instance
-            rl_mod_obj = rl_mod_class(config=rl_mod_config)
-            modules[pid] = rl_mod_obj
-
-        return modules
