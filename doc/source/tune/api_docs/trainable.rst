@@ -45,7 +45,27 @@ is configurable. For example, we could also report only a single time at the end
 
 .. _tune-function-checkpointing:
 
-.. include:: checkpointing/function-checkpointing.rst
+Function API Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance.
+You can save and load checkpoints in Ray Tune in the following manner:
+
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __function_api_checkpointing_start__
+    :end-before: __function_api_checkpointing_end__
+
+.. note:: ``checkpoint_frequency`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
+
+In this example, checkpoints will be saved by training iteration to ``<local_dir>/<exp_name>/trial_name/checkpoint_<step>``.
+
+Tune also may copy or move checkpoints during the course of tuning. For this purpose,
+it is important not to depend on absolute paths in the implementation of ``save``.
+
+See :ref:`here for more information on creating checkpoints <air-checkpoint-ref>`.
+If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
+references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 .. _tune-class-api:
 
@@ -79,7 +99,15 @@ See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. _tune-trainable-save-restore:
 
-.. include:: checkpointing/class-checkpointing.rst
+Class API Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can also implement checkpoint/restore using the Trainable Class API:
+
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __class_api_checkpointing_start__
+    :end-before: __class_api_checkpointing_end__
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 

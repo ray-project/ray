@@ -33,19 +33,9 @@ Commonly, this includes the model and optimizer states. This is useful mostly fo
 
 Everything that is saved by ``session.report()`` (if using the Function API) or
 ``Trainable.save_checkpoint`` (if using the Class API) is a **trial-level checkpoint.**
-See below for examples of saving and loading trial-level checkpoints.
-
-
-How do I save and load trial checkpoints?
------------------------------------------
-
-.. include:: ../api_docs/checkpointing/function-checkpointing.rst
-
-.. include:: ../api_docs/checkpointing/class-checkpointing.rst
-
-See :ref:`here for more information on creating checkpoints <air-checkpoint-ref>`.
-If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
-references to framework-specific checkpoints such as `TensorflowCheckpoint`.
+See :ref:`checkpointing with the Function API <tune-function-checkpointing>` and
+:ref:`checkpointing with the Class API <tune-trainable-save-restore>`
+for examples of saving and loading trial-level checkpoints.
 
 .. _tune-checkpoint-syncing:
 
