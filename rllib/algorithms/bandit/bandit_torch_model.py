@@ -37,6 +37,7 @@ class OnlineLinearRegression(nn.Module):
             data=self.covariance.matmul(self.f), requires_grad=False
         )
         self._init_params()
+        self.dist = self._make_dist()
 
     def _init_params(self):
         self.update_schedule = 1
@@ -44,14 +45,11 @@ class OnlineLinearRegression(nn.Module):
         self.delta_b = 0
         self.time = 0
         self.covariance.mul_(self.alpha)
-        self.dist = self._make_dist()
 
     def _make_dist(self):
-        # the multivariate norm needs to be reconstructed every time it is
-        # sampled from since the parameters of the dist do not update every
-        # time the stored self.covariance and self.theta (the mean) are updated
+        """Create a multivariate normal distribution from the current parameters."""
         dist = torch.distributions.multivariate_normal.MultivariateNormal(
-            self.theta, self.covariance
+            loc=self.theta, covariance_matrix=self.covariance
         )
         return dist
 
@@ -71,7 +69,7 @@ class OnlineLinearRegression(nn.Module):
             torch.inverse(self.precision, out=self.covariance)
             torch.matmul(self.covariance, self.f, out=self.theta)
             self.covariance.mul_(self.alpha)
-            # the multivariate norm needs to be reconstructed every time
+            # the multivariate dist needs to be reconstructed every time
             # its parameters are updated.the parameters of the dist do not
             #  update every time the stored self.covariance and self.theta
             # (the mean) are updated
