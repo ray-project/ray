@@ -242,12 +242,12 @@ class TrainingIterator:
             raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
-        """Fetch next results produced by ``train.report()`` from each worker.
+        """Fetch next results produced by ``session.report()`` from each worker.
 
         Assumes ``start_training`` has already been called.
 
         Returns:
-            A list of dictionaries of values passed to ``train.report()`` from
+            A list of dictionaries of values passed to ``session.report()`` from
                 each worker. Each item corresponds to an intermediate result
                 a single worker. If there are no more items to fetch,
                 returns None.
