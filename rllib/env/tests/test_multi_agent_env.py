@@ -284,7 +284,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
 
         class StatefulPolicy(RandomPolicy):
-            def compute_actions(
+            def _compute_actions_without_connectors(
                 self,
                 obs_batch,
                 state_batches=None,

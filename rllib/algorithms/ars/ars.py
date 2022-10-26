@@ -514,7 +514,9 @@ class ARS(Algorithm):
 
     @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
-        action, _, _ = self.policy.compute_actions([observation], update=True)
+        action, _, _ = self.policy._compute_actions_without_connectors(
+            [observation], update=True
+        )
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]

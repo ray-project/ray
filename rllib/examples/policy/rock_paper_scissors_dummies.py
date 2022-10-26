@@ -28,7 +28,7 @@ class AlwaysSameHeuristic(Policy):
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch,
         state_batches=None,
@@ -48,7 +48,7 @@ class BeatLastHeuristic(Policy):
         super().__init__(*args, **kwargs)
         self.exploration = self._create_exploration()
 
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch,
         state_batches=None,

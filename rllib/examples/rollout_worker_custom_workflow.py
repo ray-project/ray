@@ -37,7 +37,7 @@ class CustomPolicy(Policy):
         # example parameter
         self.w = 1.0
 
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch,
         state_batches=None,

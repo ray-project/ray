@@ -34,7 +34,7 @@ class TestTimeSteps(unittest.TestCase):
                 algo.compute_single_action(obs)
                 check(policy.global_timestep, i)
             for i in range(1, 21):
-                policy.compute_actions(obs_batch)
+                policy._compute_actions_without_connectors(obs_batch)
                 check(policy.global_timestep, i + 20)
 
             # Artificially set ts to 100Bio, then keep computing actions and
@@ -43,7 +43,7 @@ class TestTimeSteps(unittest.TestCase):
             policy.on_global_var_update({"timestep": crazy_timesteps})
             # Run for 10 more ts.
             for i in range(1, 11):
-                policy.compute_actions(obs_batch)
+                policy._compute_actions_without_connectors(obs_batch)
                 check(policy.global_timestep, i + crazy_timesteps)
             algo.train()
             algo.stop()

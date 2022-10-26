@@ -57,7 +57,7 @@ def rollout(
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac, _, _ = policy.compute_actions(
+        ac, _, _ = policy._compute_actions_without_connectors(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
@@ -178,7 +178,7 @@ class ESTFPolicy(Policy):
     def compute_single_action(
         self, observation, add_noise=False, update=True, **kwargs
     ):
-        action, state_outs, extra_fetches = self.compute_actions(
+        action, state_outs, extra_fetches = self._compute_actions_without_connectors(
             [observation], add_noise=add_noise, update=update, **kwargs
         )
         return action[0], state_outs, extra_fetches
