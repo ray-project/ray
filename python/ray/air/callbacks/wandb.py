@@ -16,11 +16,14 @@ from ray.tune.experiment import Trial
 
 try:
     import wandb
-    import wandb.util as wandb_util
 except ImportError:
     logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
-    wandb_util = None
+
+if wandb:
+    from wandb.util import json_dumps_safer
+else:
+    json_dumps_safer = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
@@ -91,7 +94,7 @@ def _clean_log(obj: Any):
     try:
         # This is what wandb uses internally. If we cannot dump
         # an object using this method, wandb will raise an exception.
-        wandb_util.json_dumps_safer(obj)
+        json_dumps_safer(obj)
 
         # This is probably unnecessary, but left here to be extra sure.
         pickle.dumps(obj)
