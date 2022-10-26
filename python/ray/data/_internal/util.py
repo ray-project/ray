@@ -50,26 +50,15 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        from pkg_resources import require, packaging, DistributionNotFound
-
         try:
-            version_info = require("pyarrow")
-            version = version_info[0].version
-            if (
-                packaging.version.parse(version)
-                < packaging.version.parse(MIN_PYARROW_VERSION)
-            ) or (
-                packaging.version.parse(version)
-                >= packaging.version.parse(MAX_PYARROW_VERSION)
-            ):
-                raise ImportError(
-                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
-                    f"{MAX_PYARROW_VERSION}, but {version} is installed. Upgrade with "
-                    f"`pip install -U pyarrow<{MAX_PYARROW_VERSION}`."
-                    "If you want to disable this pyarrow version check, set the "
-                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-                )
-        except DistributionNotFound:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            return
+
+        import pkg_resources
+
+        if not hasattr(pyarrow, "__version__"):
             logger.warning(
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
@@ -79,7 +68,22 @@ def _check_pyarrow_version():
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
         else:
-            _VERSION_VALIDATED = True
+            version = pyarrow.__version__
+            if (
+                pkg_resources.packaging.version.parse(version)
+                < pkg_resources.packaging.version.parse(MIN_PYARROW_VERSION)
+            ) or (
+                pkg_resources.packaging.version.parse(version)
+                >= pkg_resources.packaging.version.parse(MAX_PYARROW_VERSION)
+            ):
+                raise ImportError(
+                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
+                    f"{MAX_PYARROW_VERSION}, but {version} is installed. Upgrade with "
+                    f"`pip install -U pyarrow<{MAX_PYARROW_VERSION}`."
+                    "If you want to disable this pyarrow version check, set the "
+                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
+                )
+        _VERSION_VALIDATED = True
 
 
 def _autodetect_parallelism(

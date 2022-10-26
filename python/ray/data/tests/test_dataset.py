@@ -4651,6 +4651,33 @@ def test_random_block_order(ray_start_regular_shared):
         context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
 
 
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+    # Test that unsupported pyarrow versions cause an error to be raised upon the
+    # initial pyarrow use.
+    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+
+    # Test Arrow-native creation APIs.
+    # Test range_table.
+    with pytest.raises(ImportError):
+        ray.data.range_table(10).take_all()
+
+    # Test from_arrow.
+    with pytest.raises(ImportError):
+        ray.data.from_arrow(pa.table({"a": [1, 2]}))
+
+    # Test read_parquet.
+    with pytest.raises(ImportError):
+        ray.data.read_parquet("example://iris.parquet").take_all()
+
+    # Test from_numpy (we use Arrow for representing the tensors).
+    with pytest.raises(ImportError):
+        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     def range(n, parallelism=200):
