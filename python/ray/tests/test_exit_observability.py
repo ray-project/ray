@@ -117,7 +117,8 @@ ray.shutdown()
         worker = get_worker_by_pid(driver_pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        assert type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_by_shutdown)
 
@@ -141,7 +142,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_actor)
 
@@ -154,7 +156,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        return True
 
     wait_for_condition(verify_exit_code_0)
 
@@ -168,7 +171,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        assert type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        return True
 
     wait_for_condition(verify_exit_by_ray_kill)
 
