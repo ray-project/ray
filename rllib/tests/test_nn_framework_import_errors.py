@@ -14,7 +14,7 @@ def test_dont_import_tf_error():
     os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
 
     config = {}
-    for _ in framework_iterator(config, frameworks=("tf", "tf2", "tfe")):
+    for _ in framework_iterator(config, frameworks=("tf", "tf2")):
         with pytest.raises(
             ImportError, match="However, there was no installation found."
         ):

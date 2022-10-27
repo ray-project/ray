@@ -73,7 +73,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )

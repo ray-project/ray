@@ -451,10 +451,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise e
 
     def _run(self):
-        # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
+        # We are in a thread: Switch on eager execution mode, iff framework==tf2.
         if (
             tf1
-            and self.worker.config.framework_str in ["tf2", "tfe"]
+            and self.worker.config.framework_str == "tf2"
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()

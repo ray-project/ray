@@ -29,7 +29,7 @@ from ray.rllib import _register_all
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["jax", "tf2", "tf", "tfe", "torch"],
+    choices=["jax", "tf2", "tf", "torch"],
     default="tf",
     help="The deep learning framework to use.",
 )
@@ -108,7 +108,7 @@ if __name__ == "__main__":
             continue
 
         # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        if args.framework in ["tf2", "tfe"] and not args.local_mode:
+        if args.framework == "tf2" and not args.local_mode:
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.

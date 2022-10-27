@@ -98,7 +98,7 @@ class MARWILLoss:
 
             # Update averaged advantage norm.
             # Eager.
-            if policy.config["framework"] in ["tf2", "tfe"]:
+            if policy.config["framework"] == "tf2":
                 update_term = adv_squared - policy._moving_average_sqd_adv_norm
                 policy._moving_average_sqd_adv_norm.assign_add(rate * update_term)
 

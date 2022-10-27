@@ -142,7 +142,7 @@ def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
-    framework=[tf2|tfe].
+    framework=tf2.
     """
 
     class TracedEagerPolicy(eager_policy_cls):
@@ -296,8 +296,8 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
-    it automatically be converted to an eager policy.
+    graph policy and use set `.framework("tf2", eager_tracing=False) in your
+    AlgorithmConfig to have it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
 
@@ -322,7 +322,7 @@ def _build_eager_tf_policy(
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            self.framework = config.get("framework", "tfe")
+            self.framework = config.get("framework", "tf2")
             EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.

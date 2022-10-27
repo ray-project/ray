@@ -37,7 +37,7 @@ torch, _ = try_import_torch()
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -159,7 +159,6 @@ def run_with_custom_entropy_loss(args, stop):
         "torch": PGTorchPolicy,
         "tf": PGTF1Policy,
         "tf2": PGTF2Policy,
-        "tfe": PGTF2Policy,
     }[args.framework]
 
     class EntropyPolicy(policy_cls):

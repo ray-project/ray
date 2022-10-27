@@ -173,7 +173,7 @@ def add_time_dimension(
             A, B, C are sequence elements and * denotes padding.
         seq_lens: A 1D tensor of sequence lengths, denoting the non-padded length
             in timesteps of each rollout in the batch.
-        framework: The framework string ("tf2", "tf", "tfe", "torch").
+        framework: The framework string ("tf2", "tf", "torch").
         time_major: Whether data should be returned in time-major (TxB)
             format or not (BxT).
 
@@ -184,7 +184,7 @@ def add_time_dimension(
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.

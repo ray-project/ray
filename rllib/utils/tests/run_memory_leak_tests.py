@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     required=False,
-    choices=["jax", "tf2", "tf", "tfe", "torch", None],
+    choices=["jax", "tf2", "tf", "torch", None],
     default=None,
     help="The deep learning framework to use.",
 )
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         # Create env on local_worker for memory leak testing just the env.
         experiment["config"]["create_env_on_driver"] = True
         # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        if args.framework in ["tf2", "tfe"] and not args.local_mode:
+        if args.framework == "tf2" and not args.local_mode:
             experiment["config"]["eager_tracing"] = True
         # experiment["config"]["callbacks"] = MemoryTrackingCallbacks
 

@@ -593,7 +593,7 @@ class AlgorithmConfig:
                 methods inside the `..._eager_traced` Policy, which could slow down
                 execution by a factor of 4, without the user noticing what the root
                 cause for this slowdown could be.
-                Only necessary for framework=[tf2|tfe].
+                Only necessary for framework=tf2.
                 Set to None to ignore the re-trace count and never throw an error.
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
@@ -603,6 +603,12 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
         if framework is not None:
+            if framework == "tfe":
+                raise deprecation_warning(
+                    old="AlgorithmConfig.framework('tfe')",
+                    new="AlgorithmConfig.framework('tf2')",
+                    error=True,
+                )
             self.framework_str = framework
         if eager_tracing is not None:
             self.eager_tracing = eager_tracing

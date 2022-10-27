@@ -457,7 +457,7 @@ def compute_and_clip_gradients(
     """
     # Eager: Use GradientTape (which is a property of the `optimizer` object
     # (an OptimizerWrapper): see rllib/policy/eager_tf_policy.py).
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(
@@ -563,7 +563,7 @@ def apply_gradients(
         critic_apply_ops = [policy._critic_optimizer[0].apply_gradients(cgrads)]
 
     # Eager mode -> Just apply and return None.
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
         return
     # Tf static graph -> Return op.
@@ -607,7 +607,7 @@ class ActorCriticOptimizerMixin:
 
     def __init__(self, config):
         # Eager mode.
-        if config["framework"] in ["tf2", "tfe"]:
+        if config["framework"] == "tf2":
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["actor_learning_rate"]

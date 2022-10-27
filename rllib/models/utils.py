@@ -11,7 +11,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Args:
         name (Optional[str]): One of "relu" (default), "tanh", "elu",
             "swish", or "linear" (same as None).
-        framework: One of "jax", "tf|tfe|tf2" or "torch".
+        framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
         A framework-specific activtion function. e.g. tf.nn.tanh or
@@ -52,7 +52,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
         elif name == "elu":
             return jax.nn.elu
     else:
-        assert framework in ["tf", "tfe", "tf2"], "Unsupported framework `{}`!".format(
+        assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
         if name in ["linear", None]:
@@ -146,7 +146,7 @@ def get_initializer(name, framework="tf"):
 
     Args:
         name: One of "xavier_uniform" (default), "xavier_normal".
-        framework: One of "jax", "tf|tfe|tf2" or "torch".
+        framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
         A framework-specific initializer function, e.g.
@@ -177,7 +177,7 @@ def get_initializer(name, framework="tf"):
         elif name == "xavier_normal":
             return nn.init.xavier_normal_
     else:
-        assert framework in ["tf", "tfe", "tf2"], "Unsupported framework `{}`!".format(
+        assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
         tf1, tf, tfv = try_import_tf()
