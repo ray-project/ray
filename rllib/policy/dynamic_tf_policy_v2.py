@@ -444,7 +444,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 if k.startswith("state_in_")
             ]
             # Placeholder for RNN time-chunk valid lengths.
-            if self._state_inputs and not hasattr(self, "_seq_lens"):
+            if self._state_inputs and self._seq_lens is not None:
                 self._seq_lens = tf1.placeholder(
                     dtype=tf.int32, shape=[None], name="seq_lens"
                 )
