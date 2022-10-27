@@ -43,7 +43,7 @@ def trainer_init_per_worker(config):
         datasets.CIFAR10(
             data_directory, train=False, download=True, transform=cifar10_transforms
         ),
-        list(range(2048)),
+        list(range(BATCH_SIZE * 10)),
     )
 
     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
