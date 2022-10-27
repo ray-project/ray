@@ -286,10 +286,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # This is a race condition. We need a more permanent solution.
             # See https://github.com/ray-project/kuberay/issues/560.
             logger.warning(
-                "Autoscaler attempted to create more than maxReplicas pods of type {}"
-                .format(
-                    group_name
-                )
+                "Autoscaler attempted to create "
+                "more than maxReplicas pods of type {}.".format(group_name)
             )
             target_replica_count = group_max_replicas
 

@@ -57,17 +57,18 @@ def test_worker_group_max_replicas(group_index, expected_max_replicas):
 def test_create_node_cap_at_max(
     cur_pod_count, to_add_pod_count, expected_target_replica_count
 ):
-    """Validates that KuberayNodeProvider does not attempt to create more nodes than allowed
-    by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
+    """Validates that KuberayNodeProvider does not attempt to create more nodes than
+    allowed by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
 
     Args:
         cur_pod_count: The mocked current count pods of a given worker group.
         to_add_pod_count: The number of Ray nodes the autoscaler would like to add.
-        expected_target_replica_count: The actual requested replicaCount. Should be capped
-            at maxReplicas (300, for the config in this test.)
+        expected_target_replica_count: The actual requested replicaCount. Should be
+            capped at maxReplicas (300, for the config in this test.)
     """
     # KuberayNodeProvider._patch applies a patch to a K8s object.
-    # For this test, mock the method such that it records the payload in an instance variable.
+    # For this test, mock the method such that it records the payload in an instance
+    # variable.
     def mock_patch(self, url, payload):
         self._applied_patch = payload
 
