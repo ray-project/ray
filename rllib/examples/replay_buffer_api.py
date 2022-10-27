@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     config = (
         R2D2Config()
-        .environment("CartPole-v0")
+        .environment("CartPole-v1")
         .framework(framework=args.framework)
         .rollouts(num_rollout_workers=4)
         .training(

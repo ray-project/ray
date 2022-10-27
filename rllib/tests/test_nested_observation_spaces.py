@@ -364,7 +364,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
             lambda: PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "model": {
                         "custom_model": "invalid",
@@ -380,7 +380,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
             ValueError,
             "State output is not a list",
             lambda: PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "model": {
                         "custom_model": "invalid2",

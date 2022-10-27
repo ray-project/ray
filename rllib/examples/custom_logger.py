@@ -80,7 +80,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         .environment(
-            "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
+            "CartPole-v1" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )
         # Run with tracing enabled for tfe/tf2.
         .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])

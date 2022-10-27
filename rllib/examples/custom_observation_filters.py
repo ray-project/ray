@@ -133,7 +133,7 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        .environment("CartPole-v0")
+        .environment("CartPole-v1")
         .rollouts(
             num_rollout_workers=0,
             # Specify our custom filter here.

@@ -24,7 +24,7 @@ parser.add_argument(
 def my_train_fn(config, reporter):
     iterations = config.pop("train-iterations", 10)
 
-    config = PPOConfig().update_from_dict(config).environment("CartPole-v0")
+    config = PPOConfig().update_from_dict(config).environment("CartPole-v1")
 
     # Train for n iterations with high LR.
     config.lr = 0.01

@@ -88,10 +88,10 @@ if __name__ == "__main__":
     ray.init(num_cpus=4)
     args = parser.parse_args()
 
-    # Example config switchin on rendering.
+    # Example config switching on rendering.
     config = (
         PPOConfig()
-        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
+        # Also try common gym envs like: "CartPole-v1" or "Pendulum-v1".
         .environment(
             MultiAgentCustomRenderedEnv if args.multi_agent else CustomRenderedEnv,
             env_config={"corridor_length": 10, "max_steps": 100},

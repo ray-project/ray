@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     config = (
         AlgorithmConfig()
-        .environment("CartPole-v0")
+        .environment("CartPole-v1")
         .rollouts(num_rollout_workers=1, create_env_on_local_worker=True)
         .training(
             model={

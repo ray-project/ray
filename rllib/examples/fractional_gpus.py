@@ -81,7 +81,7 @@ if __name__ == "__main__":
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
         .environment(
-            GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v0"
+            GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v1"
         )
         .framework(args.framework)
         .resources(

@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     config = (
         AlgorithmConfig()
-        .environment("CartPole-v0")
+        .environment("CartPole-v1")
         .framework("tf2")
         .rollouts(num_rollout_workers=0)
         .training(model={"custom_model": "eager_model"})

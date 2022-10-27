@@ -4,7 +4,7 @@ The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
 
 To generate experiences:
-$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v0
+$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v1
 
 To train on experiences with joint PG + IL loss:
 $ python custom_loss.py --input-files=/tmp/cartpole
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        .environment("CartPole-v0")
+        .environment("CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)
         .training(

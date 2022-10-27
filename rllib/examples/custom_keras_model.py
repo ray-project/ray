@@ -123,7 +123,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         .environment(
-            "BreakoutNoFrameskip-v4" if args.use_vision_network else "CartPole-v0"
+            "BreakoutNoFrameskip-v4" if args.use_vision_network else "CartPole-v1"
         )
         .framework("tf")
         .callbacks(MyCallbacks)
