@@ -13,8 +13,6 @@ from ray.train._internal.worker_group import WorkerGroup, Worker
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
-from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 from ray.util import PublicAPI
 
@@ -142,12 +140,16 @@ class _HorovodBackend(Backend):
                     from ray.air._internal.tensorflow_utils import (
                         contains_tensorflow_object,
                     )
+                    from ray.train.tensorflow.tensorflow_checkpoint import (
+                        TensorflowCheckpoint,
+                    )
 
                     if contains_tensorflow_object(checkpoint.to_dict()):
                         _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
                         checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
                 if "torch" in sys.modules:
                     from ray.air._internal.torch_utils import contains_tensor
+                    from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
                     if contains_tensor(checkpoint.to_dict()):
                         _warn_about_bad_checkpoint_type(TorchCheckpoint)
