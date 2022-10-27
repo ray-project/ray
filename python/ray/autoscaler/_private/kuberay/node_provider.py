@@ -1,6 +1,5 @@
 import json
 import logging
-import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -152,8 +151,8 @@ def _worker_group_max_replicas(
     """Extract the maxReplicas of a worker group.
 
     If maxReplicas is unset, return None, to be interpreted as "no constraint".
-    At time of writing, it should be impossible for maxReplicas to be unset, but it's better to
-    handle this anyway.
+    At time of writing, it should be impossible for maxReplicas to be unset, but it's
+    better to handle this anyway.
     """
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
@@ -287,7 +286,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # This is a race condition. We need a more permanent solution.
             # See https://github.com/ray-project/kuberay/issues/560.
             logger.warning(
-                "Autoscaler attempted to create more than maxReplicas pods of type {}".format(
+                "Autoscaler attempted to create more than maxReplicas pods of type {}"
+                .format(
                     group_name
                 )
             )
