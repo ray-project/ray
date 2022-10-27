@@ -51,8 +51,8 @@ class ESConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
@@ -94,15 +94,19 @@ class ESConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
-        self.num_workers = 10
+        self.num_rollout_workers = 10
         self.observation_filter = "MeanStdFilter"
-        # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
-        # Therefore, we must be careful not to use more than 1 env per eval worker
-        # (would break ARSPolicy's compute_single_action method) and to not do
-        # obs-filtering.
-        self.evaluation_config["num_envs_per_worker"] = 1
-        self.evaluation_config["observation_filter"] = "NoFilter"
 
+        # ES will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
+        # Therefore, we must be careful not to use more than 1 env per eval worker
+        # (would break ESPolicy's compute_single_action method) and to not do
+        # obs-filtering.
+        self.evaluation(
+            evaluation_config={
+                "num_envs_per_worker": 1,
+                "observation_filter": "NoFilter",
+            }
+        )
         # __sphinx_doc_end__
         # fmt: on
 

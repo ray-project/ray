@@ -64,6 +64,7 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
+DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 #ifdef __linux__
 DEFINE_string(plasma_directory,
               "/dev/shm",
@@ -118,6 +119,7 @@ int main(int argc, char *argv[]) {
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
+  const std::string session_name = FLAGS_session_name;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -261,7 +263,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::WorkerIdKey, ""},
             {ray::stats::JobIdKey, ""},
             {ray::stats::VersionKey, kRayVersion},
-            {ray::stats::NodeAddressKey, node_ip_address}};
+            {ray::stats::NodeAddressKey, node_ip_address},
+            {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
         // Initialize the node manager.

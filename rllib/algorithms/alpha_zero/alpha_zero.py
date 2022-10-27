@@ -70,11 +70,11 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -144,16 +144,17 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.framework_str = "torch"
         self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"
         # Extra configuration that disables exploration.
-        self.evaluation_config = {
+        self.evaluation(evaluation_config={
             "mcts_config": {
                 "argmax_tree_policy": True,
                 "add_dirichlet_noise": False,
             },
-        }
+        })
         # __sphinx_doc_end__
         # fmt: on
 

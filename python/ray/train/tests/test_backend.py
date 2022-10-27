@@ -6,7 +6,6 @@ import pytest
 import time
 
 import ray
-import ray.train as train
 from ray.air._internal.util import StartTraceback
 from ray.air import session
 from ray.cluster_utils import Cluster
@@ -164,7 +163,7 @@ def test_local_ranks(ray_start_2_cpus):
     e.start()
 
     def train_func():
-        return train.local_rank()
+        return session.get_local_rank()
 
     e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert set(e.finish_training()) == {0, 1}
@@ -228,21 +227,6 @@ def test_worker_failure(ray_start_2_cpus):
         with pytest.raises(TrainingWorkerError):
             e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
             e.finish_training()
-
-
-def test_mismatch_checkpoint_report(ray_start_2_cpus):
-    def train_func():
-        if (train.world_rank()) == 0:
-            train.save_checkpoint(epoch=0)
-        else:
-            train.report(iter=0)
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-    with pytest.raises(RuntimeError):
-        e.get_next_results()
 
 
 def test_tensorflow_start(ray_start_2_cpus):
