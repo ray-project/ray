@@ -11,6 +11,27 @@ from ray.rllib.utils.test_utils import check_train_results, framework_iterator, 
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
+class NonContextualBanditEnv(gym.Env):
+    def __init__(self, config: EnvContext):
+        best_arm_prob = config.get("best_arm_prob", 0.5)
+        self.action_space = Discrete(2)
+        self.observation_space = Box(0.0, 1.0, shape=(1,), dtype=np.float32)
+        self.seed(0)
+        self._arm_probs = {0: 0.1, 1: best_arm_prob}
+
+    def reset(self):
+        return [1.0]
+
+    def step(self, action):
+        reward = self.rng.binomial(1, self._arm_probs[action])
+        return ([1.0], reward, True, {})
+
+    def seed(self, seed=0):
+        self._seed = seed
+        if seed is not None:
+            self.rng = np.random.default_rng(self._seed)
+
+
 class TestBandits(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -76,28 +97,14 @@ class TestBandits(unittest.TestCase):
         std_threshold = 0.1
         best_arm_prob = 0.5
 
-        class NonContextualBanditEnv(gym.Env):
-            def __init__(self, config: EnvContext):
-                self.action_space = Discrete(2)
-                self.observation_space = Box(0.0, 1.0, shape=(1,), dtype=np.float32)
-                self.seed(0)
-                self._arm_probs = {0: 0.1, 1: best_arm_prob}
-
-            def reset(self):
-                return [1.0]
-
-            def step(self, action):
-                reward = self.rng.binomial(1, self._arm_probs[action])
-                return ([1.0], reward, True, {})
-
-            def seed(self, seed=0):
-                self._seed = seed
-                if seed is not None:
-                    self.rng = np.random.default_rng(self._seed)
-
         for config_cls in [BanditLinUCBConfig, BanditLinTSConfig]:
             config = (
-                config_cls().debugging(seed=0).environment(env=NonContextualBanditEnv)
+                config_cls()
+                .debugging(seed=0)
+                .environment(
+                    env=NonContextualBanditEnv,
+                    env_config={"best_arm_prob": best_arm_prob},
+                )
             )
             for _ in framework_iterator(
                 config, frameworks=("tf2", "torch"), with_eager_tracing=True
