@@ -38,6 +38,6 @@ class TorchRLModule(RLModule, nn.Module):
     @classmethod
     def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
         """Returns the multi-agent wrapper class for this module."""
-        from ray.rllib.core.rl_module.torch.torch_marl_module import TorchMARLModule
+        from ray.rllib.core.rl_module.torch.torch_marl_module import TorchMultiAgentRLModule
 
-        return TorchMARLModule
+        return TorchMultiAgentRLModule

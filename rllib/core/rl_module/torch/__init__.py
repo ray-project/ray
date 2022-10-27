@@ -1,4 +1,4 @@
 from .torch_rl_module import TorchRLModule
-from .torch_marl_module import TorchMARLModule
+from .torch_marl_module import TorchMultiAgentRLModule
 
-__all__ = ["TorchRLModule", "TorchMARLModule"]
+__all__ = ["TorchRLModule", "TorchMultiAgentRLModule"]
