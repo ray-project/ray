@@ -211,6 +211,22 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             return True
 
 
+Comparing the Function API and Class API
+----------------------------------------
+
+Here are a few key concepts and what they look like for the Function and Class API's.
+
+======================= =============================================== ==============================================
+Concept                 Function API                                    Class API
+======================= =============================================== ==============================================
+Training Iteration      Increments on each `session.report` call        Increments on each `Trainable.step` call
+Report  metrics         `session.report(metrics)`                       Return metrics from `Trainable.step`
+Saving a checkpoint     `session.report(..., checkpoint=checkpoint)`    `Trainable.save_checkpoint`
+Loading a checkpoint    `session.get_checkpoint()`                      `Trainable.load_checkpoint`
+Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
+======================= =============================================== ==============================================
+
+
 Advanced Resource Allocation
 ----------------------------
 
