@@ -101,7 +101,8 @@ class MemoryMonitor {
   /// \param stat_path file path to the memory.stat file.
   /// \param usage_path file path to the memory.current file
   /// \return the used memory for cgroup v2.
-  static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path, const char *usage_path);
+  static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                            const char *usage_path);
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();

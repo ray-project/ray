@@ -218,11 +218,11 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet) {
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
   stat_file << "random_key "
-           << "random_value" << std::endl;
+            << "random_value" << std::endl;
   stat_file << "total_inactive_file "
-           << "123" << std::endl;
+            << "123" << std::endl;
   stat_file << "another_random_key "
-           << "some_value" << std::endl;
+            << "some_value" << std::endl;
   stat_file.close();
 
   std::string curr_file_name = UniqueID::FromRandom().Hex();
@@ -231,7 +231,8 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet) {
   curr_file << "300" << std::endl;
   curr_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
 
   std::remove(stat_file_name.c_str());
   std::remove(curr_file_name.c_str());
@@ -244,9 +245,9 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet) {
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
   stat_file << "random_key "
-           << "random_value" << std::endl;
+            << "random_value" << std::endl;
   stat_file << "total_inactive_file "
-           << "123" << std::endl;
+            << "123" << std::endl;
   stat_file.close();
 
   std::string curr_file_name = UniqueID::FromRandom().Hex();
@@ -255,7 +256,8 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet) {
   curr_file << "300" << std::endl;
   curr_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
 
   std::remove(stat_file_name.c_str());
   std::remove(curr_file_name.c_str());
@@ -268,9 +270,9 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet) {
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
   stat_file << "random_key "
-           << "random_value" << std::endl;
+            << "random_value" << std::endl;
   stat_file << "total_inactive_file "
-           << "300" << std::endl;
+            << "300" << std::endl;
   stat_file.close();
 
   std::string curr_file_name = UniqueID::FromRandom().Hex();
@@ -279,7 +281,8 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet) {
   curr_file << "123" << std::endl;
   curr_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
 
   std::remove(stat_file_name.c_str());
   std::remove(curr_file_name.c_str());
@@ -293,9 +296,9 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull) {
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
   stat_file << "random_key "
-           << "random_value" << std::endl;
+            << "random_value" << std::endl;
   stat_file << "another_random_key "
-           << "123" << std::endl;
+            << "123" << std::endl;
   stat_file.close();
 
   std::string curr_file_name = UniqueID::FromRandom().Hex();
@@ -304,7 +307,8 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull) {
   curr_file << "300" << std::endl;
   curr_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
 
   std::remove(stat_file_name.c_str());
   std::remove(curr_file_name.c_str());
@@ -321,7 +325,8 @@ TEST_F(MemoryMonitorTest, TestCgroupV2NonexistentStatFileReturnskNull) {
   curr_file << "300" << std::endl;
   curr_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
   std::remove(curr_file_name.c_str());
 
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
@@ -334,12 +339,13 @@ TEST_F(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull) {
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
   stat_file << "random_key "
-           << "random_value" << std::endl;
+            << "random_value" << std::endl;
   stat_file << "total_inactive_file "
-           << "300" << std::endl;
+            << "300" << std::endl;
   stat_file.close();
 
-  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(), curr_file_name.c_str());
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
   std::remove(stat_file_name.c_str());
 
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);

@@ -147,7 +147,8 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   return used;
 }
 
-int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path, const char *usage_path) {
+int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                                  const char *usage_path) {
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
@@ -156,7 +157,7 @@ int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path, const c
   }
   std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
   if (!memusage_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) 
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << " cgroups v2 memory.current file not found: " << usage_path;
     return kNull;
   }
@@ -179,7 +180,8 @@ int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path, const c
   memusage_ifs >> current_usage_bytes;
   if (current_usage_bytes == kNull || inactive_file_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v2 memory usage. memory.current " << current_usage_bytes << " inactive " << inactive_file_bytes;
+        << "Failed to parse cgroup v2 memory usage. memory.current "
+        << current_usage_bytes << " inactive " << inactive_file_bytes;
     return kNull;
   }
   return current_usage_bytes - inactive_file_bytes;
@@ -196,8 +198,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   }
 
   int64_t used_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) && std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
-    used_bytes = GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
+  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) &&
+      std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
+    used_bytes =
+        GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
     used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
   }
