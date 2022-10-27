@@ -1551,8 +1551,7 @@ def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
 
     # The other order of nesting should work the same.
     trainable = tune.with_parameters(
-        tune.with_resources(train_fn, {"gpu": num_gpus}),
-        extra_param="extra"
+        tune.with_resources(train_fn, {"gpu": num_gpus}), extra_param="extra"
     )
     tuner = tune.Tuner(trainable)
     results = tuner.fit()
