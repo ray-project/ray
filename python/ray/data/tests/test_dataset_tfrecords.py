@@ -175,6 +175,44 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
     assert tfrecords == expected_records
 
 
+def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
+    """
+    Test reading back TFRecords written using datasets.
+    The dataset we read back should be the same that we wrote.
+    """
+
+    # The dataset we will write to a .tfrecords file.
+    ds = ray.data.from_items(
+        [
+            # Row one.
+            {
+                "int_item": 1,
+                "int_list": [2, 2, 3],
+                "float_item": 1.0,
+                "float_list": [2.0, 3.0, 4.0],
+                "bytes_item": b"abc",
+                "bytes_list": [b"abc", b"1234"],
+            },
+            # Row two.
+            {
+                "int_item": 2,
+                "int_list": [3, 3, 4],
+                "float_item": 2.0,
+                "float_list": [2.0, 2.0, 3.0],
+                "bytes_item": b"def",
+                "bytes_list": [b"def", b"1234"],
+            },
+        ]
+    )
+
+    # Write the TFRecords.
+    ds.write_tfrecords(tmp_path)
+
+    # Read the TFRecords.
+    readback_ds = ray.data.read_tfrecords(tmp_path)
+    assert ds.take() == readback_ds.take()
+
+
 if __name__ == "__main__":
     import sys
 
