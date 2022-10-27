@@ -1,11 +1,11 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {"RAY_memory_monitor_interval_ms": "0"}
 debian_packages:
   - curl
 
 python:
   pip_packages:
     - pytest
+    - modin==0.12.1
   conda_packages: []
 
 post_build_cmds:

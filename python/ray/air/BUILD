@@ -148,7 +148,7 @@ py_test(
 )
 
 py_test(
-    name = "tune_torch_regression_example.py",
+    name = "tune_torch_regression_example",
     size = "small",
     main = "examples/pytorch/tune_torch_regression_example.py",
     srcs = ["examples/pytorch/tune_torch_regression_example.py"],
@@ -269,5 +269,6 @@ py_library(
         "//python/ray/air:__subpackages__",
         "//python/ray/train:__pkg__",
         "//python/ray/train:__subpackages__",
+        "//release:__pkg__"
     ],
 )
