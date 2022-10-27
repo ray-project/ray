@@ -7,7 +7,7 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 torch, nn = try_import_torch()
 
 
-class TorchMARLModule(MultiAgentRLModule, nn.Module):
+class TorchMultiAgentRLModule(MultiAgentRLModule, nn.Module):
     def __init__(self, config: Mapping[str, Any]) -> None:
         MultiAgentRLModule.__init__(self, config)
         nn.Module.__init__(self)

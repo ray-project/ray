@@ -28,7 +28,7 @@ class TorchRLModule(RLModule, nn.Module):
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Makes the module distributed."""
         # TODO (Avnish): Implement this.
-        raise NotImplementedError
+        pass
 
     def is_distributed(self) -> bool:
         """Returns True if the module is distributed."""
@@ -38,6 +38,8 @@ class TorchRLModule(RLModule, nn.Module):
     @classmethod
     def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
         """Returns the multi-agent wrapper class for this module."""
-        from ray.rllib.core.rl_module.torch.torch_marl_module import TorchMARLModule
+        from ray.rllib.core.rl_module.torch.torch_marl_module import (
+            TorchMultiAgentRLModule,
+        )
 
-        return TorchMARLModule
+        return TorchMultiAgentRLModule

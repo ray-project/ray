@@ -9,7 +9,7 @@ from ray.rllib.core.examples.simple_ppo_rl_module import (
     get_shared_encoder_config,
     get_ppo_loss,
 )
-from ray.rllib.core.rl_module.torch import TorchMARLModule
+from ray.rllib.core.rl_module.torch import TorchMultiAgentRLModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check
@@ -99,7 +99,7 @@ class TestMARLModule(unittest.TestCase):
         marl_module = module.as_multi_agent()
 
         self.assertNotIsInstance(marl_module, SimplePPOModule)
-        self.assertIsInstance(marl_module, TorchMARLModule)
+        self.assertIsInstance(marl_module, TorchMultiAgentRLModule)
 
         self.assertEqual({DEFAULT_POLICY_ID}, set(marl_module.keys()))
 
