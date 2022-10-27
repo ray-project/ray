@@ -4,7 +4,7 @@ import torch
 import os
 
 import ray
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.batch_predictor import BatchPredictor

@@ -110,7 +110,8 @@ class SlateQConfig(AlgorithmConfig):
             "epsilon_timesteps": 250000,
             "final_epsilon": 0.01,
         }
-        self.num_workers = 0
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation_config = {"explore": False}
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025

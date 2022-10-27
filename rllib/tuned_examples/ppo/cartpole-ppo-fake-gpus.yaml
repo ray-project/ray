@@ -1,5 +1,5 @@
 cartpole-ppo-fake-gpus:
-    env: CartPole-v0
+    env: CartPole-v1
     run: PPO
     stop:
         episode_reward_mean: 150
