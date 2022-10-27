@@ -16,11 +16,12 @@ from ray.tune.experiment import Trial
 
 try:
     import wandb
-    from wandb.util import json_dumps_safer
+
+    wandb_imported = True
 except ImportError:
     logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
-    json_dumps_safer = None
+    wandb_imported = False
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
@@ -35,35 +36,42 @@ WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
 # It takes in a W&B run object and doesn't return anything.
 # Example: "your.module.wandb_process_run_info_hook".
 WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
-_VALID_TYPES = (
-    Number,
-    wandb.data_types.Audio,
-    wandb.data_types.BoundingBoxes2D,
-    wandb.data_types.Graph,
-    wandb.data_types.Histogram,
-    wandb.data_types.Html,
-    wandb.data_types.Image,
-    wandb.data_types.ImageMask,
-    wandb.data_types.Molecule,
-    wandb.data_types.Object3D,
-    wandb.data_types.Plotly,
-    wandb.data_types.Table,
-    wandb.data_types.Video,
-)
-_VALID_ITERABLE_TYPES = (
-    wandb.data_types.Audio,
-    wandb.data_types.BoundingBoxes2D,
-    wandb.data_types.Graph,
-    wandb.data_types.Histogram,
-    wandb.data_types.Html,
-    wandb.data_types.Image,
-    wandb.data_types.ImageMask,
-    wandb.data_types.Molecule,
-    wandb.data_types.Object3D,
-    wandb.data_types.Plotly,
-    wandb.data_types.Table,
-    wandb.data_types.Video,
-)
+if wandb_imported:
+    from wandb.util import json_dumps_safer
+
+    _VALID_TYPES = (
+        Number,
+        wandb.data_types.Audio,
+        wandb.data_types.BoundingBoxes2D,
+        wandb.data_types.Graph,
+        wandb.data_types.Histogram,
+        wandb.data_types.Html,
+        wandb.data_types.Image,
+        wandb.data_types.ImageMask,
+        wandb.data_types.Molecule,
+        wandb.data_types.Object3D,
+        wandb.data_types.Plotly,
+        wandb.data_types.Table,
+        wandb.data_types.Video,
+    )
+    _VALID_ITERABLE_TYPES = (
+        wandb.data_types.Audio,
+        wandb.data_types.BoundingBoxes2D,
+        wandb.data_types.Graph,
+        wandb.data_types.Histogram,
+        wandb.data_types.Html,
+        wandb.data_types.Image,
+        wandb.data_types.ImageMask,
+        wandb.data_types.Molecule,
+        wandb.data_types.Object3D,
+        wandb.data_types.Plotly,
+        wandb.data_types.Table,
+        wandb.data_types.Video,
+    )
+else:
+    json_dumps_safer = None
+    _VALID_TYPES = {}
+    _VALID_ITERABLE_TYPES = {}
 
 
 def _is_allowed_type(obj):
