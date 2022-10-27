@@ -129,7 +129,7 @@ class TestSAC(unittest.TestCase):
                 "random_dict_env",
                 "random_tuple_env",
                 # "MsPacmanNoFrameskip-v4",
-                "CartPole-v0",
+                "CartPole-v1",
             ]:
                 print("Env={}".format(env))
                 config.environment(env)
@@ -137,7 +137,7 @@ class TestSAC(unittest.TestCase):
                 # use the default model.
                 config.q_model_config["custom_model"] = (
                     "batch_norm{}".format("_torch" if fw == "torch" else "")
-                    if env == "CartPole-v0"
+                    if env == "CartPole-v1"
                     else None
                 )
                 algo = config.build()
@@ -150,7 +150,7 @@ class TestSAC(unittest.TestCase):
                 # Test, whether the replay buffer is saved along with
                 # a checkpoint (no point in doing it for all frameworks since
                 # this is framework agnostic).
-                if fw == "tf" and env == "CartPole-v0":
+                if fw == "tf" and env == "CartPole-v1":
                     checkpoint = algo.save()
                     new_algo = config.build()
                     new_algo.restore(checkpoint)

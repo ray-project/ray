@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     # You normally wouldn't want to manually create sample batches if a
     # simulator is available, but let's do it anyways for example purposes:
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
     # RLlib uses preprocessors to implement transforms such as one-hot encoding
     # and flattening of tuple and dict observations. For CartPole a no-op

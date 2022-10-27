@@ -150,7 +150,7 @@ if __name__ == "__main__":
             },
         ),
         param_space={
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
             "framework": args.framework,

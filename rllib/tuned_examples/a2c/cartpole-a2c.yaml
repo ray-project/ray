@@ -1,5 +1,5 @@
 cartpole-a2c:
-    env: CartPole-v0
+    env: CartPole-v1
     run: A2C
     stop:
         episode_reward_mean: 150

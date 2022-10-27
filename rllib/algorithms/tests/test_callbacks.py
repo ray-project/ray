@@ -77,7 +77,7 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks(self):
         for fw in framework_iterator(frameworks=("tf", "torch")):
             pg = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "num_workers": 0,
                     "rollout_fragment_length": 50,

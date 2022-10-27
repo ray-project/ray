@@ -4,7 +4,7 @@
 # Create a PPO algorithm object using a config object ..
 from ray.rllib.algorithms.ppo import PPOConfig
 
-my_ppo_config = PPOConfig().environment("CartPole-v0")
+my_ppo_config = PPOConfig().environment("CartPole-v1")
 my_ppo = my_ppo_config.build()
 
 # .. train one iteration ..

@@ -56,7 +56,7 @@ if __name__ == "__main__":
     )
 
     config = {
-        "env": "Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
+        "env": "Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v1",
         "model": {
             "custom_model": "bn_model",
         },

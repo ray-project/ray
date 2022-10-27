@@ -21,7 +21,7 @@ def _assert_array_equal(eq, a1, a2, margin=None):
 
 class TestGymCheckEnv(unittest.TestCase):
     def test_box_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.observation_space)
         sp = gym_space_from_dict(d)
 
@@ -36,7 +36,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.dtype, obs_space.dtype)
 
     def test_discrete_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.action_space)
         sp = gym_space_from_dict(d)
 
@@ -52,7 +52,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(md_space.dtype, sp.dtype)
 
     def test_tuple_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Tuple(spaces=[env.observation_space, env.action_space])
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)
@@ -77,7 +77,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.spaces[1].n, space.spaces[1].n)
 
     def test_dict_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Dict(
             spaces={"obs": env.observation_space, "action": env.action_space}
         )

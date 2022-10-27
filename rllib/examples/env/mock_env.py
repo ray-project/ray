@@ -134,7 +134,7 @@ class MockVectorEnv(VectorEnv):
     """
 
     def __init__(self, episode_length, mocked_num_envs):
-        self.env = gym.make("CartPole-v0")
+        self.env = gym.make("CartPole-v1")
         super().__init__(
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,

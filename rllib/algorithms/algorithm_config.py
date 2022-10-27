@@ -1199,7 +1199,7 @@ class AlgorithmConfig:
           under input and input_config keys. E.g.
           input: sample
           input_config {
-            env: Cartpole-v0
+            env: CartPole-v1
           }
           or:
           input: json_reader

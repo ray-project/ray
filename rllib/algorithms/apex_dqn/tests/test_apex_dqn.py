@@ -23,7 +23,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = (
             apex_dqn.ApexDQNConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
@@ -49,7 +49,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
@@ -89,7 +89,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_lr_schedule(self):
         config = (
             apex_dqn.ApexDQNConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,

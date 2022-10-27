@@ -64,7 +64,7 @@ class TestRayClient(unittest.TestCase):
             config = ppo.DEFAULT_CONFIG.copy()
             # Special flag signalling `experiment` how many iters to do.
             config["train-iterations"] = 2
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
 
             from ray.rllib.examples.custom_experiment import experiment
 

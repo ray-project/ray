@@ -94,7 +94,7 @@ class TestExplorations(unittest.TestCase):
     def test_a2c(self):
         do_test_explorations(
             a2c.A2C,
-            "CartPole-v0",
+            "CartPole-v1",
             a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
@@ -103,7 +103,7 @@ class TestExplorations(unittest.TestCase):
     def test_a3c(self):
         do_test_explorations(
             a3c.A3C,
-            "CartPole-v0",
+            "CartPole-v1",
             a3c.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
@@ -125,7 +125,7 @@ class TestExplorations(unittest.TestCase):
     def test_simple_dqn(self):
         do_test_explorations(
             simple_q.SimpleQ,
-            "CartPole-v0",
+            "CartPole-v1",
             simple_q.SimpleQConfig().to_dict(),
             np.array([0.0, 0.1, 0.0, 0.0]),
         )
@@ -133,7 +133,7 @@ class TestExplorations(unittest.TestCase):
     def test_dqn(self):
         do_test_explorations(
             dqn.DQN,
-            "CartPole-v0",
+            "CartPole-v1",
             dqn.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
         )
@@ -141,7 +141,7 @@ class TestExplorations(unittest.TestCase):
     def test_impala(self):
         do_test_explorations(
             impala.Impala,
-            "CartPole-v0",
+            "CartPole-v1",
             dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0),
@@ -150,7 +150,7 @@ class TestExplorations(unittest.TestCase):
     def test_pg(self):
         do_test_explorations(
             pg.PG,
-            "CartPole-v0",
+            "CartPole-v1",
             pg.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
@@ -159,7 +159,7 @@ class TestExplorations(unittest.TestCase):
     def test_ppo_discr(self):
         do_test_explorations(
             ppo.PPO,
-            "CartPole-v0",
+            "CartPole-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0),

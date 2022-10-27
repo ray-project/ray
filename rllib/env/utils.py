@@ -17,7 +17,7 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
         env_context: The env context object to configure the env.
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
-        env_descriptor: The env descriptor, e.g. CartPole-v0,
+        env_descriptor: The env descriptor, e.g. CartPole-v1,
             MsPacmanNoFrameskip-v4, VizdoomBasic-v0, or
             CartPoleContinuousBulletEnv-v0.
 

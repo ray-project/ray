@@ -208,7 +208,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -267,7 +267,7 @@ class TestPPO(unittest.TestCase):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
