@@ -85,124 +85,178 @@ def jsonify_asdict(o) -> str:
 # A list of gauges to record and export metrics.
 METRICS_GAUGES = {
     "node_cpu_utilization": Gauge(
-        "node_cpu_utilization", "Total CPU usage on a ray node", "percentage", ["ip"]
+        "node_cpu_utilization",
+        "Total CPU usage on a ray node",
+        "percentage",
+        ["ip", "SessionName"],
     ),
     "node_cpu_count": Gauge(
-        "node_cpu_count", "Total CPUs available on a ray node", "cores", ["ip"]
+        "node_cpu_count",
+        "Total CPUs available on a ray node",
+        "cores",
+        ["ip", "SessionName"],
     ),
     "node_mem_used": Gauge(
-        "node_mem_used", "Memory usage on a ray node", "bytes", ["ip"]
+        "node_mem_used", "Memory usage on a ray node", "bytes", ["ip", "SessionName"]
     ),
     "node_mem_available": Gauge(
-        "node_mem_available", "Memory available on a ray node", "bytes", ["ip"]
+        "node_mem_available",
+        "Memory available on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_mem_total": Gauge(
-        "node_mem_total", "Total memory on a ray node", "bytes", ["ip"]
+        "node_mem_total", "Total memory on a ray node", "bytes", ["ip", "SessionName"]
     ),
     "node_gpus_available": Gauge(
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip"],
+        ["ip", "SessionName"],
     ),
     "node_gpus_utilization": Gauge(
-        "node_gpus_utilization", "Total GPUs usage on a ray node", "percentage", ["ip"]
+        "node_gpus_utilization",
+        "Total GPUs usage on a ray node",
+        "percentage",
+        ["ip", "SessionName"],
     ),
     "node_gram_used": Gauge(
-        "node_gram_used", "Total GPU RAM usage on a ray node", "bytes", ["ip"]
+        "node_gram_used",
+        "Total GPU RAM usage on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_gram_available": Gauge(
-        "node_gram_available", "Total GPU RAM available on a ray node", "bytes", ["ip"]
+        "node_gram_available",
+        "Total GPU RAM available on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_disk_io_read": Gauge(
-        "node_disk_io_read", "Total read from disk", "bytes", ["ip"]
+        "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
     ),
     "node_disk_io_write": Gauge(
-        "node_disk_io_write", "Total written to disk", "bytes", ["ip"]
+        "node_disk_io_write", "Total written to disk", "bytes", ["ip", "SessionName"]
     ),
     "node_disk_io_read_count": Gauge(
-        "node_disk_io_read_count", "Total read ops from disk", "io", ["ip"]
+        "node_disk_io_read_count",
+        "Total read ops from disk",
+        "io",
+        ["ip", "SessionName"],
     ),
     "node_disk_io_write_count": Gauge(
-        "node_disk_io_write_count", "Total write ops to disk", "io", ["ip"]
+        "node_disk_io_write_count",
+        "Total write ops to disk",
+        "io",
+        ["ip", "SessionName"],
     ),
     "node_disk_io_read_speed": Gauge(
-        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip"]
+        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip", "SessionName"]
     ),
     "node_disk_io_write_speed": Gauge(
-        "node_disk_io_write_speed", "Disk write speed", "bytes/sec", ["ip"]
+        "node_disk_io_write_speed",
+        "Disk write speed",
+        "bytes/sec",
+        ["ip", "SessionName"],
     ),
     "node_disk_read_iops": Gauge(
-        "node_disk_read_iops", "Disk read iops", "iops", ["ip"]
+        "node_disk_read_iops", "Disk read iops", "iops", ["ip", "SessionName"]
     ),
     "node_disk_write_iops": Gauge(
-        "node_disk_write_iops", "Disk write iops", "iops", ["ip"]
+        "node_disk_write_iops", "Disk write iops", "iops", ["ip", "SessionName"]
     ),
     "node_disk_usage": Gauge(
-        "node_disk_usage", "Total disk usage (bytes) on a ray node", "bytes", ["ip"]
+        "node_disk_usage",
+        "Total disk usage (bytes) on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_disk_free": Gauge(
-        "node_disk_free", "Total disk free (bytes) on a ray node", "bytes", ["ip"]
+        "node_disk_free",
+        "Total disk free (bytes) on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node",
         "percentage",
-        ["ip"],
+        ["ip", "SessionName"],
     ),
     "node_network_sent": Gauge(
-        "node_network_sent", "Total network sent", "bytes", ["ip"]
+        "node_network_sent", "Total network sent", "bytes", ["ip", "SessionName"]
     ),
     "node_network_received": Gauge(
-        "node_network_received", "Total network received", "bytes", ["ip"]
+        "node_network_received",
+        "Total network received",
+        "bytes",
+        ["ip", "SessionName"],
     ),
     "node_network_send_speed": Gauge(
-        "node_network_send_speed", "Network send speed", "bytes/sec", ["ip"]
+        "node_network_send_speed",
+        "Network send speed",
+        "bytes/sec",
+        ["ip", "SessionName"],
     ),
     "node_network_receive_speed": Gauge(
-        "node_network_receive_speed", "Network receive speed", "bytes/sec", ["ip"]
+        "node_network_receive_speed",
+        "Network receive speed",
+        "bytes/sec",
+        ["ip", "SessionName"],
     ),
     "raylet_cpu": Gauge(
-        "raylet_cpu", "CPU usage of the raylet on a node.", "percentage", ["ip", "pid"]
+        "raylet_cpu",
+        "CPU usage of the raylet on a node.",
+        "percentage",
+        ["ip", "pid", "SessionName"],
     ),
     "raylet_mem": Gauge(
         "raylet_mem",
         "RSS usage of the Raylet on the node.",
         "MB",
-        ["ip", "pid"],
+        ["ip", "pid", "SessionName"],
     ),
     "raylet_mem_uss": Gauge(
         "raylet_mem_uss",
         "USS usage of the Raylet on the node. Only available on Linux",
         "MB",
-        ["ip", "pid"],
+        ["ip", "pid", "SessionName"],
     ),
     "workers_cpu": Gauge(
         "workers_cpu",
         "Total CPU usage of all workers on a node.",
         "percentage",
-        ["ip"],
+        ["ip", "SessionName"],
     ),
     "workers_mem": Gauge(
         "workers_mem",
         "RSS usage of all workers on the node.",
         "MB",
-        ["ip"],
+        ["ip", "SessionName"],
     ),
     "workers_mem_uss": Gauge(
         "workers_mem_uss",
         "USS usage of all workers on the node. Only available on Linux",
         "MB",
-        ["ip"],
+        ["ip", "SessionName"],
     ),
     "cluster_active_nodes": Gauge(
-        "cluster_active_nodes", "Active nodes on the cluster", "count", ["node_type"]
+        "cluster_active_nodes",
+        "Active nodes on the cluster",
+        "count",
+        ["node_type", "SessionName"],
     ),
     "cluster_failed_nodes": Gauge(
-        "cluster_failed_nodes", "Failed nodes on the cluster", "count", ["node_type"]
+        "cluster_failed_nodes",
+        "Failed nodes on the cluster",
+        "count",
+        ["node_type", "SessionName"],
     ),
     "cluster_pending_nodes": Gauge(
-        "cluster_pending_nodes", "Pending nodes on the cluster", "count", ["node_type"]
+        "cluster_pending_nodes",
+        "Pending nodes on the cluster",
+        "count",
+        ["node_type", "SessionName"],
     ),
 }
 
@@ -248,6 +302,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
                 stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -833,7 +888,10 @@ class ReporterAgent(
                         else {}
                     )
                     records_reported = self._record_stats(stats, cluster_stats)
-                    self._metrics_agent.record_and_export(records_reported)
+                    self._metrics_agent.record_and_export(
+                        records_reported,
+                        global_tags={"SessionName": self._session_name},
+                    )
                     self._metrics_agent.clean_all_dead_worker_metrics()
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 

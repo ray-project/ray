@@ -102,7 +102,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._s_max_1 = int(np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
         # bracket max trials
-        self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta ** s))
+        self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta**s))
         # bracket initial iterations
         self._get_r0 = lambda s: int((max_t * self._eta ** (-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
