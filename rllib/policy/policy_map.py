@@ -61,9 +61,8 @@ class PolicyMap(dict):
         super().__init__()
 
         if any(
-            i is not None for i in [
-                policy_config, worker_index, num_workers, session_creator, seed
-            ]
+            i is not None
+            for i in [policy_config, worker_index, num_workers, session_creator, seed]
         ):
             deprecation_warning(
                 old="PolicyMap([deprecated args]...)",

@@ -15,7 +15,6 @@ TIME_SWAPS: Optional[float] = None
 
 
 class TestPolicyMap(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -38,7 +37,7 @@ class TestPolicyMap(unittest.TestCase):
 
         # Create and add some TF2 policies.
         for i in range(num_policies):
-            config.training(lr=(i+1) * 0.00001)
+            config.training(lr=(i + 1) * 0.00001)
             policy = cls(
                 observation_space=obs_space,
                 action_space=act_space,
@@ -68,7 +67,10 @@ class TestPolicyMap(unittest.TestCase):
             self.assertTrue(len(policy_map.deque) == 2)
             self.assertTrue(len(policy_map.cache) == 2)
             self.assertTrue(pid in policy_map.cache)
-            check(pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"], logits[pid])
+            check(
+                pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"],
+                logits[pid],
+            )
 
         global TIME_NO_SWAPS
         global TIME_SWAPS
@@ -91,7 +93,7 @@ class TestPolicyMap(unittest.TestCase):
 
         # Create and add some TF2 policies.
         for i in range(num_policies):
-            config.training(lr=(i+1) * 0.00001)
+            config.training(lr=(i + 1) * 0.00001)
             policy = cls(
                 observation_space=obs_space,
                 action_space=act_space,
@@ -121,7 +123,10 @@ class TestPolicyMap(unittest.TestCase):
             self.assertTrue(len(policy_map.deque) == 2)
             self.assertTrue(len(policy_map.cache) == 2)
             self.assertTrue(pid in policy_map.cache)
-            check(pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"], logits[pid])
+            check(
+                pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"],
+                logits[pid],
+            )
 
         global TIME_NO_SWAPS
         global TIME_SWAPS

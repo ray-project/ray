@@ -656,7 +656,7 @@ class RolloutWorker(ParallelIteratorWorker):
             default_policy_class=self.default_policy_class,
         )
 
-        self.policy_map: PolicyMap = None
+        self.policy_map: Optional[PolicyMap] = None
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
@@ -1905,7 +1905,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            capacity=ma_config.get("policy_map_capacity"),
+            capacity=config.policy_map_capacity,
+            policies_swappable=config.policies_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}

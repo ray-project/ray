@@ -175,6 +175,7 @@ class AlgorithmConfig:
             lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
         )
         self.policies_to_train = None
+        self.policies_swappable = False
         self.observation_fn = None
         self.count_steps_by = "env_steps"
 
@@ -378,6 +379,7 @@ class AlgorithmConfig:
                         "policy_map_capacity",
                         "policy_mapping_fn",
                         "policies_to_train",
+                        "policies_swappable",
                         "observation_fn",
                         "count_steps_by",
                     ]
@@ -1294,13 +1296,14 @@ class AlgorithmConfig:
         self,
         *,
         policies=None,
-        policy_map_capacity=None,
-        policy_mapping_fn=None,
-        policies_to_train=None,
-        observation_fn=None,
-        count_steps_by=None,
-        replay_mode=DEPRECATED_VALUE,
+        policy_map_capacity: Optional[int] = None,
+        policy_mapping_fn: Optional[Callable] = None,
+        policies_to_train: Optional[Sequence] = None,
+        policies_swappable: Optional[bool] = None,
+        observation_fn: Optional[Callable] = None,
+        count_steps_by: Optional[str] = None,
         # Deprecated args:
+        replay_mode=DEPRECATED_VALUE,
         # Now done via Ray object store, which has its own cloud-supported
         # spillover mechanism.
         policy_map_cache=DEPRECATED_VALUE,
@@ -1329,6 +1332,10 @@ class AlgorithmConfig:
                 or not, given the particular batch). This allows you to have a policy
                 trained only on certain data (e.g. when playing against a certain
                 opponent).
+            policies_swappable: Whether all policies in the multi-agent policy map
+                (`self.policies`) can be "swapped out" by a simple
+                `s = A.get_state(); B.set_state(s)`, where `A` and `B` are policy
+                instances in the map.
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
@@ -1434,6 +1441,9 @@ class AlgorithmConfig:
                             f"`config.multi_agent(policies=..)`!"
                         )
             self.policies_to_train = policies_to_train
+
+        if policies_swappable is not None:
+            self.policies_swappable = policies_swappable
 
         # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
         # PolicyID found in policies dict.
