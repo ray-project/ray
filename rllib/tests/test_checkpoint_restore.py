@@ -167,6 +167,22 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
             alg2.stop()
 
 
+class TestCheckpointRestorePG(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_a3c_checkpoint_restore(self):
+        ckpt_restore_test("A3C")
+
+    def test_ppo_checkpoint_restore(self):
+        ckpt_restore_test("PPO", object_store=True)
+
+
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
