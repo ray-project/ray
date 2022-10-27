@@ -147,7 +147,7 @@ the trials to explore the new hyperparameter configuration starting from a parti
 trained model (e.g. by copying model weights from one of the top-performing trials).
 
 Take a look at :doc:`/tune/examples/pbt_visualization/pbt_visualization` to get an idea
-of how PBT operates. :doc:`/tune/tutorials/tune-advanced-tutorial` gives more examples
+of how PBT operates. :doc:`/tune/examples/pbt_guide` gives more examples
 of PBT usage.
 
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining

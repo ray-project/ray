@@ -1,18 +1,19 @@
 import argparse
+import os
 
-import numpy as np
-from ray.air import session
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet18
 from filelock import FileLock
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
+from torchvision.models import resnet18
 
 import ray
 import ray.train as train
 from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
@@ -58,17 +59,44 @@ def validate_epoch(dataloader, model, loss_fn):
     return {"loss": test_loss}
 
 
+def update_optimizer_config(optimizer, config):
+    for param_group in optimizer.param_groups:
+        for param, val in config.items():
+            param_group[param] = val
+
+
 def train_func(config):
-    epochs = config.pop("epochs", 3)
+    epochs = config.get("epochs", 3)
+
     model = resnet18()
     model = train.torch.prepare_model(model)
 
     # Create optimizer.
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.9),
-    )
+    optimizer_config = {
+        "lr": config.get("lr"),
+        "momentum": config.get("momentum"),
+    }
+    optimizer = torch.optim.SGD(model.parameters(), **optimizer_config)
+
+    starting_epoch = 0
+    if session.get_checkpoint():
+        checkpoint_dict = session.get_checkpoint().to_dict()
+
+        # Load in model
+        model_state = checkpoint_dict["model_state_dict"]
+        model.load_state_dict(model_state)
+
+        # Load in optimizer
+        optimizer_state = checkpoint_dict["optimizer_state_dict"]
+        optimizer.load_state_dict(optimizer_state)
+
+        # Optimizer configs (`lr`, `momentum`) are being mutated by PBT and passed in
+        # through config, so we need to update the optimizer loaded from the checkpoint
+        update_optimizer_config(optimizer, optimizer_config)
+
+        # The current epoch increments the loaded epoch by 1
+        checkpoint_epoch = checkpoint_dict["epoch"]
+        starting_epoch = checkpoint_epoch + 1
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -87,12 +115,14 @@ def train_func(config):
         ]
     )
 
-    with FileLock(".ray.lock"):
+    data_dir = config.get("data_dir", os.path.expanduser("~/data"))
+    os.makedirs(data_dir, exist_ok=True)
+    with FileLock(os.path.join(data_dir, ".ray.lock")):
         train_dataset = CIFAR10(
-            root="~/data", train=True, download=True, transform=transform_train
+            root=data_dir, train=True, download=True, transform=transform_train
         )
         validation_dataset = CIFAR10(
-            root="~/data", train=False, download=False, transform=transform_test
+            root=data_dir, train=False, download=False, transform=transform_test
         )
 
     if config.get("test_mode"):
@@ -110,22 +140,24 @@ def train_func(config):
     # Create loss.
     criterion = nn.CrossEntropyLoss()
 
-    results = []
-    for _ in range(epochs):
+    for epoch in range(starting_epoch, epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        session.report(result)
-        results.append(result)
+        checkpoint = Checkpoint.from_dict(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            }
+        )
 
-    # return required for backwards compatibility with the old API
-    # TODO(team-ml) clean up and remove return
-    return results
+        session.report(result, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address", required=False, type=str, help="the address to use for Redis"
+        "--address", required=False, type=str, help="The address to use for Redis."
     )
     parser.add_argument(
         "--num-workers",
@@ -144,7 +176,17 @@ if __name__ == "__main__":
         help="Finish quickly for testing.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training."
+    )
+    parser.add_argument(
+        "--data-dir",
+        required=False,
+        type=str,
+        default="~/data",
+        help="Root directory for storing downloaded dataset.",
+    )
+    parser.add_argument(
+        "--synch", action="store_true", default=False, help="Use synchronous PBT."
     )
 
     args, _ = parser.parse_known_args()
@@ -165,29 +207,31 @@ if __name__ == "__main__":
         hyperparam_mutations={
             "train_loop_config": {
                 # distribution for resampling
-                "lr": lambda: np.random.uniform(0.001, 1),
+                "lr": tune.loguniform(0.001, 0.1),
                 # allow perturbations within this set of categorical values
                 "momentum": [0.8, 0.9, 0.99],
             }
         },
+        synch=args.synch,
     )
 
     tuner = Tuner(
         trainer,
         param_space={
             "train_loop_config": {
-                "lr": tune.choice([0.001, 0.01, 0.1]),
+                "lr": tune.grid_search([0.001, 0.01, 0.05, 0.1]),
                 "momentum": 0.8,
                 "batch_size": 128 * args.num_workers,
-                "epochs": args.num_epochs,
                 "test_mode": args.smoke_test,  # whether to to subset the data
+                "data_dir": args.data_dir,
+                "epochs": args.num_epochs,
             }
         },
         tune_config=TuneConfig(
-            num_samples=4, metric="loss", mode="min", scheduler=pbt_scheduler
+            num_samples=1, metric="loss", mode="min", scheduler=pbt_scheduler
         ),
         run_config=RunConfig(
-            stop={"training_iteration": 2 if args.smoke_test else 100},
+            stop={"training_iteration": 3 if args.smoke_test else args.num_epochs},
             failure_config=FailureConfig(max_failures=3),  # used for fault tolerance
         ),
     )

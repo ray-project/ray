@@ -65,7 +65,7 @@ def test(model, data_loader, device=None):
     return correct / total
 
 
-def get_data_loaders():
+def get_data_loaders(batch_size=64):
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
@@ -78,14 +78,14 @@ def get_data_loaders():
             datasets.MNIST(
                 "~/data", train=True, download=True, transform=mnist_transforms
             ),
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=True,
         )
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
                 "~/data", train=False, download=True, transform=mnist_transforms
             ),
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=True,
         )
     return train_loader, test_loader
