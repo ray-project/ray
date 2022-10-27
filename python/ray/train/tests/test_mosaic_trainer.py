@@ -91,7 +91,7 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     assert result["epoch"][result.index[-1]] == 1
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 3
+    assert result["_training_iteration"][result.index[-1]] == 2
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])
@@ -200,6 +200,37 @@ def test_loggers(ray_start_4_cpus):
     assert result.metrics["dummy_callback"] == "test"
 
 
+def test_log_count(ray_start_4_cpus):
+    from ray.train.mosaic import MosaicTrainer
+
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": False,
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert len(result.metrics_dataframe) == 1
+
+    trainer_init_config["max_duration"] = "1ba"
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert len(result.metrics_dataframe) == 1
+
+
 def test_metrics_key(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
@@ -251,7 +282,7 @@ def test_monitor_callbacks(ray_start_4_cpus):
 
     result = trainer.fit()
 
-    assert len(result.metrics_dataframe) == 2
+    assert len(result.metrics_dataframe) == 1
 
     metrics_columns = result.metrics_dataframe.columns
     columns_to_check = [
