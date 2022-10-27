@@ -72,6 +72,7 @@ class A2CConfig(A3CConfig):
         self.microbatch_size = None
 
         # Override some of A3CConfig's default values with A2C-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10

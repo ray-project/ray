@@ -78,6 +78,7 @@ class A3CConfig(AlgorithmConfig):
         self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.

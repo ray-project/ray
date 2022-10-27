@@ -124,7 +124,7 @@ class R2D2Config(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.batch_mode = "complete_episodes"
 
         # fmt: on

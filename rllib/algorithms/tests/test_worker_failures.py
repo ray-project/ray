@@ -169,7 +169,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
-        config.num_workers = 2
+        config.num_rollout_workers = 2
         config.ignore_worker_failures = True
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
@@ -200,7 +200,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_fatal(self, config, fail_eval=False):
         # Test raises real error when out of workers.
-        config.num_workers = 2
+        config.num_rollout_workers = 2
         config.ignore_worker_failures = False
         config.env = "fault_env"
         # Make both worker idx=1 and 2 fail.
@@ -224,7 +224,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_fatal_but_recreate(self, config):
         # Test raises real error when out of workers.
-        config.num_workers = 1
+        config.num_rollout_workers = 1
         config.evaluation_num_workers = 1
         config.evaluation_interval = 1
         config.env = "fault_env"

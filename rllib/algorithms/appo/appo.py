@@ -86,10 +86,10 @@ class APPOConfig(ImpalaConfig):
         self.kl_target = 0.01
 
         # Override some of ImpalaConfig's default values with APPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
-        self.num_workers = 2
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1

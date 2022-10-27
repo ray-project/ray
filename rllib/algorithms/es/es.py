@@ -94,7 +94,7 @@ class ESConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
-        self.num_workers = 10
+        self.num_rollout_workers = 10
         self.observation_filter = "MeanStdFilter"
 
         # ES will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).

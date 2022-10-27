@@ -57,7 +57,7 @@ class CRRConfig(AlgorithmConfig):
         # Only PyTorch supported thus far. Make this the default framework.
         self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
-        self.num_workers = 4
+        self.num_rollout_workers = 4
         self.offline_sampling = True
         self.min_time_s_per_iteration = 10.0
 

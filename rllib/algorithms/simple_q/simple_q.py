@@ -126,7 +126,6 @@ class SimpleQConfig(AlgorithmConfig):
 
         # Overrides of AlgorithmConfig defaults
         # `rollouts()`
-        self.num_workers = 0
         self.rollout_fragment_length = 4
 
         # `training()`

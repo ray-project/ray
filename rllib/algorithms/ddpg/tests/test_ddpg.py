@@ -136,7 +136,7 @@ class TestDDPG(unittest.TestCase):
 
         # Run locally.
         config.seed = 42
-        config.num_workers = 0
+        config.num_rollout_workers = 0
         config.twin_q = True
         config.use_huber = True
         config.huber_threshold = 1.0

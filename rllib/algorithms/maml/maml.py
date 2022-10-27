@@ -79,6 +79,7 @@ class MAMLConfig(AlgorithmConfig):
         self.use_meta_env = True
 
         # Override some of AlgorithmConfig's default values with MAML-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.create_env_on_local_worker = True
         self.lr = 1e-3

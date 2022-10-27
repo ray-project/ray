@@ -92,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100

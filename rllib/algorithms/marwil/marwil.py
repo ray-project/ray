@@ -94,7 +94,6 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
-        self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
 

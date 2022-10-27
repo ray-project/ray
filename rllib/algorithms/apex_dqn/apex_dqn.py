@@ -179,7 +179,7 @@ class ApexDQNConfig(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 32
+        self.num_rollout_workers = 32
         self.rollout_fragment_length = 50
         self.exploration_config = {
             "type": "PerWorkerEpsilonGreedy",
