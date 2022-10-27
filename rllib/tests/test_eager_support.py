@@ -22,7 +22,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         if cont:
             config["env"] = "Pendulum-v1"
         else:
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
 
         a = get_algorithm_class(alg)
         if test_eager:
