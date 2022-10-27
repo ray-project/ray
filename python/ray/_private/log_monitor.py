@@ -508,7 +508,7 @@ if __name__ == "__main__":
         try:
             os.kill(pid, 0)
             return True
-        except OSError:
+        except OSError, ProcessLookupError:
             # If OSError is raised, the process is not alive.
             return False
 
