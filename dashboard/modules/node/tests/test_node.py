@@ -104,6 +104,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             detail = detail["data"]["detail"]
             assert detail["hostname"] == hostname
             assert detail["raylet"]["state"] == "ALIVE"
+            assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
             assert len(detail["actors"]) == 2, detail["actors"]
@@ -208,12 +209,9 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         assert len(node.get("actors")) == 2
         # Workers information should be in the detailed payload
         assert "workers" in node
-        assert "logCount" in node
         # Two lines printed by ActorWithObjs
-        assert node["logCount"] >= 2
         print(node["workers"])
         assert len(node["workers"]) == 2
-        assert node["workers"][0]["logCount"] == 1
 
     while True:
         time.sleep(1)

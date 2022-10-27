@@ -44,10 +44,17 @@ extern const TagKeyType WorkerIdKey;
 
 extern const TagKeyType JobIdKey;
 
+extern const TagKeyType SessionNameKey;
+
 extern const TagKeyType NameKey;
 
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
-constexpr char kObjectLocInMemory[] = "IN_MEMORY";
+constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
+constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
 constexpr char kObjectLocSpilled[] = "SPILLED";
-constexpr char kObjectLocUnsealed[] = "UNSEALED";
+
+// Object store memory sealed/unsealed tag
+extern const TagKeyType ObjectStateKey;
+constexpr char kObjectSealed[] = "SEALED";
+constexpr char kObjectUnsealed[] = "UNSEALED";

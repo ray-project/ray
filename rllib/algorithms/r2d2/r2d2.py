@@ -124,7 +124,7 @@ class R2D2Config(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.batch_mode = "complete_episodes"
 
         # fmt: on
@@ -208,7 +208,10 @@ class R2D2(DQN):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
+        if (
+            not config.get("in_evaluation")
+            and config["replay_buffer_config"].get("replay_sequence_length", -1) != -1
+        ):
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"

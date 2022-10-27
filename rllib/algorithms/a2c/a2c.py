@@ -35,11 +35,12 @@ class A2CConfig(A3CConfig):
         >>> from ray import tune
         >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=2)
+        ...     .rollouts(num_rollout_workers=2)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> import ray.air as air
@@ -71,6 +72,7 @@ class A2CConfig(A3CConfig):
         self.microbatch_size = None
 
         # Override some of A3CConfig's default values with A2C-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10

@@ -146,7 +146,6 @@ else:
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -301,7 +300,7 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0, <= 8.0.4",
+        "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.32.0; python_version < '3.10'",
