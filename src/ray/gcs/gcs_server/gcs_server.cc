@@ -702,7 +702,7 @@ void GcsServer::RecordMetrics() const {
 void GcsServer::DumpDebugStateToFile() const {
   std::fstream fs;
   fs.open(config_.log_dir + "/debug_state_gcs.txt",
-          std::fstream::out | std::fstream::trunc);
+          std::fstream::out | std::fstream::app);
   fs << GetDebugState() << "\n\n";
   fs << main_service_.stats().StatsString();
   fs.close();
