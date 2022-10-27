@@ -2288,7 +2288,7 @@ class Dataset(Generic[T]):
         To control the number of files, use ``.repartition()``.
 
         Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
+        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
         for the dataset.
 
         Examples:
@@ -2302,7 +2302,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where csv
+            path: The path to the destination root directory, where tfrecords
                 files will be written to.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path
