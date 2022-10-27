@@ -365,6 +365,8 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        eval_call = {}
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -391,8 +393,8 @@ class AlgorithmConfig:
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
-            elif key == "evaluation_config":
-                self.evaluation(evaluation_config=value)
+            elif key.startswith("evaluation_"):
+                eval_call[key] = value
             elif key == "exploration_config":
                 self.exploration(exploration_config=value)
             elif key == "model":
@@ -407,6 +409,8 @@ class AlgorithmConfig:
                         f"`config_dict`! Property {key} not supported."
                     )
                 setattr(self, key, value)
+
+        self.evaluation(**eval_call)
 
         return self
 

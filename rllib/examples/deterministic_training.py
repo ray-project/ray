@@ -6,8 +6,6 @@ import argparse
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
@@ -15,6 +13,7 @@ from ray.rllib.examples.env.env_using_remote_actor import (
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -31,7 +30,7 @@ if __name__ == "__main__":
     param_storage = ParameterStorage.options(name="param-server").remote()
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(
             CartPoleWithRemoteParamServer,
             env_config={"param_server": "param-server"},
@@ -52,11 +51,7 @@ if __name__ == "__main__":
 
     if args.run == "PPO":
         # Simplify to run this example script faster.
-        config = (
-            PPOConfig()
-            .update_from_dict(config.to_dict())
-            .training(sgd_minibatch_size=10, num_sgd_iter=5)
-        )
+        config.training(sgd_minibatch_size=10, num_sgd_iter=5)
 
     stop = {
         "training_iteration": args.stop_iters,

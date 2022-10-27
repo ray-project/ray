@@ -31,10 +31,9 @@ import argparse
 import os
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray.tune.registry import get_trainable_cls
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -125,15 +124,14 @@ if __name__ == "__main__":
     # build their own samplers (and also Policy objects iff
     # `inference_mode=local` on clients' command line).
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         # DL framework to use.
         .framework(args.framework)
         # Use n worker processes to listen on different ports.
         .rollouts(
             num_rollout_workers=args.num_workers,
             rollout_fragment_length=20,
-        )
-        .training(train_batch_size=256)
+        ).training(train_batch_size=256)
         # Multi-agent setup for the given env.
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use the `PolicyServerInput` to generate experiences.
@@ -143,7 +141,7 @@ if __name__ == "__main__":
     )
 
     # Create the Trainer used for Policy serving.
-    algo = get_algorithm_class(args.run)(config=config)
+    algo = config.build()
 
     # Attempt to restore from checkpoint if possible.
     checkpoint_path = CHECKPOINT_FILE.format(args.env)

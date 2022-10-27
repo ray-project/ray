@@ -16,7 +16,6 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
@@ -25,6 +24,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -65,16 +65,18 @@ if __name__ == "__main__":
     )
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("CartPole-v0")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)
-        .training(model={
-            "custom_model": "custom_loss",
-            "custom_model_config": {
-                "input_files": args.input_files,
-            },
-        })
+        .training(
+            model={
+                "custom_model": "custom_loss",
+                "custom_model_config": {
+                    "input_files": args.input_files,
+                },
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

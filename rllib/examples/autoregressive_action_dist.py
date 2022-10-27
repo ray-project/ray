@@ -40,7 +40,6 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,
@@ -53,6 +52,7 @@ from ray.rllib.examples.models.autoregressive_action_dist import (
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 
 def get_cli_args():
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     # Generic config.
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(CorrelatedActionsEnv)
         .framework(args.framework)
         .training(gamma=0.5)
@@ -147,10 +147,12 @@ if __name__ == "__main__":
 
     # Use registered model and dist in config.
     if not args.no_autoreg:
-        config.model.update({
-            "custom_model": "autoregressive_model",
-            "custom_action_dist": "binary_autoreg_dist",
-        })
+        config.model.update(
+            {
+                "custom_model": "autoregressive_model",
+                "custom_action_dist": "binary_autoreg_dist",
+            }
+        )
 
     # use stop conditions passed via CLI (or defaults)
     stop = {

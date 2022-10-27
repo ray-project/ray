@@ -1,8 +1,7 @@
 import argparse
 import os
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -41,7 +40,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("VizdoomBasic-v0")
         .training(
             model={
@@ -64,9 +63,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     if args.run == "PPO":
-        config = (
-            PPOConfig().update_from_dict(config.to_dict()).training(vf_loss_coeff=0.01)
-        )
+        config.training(vf_loss_coeff=0.01)
 
     stop = {
         "training_iteration": args.stop_iters,

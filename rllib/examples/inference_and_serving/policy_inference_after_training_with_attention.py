@@ -12,9 +12,8 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -82,18 +81,20 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("FrozenLake-v1")
         .framework(args.framework, eager_tracing=args.eager_tracing)
-        .training(model={
-            "use_attention": True,
-            "attention_num_transformer_units": 1,
-            "attention_use_n_prev_actions": args.prev_n_actions,
-            "attention_use_n_prev_rewards": args.prev_n_rewards,
-            "attention_dim": 32,
-            "attention_memory_inference": 10,
-            "attention_memory_training": 10,
-        })
+        .training(
+            model={
+                "use_attention": True,
+                "attention_num_transformer_units": 1,
+                "attention_use_n_prev_actions": args.prev_n_actions,
+                "attention_use_n_prev_rewards": args.prev_n_rewards,
+                "attention_dim": 32,
+                "attention_memory_inference": 10,
+                "attention_memory_training": 10,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

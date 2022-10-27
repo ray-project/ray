@@ -59,11 +59,13 @@ if __name__ == "__main__":
         AlgorithmConfig()
         .environment("CartPole-v0")
         .rollouts(num_rollout_workers=1, create_env_on_local_worker=True)
-        .training(model={
-            # Necessary to get the whole trajectory of 'state_in_0' in the
-            # sample batch.
-            "max_seq_len": 1,
-        })
+        .training(
+            model={
+                # Necessary to get the whole trajectory of 'state_in_0' in the
+                # sample batch.
+                "max_seq_len": 1,
+            }
+        )
         .debugging(log_level="DEBUG")
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

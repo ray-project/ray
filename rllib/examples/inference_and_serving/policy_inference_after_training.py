@@ -12,8 +12,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -64,7 +63,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig().environment("FrozenLake-v1")
+        get_trainable_cls(args.run).get_default_config()
+        .environment("FrozenLake-v1")
         # Run with tracing enabled for tfe/tf2?
         .framework(args.framework, eager_tracing=args.eager_tracing)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

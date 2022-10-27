@@ -78,11 +78,7 @@ def train_rllib_policy(config: AlgorithmConfig):
 if __name__ == "__main__":
 
     # Config for the served RLlib Policy/Trainer.
-    config = (
-        DQNConfig()
-        .environment("MsPacman-v0")
-        .framework(args.framework)
-    )
+    config = DQNConfig().environment("MsPacman-v0").framework(args.framework)
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
     checkpoint_path = train_rllib_policy(config)

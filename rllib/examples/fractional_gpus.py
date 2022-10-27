@@ -11,10 +11,10 @@ import argparse
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.gpu_requiring_env import GPURequiringEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     #   -> 1 tune trial should run in parallel.
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
         .environment(

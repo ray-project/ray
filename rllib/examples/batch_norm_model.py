@@ -5,7 +5,6 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.models.batch_norm_model import (
     BatchNormModel,
     KerasBatchNormModel,
@@ -14,6 +13,7 @@ from ray.rllib.examples.models.batch_norm_model import (
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     )
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)

@@ -12,6 +12,7 @@ from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     ray.init()
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("CartPole-v0")
         .rollouts(
             num_rollout_workers=0,

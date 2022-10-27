@@ -16,7 +16,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.tune.registry import get_trainable_cls
 
 
 def get_cli_args():
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     ray.init(local_mode=args.local_mode)
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(
             "ray.rllib.examples.env.random_env.RandomEnv",
             env_config={
@@ -97,7 +97,7 @@ if __name__ == "__main__":
                         }
                     ),
                 },
-            }
+            },
         )
         .framework(args.framework)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

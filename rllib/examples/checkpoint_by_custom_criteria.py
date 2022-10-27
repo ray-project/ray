@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -32,7 +32,8 @@ if __name__ == "__main__":
 
     # Simple generic config.
     config = (
-        AlgorithmConfig().environment("CartPole-v0")
+        get_trainable_cls(args.run).get_default_config()
+        .environment("CartPole-v0")
         # Run with tracing enabled for tfe/tf2.
         .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])
         # Run 3 trials.

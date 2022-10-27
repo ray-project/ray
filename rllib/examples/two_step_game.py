@@ -16,13 +16,11 @@ import os
 import ray
 from ray import air, tune
 from ray.tune import register_env
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.maddpg import MADDPGConfig
-from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +108,7 @@ if __name__ == "__main__":
     )
 
     generic_config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(TwoStepGame)
         .framework(args.framework)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -120,9 +118,8 @@ if __name__ == "__main__":
     if args.run == "MADDPG":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
-        config = (
-            MADDPGConfig()
-            .update_from_dict(generic_config.to_dict())
+        (
+            config
             .framework("tf")
             .environment(env_config={"actions_are_logits": True})
             .training(num_steps_sampled_before_learning_starts=100)
@@ -143,9 +140,8 @@ if __name__ == "__main__":
             )
         )
     elif args.run == "QMIX":
-        config = (
-            QMixConfig()
-            .update_from_dict(generic_config.to_dict())
+        (
+            config
             .framework("torch")
             .training(mixer=args.mixer, train_batch_size=32)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=4)

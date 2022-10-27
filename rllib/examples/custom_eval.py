@@ -173,7 +173,8 @@ if __name__ == "__main__":
             evaluation_num_workers=2,
             # Enable evaluation, once per training iteration.
             evaluation_interval=1,
-            # Run 10 episodes each time evaluation runs (OR "auto" if parallel to training).
+            # Run 10 episodes each time evaluation runs (OR "auto" if parallel to
+            # training).
             evaluation_duration="auto" if args.evaluation_parallel_to_training else 10,
             # Evaluate parallelly to training.
             evaluation_parallel_to_training=args.evaluation_parallel_to_training,

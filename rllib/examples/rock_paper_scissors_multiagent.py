@@ -22,7 +22,6 @@ from ray.rllib.algorithms.pg import (
     PGTF1Policy,
     PGTorchPolicy,
 )
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
     BeatLastHeuristic,

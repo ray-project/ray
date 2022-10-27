@@ -15,10 +15,8 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.cql import CQLConfig
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
-from ray.tune.registry import register_input
+from ray.tune.registry import get_trainable_cls, register_input
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -82,7 +80,7 @@ if __name__ == "__main__":
 
     # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("Pendulum-v1", clip_actions=True)
         .framework(args.framework)
         .offline_data(
@@ -104,13 +102,13 @@ if __name__ == "__main__":
             evaluation_config={
                 "input": "sampler",
                 "explore": False,
-            }
+            },
         )
         .reporting(metrics_num_episodes_for_smoothing=5)
     )
 
     if args.run == "CQL":
-        config = CQLConfig().update_from_dict(config.to_dict()).training(
+        config.training(
             twin_q=True,
             num_steps_sampled_before_learning_starts=0,
             bc_iters=100,

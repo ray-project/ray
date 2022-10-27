@@ -28,10 +28,10 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     # Algorithm config. Note that this config is sent to the client only in case
     # the client needs to create its own policy copy for local inference.
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         # Indicate that the Algorithm we setup here doesn't need an actual env.
         # Allow spaces to be determined by user (see below).
         .environment(
@@ -189,10 +189,12 @@ if __name__ == "__main__":
                 "train_batch_size": 8,
             }
         )
-        config.model.update({
-            "fcnet_hiddens": [64],
-            "fcnet_activation": "linear",
-        })
+        config.model.update(
+            {
+                "fcnet_hiddens": [64],
+                "fcnet_activation": "linear",
+            }
+        )
         if args.run == "R2D2":
             config.model["use_lstm"] = args.use_lstm
 

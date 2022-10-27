@@ -14,9 +14,9 @@ Below examples include:
 import argparse
 import os
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -77,7 +77,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        AlgorithmConfig().environment(
+        get_trainable_cls(args.run).get_default_config()
+        .environment(
             "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )
         # Run with tracing enabled for tfe/tf2.

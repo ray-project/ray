@@ -11,11 +11,11 @@ import gym
 import os
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import air, tune
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.

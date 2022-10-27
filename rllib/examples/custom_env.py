@@ -22,7 +22,6 @@ import random
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -32,6 +31,7 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     )
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         # or "corridor" if registered above
         .environment(SimpleCorridor, env_config={"corridor_length": 5})
         .framework(args.framework)

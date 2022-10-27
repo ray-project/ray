@@ -6,13 +6,12 @@ import os
 import ray
 from ray import air, tune
 from ray.tune.registry import register_env
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -59,7 +58,7 @@ if __name__ == "__main__":
     register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(args.env, env_config={"repeat_delay": 2})
         .framework(args.framework)
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
@@ -78,11 +77,7 @@ if __name__ == "__main__":
     )
 
     if args.run == "PPO":
-        config = (
-            PPOConfig()
-            .update_from_dict(config.to_dict())
-            .training(entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5)
-        )
+        config.training(entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5)
 
     stop = {
         "training_iteration": args.stop_iters,

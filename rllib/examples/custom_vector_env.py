@@ -3,10 +3,10 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.mock_env import MockVectorEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     tune.register_env("custom_vec_env", lambda env_ctx: MockVectorEnv(100, 4))
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment("custom_vec_env")
         .framework(args.framework)
         .rollouts(num_rollout_workers=2)

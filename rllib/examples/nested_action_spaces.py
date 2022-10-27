@@ -5,12 +5,11 @@ import os
 import ray
 from ray import air, tune
 from ray.tune.registry import register_env
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -52,18 +51,20 @@ if __name__ == "__main__":
     )
 
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run).get_default_config()
         .environment(
             "NestedSpaceRepeatAfterMeEnv",
             env_config={
                 "space": Dict(
                     {
-                        "a": Tuple([Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]),
+                        "a": Tuple(
+                            [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]
+                        ),
                         "b": Box(-10.0, 10.0, (2,)),
                         "c": Discrete(4),
                     }
                 ),
-            }
+            },
         )
         .framework(args.framework)
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
@@ -74,9 +75,11 @@ if __name__ == "__main__":
     )
 
     if args.run == "PPO":
-        config = PPOConfig().update_from_dict(config.to_dict()).training(
+        config.training(
             # We don't want high entropy in this Env.
-            entropy_coeff=0.00005, num_sgd_iter=4, vf_loss_coeff=0.01
+            entropy_coeff=0.00005,
+            num_sgd_iter=4,
+            vf_loss_coeff=0.01,
         )
 
     stop = {
