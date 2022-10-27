@@ -16,13 +16,10 @@ from ray.tune.experiment import Trial
 
 try:
     import wandb
+    from wandb.util import json_dumps_safer
 except ImportError:
     logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
-
-if wandb:
-    from wandb.util import json_dumps_safer
-else:
     json_dumps_safer = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
