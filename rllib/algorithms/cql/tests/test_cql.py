@@ -73,19 +73,20 @@ class TestCQL(unittest.TestCase):
 
         # Test for tf/torch frameworks.
         for fw in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build()
+            trainer = config.build()
             for i in range(num_iterations):
-                results = algo.train()
+                results = trainer.train()
                 check_train_results(results)
                 print(results)
                 eval_results = results["evaluation"]
                 print(
-                    f"iter={algo.iteration} " f"R={eval_results['episode_reward_mean']}"
+                    f"iter={trainer.iteration} "
+                    f"R={eval_results['episode_reward_mean']}"
                 )
-            check_compute_single_action(algo)
+            check_compute_single_action(trainer)
 
             # Get policy and model.
-            pol = algo.get_policy()
+            pol = trainer.get_policy()
             cql_model = pol.model
             if fw == "tf":
                 pol.get_session().__enter__()
@@ -94,7 +95,7 @@ class TestCQL(unittest.TestCase):
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
 
-            batch = algo.workers.local_worker().input_reader.next()
+            batch = trainer.workers.local_worker().input_reader.next()
             multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]
@@ -139,7 +140,7 @@ class TestCQL(unittest.TestCase):
             if fw == "tf":
                 pol.get_session().__exit__(None, None, None)
 
-            algo.stop()
+            trainer.stop()
 
 
 if __name__ == "__main__":

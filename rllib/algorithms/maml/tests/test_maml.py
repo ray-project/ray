@@ -34,13 +34,13 @@ class TestMAML(unittest.TestCase):
                     continue
                 print("env={}".format(env))
                 env_ = "ray.rllib.examples.env.{}".format(env)
-                algo = config.build(env=env_)
+                trainer = config.build(env=env_)
                 for i in range(num_iterations):
-                    results = algo.train()
+                    results = trainer.train()
                     check_train_results(results)
                     print(results)
-                check_compute_single_action(algo, include_prev_action_reward=True)
-                algo.stop()
+                check_compute_single_action(trainer, include_prev_action_reward=True)
+                trainer.stop()
 
 
 if __name__ == "__main__":

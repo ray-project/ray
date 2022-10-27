@@ -5,7 +5,6 @@ import unittest
 
 import ray
 from ray.tune.registry import register_env
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
@@ -140,13 +139,12 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=policy_mapping_fn,
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
+            },
+            policy_mapping_fn=policy_mapping_fn,
+            rollout_fragment_length=50,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -157,22 +155,18 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_sample_sync_remote(self):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
+            },
             # This signature will raise a soft-deprecation warning due
             # to the new signature we are using (agent_id, episode, **kwargs),
             # but should not break this test.
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                num_envs_per_worker=4,
-                remote_worker_envs=True,
-                remote_env_batch_wait_ms=99999999,
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
-            ),
+            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
+            rollout_fragment_length=50,
+            num_envs=4,
+            remote_worker_envs=True,
+            remote_env_batch_wait_ms=99999999,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
@@ -180,18 +174,14 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_sample_async_remote(self):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                num_envs_per_worker=4,
-                remote_worker_envs=True,
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
+            },
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
+            rollout_fragment_length=50,
+            num_envs=4,
+            remote_worker_envs=True,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
@@ -199,17 +189,13 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_sample_with_horizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                horizon=10,  # test with episode horizon set
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
+            },
+            policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
+            episode_horizon=10,  # test with episode horizon set
+            rollout_fragment_length=50,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -217,17 +203,13 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_sample_from_early_done_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=1,
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
+            },
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
+            batch_mode="complete_episodes",
+            rollout_fragment_length=1,
         )
         # This used to raise an Error due to the EarlyDoneMultiAgent
         # terminating at e.g. agent0 w/o publishing the observation for
@@ -266,16 +248,11 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_sample_round_robin(self):
         ev = RolloutWorker(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-            )
-            .multi_agent(
-                policies={"p0"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=MockPolicy),
+            },
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+            rollout_fragment_length=50,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -325,23 +302,15 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            default_policy_class=StatefulPolicy,
-            config=(
-                AlgorithmConfig().rollouts(
-                    rollout_fragment_length=5, num_rollout_workers=0
-                )
-                # Force `state_in_0` to be repeated every ts in the collected batch
-                # (even though we don't even have a model that would care about this).
-                .training(model={"max_seq_len": 1})
-            ),
+            policy_spec=StatefulPolicy,
+            rollout_fragment_length=5,
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch["state_in_0"][0], {})
         self.assertEqual(batch["state_out_0"][0], h)
-        for i in range(1, 5):
-            self.assertEqual(batch["state_in_0"][i], h)
-            self.assertEqual(batch["state_out_0"][i], h)
+        self.assertEqual(batch["state_in_0"][1], h)
+        self.assertEqual(batch["state_out_0"][1], h)
 
     def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(DQNTFPolicy):
@@ -396,16 +365,12 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         ev = RolloutWorker(
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
-            default_policy_class=ModelBasedPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=5,
-                num_rollout_workers=0,
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
-            ),
+            policy_spec={
+                "p0": PolicySpec(policy_class=ModelBasedPolicy),
+                "p1": PolicySpec(policy_class=ModelBasedPolicy),
+            },
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+            rollout_fragment_length=5,
         )
         batch = ev.sample()
         # 5 environment steps (rollout_fragment_length).

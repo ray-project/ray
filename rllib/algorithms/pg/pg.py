@@ -5,6 +5,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class PGConfig(AlgorithmConfig):
@@ -15,8 +16,8 @@ class PGConfig(AlgorithmConfig):
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -102,11 +103,11 @@ class PG(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
-        return PGConfig()
+    def get_default_config(cls) -> AlgorithmConfigDict:
+        return PGConfig().to_dict()
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+    def get_default_policy_class(self, config) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 

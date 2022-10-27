@@ -66,7 +66,6 @@ class TestDDPG(unittest.TestCase):
 
         core_config = (
             ddpg.DDPGConfig()
-            .environment("Pendulum-v1")
             .rollouts(num_rollout_workers=0)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -77,7 +76,7 @@ class TestDDPG(unittest.TestCase):
         for _ in framework_iterator(core_config):
             config = copy.deepcopy(core_config)
             # Default OUNoise setup.
-            algo = config.build()
+            algo = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)
@@ -105,7 +104,7 @@ class TestDDPG(unittest.TestCase):
                 }
             )
 
-            algo = config.build()
+            algo = ddpg.DDPG(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)

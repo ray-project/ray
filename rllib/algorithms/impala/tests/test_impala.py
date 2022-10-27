@@ -50,18 +50,18 @@ class TestIMPALA(unittest.TestCase):
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                algo = config.build(env=env)
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
-                    results = algo.train()
+                    results = trainer.train()
                     check_train_results(results)
                     print(results)
 
                 check_compute_single_action(
-                    algo,
+                    trainer,
                     include_state=lstm,
                     include_prev_action_reward=lstm,
                 )
-                algo.stop()
+                trainer.stop()
 
     def test_impala_lr_schedule(self):
         # Test whether we correctly ignore the "lr" setting.
@@ -87,8 +87,8 @@ class TestIMPALA(unittest.TestCase):
             ]
 
         for fw in framework_iterator(config):
-            algo = config.build()
-            policy = algo.get_policy()
+            trainer = config.build()
+            policy = trainer.get_policy()
 
             try:
                 if fw == "tf":
@@ -96,11 +96,11 @@ class TestIMPALA(unittest.TestCase):
                 else:
                     check(policy.cur_lr, 0.05)
                 for _ in range(1):
-                    r1 = algo.train()
+                    r1 = trainer.train()
                 for _ in range(2):
-                    r2 = algo.train()
+                    r2 = trainer.train()
                 for _ in range(2):
-                    r3 = algo.train()
+                    r3 = trainer.train()
                 # Due to the asynch'ness of IMPALA, learner-stats metrics
                 # could be delayed by one iteration. Do 3 train() calls here
                 # and measure guaranteed decrease in lr between 1st and 3rd.
@@ -111,7 +111,7 @@ class TestIMPALA(unittest.TestCase):
                 assert lr3 <= lr2, (lr2, lr3)
                 assert lr3 < lr1, (lr1, lr3)
             finally:
-                algo.stop()
+                trainer.stop()
 
 
 if __name__ == "__main__":

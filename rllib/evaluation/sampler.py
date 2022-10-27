@@ -228,7 +228,7 @@ class SyncSampler(SamplerInput):
         self.horizon = horizon
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats(
-            ema_coef=worker.config.sampler_perf_stats_ema_coef,
+            ema_coef=worker.policy_config.get("sampler_perf_stats_ema_coef"),
         )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
@@ -242,7 +242,7 @@ class SyncSampler(SamplerInput):
         )
         self.render = render
 
-        if worker.config.enable_connectors:
+        if worker.policy_config.get("enable_connectors", False):
             # Keep a reference to the underlying EnvRunnerV2 instance for
             # unit testing purpose.
             self._env_runner_obj = EnvRunnerV2(
@@ -425,7 +425,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
         self.perf_stats = _PerfStats(
-            ema_coef=worker.config.sampler_perf_stats_ema_coef,
+            ema_coef=worker.policy_config.get("sampler_perf_stats_ema_coef"),
         )
         self.shutdown = False
         self.observation_fn = observation_fn
@@ -454,7 +454,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
         if (
             tf1
-            and self.worker.config.framework_str in ["tf2", "tfe"]
+            and self.worker.policy_config.get("framework", "tf") in ["tf2", "tfe"]
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
@@ -465,7 +465,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         else:
             queue_putter = self.queue.put
             extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
-        if self.worker.config.enable_connectors:
+        if self.worker.policy_config.get("enable_connectors", False):
             env_runner = EnvRunnerV2(
                 worker=self.worker,
                 base_env=self.base_env,
