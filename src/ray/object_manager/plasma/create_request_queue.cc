@@ -138,18 +138,18 @@ Status CreateRequestQueue::ProcessRequests() {
                                 *request_it,
                                 /*spilling_required=*/nullptr);
         if (!status.ok()) {
+          (*request_it)->error = PlasmaError::OutOfDisk;
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
             dump = dump_debug_info_callback_();
             logged_oom = true;
           }
-          RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+          RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
                         << (*request_it)->object_id << " of size "
                         << (*request_it)->object_size / 1024 / 1024 << "MB\n"
                         << dump;
         }
         FinishRequest(request_it);
-        return Status::OutOfDisk("System running out of disk.");
       }
     }
   }
