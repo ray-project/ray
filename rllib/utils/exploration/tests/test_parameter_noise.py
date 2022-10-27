@@ -221,7 +221,7 @@ class TestParameterNoise(unittest.TestCase):
             # DDPG model.
             else:
                 return weights["policy_model.action_0._model.0.weight"][0][0]
-        key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
+        key = 0 if fw == "tf2" else list(weights.keys())[0]
         return weights[key][0][0]
 
 

@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 rllib_dir = str(Path(__file__).parent.parent.absolute())
 
 
-def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
+def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
         extra_config = ',"train_batch_size": 10, "noise_size": 250000'
@@ -78,7 +78,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_plus_evaluate(algo, env="CartPole-v0"):
+def learn_test_plus_evaluate(algo, env="CartPole-v1"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', \\"framework\\": \\"{}\\"'.format(fw)
 
@@ -245,10 +245,10 @@ class TestEvaluate2(unittest.TestCase):
 
 class TestEvaluate3(unittest.TestCase):
     def test_impala(self):
-        evaluate_test("IMPALA", env="CartPole-v0")
+        evaluate_test("IMPALA", env="CartPole-v1")
 
     def test_ppo(self):
-        evaluate_test("PPO", env="CartPole-v0", test_episode_rollout=True)
+        evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
 
 
 class TestEvaluate4(unittest.TestCase):
@@ -274,14 +274,27 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list --help").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example run --help").read()
 
-    def test_simple_commands(self):
+    def test_example_commands(self):
         assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
 
+    def test_yaml_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
             f"cartpole-simpleq-test.yaml"
+        ).read()
+
+    def test_json_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole-simpleq-test.json --type=json"
+        ).read()
+
+    def test_python_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole_simpleq_test.py --type=python"
         ).read()
 
     def test_all_example_files_exist(self):

@@ -5,8 +5,9 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.algorithms.dqn import DQN
-from ray.rllib.algorithms.pg import PG
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
@@ -125,9 +126,12 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -136,9 +140,11 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -147,9 +153,12 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_off_policy(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         for _ in range(3):
             batch = ev.sample()
@@ -160,24 +169,28 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_bad_actions(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=BadPolicy,
-            sample_async=True,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
+            default_policy_class=BadPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                num_rollout_workers=0,
+                sample_async=True,
+            ),
         )
         self.assertRaises(Exception, lambda: ev.sample())
 
     def test_train_cartpole_off_policy(self):
         register_env(
             "test3",
-            lambda _: PartOffPolicyServing(gym.make("CartPole-v0"), off_pol_frac=0.2),
+            lambda _: PartOffPolicyServing(gym.make("CartPole-v1"), off_pol_frac=0.2),
         )
-        config = {
-            "num_workers": 0,
-            "exploration_config": {"epsilon_timesteps": 100},
-        }
+        config = (
+            DQNConfig()
+            .environment("test3")
+            .rollouts(num_rollout_workers=0)
+            .exploration(exploration_config={"epsilon_timesteps": 100})
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            dqn = DQN(env="test3", config=config)
+            dqn = config.build()
             reached = False
             for i in range(50):
                 result = dqn.train()
@@ -193,10 +206,10 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
-        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
-        config = {"num_workers": 0}
+        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
+        config = PGConfig().environment("test").rollouts(num_rollout_workers=0)
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PG(env="test", config=config)
+            pg = config.build()
             reached = False
             for i in range(80):
                 result = pg.train()
@@ -212,10 +225,10 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
-        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
-        config = {"num_workers": 0}
+        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
+        config = PGConfig().environment("test2").rollouts(num_rollout_workers=0)
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PG(env="test2", config=config)
+            pg = config.build()
             reached = False
             for i in range(80):
                 result = pg.train()
@@ -233,10 +246,13 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy_spec=MockPolicy,
-            episode_horizon=20,
-            rollout_fragment_length=10,
-            batch_mode="complete_episodes",
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=10,
+                horizon=20,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+            ),
         )
         self.assertRaises(ValueError, lambda: ev.sample())
 

@@ -15,18 +15,16 @@ import copy
 import platform
 import random
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 import ray
 from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
-from ray.rllib import Policy
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
@@ -181,7 +179,7 @@ class ApexDQNConfig(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 32
+        self.num_rollout_workers = 32
         self.rollout_fragment_length = 50
         self.exploration_config = {
             "type": "PerWorkerEpsilonGreedy",
@@ -200,21 +198,6 @@ class ApexDQNConfig(DQNConfig):
     def training(
         self,
         *,
-        num_atoms: Optional[int] = None,
-        v_min: Optional[float] = None,
-        v_max: Optional[float] = None,
-        noisy: Optional[bool] = None,
-        sigma0: Optional[float] = None,
-        dueling: Optional[bool] = None,
-        hiddens: Optional[int] = None,
-        double_q: Optional[bool] = None,
-        n_step: Optional[int] = None,
-        before_learn_on_batch: Callable[
-            [Type[MultiAgentBatch], List[Type[Policy]], Type[int]],
-            Type[MultiAgentBatch],
-        ] = None,
-        training_intensity: Optional[float] = None,
-        replay_buffer_config: Optional[dict] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_replay_worker: Optional[int] = None,
         timeout_s_sampler_manager: Optional[float] = None,
@@ -228,25 +211,40 @@ class ApexDQNConfig(DQNConfig):
                 When this is greater than 1, distributional Q-learning is used.
             v_min: Minimum value estimation
             v_max: Maximum value estimation
-            noisy: Whether to use noisy network to aid exploration. This adds
-                parametric noise to the model weights.
+            noisy: Whether to use noisy network to aid exploration. This adds parametric
+                noise to the model weights.
             sigma0: Control the initial parameter noise for noisy nets.
-            dueling: Whether to use dueling DQN policy.
+            dueling: Whether to use dueling DQN.
             hiddens: Dense-layer setup for each the advantage branch and the value
                 branch
-            double_q: Whether to use double DQN for the policy.
+            double_q: Whether to use double DQN.
             n_step: N-step for Q-learning.
             before_learn_on_batch: Callback to run before learning on a multi-agent
                 batch of experiences.
-            training_intensity: The ratio of timesteps to train on for every
-                timestep that is sampled. This must be greater than 0.
+            training_intensity: The intensity with which to update the model (vs
+                collecting samples from the env).
+                If None, uses "natural" values of:
+                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `num_envs_per_worker`).
+                If not None, will make sure that the ratio between timesteps inserted
+                into and sampled from the buffer matches the given values.
+                Example:
+                training_intensity=1000.0
+                train_batch_size=250
+                rollout_fragment_length=1
+                num_workers=1 (or 0)
+                num_envs_per_worker=1
+                -> natural value = 250 / 1 = 250.0
+                -> will make sure that replay+train op will be executed 4x asoften as
+                rollout+insert op (4 * 250 = 1000).
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -306,30 +304,6 @@ class ApexDQNConfig(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if num_atoms is not None:
-            self.num_atoms = num_atoms
-        if v_min is not None:
-            self.v_min = v_min
-        if v_max is not None:
-            self.v_max = v_max
-        if noisy is not None:
-            self.noisy = noisy
-        if sigma0 is not None:
-            self.sigma0 = sigma0
-        if dueling is not None:
-            self.dueling = dueling
-        if hiddens is not None:
-            self.hiddens = hiddens
-        if double_q is not None:
-            self.double_q = double_q
-        if n_step is not None:
-            self.n_step = n_step
-        if before_learn_on_batch is not None:
-            self.before_learn_on_batch = before_learn_on_batch
-        if training_intensity is not None:
-            self.training_intensity = training_intensity
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
         if max_requests_in_flight_per_sampler_worker is not None:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker

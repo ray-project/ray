@@ -11,7 +11,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -26,14 +26,14 @@ if __name__ == "__main__":
 
     # Simple PPO config.
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         # Run 3 trials.
         "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
+        # Run with tracing enabled for tf2.
+        "eager_tracing": args.framework == "tf2",
     }
 
     stop = {

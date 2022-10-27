@@ -1737,6 +1737,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -1748,6 +1762,13 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
+)
+
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -1773,6 +1794,13 @@ py_test(
 )
 
 py_test(
+    name = "test_distributions_v2",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions_v2.py"]
+)
+
+py_test(
     name = "test_lstms",
     tags = ["team:rllib", "models"],
     size = "large",
@@ -1795,10 +1823,10 @@ py_test(
 
 # Test Tensor specs
 py_test(
-    name = "test_tensor_specs",
+    name = "test_tensor_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs.py"]
+    srcs = ["models/specs/tests/test_tensor_spec.py"]
 )
 
 # test abstract base models
@@ -1817,12 +1845,12 @@ py_test(
     srcs = ["models/tests/test_torch_model.py"]
 )
 
-# test ModelSpecDict
+# test ModelSpec
 py_test(
-    name = "test_tensor_specs_dict",
+    name = "test_model_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
+    srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
 
@@ -2652,7 +2680,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(

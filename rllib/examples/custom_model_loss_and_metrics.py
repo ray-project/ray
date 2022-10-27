@@ -4,7 +4,7 @@ The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
 
 To generate experiences:
-$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v0
+$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v1
 
 To train on experiences with joint PG + IL loss:
 $ python custom_loss.py --input-files=/tmp/cartpole
@@ -33,7 +33,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     )
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,

@@ -4,6 +4,7 @@ from enum import Enum
 import os.path
 import tempfile
 import typer
+from typing import Optional
 import requests
 
 
@@ -24,7 +25,7 @@ class SupportedFileType(str, Enum):
 
     yaml = "yaml"
     json = "json"
-    py = "py"
+    python = "python"
 
 
 def _create_tune_parser_help():
@@ -41,7 +42,8 @@ PARSER_HELP = _create_tune_parser_help()
 
 def download_example_file(
     example_file: str,
-    base_url: str = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/",
+    base_url: Optional[str] = "https://raw.githubusercontent.com/"
+    + "ray-project/ray/master/rllib/",
 ):
     """Download the example file (e.g. from GitHub) if it doesn't exist locally.
     If the provided example file exists locally, we return it directly.
@@ -99,9 +101,11 @@ example_help = dict(
 
 train_help = dict(
     env="The environment specifier to use. This could be an openAI gym "
-    "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
+    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
+    filetype="The file type of the config file. Defaults to 'yaml' and can also be "
+    "'json', or 'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -182,6 +186,9 @@ class CLIArguments:
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
     )
+    FileType = typer.Option(
+        SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
+    )
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
@@ -234,17 +241,18 @@ EXAMPLES = {
         "description": "Runs grid search over several Atari games on A2C.",
     },
     "cartpole-a2c": {
-        "file": "tuned_examples/a2c/cartpole-a2c.yaml",
-        "description": "Runs A2C on the CartPole-v0 environment.",
+        "file": "tuned_examples/a2c/cartpole_a2c.py",
+        "file_type": SupportedFileType.python,
+        "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
         "file": "tuned_examples/a2c/cartpole-a2c-microbatch.yaml",
-        "description": "Runs A2C on the CartPole-v0 environment, using micro-batches.",
+        "description": "Runs A2C on the CartPole-v1 environment, using micro-batches.",
     },
     # A3C
     "cartpole-a3c": {
         "file": "tuned_examples/a3c/cartpole-a3c.yaml",
-        "description": "Runs A3C on the CartPole-v0 environment.",
+        "description": "Runs A3C on the CartPole-v1 environment.",
     },
     "pong-a3c": {
         "file": "tuned_examples/a3c/pong-a3c.yaml",
@@ -276,7 +284,7 @@ EXAMPLES = {
     },
     "cartpole-apex-dqn": {
         "file": "tuned_examples/apex_dqn/cartpole-apex-dqn.yaml",
-        "description": "Runs Apex DQN on CartPole-v0.",
+        "description": "Runs Apex DQN on CartPole-v1.",
     },
     "pong-apex-dqn": {
         "file": "tuned_examples/apex_dqn/pong-apex-dqn.yaml",
@@ -285,7 +293,7 @@ EXAMPLES = {
     # APPO
     "cartpole-appo": {
         "file": "tuned_examples/appo/cartpole-appo.yaml",
-        "description": "Runs APPO on CartPole-v0.",
+        "description": "Runs APPO on CartPole-v1.",
     },
     "frozenlake-appo": {
         "file": "tuned_examples/appo/frozenlake-appo-vtrace.yaml",
@@ -310,7 +318,7 @@ EXAMPLES = {
     # ARS
     "cartpole-ars": {
         "file": "tuned_examples/ars/cartpole-ars.yaml",
-        "description": "Runs ARS on CartPole-v0.",
+        "description": "Runs ARS on CartPole-v1.",
     },
     "swimmer-ars": {
         "file": "tuned_examples/ars/swimmer-ars.yaml",
@@ -325,7 +333,7 @@ EXAMPLES = {
     # BC
     "cartpole-bc": {
         "file": "tuned_examples/bc/cartpole-bc.yaml",
-        "description": "Runs BC on CartPole-v0.",
+        "description": "Runs BC on CartPole-v1.",
     },
     # CQL
     "halfcheetah-cql": {
@@ -342,8 +350,8 @@ EXAMPLES = {
     },
     # CRR
     "cartpole-crr": {
-        "file": "tuned_examples/crr/cartpole-v0-crr.yaml",
-        "description": "Run CRR on CartPole-v0.",
+        "file": "tuned_examples/crr/CartPole-v1-crr.yaml",
+        "description": "Run CRR on CartPole-v1.",
     },
     "pendulum-crr": {
         "file": "tuned_examples/crr/pendulum-v1-crr.yaml",
@@ -377,7 +385,7 @@ EXAMPLES = {
     },
     "cartpole-ddppo": {
         "file": "tuned_examples/ddppo/cartpole-ddppo.yaml",
-        "description": "Runs DDPPO on CartPole-v0",
+        "description": "Runs DDPPO on CartPole-v1",
     },
     "pendulum-ddppo": {
         "file": "tuned_examples/ddppo/pendulum-ddppo.yaml",
@@ -395,7 +403,7 @@ EXAMPLES = {
     },
     "cartpole-dqn": {
         "file": "tuned_examples/dqn/cartpole-dqn.yaml",
-        "description": "Run DQN on CartPole-v0.",
+        "description": "Run DQN on CartPole-v1.",
     },
     "pong-dqn": {
         "file": "tuned_examples/dqn/pong-dqn.yaml",
@@ -412,8 +420,8 @@ EXAMPLES = {
     },
     # DT
     "cartpole-dt": {
-        "file": "tuned_examples/dt/cartpole-v0-dt.yaml",
-        "description": "Run DT on CartPole-v0.",
+        "file": "tuned_examples/dt/CartPole-v1-dt.yaml",
+        "description": "Run DT on CartPole-v1.",
     },
     "pendulum-dt": {
         "file": "tuned_examples/dt/pendulum-v1-dt.yaml",
@@ -422,7 +430,7 @@ EXAMPLES = {
     # ES
     "cartpole-es": {
         "file": "tuned_examples/es/cartpole-es.yaml",
-        "description": "Run ES on CartPole-v0.",
+        "description": "Run ES on CartPole-v1.",
     },
     "humanoid-es": {
         "file": "tuned_examples/es/humanoid-es.yaml",
@@ -435,7 +443,7 @@ EXAMPLES = {
     },
     "cartpole-impala": {
         "file": "tuned_examples/impala/cartpole-impala.yaml",
-        "description": "Run IMPALA on CartPole-v0.",
+        "description": "Run IMPALA on CartPole-v1.",
     },
     "multi-agent-cartpole-impala": {
         "file": "tuned_examples/impala/multi-agent-cartpole-impala.yaml",
@@ -457,7 +465,7 @@ EXAMPLES = {
     # MAML
     "cartpole-maml": {
         "file": "tuned_examples/maml/cartpole-maml.yaml",
-        "description": "Run MAML on CartPole-v0.",
+        "description": "Run MAML on CartPole-v1.",
     },
     "halfcheetah-maml": {
         "file": "tuned_examples/maml/halfcheetah-rand-direc-maml.yaml",
@@ -470,7 +478,7 @@ EXAMPLES = {
     # MARWIL
     "cartpole-marwil": {
         "file": "tuned_examples/marwil/cartpole-marwil.yaml",
-        "description": "Run MARWIL on CartPole-v0.",
+        "description": "Run MARWIL on CartPole-v1.",
     },
     # MBMPO
     "cartpole-mbmpo": {
@@ -492,7 +500,7 @@ EXAMPLES = {
     # PG
     "cartpole-pg": {
         "file": "tuned_examples/pg/cartpole-pg.yaml",
-        "description": "Run PG on CartPole-v0",
+        "description": "Run PG on CartPole-v1",
     },
     # PPO
     "atari-ppo": {
@@ -501,7 +509,7 @@ EXAMPLES = {
     },
     "cartpole-ppo": {
         "file": "tuned_examples/ppo/cartpole-ppo.yaml",
-        "description": "Run PPO on CartPole-v0.",
+        "description": "Run PPO on CartPole-v1.",
     },
     "halfcheetah-ppo": {
         "file": "tuned_examples/ppo/halfcheetah-ppo.yaml",
@@ -552,7 +560,7 @@ EXAMPLES = {
     },
     "cartpole-sac": {
         "file": "tuned_examples/sac/cartpole-sac.yaml",
-        "description": "Run SAC on CartPole-v0",
+        "description": "Run SAC on CartPole-v1",
     },
     "halfcheetah-sac": {
         "file": "tuned_examples/sac/halfcheetah-sac.yaml",
@@ -569,7 +577,7 @@ EXAMPLES = {
     # SimpleQ
     "cartpole-simpleq": {
         "file": "tuned_examples/simple_q/cartpole-simpleq.yaml",
-        "description": "Run SimpleQ on CartPole-v0",
+        "description": "Run SimpleQ on CartPole-v1",
     },
     # SlateQ
     "recsys-long-term-slateq": {

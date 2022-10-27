@@ -140,7 +140,7 @@
     script: python horovod/workloads/horovod_tune_test.py
     long_running: true
     wait_for_nodes:
-      num_nodes: 3
+      num_nodes: 2
 
     type: sdk_command
     file_manager: job
@@ -1747,7 +1747,7 @@
     test_name: torch_tune_serve_test
     test_suite: golden_notebook_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1756,7 +1756,7 @@
     cluster_compute: gpu_tpl.yaml
 
   run:
-    timeout: 1800
+    timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
 
@@ -3666,7 +3666,6 @@
 
   frequency: nightly
   team: core
-  env: staging
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
@@ -3790,6 +3789,26 @@
 #       wait_for_nodes:
 #         num_nodes: 5
 #         timeout: 600
+
+- name: single_node_oom
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: single_node_oom
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
+
+  run:
+    timeout: 500
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.6
+
+    type: sdk_command
+    file_manager: sdk
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
@@ -4719,6 +4738,28 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
+
+#####################
+# Observability tests
+#####################
+- name: agent_stress_test
+  group: core-observability-test
+  working_dir: dashboard
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: agent_stress_app_config.yaml
+    cluster_compute: agent_stress_compute.yaml
+
+  run:
+    timeout: 14400
+    prepare: rllib train file atari.yaml &
+    script: python mem_check.py
     type: sdk_command
     file_manager: sdk
 

@@ -23,8 +23,8 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="Pendulum-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="Pendulum-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
@@ -68,7 +68,7 @@ class ApexDDPGConfig(DDPGConfig):
         self.n_step = 3
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
-        self.num_workers = 32
+        self.num_rollout_workers = 32
         self.min_sample_timesteps_per_iteration = 25000
         self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
@@ -111,7 +111,6 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        optimizer: Optional[dict] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_replay_worker: Optional[int] = None,
         timeout_s_sampler_manager: Optional[float] = None,
@@ -121,9 +120,6 @@ class ApexDDPGConfig(DDPGConfig):
         """Sets the training related configuration.
 
         Args:
-            optimizer: Apex-DDPG optimizer settings (dict). Set the number of reply
-                buffer shards in here via the `num_replay_buffer_shards` key
-                (default=4).
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the AsyncRequestsManager class for more
                 details. Tuning these values is important when running experimens with
@@ -158,8 +154,6 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if optimizer is not None:
-            self.optimizer = optimizer
         if max_requests_in_flight_per_sampler_worker is not None:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker

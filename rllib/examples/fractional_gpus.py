@@ -24,7 +24,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     config = {
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
-        "env": GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v0",
+        "env": GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v1",
         # How many GPUs does the local worker (driver) need? For most algos,
         # this is where the learning updates happen.
         # Set this to > 1 for multi-GPU learning.
