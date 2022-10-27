@@ -104,15 +104,12 @@ def test_create_node_cap_at_max(
         "non_terminated_nodes",
         mock_non_terminated_nodes,
     ):
-        # Patch out __init__
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
-        # Patch out _get
         kr_node_provider.create_node(
             node_config={},
             tags={"ray-user-node-type": "small-group"},
             count=to_add_pod_count,
         )
-        # Patch _path to return the payload
         assert (
             kr_node_provider._applied_patch[0]["value"] == expected_target_replica_count
         )
