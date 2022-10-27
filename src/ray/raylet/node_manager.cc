@@ -2955,7 +2955,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                                          << oom_kill_suggestions;
 
           std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss << oom_kill_title << oom_kill_details << oom_kill_suggestions;
+          worker_exit_message_ss << oom_kill_title << oom_kill_details
+                                 << oom_kill_suggestions;
           std::string worker_exit_message = worker_exit_message_ss.str();
 
           rpc::RayErrorInfo task_failure_reason;
@@ -3000,6 +3001,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
+      << ", name= " << worker->GetAssignedTask().GetTaskSpecification().GetName()
       << ") was running was " << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
       << usage_fraction << "), which exceeds the memory usage threshold of "
       << usage_threshold << ". Ray killed this worker (ID: " << worker->WorkerId()

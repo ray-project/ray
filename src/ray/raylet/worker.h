@@ -172,7 +172,8 @@ class Worker : public WorkerInterface {
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  // Creates the debug string for the ID of the task or actor depending on which is running.
+  // Creates the debug string for the ID of the task or actor depending on which is
+  // running.
   const std::string GetTaskOrActorIdAsDebugString() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
