@@ -117,7 +117,8 @@ ray.shutdown()
         worker = get_worker_by_pid(driver_pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        assert type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_by_shutdown)
 
@@ -132,6 +133,12 @@ ray.shutdown()
         def exit_with_exit_code(self):
             sys.exit(0)
 
+        def sleep_forever(self):
+            import time
+
+            # RIP
+            time.sleep(999999)
+
     a = A.remote()
     pid = ray.get(a.pid.remote())
     with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
@@ -141,7 +148,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_actor)
 
@@ -154,7 +162,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        return True
 
     wait_for_condition(verify_exit_code_0)
 
@@ -162,13 +171,14 @@ ray.shutdown()
     pid = ray.get(a.pid.remote())
     ray.kill(a)
     with pytest.raises(ray.exceptions.RayActorError, match="ray.kill"):
-        ray.get(a.exit_with_exit_code.remote())
+        ray.get(a.sleep_forever.remote())
 
     def verify_exit_by_ray_kill():
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        assert type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        return True
 
     wait_for_condition(verify_exit_by_ray_kill)
 
