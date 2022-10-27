@@ -1,24 +1,16 @@
 from collections import deque
 import threading
-from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING, Union
+from typing import Dict, Optional, Set
 
 import ray
-import ray.cloudpickle as pickle
-from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.utils.annotations import PublicAPI, override
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.threading import with_lock
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PolicyID,
-)
 
 tf1, tf, tfv = try_import_tf()
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 @PublicAPI(stability="beta")

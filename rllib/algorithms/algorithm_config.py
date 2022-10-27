@@ -3,7 +3,17 @@ import gym
 from gym.spaces import Space
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Container,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
 from ray.util import log_once
@@ -12,6 +22,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -20,6 +31,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
+    AgentID,
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
@@ -1297,8 +1309,10 @@ class AlgorithmConfig:
         *,
         policies=None,
         policy_map_capacity: Optional[int] = None,
-        policy_mapping_fn: Optional[Callable] = None,
-        policies_to_train: Optional[Sequence] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+        ] = None,
         policies_swappable: Optional[bool] = None,
         observation_fn: Optional[Callable] = None,
         count_steps_by: Optional[str] = None,
