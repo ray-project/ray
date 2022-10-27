@@ -16,10 +16,12 @@ from ray.train.backend import BackendConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.utils import ActorWrapper, construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.torch_linear_example import train_func as linear_train_func
+from ray.train.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
 
 
 @pytest.fixture

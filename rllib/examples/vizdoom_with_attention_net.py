@@ -8,7 +8,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -54,8 +54,8 @@ if __name__ == "__main__":
             "attention_use_n_prev_rewards": args.use_n_prev_rewards,
         },
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
+        # Run with tracing enabled for tf2.
+        "eager_tracing": args.framework == "tf2",
         "num_workers": args.num_workers,
         "vf_loss_coeff": 0.01,
     }

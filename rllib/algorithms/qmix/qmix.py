@@ -106,7 +106,6 @@ class QMixConfig(SimpleQConfig):
         self.framework_str = "torch"
 
         # .rollouts()
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.batch_mode = "complete_episodes"
 

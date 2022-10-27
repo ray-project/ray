@@ -87,9 +87,9 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
-    .. link-button:: tune-advanced-tutorial
+    .. link-button:: ../examples/pbt_guide
         :type: ref
-        :text: Using Population-Based Training
+        :text: A Guide to Population-Based Training
         :classes: btn-link btn-block stretched-link
 
     ---
