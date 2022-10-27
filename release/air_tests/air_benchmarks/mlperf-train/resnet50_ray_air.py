@@ -1,3 +1,4 @@
+from typing import Dict, Callable, Optional, Union
 import tensorflow as tf
 import numpy as np
 import os
@@ -40,6 +41,59 @@ TF_DATA = "tf.data"
 SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
+
+
+class BlockSplittingBatchMapper(BatchMapper):
+    def __init__(
+        self,
+        fn: Union[
+            Callable[["pd.DataFrame"], "pd.DataFrame"],
+            Callable[
+                [Union[np.ndarray, Dict[str, np.ndarray]]],
+                Union[np.ndarray, Dict[str, np.ndarray]],
+            ],
+        ],
+        batch_size: Optional[int] = None,
+        batch_format: Optional[str] = None,
+        # TODO: Make batch_format required from user
+        # TODO: Introduce a "zero_copy" format
+        # TODO: We should reach consistency of args between BatchMapper and map_batches.
+    ):
+        super(BlockSplittingBatchMapper, self).__init__(fn, batch_format)
+        self.batch_size = batch_size
+
+    def _transform(self, dataset: ray.data.Dataset) -> ray.data.Dataset:
+        # NOTE(swang): Copied from Preprocessor so we can override the batch
+        # size.
+        # TODO(matt): Expose `batch_size` or similar configurability.
+        # The default may be too small for some datasets and too large for others.
+
+        dataset_format = dataset._dataset_format()
+        if dataset_format not in ("pandas", "arrow"):
+            raise ValueError(
+                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' "
+                "and 'arrow' Dataset formats are supported."
+            )
+
+        transform_type = self._determine_transform_to_use(dataset_format)
+
+        # Our user facing batch format should only be pandas or numpy, other
+        # formats {arrow, simple} are internal.
+        if transform_type == "pandas":
+            return dataset.map_batches(
+                self._transform_pandas,
+                batch_format="pandas",
+                batch_size=self.batch_size,
+            )
+        elif transform_type == "numpy":
+            return dataset.map_batches(
+                self._transform_numpy, batch_format="numpy", batch_size=self.batch_size
+            )
+        else:
+            raise ValueError(
+                "Invalid transform type returned from _determine_transform_to_use; "
+                f'"pandas" and "numpy" allowed, but got: {transform_type}'
+            )
 
 
 def build_model():
@@ -480,16 +534,29 @@ if __name__ == "__main__":
             preprocessor = None
             train_loop_config["data_loader"] = TF_DATA
         else:
+            # Turn on block splitting (currently off by default).
+            ctx = ray.data.context.DatasetContext.get_current()
+            ctx.block_splitting_enabled = True
+
             logger.info("Using Ray Datasets loader")
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
             )
+            # This is the batch size that will be used during preprocessor map_batches.
+            # We override BatchMapper because the default batch size is too big
+            # for images and prevents dynamic splitting of large blocks.
+            preprocessor_batch_size = min(32, args.batch_size)
             if args.online_processing:
-                preprocessor = BatchMapper(decode_tf_record_batch)
+                preprocessor = BlockSplittingBatchMapper(
+                    decode_tf_record_batch, batch_size=preprocessor_batch_size
+                )
             else:
-                preprocessor = BatchMapper(decode_crop_and_flip_tf_record_batch)
+                preprocessor = BlockSplittingBatchMapper(
+                    decode_crop_and_flip_tf_record_batch,
+                    batch_size=preprocessor_batch_size,
+                )
             train_loop_config["data_loader"] = RAY_DATA
 
     trainer = TensorflowTrainer(
