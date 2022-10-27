@@ -58,7 +58,8 @@ if __name__ == "__main__":
     register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(args.env, env_config={"repeat_delay": 2})
         .framework(args.framework)
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)

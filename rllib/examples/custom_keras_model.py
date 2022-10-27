@@ -120,7 +120,8 @@ if __name__ == "__main__":
             assert r["model"]["foo"] == 42, result
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(
             "BreakoutNoFrameskip-v4" if args.use_vision_network else "CartPole-v0"
         )

@@ -78,7 +78,8 @@ if __name__ == "__main__":
     ray.init(local_mode=args.local_mode)
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(
             "ray.rllib.examples.env.random_env.RandomEnv",
             env_config={

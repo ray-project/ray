@@ -105,7 +105,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.

@@ -30,7 +30,8 @@ if __name__ == "__main__":
     param_storage = ParameterStorage.options(name="param-server").remote()
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(
             CartPoleWithRemoteParamServer,
             env_config={"param_server": "param-server"},

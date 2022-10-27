@@ -77,7 +77,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(
             "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )

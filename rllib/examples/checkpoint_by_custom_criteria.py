@@ -32,7 +32,8 @@ if __name__ == "__main__":
 
     # Simple generic config.
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment("CartPole-v0")
         # Run with tracing enabled for tfe/tf2.
         .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])

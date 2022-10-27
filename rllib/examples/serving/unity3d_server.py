@@ -124,14 +124,16 @@ if __name__ == "__main__":
     # build their own samplers (and also Policy objects iff
     # `inference_mode=local` on clients' command line).
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         # DL framework to use.
         .framework(args.framework)
         # Use n worker processes to listen on different ports.
         .rollouts(
             num_rollout_workers=args.num_workers,
             rollout_fragment_length=20,
-        ).training(train_batch_size=256)
+        )
+        .training(train_batch_size=256)
         # Multi-agent setup for the given env.
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use the `PolicyServerInput` to generate experiences.

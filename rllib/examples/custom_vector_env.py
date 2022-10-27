@@ -47,7 +47,8 @@ if __name__ == "__main__":
     tune.register_env("custom_vec_env", lambda env_ctx: MockVectorEnv(100, 4))
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment("custom_vec_env")
         .framework(args.framework)
         .rollouts(num_rollout_workers=2)

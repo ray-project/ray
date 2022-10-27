@@ -57,7 +57,8 @@ if __name__ == "__main__":
     )
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)

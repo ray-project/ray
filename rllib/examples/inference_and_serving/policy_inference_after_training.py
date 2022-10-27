@@ -63,7 +63,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tfe/tf2?
         .framework(args.framework, eager_tracing=args.eager_tracing)

@@ -76,7 +76,8 @@ if __name__ == "__main__":
     #   -> 1 tune trial should run in parallel.
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
         .environment(

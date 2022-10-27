@@ -107,8 +107,9 @@ if __name__ == "__main__":
         ),
     )
 
-    generic_config = (
-        get_trainable_cls(args.run).get_default_config()
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(TwoStepGame)
         .framework(args.framework)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -119,8 +120,7 @@ if __name__ == "__main__":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
         (
-            config
-            .framework("tf")
+            config.framework("tf")
             .environment(env_config={"actions_are_logits": True})
             .training(num_steps_sampled_before_learning_starts=100)
             .multi_agent(
@@ -141,8 +141,7 @@ if __name__ == "__main__":
         )
     elif args.run == "QMIX":
         (
-            config
-            .framework("torch")
+            config.framework("torch")
             .training(mixer=args.mixer, train_batch_size=32)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
             .exploration(
@@ -158,8 +157,6 @@ if __name__ == "__main__":
                 },
             )
         )
-    else:
-        config = generic_config
 
     stop = {
         "episode_reward_mean": args.stop_reward,
@@ -170,7 +167,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         args.run,
         run_config=air.RunConfig(stop=stop, verbose=2),
-        param_space=config.to_dict(),
+        param_space=config,
     ).fit()
 
     if args.as_test:

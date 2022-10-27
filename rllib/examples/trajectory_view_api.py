@@ -56,7 +56,8 @@ if __name__ == "__main__":
     )
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(StatelessCartPole)
         .framework(args.framework)
         .training(

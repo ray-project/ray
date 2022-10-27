@@ -158,7 +158,8 @@ if __name__ == "__main__":
     )
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         # or "corridor" if registered above
         .environment(SimpleCorridor, env_config={"corridor_length": 5})
         .framework(args.framework)

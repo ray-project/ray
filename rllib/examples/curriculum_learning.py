@@ -104,7 +104,8 @@ if __name__ == "__main__":
     #     "curriculum_env", lambda config: CurriculumCapableEnv(config))
 
     config = (
-        get_trainable_cls(args.run).get_default_config()
+        get_trainable_cls(args.run)
+        .get_default_config()
         # or "curriculum_env" if registered above
         .environment(
             CurriculumCapableEnv,
