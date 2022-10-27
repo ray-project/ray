@@ -27,6 +27,7 @@ from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.tests.conftest import _ray_start
 import ray
 import ray.experimental.internal_kv as kv
+from ray.experimental.state.api import list_nodes
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -162,6 +163,14 @@ def mock_candidate_number():
     os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
 
 
+def get_register_agents_number(webui_url):
+    response = requests.get(webui_url + "/internal/node_module")
+    response.raise_for_status()
+    result = response.json()
+    data = result["data"]
+    return data["registeredAgents"]
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
 )
@@ -175,13 +184,6 @@ def test_job_head_choose_job_agent_E2E(
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
 
-    def get_register_agents_number():
-        response = requests.get(webui_url + "/internal/node_module")
-        response.raise_for_status()
-        result = response.json()
-        data = result["data"]
-        return data["registeredAgents"]
-
     def submit_job_and_wait_finish():
         submission_id = client.submit_job(entrypoint="echo hello")
 
@@ -192,7 +194,7 @@ def test_job_head_choose_job_agent_E2E(
     head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
     worker_1_http_port = 52366
     cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
-    wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
     assert len(cluster.worker_nodes) == 1
     node_try_to_kill = list(cluster.worker_nodes)[0]
 
@@ -236,7 +238,7 @@ def test_job_head_choose_job_agent_E2E(
 
     worker_2_http_port = 52367
     cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
-    wait_for_condition(lambda: get_register_agents_number() == 3, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
 
     # The third `JobAgent` will not be called here.
     submit_job_and_wait_finish()
@@ -267,7 +269,7 @@ def test_job_head_choose_job_agent_E2E(
     node_try_to_kill.kill_raylet()
 
     # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
 
     # Make sure the third JobAgent will be called here.
     wait_for_condition(
@@ -301,10 +303,22 @@ def test_jobs_run_on_head_by_default_E2E(
     # Cluster setup
     cluster = ray_start_cluster_head
     cluster.add_node(dashboard_agent_listen_port=52366)
+    cluster.add_node(dashboard_agent_listen_port=52367)
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
+
+    def _check_nodes(num_nodes):
+        try:
+            assert len(list_nodes()) == num_nodes
+            return True
+        except Exception as ex:
+            print(ex)
+            return False
+
+    wait_for_condition(lambda: _check_nodes(num_nodes=3), timeout=15)
+    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
 
     # Submit 20 simple jobs.
     for i in range(20):
@@ -330,10 +344,12 @@ def test_jobs_run_on_head_by_default_E2E(
     ]
     driver_node_ids = [job.driver_node_id for job in submission_jobs]
 
-    # Spuriously fails with probability (1/2)^20 = 1e-6.
-    assert len(set(driver_node_ids)) == (
-        2 if allow_driver_on_worker_nodes else 1
-    ), driver_node_ids
+    # Spuriously fails with probability (1/3)^20.
+    pprint.pprint(driver_node_ids)
+    num_ids = len(set(driver_node_ids))
+    assert (num_ids > 1) if allow_driver_on_worker_nodes else (num_ids == 1), [
+        id[:5] for id in driver_node_ids
+    ]
 
 
 if __name__ == "__main__":
