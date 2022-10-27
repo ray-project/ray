@@ -9,6 +9,7 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -81,8 +82,6 @@ class DTConfig(AlgorithmConfig):
         # fmt: on
 
         # Overwriting the trainer config default
-        # If data ingestion/sample_time is slow, increase this.
-        self.num_workers = 0
         # Number of training_step calls between evaluation rollouts.
         self.min_train_timesteps_per_iteration = 5000
 
@@ -113,9 +112,38 @@ class DTConfig(AlgorithmConfig):
 
         Args:
             replay_buffer_config: Replay buffer config.
+                Examples:
                 {
-                    "capacity": How many trajectories/episodes does the buffer hold.
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "capacity": 50000,
+                "replay_sequence_length": 1,
                 }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
             embed_dim: Dimension of the embeddings in the GPT model.
             num_layers: Number of attention layers in the GPT model.
             num_heads: Number of attention heads in the GPT model. Must divide
@@ -142,7 +170,16 @@ class DTConfig(AlgorithmConfig):
         """
         super().training(**kwargs)
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            # Override entire `replay_buffer_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_replay_buffer_config = deep_update(
+                {"replay_buffer_config": self.replay_buffer_config},
+                {"replay_buffer_config": replay_buffer_config},
+                False,
+                ["replay_buffer_config"],
+                ["replay_buffer_config"],
+            )
+            self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
         if embed_dim is not None:
             self.embed_dim = embed_dim
         if num_layers is not None:

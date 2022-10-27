@@ -1737,6 +1737,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -2666,7 +2680,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(

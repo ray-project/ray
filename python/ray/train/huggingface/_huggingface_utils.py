@@ -7,9 +7,9 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
 from ray.util import get_node_ip_address
 from ray.data.dataset import Dataset
+from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
@@ -152,7 +152,8 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            self.delayed_report["checkpoint"] = Checkpoint.from_dict(
+            # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
+            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_dict(
                 {
                     NODE_IP_KEY: get_node_ip_address(),
                     CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),

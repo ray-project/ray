@@ -190,12 +190,12 @@ if __name__ == "__main__":
     space = {
         "epochs": 1,
         "batch_size": 64,
-        "lr": tune.grid_search([10 ** -4, 10 ** -5]),
+        "lr": tune.grid_search([10**-4, 10**-5]),
         "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
         "dropout": tune.grid_search([0.25, 0.5]),
     }
     if args.smoke_test:
-        space["lr"] = 10 ** -4
+        space["lr"] = 10**-4
         space["dropout"] = 0.5
 
     pbt = PopulationBasedTraining(

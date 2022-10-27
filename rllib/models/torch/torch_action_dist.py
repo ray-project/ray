@@ -345,7 +345,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
         log_prob = log_prob_gaussian - torch.sum(
-            torch.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), dim=-1
+            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1
         )
         return log_prob
 
