@@ -33,7 +33,7 @@ class RayLogger(LoggerDestination):
         keys: the key values that will be included in the reported metrics.
     """
 
-    def __init__(self, keys: List[str] = None) -> None:
+    def __init__(self, keys: Optional[List[str]] = None) -> None:
         self.data = {}
         self.should_report_fit_end = False
         if keys:
