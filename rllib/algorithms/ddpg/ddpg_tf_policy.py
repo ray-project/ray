@@ -326,7 +326,7 @@ def get_ddpg_tf_policy(
             # Compute RHS of bellman equation.
             q_t_selected_target = tf.stop_gradient(
                 tf.cast(train_batch[SampleBatch.REWARDS], tf.float32)
-                + gamma ** n_step * q_tp1_best_masked
+                + gamma**n_step * q_tp1_best_masked
             )
 
             # Compute the error (potentially clipped).
