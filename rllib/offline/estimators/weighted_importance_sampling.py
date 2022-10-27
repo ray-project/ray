@@ -53,9 +53,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         v_target = 0.0
         episode_p = self.p[eps_id]
         for t in range(episode.count):
-            v_behavior += rewards[t] * self.gamma ** t
+            v_behavior += rewards[t] * self.gamma**t
             w_t = self.cummulative_ips_values[t] / self.episode_timestep_count[t]
-            v_target += episode_p[t] / w_t * rewards[t] * self.gamma ** t
+            v_target += episode_p[t] / w_t * rewards[t] * self.gamma**t
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target

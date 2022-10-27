@@ -147,7 +147,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             ),
             critic[:, 0],
         )
-        critic_loss = tf.reduce_mean(td_error ** 2)
+        critic_loss = tf.reduce_mean(td_error**2)
 
         # _____ Policy Network
         # Build actor network for t.
@@ -189,7 +189,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         actor_loss = -tf.reduce_mean(critic)
         if config["actor_feature_reg"] is not None:
             actor_loss += config["actor_feature_reg"] * tf.reduce_mean(
-                actor_feature ** 2
+                actor_feature**2
             )
 
         # _____ Losses

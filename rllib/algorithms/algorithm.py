@@ -308,7 +308,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
         env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
@@ -321,6 +321,7 @@ class Algorithm(Trainable):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
+        config = config or self.get_default_config()
 
         # Resolve possible dict into an AlgorithmConfig object.
         # TODO: In the future, only support AlgorithmConfig objects here.
