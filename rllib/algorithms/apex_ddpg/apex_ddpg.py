@@ -23,8 +23,8 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> algo = config.build(env="Pendulum-v1")
-        >>> algo.train()
+        >>> trainer = config.build(env="Pendulum-v1")
+        >>> trainer.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
@@ -111,6 +111,7 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
+        optimizer: Optional[dict] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_replay_worker: Optional[int] = None,
         timeout_s_sampler_manager: Optional[float] = None,
@@ -120,6 +121,9 @@ class ApexDDPGConfig(DDPGConfig):
         """Sets the training related configuration.
 
         Args:
+            optimizer: Apex-DDPG optimizer settings (dict). Set the number of reply
+                buffer shards in here via the `num_replay_buffer_shards` key
+                (default=4).
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the AsyncRequestsManager class for more
                 details. Tuning these values is important when running experimens with
@@ -154,6 +158,8 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
+        if optimizer is not None:
+            self.optimizer = optimizer
         if max_requests_in_flight_per_sampler_worker is not None:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker

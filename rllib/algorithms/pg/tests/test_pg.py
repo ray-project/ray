@@ -85,15 +85,13 @@ class TestPG(unittest.TestCase):
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
-                config.environment(env)
-
-                algo = config.build()
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
-                    results = algo.train()
+                    results = trainer.train()
                     check_train_results(results)
                     print(results)
 
-                check_compute_single_action(algo, include_prev_action_reward=True)
+                check_compute_single_action(trainer, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -125,8 +123,8 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = Categorical if fw != "torch" else TorchCategorical
-            algo = config.build(env="CartPole-v0")
-            policy = algo.get_policy()
+            trainer = config.build(env="CartPole-v0")
+            policy = trainer.get_policy()
             vars = policy.model.trainable_variables()
             if sess:
                 vars = policy.get_session().run(vars)

@@ -105,13 +105,13 @@ class TestQMix(unittest.TestCase):
             .rollouts(num_envs_per_worker=5)
         )  # Test with vectorization on.
 
-        algo = config.build()
+        trainer = config.build()
 
         for _ in range(4):
-            algo.train()  # OK if it doesn't trip the action assertion error
+            trainer.train()  # OK if it doesn't trip the action assertion error
 
-        assert algo.train()["episode_reward_mean"] == 30.0
-        algo.stop()
+        assert trainer.train()["episode_reward_mean"] == 30.0
+        trainer.stop()
         ray.shutdown()
 
 

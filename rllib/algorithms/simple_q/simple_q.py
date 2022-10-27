@@ -142,7 +142,7 @@ class SimpleQConfig(AlgorithmConfig):
         }
 
         # `evaluation()`
-        self.evaluation(evaluation_config={"explore": False})
+        self.evaluation_config = {"explore": False}
 
         # `reporting()`
         self.min_time_s_per_iteration = None
@@ -176,6 +176,8 @@ class SimpleQConfig(AlgorithmConfig):
         """Sets the training related configuration.
 
         Args:
+            timesteps_per_iteration: Minimum env steps to optimize for per train call.
+                This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.
@@ -298,8 +300,7 @@ class SimpleQ(Algorithm):
                     " used at the same time!"
                 )
 
-        if not config.get("in_evaluation"):
-            validate_buffer_config(config)
+        validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

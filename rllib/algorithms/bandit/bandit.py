@@ -47,8 +47,8 @@ class BanditLinTSConfig(BanditConfig):
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> trainer = config.build(env=WheelBanditEnv)
+        >>> trainer.train()
     """
 
     def __init__(self):
@@ -70,8 +70,8 @@ class BanditLinUCBConfig(BanditConfig):
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> trainer = config.build(env=WheelBanditEnv)
+        >>> trainer.train()
     """
 
     def __init__(self):

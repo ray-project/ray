@@ -54,15 +54,15 @@ class TestBandits(unittest.TestCase):
         ):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
-                algo = config.build()
+                trainer = config.build()
                 results = None
                 for i in range(num_iterations):
-                    results = algo.train()
+                    results = trainer.train()
                     check_train_results(results)
                     print(results)
                 # Force good learning behavior (this is a very simple env).
                 self.assertTrue(results["episode_reward_mean"] == 10.0)
-                algo.stop()
+                trainer.stop()
 
 
 if __name__ == "__main__":

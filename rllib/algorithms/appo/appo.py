@@ -41,12 +41,11 @@ class APPOConfig(ImpalaConfig):
         >>> from ray.rllib.algorithms.appo import APPOConfig
         >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=1)\
-        ...     .rollouts(num_rollout_workers=16)\
-        ...     .environment("CartPole-v1")
+        ...     .rollouts(num_rollout_workers=16)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
@@ -197,7 +196,7 @@ class UpdateTargetAndKL:
 
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
-        """Initializes an APPO instance."""
+        """Initializes a DDPPO instance."""
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.

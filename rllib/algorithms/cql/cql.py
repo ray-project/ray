@@ -49,8 +49,8 @@ class CQLConfig(SACConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
     """
 
     def __init__(self, algo_class=None):
@@ -138,6 +138,10 @@ class CQL(SAC):
                 new="min_train_timesteps_per_iteration",
                 error=True,
             )
+            config["min_train_timesteps_per_iteration"] = config[
+                "timesteps_per_iteration"
+            ]
+            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Call super's validation method.
         super().validate_config(config)

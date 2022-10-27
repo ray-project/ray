@@ -9,7 +9,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
@@ -429,7 +429,7 @@ class TestAlgorithm(unittest.TestCase):
             .offline_data(input_=[input_file])
         )
 
-        bc = offline_rl_config.build()
+        bc = BC(config=offline_rl_config)
         bc.train()
         bc.stop()
 

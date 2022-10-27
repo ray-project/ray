@@ -35,12 +35,12 @@ class TestDreamer(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            algo = config.build()
+            trainer = config.build()
             for i in range(num_iterations):
-                results = algo.train()
+                results = trainer.train()
                 print(results)
             # check_compute_single_action(trainer, include_state=True)
-            algo.stop()
+            trainer.stop()
 
 
 if __name__ == "__main__":

@@ -6,31 +6,30 @@ import re
 from typing import Any, DefaultDict, Dict
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import PolicyID, ResultDict
+from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
 class LeagueBuilder(metaclass=ABCMeta):
-    def __init__(self, algo: Algorithm, algo_config: AlgorithmConfig):
+    def __init__(self, trainer: Algorithm, trainer_config: AlgorithmConfigDict):
         """Initializes a LeagueBuilder instance.
 
         Args:
-            algo: The Algorithm object by which this league builder is used.
+            trainer: The Algorithm object by which this league builder is used.
                 Algorithm calls `build_league()` after each training step.
-            algo_config: The (not yet validated) config to be
+            trainer_config: The (not yet validated) config dict to be
                 used on the Algorithm. Child classes of `LeagueBuilder`
                 should preprocess this to add e.g. multiagent settings
                 to this config.
         """
-        self.algo = algo
-        self.config = algo_config
+        self.trainer = trainer
+        self.config = trainer_config
 
     def build_league(self, result: ResultDict) -> None:
         """Method containing league-building logic. Called after train step.
@@ -68,8 +67,8 @@ class NoLeagueBuilder(LeagueBuilder):
 class AlphaStarLeagueBuilder(LeagueBuilder):
     def __init__(
         self,
-        algo: Algorithm,
-        algo_config: AlgorithmConfig,
+        trainer: Algorithm,
+        trainer_config: AlgorithmConfigDict,
         num_random_policies: int = 2,
         num_learning_league_exploiters: int = 4,
         num_learning_main_exploiters: int = 4,
@@ -87,10 +86,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         M: Main self-play (main vs main).
 
         Args:
-            algo: The Algorithm object by which this league builder is used.
+            trainer: The Algorithm object by which this league builder is used.
                 Algorithm calls `build_league()` after each training step to reconfigure
                 the league structure (e.g. to add/remove policies).
-            algo_config: The (not yet validated) config to be
+            trainer_config: The (not yet validated) config dict to be
                 used on the Algorithm. Child classes of `LeagueBuilder`
                 should preprocess this to add e.g. multiagent settings
                 to this config.
@@ -114,7 +113,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             prob_main_exploiter_playing_against_learning_main: Probability of
                 a main-exploiter vs (training!) main match.
         """
-        super().__init__(algo, algo_config)
+        super().__init__(trainer, trainer_config)
 
         self.win_rate_threshold_for_new_snapshot = win_rate_threshold_for_new_snapshot
         self.keep_new_snapshot_training_prob = keep_new_snapshot_training_prob
@@ -132,13 +131,13 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         )
 
         # Build trainer's multiagent config.
-        self.config._is_frozen = False
+        ma_config = self.config["multiagent"]
         # Make sure the multiagent config dict has no policies defined:
-        assert self.config.policies is None, (
-            "ERROR: `config.policies` should be None (not pre-defined by user)! "
+        assert not ma_config.get("policies"), (
+            "ERROR: `config.multiagent.policies` should not be pre-defined! "
             "AlphaStarLeagueBuilder will construct this itself."
         )
-        policies = {}
+        ma_config["policies"] = policies = {}
 
         self.main_policies = 1
         self.league_exploiters = (
@@ -150,7 +149,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         policies["main_0"] = PolicySpec()
 
         # Train all non-random policies that exist at beginning.
-        policies_to_train = ["main_0"]
+        ma_config["policies_to_train"] = ["main_0"]
 
         # Add random policies.
         i = -1
@@ -161,26 +160,23 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         for j in range(num_learning_league_exploiters):
             pid = f"league_exploiter_{j + i + 1}"
             policies[pid] = PolicySpec()
-            policies_to_train.append(pid)
+            ma_config["policies_to_train"].append(pid)
         # Add initial (learning) main-exploiters.
         for j in range(num_learning_league_exploiters):
             pid = f"main_exploiter_{j + i + 1}"
             policies[pid] = PolicySpec()
-            policies_to_train.append(pid)
+            ma_config["policies_to_train"].append(pid)
 
         # Build initial policy mapping function: main_0 vs main_exploiter_0.
-        self.config.policy_mapping_fn = (
+        ma_config["policy_mapping_fn"] = (
             lambda aid, ep, worker, **kw: "main_0"
             if ep.episode_id % 2 == aid
             else "main_exploiter_0"
         )
-        self.config.policies = policies
-        self.config.policies_to_train = policies_to_train
-        self.config.freeze()
 
     @override(LeagueBuilder)
     def build_league(self, result: ResultDict) -> None:
-        local_worker = self.algo.workers.local_worker()
+        local_worker = self.trainer.workers.local_worker()
 
         # If no evaluation results -> Use hist data gathered for training.
         if "evaluation" in result:
@@ -195,7 +191,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             set(local_worker.policy_map.keys()) - trainable_policies
         )
 
-        logger.info(f"League building after iter {self.algo.iteration}:")
+        logger.info(f"League building after iter {self.trainer.iteration}:")
 
         # Calculate current win-rates.
         for policy_id, rew in hist_stats.items():
@@ -367,10 +363,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
                         return "main_0"
 
                 # Add and set the weights of the new polic(y/ies).
-                state = self.algo.get_policy(policy_id).get_state()
-                self.algo.add_policy(
+                state = self.trainer.get_policy(policy_id).get_state()
+                self.trainer.add_policy(
                     policy_id=new_pol_id,
-                    policy_cls=type(self.algo.get_policy(policy_id)),
+                    policy_cls=type(self.trainer.get_policy(policy_id)),
                     policy_state=state,
                     policy_mapping_fn=policy_mapping_fn,
                     policies_to_train=trainable_policies,

@@ -3,7 +3,6 @@ import time
 import unittest
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 
@@ -24,11 +23,8 @@ class TestPerf(unittest.TestCase):
         for _ in range(20):
             ev = RolloutWorker(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                default_policy_class=MockPolicy,
-                config=AlgorithmConfig().rollouts(
-                    rollout_fragment_length=100,
-                    num_rollout_workers=0,
-                ),
+                policy_spec=MockPolicy,
+                rollout_fragment_length=100,
             )
             start = time.time()
             count = 0

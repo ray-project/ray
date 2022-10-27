@@ -325,9 +325,9 @@ class AgentCollector:
                     data_col, view_req, build_for_inference=False
                 )
 
-                # We need to skip this view_col if it does not exist in the buffers and
+                # we need to skip this view_col if it does not exist in the buffers and
                 # is not an RNN state because it could be the special keys that gets
-                # added by policy's postprocessing function for training.
+                # added by policy's postprocessing function for trianing.
                 if not is_state:
                     continue
 

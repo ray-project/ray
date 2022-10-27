@@ -64,10 +64,10 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build()
+            trainer = config.build()
             learnt = False
             for i in range(num_iterations):
-                results = algo.train()
+                results = trainer.train()
                 check_train_results(results)
                 print(results)
 
@@ -88,9 +88,9 @@ class TestMARWIL(unittest.TestCase):
                     "offline data!".format(min_reward)
                 )
 
-            check_compute_single_action(algo, include_prev_action_reward=True)
+            check_compute_single_action(trainer, include_prev_action_reward=True)
 
-            algo.stop()
+            trainer.stop()
 
     def test_marwil_cont_actions_from_offline_file(self):
         """Test whether MARWILTrainer runs with cont. actions.
@@ -128,10 +128,10 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build(env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
-                print(algo.train())
-            algo.stop()
+                print(trainer.train())
+            trainer.stop()
 
     def test_marwil_loss_function(self):
         """
@@ -155,8 +155,8 @@ class TestMARWIL(unittest.TestCase):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            algo = config.build(env="CartPole-v0")
-            policy = algo.get_policy()
+            trainer = config.build(env="CartPole-v0")
+            policy = trainer.get_policy()
             model = policy.model
 
             # Calculate our own expected values (to then compare against the
