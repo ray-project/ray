@@ -537,8 +537,7 @@ class Dataset(Generic[T]):
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
 
-            def process_next_batch() -> Iterator[Block]:
-                batch = batcher.next_batch()
+            def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
@@ -568,12 +567,14 @@ class Dataset(Generic[T]):
             for block in blocks:
                 batcher.add(block)
                 while batcher.has_batch():
-                    yield from process_next_batch()
+                    batch = batcher.next_batch()
+                    yield from process_next_batch(batch)
 
             # Process any last remainder batch.
             batcher.done_adding()
             if batcher.has_any():
-                yield from process_next_batch()
+                batch = batcher.next_batch()
+                yield from process_next_batch(batch)
 
             # Yield remainder block from output buffer.
             output_buffer.finalize()
