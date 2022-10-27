@@ -1,4 +1,5 @@
 from typing import Optional
+from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS
 
 
 class NullMetric:
@@ -50,36 +51,40 @@ try:
                 60,
             ]
             self.metrics_request_duration = Histogram(
-                "api_requests_duration_seconds",
+                "dashboard_api_requests_duration_seconds",
                 "Total duration in seconds per endpoint",
-                ("endpoint", "http_status"),
+                ("endpoint", "http_status", "SessionName", "Component"),
                 unit="seconds",
-                namespace="dashboard",
+                namespace="ray",
                 registry=self.registry,
                 buckets=histogram_buckets_s,
             )
             self.metrics_request_count = Counter(
-                "api_requests_count",
+                "dashboard_api_requests_count",
                 "Total requests count per endpoint",
-                ("method", "endpoint", "http_status"),
+                ("method", "endpoint", "http_status", "SessionName", "Component"),
                 unit="requests",
-                namespace="dashboard",
+                namespace="ray",
                 registry=self.registry,
             )
+            # For the below metrics, we intentionally not
+            # specify unit so that these metrics will be
+            # shared with metrics reported from
+            # reporter_agent.py
             self.metrics_dashboard_cpu = Gauge(
-                "cpu_percentage",
+                "component_cpu",
                 "Dashboard CPU percentage usage.",
-                (),
-                unit="percentage",
-                namespace="dashboard",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="",
+                namespace="ray",
                 registry=self.registry,
             )
             self.metrics_dashboard_mem = Gauge(
-                "mem_usage",
+                "component_rss",
                 "Dashboard RSS usage.",
-                (),
-                unit="MB",
-                namespace="dashboard",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="",
+                namespace="ray",
                 registry=self.registry,
             )
 

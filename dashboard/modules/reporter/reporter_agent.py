@@ -11,10 +11,16 @@ import warnings
 
 import psutil
 
+from typing import List, Optional
+
 import ray
 import ray._private.services
 import ray._private.utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    GCS_RPC_TIMEOUT_SECONDS,
+    COMPONENT_METRICS_TAG_KEYS,
+    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
+)
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
@@ -204,95 +210,41 @@ METRICS_GAUGES = {
         "bytes/sec",
         ["ip", "SessionName"],
     ),
-    "raylet_cpu": Gauge(
-        "raylet_cpu",
-        "CPU usage of the raylet on a node.",
+    "component_cpu": Gauge(
+        "component_cpu",
+        "Total CPU usage of the components on a node.",
         "percentage",
-        ["ip", "pid", "SessionName"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
-    "raylet_mem": Gauge(
-        "raylet_mem",
-        "RSS usage of the Raylet on the node.",
+    "component_rss": Gauge(
+        "component_rss",
+        "RSS usage of all components on the node.",
         "MB",
-        ["ip", "pid", "SessionName"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
-    "raylet_mem_shm": Gauge(
-        "raylet_mem_shm",
-        "SHM usage of the Raylet on the node. Only available on Linux",
+    "component_shm": Gauge(
+        "component_shm",
+        "SHM usage of all components on the node. Only available on Linux.",
         "MB",
-        ["ip", "pid"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
-    "raylet_mem_uss": Gauge(
-        "raylet_mem_uss",
-        "USS usage of the Raylet on the node. Only available on Linux",
+    "component_uss": Gauge(
+        "component_uss",
+        "USS usage of all components on the node. Only available on Linux",
         "MB",
-        ["ip", "pid", "SessionName"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
-    "raylet_mem_pss": Gauge(
-        "raylet_mem_pss",
-        "PSS usage of the Raylet on the node. Only available on Linux",
+    "component_pss": Gauge(
+        "component_pss",
+        "PSS usage of all components on the node. Only available on Linux",
         "MB",
-        ["ip", "pid"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
-    "raylet_mem_swap": Gauge(
-        "raylet_mem_swap",
-        "Swap usage of the Raylet on the node. Only available on Linux",
+    "component_swap": Gauge(
+        "component_swap",
+        "Swap usage of all components on the node. Only available on Linux",
         "MB",
-        ["ip", "pid"],
-    ),
-    "workers_cpu": Gauge(
-        "workers_cpu",
-        "Total CPU usage of all workers on a node.",
-        "percentage",
-        ["ip", "SessionName"],
-    ),
-    "workers_mem": Gauge(
-        "workers_mem",
-        "RSS usage of all workers on the node.",
-        "MB",
-        ["ip", "SessionName"],
-    ),
-    "workers_mem_shm": Gauge(
-        "workers_mem_shm",
-        "SHM usage of all workers on the node. Only available on Linux.",
-        "MB",
-        ["ip"],
-    ),
-    "workers_mem_uss": Gauge(
-        "workers_mem_uss",
-        "USS usage of all workers on the node. Only available on Linux",
-        "MB",
-        ["ip", "SessionName"],
-    ),
-    "workers_mem_pss": Gauge(
-        "workers_mem_pss",
-        "PSS usage of all workers on the node. Only available on Linux",
-        "MB",
-        ["ip"],
-    ),
-    "agent_cpu": Gauge(
-        "agent_cpu",
-        "Total CPU usage of an agent on a node.",
-        "percentage",
-        ["ip"],
-    ),
-    "agent_mem": Gauge(
-        "agent_mem",
-        "RSS usage of an agent on the node.",
-        "MB",
-        ["ip"],
-    ),
-    "agent_mem_uss": Gauge(
-        "agent_mem_uss",
-        "USS usage of an agent on the node. Only available on Linux",
-        "MB",
-        ["ip"],
-    ),
-    "agent_mem_pss": Gauge(
-        "agent_mem_pss",
-        "PSS usage of an agent on the node. Only available on Linux",
-        "MB",
-        ["ip"],
+        COMPONENT_METRICS_TAG_KEYS,
     ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes",
@@ -574,22 +526,19 @@ class ReporterAgent(
             )
 
     def _get_agent(self):
-        # Curret proc == agent proc
+        # Current proc == agent proc
         agent_proc = psutil.Process()
-        if agent_proc is None:
-            return {}
-        else:
-            return agent_proc.as_dict(
-                attrs=[
-                    "pid",
-                    "create_time",
-                    "cpu_percent",
-                    "cpu_times",
-                    "cmdline",
-                    "memory_info",
-                    "memory_full_info",
-                ]
-            )
+        return agent_proc.as_dict(
+            attrs=[
+                "pid",
+                "create_time",
+                "cpu_percent",
+                "cpu_times",
+                "cmdline",
+                "memory_info",
+                "memory_full_info",
+            ]
+        )
 
     def _get_load_avg(self):
         if sys.platform == "win32":
@@ -850,175 +799,104 @@ class ReporterAgent(
         """
         Record system stats.
         """
-        # Record raylet CPU/memory
+
+        def record_system_stats(
+            stats: List[dict], component_name: str, pid: Optional[str] = None
+        ) -> List[Record]:
+            assert component_name in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+            records = []
+            total_cpu_percentage = 0.0
+            total_rss = 0.0
+            total_shm = 0.0
+            total_uss = 0.0
+            total_pss = 0.0
+            total_swap = 0.0
+            for stat in stats:
+                total_cpu_percentage += float(stat["cpu_percent"]) * 100.0
+                total_rss += float(stat["memory_info"].rss) / 1.0e6
+                mem_full_info = stat.get("memory_full_info")
+                if mem_full_info is not None:
+                    total_uss += float(mem_full_info.uss) / 1.0e6
+                    if sys.platform == "linux":
+                        total_pss += float(mem_full_info.pss) / 1.0e6
+                        total_shm += float(stat["memory_info"].shared) / 1.0e6
+                        total_swap += float(mem_full_info.swap) / 1.0e6
+
+            tags = {"ip": ip, "Component": component_name}
+            if pid:
+                tags["pid"] = pid
+
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_cpu"],
+                    value=total_cpu_percentage,
+                    tags=tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_rss"],
+                    value=total_rss,
+                    tags=tags,
+                )
+            )
+            if total_shm > 0.0:
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES["component_shm"],
+                        value=total_shm,
+                        tags=tags,
+                    )
+                )
+            if total_uss > 0.0:
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES["component_uss"],
+                        value=total_uss,
+                        tags=tags,
+                    )
+                )
+            if total_pss > 0.0:
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES["component_pss"],
+                        value=total_pss,
+                        tags=tags,
+                    )
+                )
+            if total_swap > 0.0:
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES["component_swap"],
+                        value=total_swap,
+                        tags=tags,
+                    )
+                )
+
+            return records
+
+        # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
             raylet_pid = str(raylet_stats["pid"])
-            # -- raylet CPU --
-            raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["raylet_cpu"],
-                    value=raylet_cpu_usage,
-                    tags={"ip": ip, "pid": raylet_pid},
-                )
+            records_reported.extend(
+                record_system_stats([raylet_stats], "raylet", pid=raylet_pid)
             )
-
-            # -- raylet mem --
-            raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["raylet_mem"],
-                    value=raylet_rss,
-                    tags={"ip": ip, "pid": raylet_pid},
-                )
-            )
-            if sys.platform == "linux":
-                raylet_shm = float(raylet_stats["memory_info"].shared) / 1.0e6
-                if raylet_shm > 0.0:
-                    records_reported.append(
-                        Record(
-                            gauge=METRICS_GAUGES["raylet_mem_shm"],
-                            value=raylet_shm,
-                            tags={"ip": ip, "pid": raylet_pid},
-                        )
-                    )
-            raylet_mem_full_info = raylet_stats.get("memory_full_info")
-            if raylet_mem_full_info is not None:
-                raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
-                if sys.platform == "linux":
-                    raylet_pss = float(raylet_mem_full_info.pss) / 1.0e6
-                    raylet_swap = float(raylet_mem_full_info.swap) / 1.0e6
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem_uss"],
-                        value=raylet_uss,
-                        tags={"ip": ip, "pid": raylet_pid},
-                    )
-                )
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem_pss"],
-                        value=raylet_pss,
-                        tags={"ip": ip, "pid": raylet_pid},
-                    )
-                )
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem_swap"],
-                        value=raylet_swap,
-                        tags={"ip": ip, "pid": raylet_pid},
-                    )
-                )
-
-        # Record worker CPU/memroy.
         workers_stats = stats["workers"]
         if workers_stats:
-            total_workers_cpu_percentage = 0.0
-            total_workers_rss = 0.0
-            total_workers_shm = 0.0
-            total_workers_uss = 0.0
-            total_workers_pss = 0.0
-            for worker in workers_stats:
-                total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
-                total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
-                if sys.platform == "linux":
-                    total_workers_shm += float(worker["memory_info"].shared) / 1.0e6
-                worker_mem_full_info = worker.get("memory_full_info")
-                if worker_mem_full_info is not None:
-                    total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
-                    if sys.platform == "linux":
-                        total_workers_pss += float(worker_mem_full_info.pss) / 1.0e6
-
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["workers_cpu"],
-                    value=total_workers_cpu_percentage,
-                    tags={"ip": ip},
-                )
-            )
-
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["workers_mem"],
-                    value=total_workers_rss,
-                    tags={"ip": ip},
-                )
-            )
-
-            if total_workers_shm > 0.0:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem_shm"],
-                        value=total_workers_shm,
-                        tags={"ip": ip},
-                    )
-                )
-            if total_workers_uss > 0.0:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem_uss"],
-                        value=total_workers_uss,
-                        tags={"ip": ip},
-                    )
-                )
-            if total_workers_pss > 0.0:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem_pss"],
-                        value=total_workers_pss,
-                        tags={"ip": ip},
-                    )
-                )
-
-        # Record agent CPU/memory.
+            # TODO(sang): Maybe we can report per worker memory usage.
+            records_reported.extend(record_system_stats(workers_stats, "workers"))
         agent_stats = stats["agent"]
         if agent_stats:
             agent_pid = str(agent_stats["pid"])
-            # -- raylet CPU --
-            agent_cpu_usage = float(agent_stats["cpu_percent"]) * 100
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["agent_cpu"],
-                    value=agent_cpu_usage,
-                    tags={"ip": ip, "pid": agent_pid},
-                )
+            records_reported.extend(
+                record_system_stats([agent_stats], "agent", pid=agent_pid)
             )
 
-            # -- raylet mem --
-            agent_rss = float(agent_stats["memory_info"].rss) / 1.0e6
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["agent_mem"],
-                    value=agent_rss,
-                    tags={"ip": ip, "pid": agent_pid},
-                )
-            )
-            agent_mem_full_info = agent_stats.get("memory_full_info")
-            if agent_mem_full_info is not None:
-                agent_uss = float(agent_mem_full_info.uss) / 1.0e6
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["agent_mem_uss"],
-                        value=agent_uss,
-                        tags={"ip": ip, "pid": agent_pid},
-                    )
-                )
-                if sys.platform == "linux":
-                    agent_pss = float(agent_mem_full_info.pss) / 1.0e6
-                    records_reported.append(
-                        Record(
-                            gauge=METRICS_GAUGES["agent_mem_pss"],
-                            value=agent_pss,
-                            tags={"ip": ip, "pid": agent_pid},
-                        )
-                    )
-
-        # NOTE: For GCS / dashboard, they are recorded within the process,
-        # not within an agent.
-        # It is because when you have more than 1 ray instance
-        # per node, there's no way to distinguish them if they are
-        # collected from an agent.
+        # TODO(sang): Record GCS metrics.
+        # NOTE: Dashboard metrics is recorded within the dashboard because
+        # it can be deployed as a standalone instance. It shouldn't
+        # depend on the agent.
 
         records_reported.extend(
             [

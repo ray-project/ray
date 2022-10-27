@@ -112,20 +112,13 @@ _AUTOSCALER_METRICS = [
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _DASHBOARD_METRICS = [
-    "dashboard_api_requests_duration_seconds",
-    "dashboard_api_requests_count",
-    "dashboard_cpu_percentage",
-    "dashboard_mem_usage_MB",
+    "ray_dashboard_api_requests_duration_seconds",
+    "ray_dashboard_api_requests_count",
+    "ray_component_cpu",
+    "ray_component_rss",
 ]
 
 _NODE_METRICS = [
-    "ray_raylet_cpu",
-    "ray_raylet_mem",
-    "ray_workers_cpu",
-    "ray_workers_mem",
-    "ray_agent_cpu",
-    "ray_agent_mem",
-    "ray_agent_mem_uss",
     "ray_node_cpu_utilization",
     "ray_node_cpu_count",
     "ray_node_mem_used",
@@ -148,15 +141,18 @@ _NODE_METRICS = [
     "ray_node_network_receive_speed",
 ]
 
+_NODE_COMPONENT_METRICS = [
+    "ray_component_cpu",
+    "ray_component_rss",
+    "ray_component_uss",
+]
+
 if sys.platform == "linux":
     # Below metrics are only available in Linux.
-    _NODE_METRICS += [
-        "ray_agent_mem_pss",
-        "raylet_mem_shm",
-        "raylet_mem_pss",
-        "raylet_mem_swap",
-        "workers_mem_shm",
-        "workers_mem_pss",
+    _NODE_COMPONENT_METRICS += [
+        "ray_component_pss",
+        "ray_component_shm",
+        "ray_component_swap",
     ]
 
 
@@ -248,9 +244,19 @@ def test_metrics_export_node_metrics(shutdown_only):
 
     def verify_node_metrics():
         avail_metrics = raw_metrics(addr)
+
+        components = set()
+        for metric in _NODE_COMPONENT_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"raylet", "agent", "workers"}
+
         avail_metrics = set(avail_metrics)
 
         for node_metric in _NODE_METRICS:
+            assert node_metric in avail_metrics
+        for node_metric in _NODE_COMPONENT_METRICS:
             assert node_metric in avail_metrics
         return True
 
@@ -258,8 +264,17 @@ def test_metrics_export_node_metrics(shutdown_only):
         avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
         # Run list nodes to trigger dashboard API.
         ray.experimental.state.api.list_nodes()
-        avail_metrics = set(avail_metrics)
 
+        # Verify components
+        components = set()
+        for metric in _DASHBOARD_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"dashboard"}
+
+        # Verify metrics exist.
+        avail_metrics = set(avail_metrics)
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -309,6 +324,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         for sample in metric_samples:
             if sample.name in _METRICS:
+                assert sample.labels["SessionName"] == session_name
+            if sample.name in _DASHBOARD_METRICS:
                 assert sample.labels["SessionName"] == session_name
 
         # Make sure the numeric values are correct

@@ -63,6 +63,7 @@ class HttpServerDashboardHead:
         http_port_retries: int,
         gcs_address: str,
         gcs_client: GcsClient,
+        session_name: str,
         metrics: DashboardPrometheusMetrics,
     ):
         self.ip = ip
@@ -72,6 +73,7 @@ class HttpServerDashboardHead:
         self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
         self.metrics = metrics
+        self._session_name = session_name
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -130,10 +132,17 @@ class HttpServerDashboardHead:
         finally:
             resp_time = time.monotonic() - start_time
             self.metrics.metrics_request_duration.labels(
-                endpoint=request.path, http_status=status_tag
+                endpoint=request.path,
+                http_status=status_tag,
+                SessionName=self._session_name,
+                Component="dashboard",
             ).observe(resp_time)
             self.metrics.metrics_request_count.labels(
-                method=request.method, endpoint=request.path, http_status=status_tag
+                method=request.method,
+                endpoint=request.path,
+                http_status=status_tag,
+                SessionName=self._session_name,
+                Component="dashboard",
             ).inc()
 
     async def run(self, modules):
