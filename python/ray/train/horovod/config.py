@@ -1,18 +1,20 @@
 import sys
-from typing import Optional, Set, Dict
+from typing import Optional, Set
 
 import os
 from dataclasses import dataclass
 
 import ray
-from ray.air._internal.torch_utils import contains_tensor
-from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.air.checkpoint import Checkpoint
+from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
 
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 from ray.util import PublicAPI
 
@@ -131,36 +133,26 @@ class _HorovodBackend(Backend):
 
         worker_group.execute(update_env_vars, coordinator_envs)
 
-    @staticmethod
-    def encode_data(data_dict: Dict) -> EncodedData:
-        """Logic to encode a data dict before sending to the driver.
+    @classmethod
+    def _encode_data(cls, checkpoint: Checkpoint):
+        checkpoint = super()._encode_data(checkpoint)
+        if type(checkpoint) is Checkpoint:
+            if checkpoint.get_internal_representation()[0] == "data_dict":
+                if "tensorflow" in sys.modules:
+                    from ray.air._internal.tensorflow_utils import (
+                        contains_tensorflow_object,
+                    )
 
-        This function will be called on the workers for any data that is
-        sent to the driver via ``session.report()``.
-        """
-        # If torch is imported, we can use it to serialize the data dict
-        # into bytes. This will prevent e.g. GPU deserialization errors.
-        if "torch" in sys.modules and contains_tensor(data_dict):
-            from ray.train.torch.config import _TorchBackend
+                    if contains_tensorflow_object(checkpoint.to_dict()):
+                        _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
+                        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+                if "torch" in sys.modules:
+                    from ray.air._internal.torch_utils import contains_tensor
 
-            return _TorchBackend.encode_data(data_dict)
-
-        return data_dict
-
-    @staticmethod
-    def decode_data(encoded_data: EncodedData) -> Dict:
-        """Logic to decode an encoded data dict.
-
-        This function will be called on the driver after receiving the
-        encoded data dict from the worker.
-        """
-        # See encode_data
-        if "torch" in sys.modules and isinstance(encoded_data, bytes):
-            from ray.train.torch.config import _TorchBackend
-
-            return _TorchBackend.decode_data(encoded_data)
-
-        return encoded_data
+                    if contains_tensor(checkpoint.to_dict()):
+                        _warn_about_bad_checkpoint_type(TorchCheckpoint)
+                        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint
 
 
 def _init_env_vars(world_rank: int, world_size: int, node_id: str):
