@@ -391,6 +391,8 @@ class AlgorithmConfig:
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
+            elif key == "exploration_config":
+                self.exploration(exploration_config=value)
             elif key == "model":
                 self.training(model=value)
             # If config key matches a property, just set it, otherwise, warn and set.
