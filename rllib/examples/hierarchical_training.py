@@ -55,12 +55,17 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=0.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=args.local_mode)
 
     stop = {
         "training_iteration": args.stop_iters,
