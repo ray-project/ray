@@ -305,10 +305,14 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif dist_type in (
-            MultiActionDistribution,
-            TorchMultiActionDistribution,
-        ) or isinstance(action_space, (Tuple, Dict)):
+        elif (
+            dist_type
+            in (
+                MultiActionDistribution,
+                TorchMultiActionDistribution,
+            )
+            or isinstance(action_space, (Tuple, Dict))
+        ):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -755,8 +759,7 @@ class ModelCatalog:
             )
         else:
             raise NotImplementedError(
-                "`framework` must be 'tf2|tf|torch', but is "
-                "{}!".format(framework)
+                "`framework` must be 'tf2|tf|torch', but is " "{}!".format(framework)
             )
 
     @staticmethod

@@ -2776,10 +2776,7 @@ class Algorithm(Trainable):
         # In case we are training (in a thread) parallel to evaluation,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
-        if (
-            self.config.get("framework") == "tf2"
-            and not tf.executing_eagerly()
-        ):
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
         results = None

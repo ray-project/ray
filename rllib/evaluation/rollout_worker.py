@@ -487,9 +487,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if (
             tf1
-            and (
-                config.framework_str == "tf2" or config.enable_tf1_exec_eagerly
-            )
+            and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
             and not tf1.executing_eagerly()
