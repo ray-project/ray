@@ -524,7 +524,7 @@ class Impala(Algorithm):
             # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
             #  models to return separate sets of weights in order to create
             #  the different torch optimizers).
-            if config["framework"] not in ["tf", "tf2", "tfe"]:
+            if config["framework"] not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
                 )

@@ -2223,7 +2223,7 @@ class Algorithm(Trainable):
         _tf1, _tf, _tfv = None, None, None
         _torch = None
         framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        tf_valid_frameworks = {"tf", "tf2"}
         if framework not in tf_valid_frameworks and framework != "torch":
             return
         elif framework in tf_valid_frameworks:
@@ -2257,7 +2257,7 @@ class Algorithm(Trainable):
         def resolve_tf_settings():
             """Check and resolve tf settings."""
 
-            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+            if _tf1 and config["framework"] == "tf2":
                 if config["framework"] == "tf2" and _tfv < 2:
                     raise ValueError(
                         "You configured `framework`=tf2, but your installed "
@@ -2323,7 +2323,7 @@ class Algorithm(Trainable):
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the RLTrainer API.
-            if framework in ["tfe", "tf2"] and type(self).__name__ != "AlphaStar":
+            if framework == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)
@@ -2378,7 +2378,7 @@ class Algorithm(Trainable):
 
         # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2"]:
+            if framework == "tf2":
                 raise ValueError(
                     "`simple_optimizer=False` not supported for "
                     "config.framework({})!".format(framework)
@@ -2776,10 +2776,7 @@ class Algorithm(Trainable):
         # In case we are training (in a thread) parallel to evaluation,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
-        if (
-            self.config.get("framework") in ["tf2", "tfe"]
-            and not tf.executing_eagerly()
-        ):
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
         results = None
