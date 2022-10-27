@@ -157,6 +157,10 @@ def test_loggers(ray_start_4_cpus):
         def fit_start(self, state: State, logger: Logger) -> None:
             raise ValueError("Composer Callback object exists.")
 
+    class DummyMonitorCallback(Callback):
+        def fit_start(self, state: State, logger: Logger) -> None:
+            logger.log_metrics({"dummy_callback": "test"})
+
     # DummyLogger should not throw an error since it should be removed before `fit` call
     trainer_init_config = {
         "max_duration": "1ep",
@@ -182,6 +186,18 @@ def test_loggers(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         trainer.fit()
         assert e == "Composer Callback object exists."
+
+    trainer_init_config["callbacks"] = DummyMonitorCallback()
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert "dummy_callback" in result.metrics
+    assert result.metrics["dummy_callback"] == "test"
 
 
 def test_metrics_key(ray_start_4_cpus):
@@ -235,12 +251,21 @@ def test_monitor_callbacks(ray_start_4_cpus):
 
     result = trainer.fit()
 
+    assert len(result.metrics_dataframe) == 2
+
     metrics_columns = result.metrics_dataframe.columns
-    assert "wall_clock/train" in metrics_columns
-    assert "wall_clock/val" in metrics_columns
-    assert "wall_clock/total" in metrics_columns
-    assert "lr-DecoupledSGDW/group0" in metrics_columns
-    assert "grad_l2_norm/step" in metrics_columns
+    columns_to_check = [
+        "wall_clock/train",
+        "wall_clock/val",
+        "wall_clock/total",
+        "lr-DecoupledSGDW/group0",
+        "grad_l2_norm/step",
+    ]
+    for column in columns_to_check:
+        assert column in metrics_columns, column + " is not found"
+        assert result.metrics_dataframe[column].isnull().sum() == 0, (
+            column + " column has a null value"
+        )
 
 
 if __name__ == "__main__":
