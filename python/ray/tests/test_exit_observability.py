@@ -169,11 +169,9 @@ ray.shutdown()
 
     a = A.remote()
     pid = ray.get(a.pid.remote())
-    # This prevents the actor method from normal exiting as task(a.pid()) finishes
-    a.sleep_forever.remote()
     ray.kill(a)
     with pytest.raises(ray.exceptions.RayActorError, match="ray.kill"):
-        ray.get(a.exit_with_exit_code.remote())
+        ray.get(a.sleep_forever.remote())
 
     def verify_exit_by_ray_kill():
         worker = get_worker_by_pid(pid)
