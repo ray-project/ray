@@ -254,7 +254,7 @@ VERBOSE_TRIAL_NORM_2_PATTERN = (
 )
 
 VERBOSE_TRIAL_NORM_3 = (
-    "Trial train_xxxxx_00002 reported acc=7 " "with parameters={'do': 'twice'}.\n"
+    "Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
 )
 
 VERBOSE_TRIAL_NORM_4 = (
