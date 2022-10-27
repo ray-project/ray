@@ -4427,6 +4427,9 @@
     test_name: dataset_shuffle_random_shuffle_1tb
     test_suite: dataset_test
 
+  #TODO:https://github.com/ray-project/ray/issues/29294
+  stable: false
+
   frequency: nightly
   team: data
   cluster:
