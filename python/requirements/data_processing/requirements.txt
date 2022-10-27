@@ -1,3 +1,6 @@
+# Used by CI for datasets and docs.
+# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
+
 dask[complete]==2021.03.0; python_version < '3.7'
 dask[complete]==2022.2.0; python_version >= '3.7'
 aioboto3==8.3.0

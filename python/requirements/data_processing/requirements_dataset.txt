@@ -1,3 +1,6 @@
+# Used by CI for datasets tests.
+# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
+
 pickle5; python_version < '3.8'
 python-snappy
 tensorflow-datasets
