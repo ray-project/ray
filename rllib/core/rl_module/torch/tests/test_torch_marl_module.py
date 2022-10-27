@@ -13,6 +13,7 @@ from ray.rllib.core.rl_module.torch import TorchMultiAgentRLModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check
+from ray.rllib.policy.sample_batch import SampleBatch
 
 
 def to_numpy(tensor):
@@ -38,12 +39,12 @@ def get_policy_data_from_agent_data(agent_data, policy_map_fn):
     for agent_id, data in agent_data.items():
         policy_id = policy_map_fn(agent_id)
         policy_data.setdefault(policy_id, {})
-        policy_data[policy_id].setdefault("agent_id", [])
+        policy_data[policy_id].setdefault(SampleBatch.AGENT_INDEX, [])
 
-        if data["obs"].ndim == 1:
-            policy_data[policy_id]["agent_id"].append(agent_id)
+        if data[SampleBatch.OBS].ndim == 1:
+            policy_data[policy_id][SampleBatch.AGENT_INDEX].append(agent_id)
         else:
-            policy_data[policy_id]["agent_id"] += [agent_id] * len(data["obs"])
+            policy_data[policy_id][SampleBatch.AGENT_INDEX] += [agent_id] * len(data[SampleBatch.OBS])
 
         for k, v in data.items():
             policy_data[policy_id].setdefault(k, [])
@@ -53,7 +54,7 @@ def get_policy_data_from_agent_data(agent_data, policy_map_fn):
 
     for policy_id in policy_data:
         policy_data[policy_id] = {
-            k: np.concatenate(v) if k != "agent_id" else v
+            k: np.concatenate(v) if k != SampleBatch.AGENT_INDEX else v
             for k, v in policy_data[policy_id].items()
         }
 
@@ -73,7 +74,7 @@ def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
     for policy_id, policy_out in fwd_out.items():
         policy_to_agent_to_action[policy_id] = {}
         for agent_id, agent_out in zip(
-            fwd_in[policy_id]["agent_id"], policy_out["action_dist"].sample()
+            fwd_in[policy_id][SampleBatch.AGENT_INDEX], policy_out[SampleBatch.ACTION_DIST].sample()
         ):
             policy_to_agent_to_action[policy_id][agent_id] = to_numpy(agent_out)
 
@@ -170,7 +171,7 @@ class TestMARLModule(unittest.TestCase):
                 while tstep < 10:
                     # go from agent_id to module_id, compute the actions in batches
                     # and come back to the original per agent format.
-                    agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
+                    agent_obs = tree.map_structure(lambda x: {SampleBatch.OBS: x}, obs)
                     fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
                     fwd_in = tree.map_structure(
                         lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x,
@@ -221,7 +222,7 @@ class TestMARLModule(unittest.TestCase):
         while tstep < 10:
             # go from agent_id to module_id, compute the actions in batches
             # and come back to the original per agent format.
-            agent_obs = tree.map_structure(lambda x: {"obs": x}, obs)
+            agent_obs = tree.map_structure(lambda x: {SampleBatch.OBS: x}, obs)
             fwd_in = get_policy_data_from_agent_data(agent_obs, policy_map)
             fwd_in = tree.map_structure(
                 lambda x: to_tensor(x) if isinstance(x, np.ndarray) else x, fwd_in
@@ -235,13 +236,13 @@ class TestMARLModule(unittest.TestCase):
             iteration_data = {}
             for aid in agent_obs.keys():
                 iteration_data[aid] = {
-                    "obs": obs[aid],
-                    "action": action[aid][None]
+                    SampleBatch.OBS: obs[aid],
+                    SampleBatch.ACTIONS: action[aid][None]
                     if action[aid].ndim == 0
                     else action[aid],
-                    "reward": np.array(reward[aid])[None],
-                    "done": np.array(done[aid])[None],
-                    "next_obs": next_obs[aid],
+                    SampleBatch.REWARDS: np.array(reward[aid])[None],
+                    SampleBatch.DONES: np.array(done[aid])[None],
+                    SampleBatch.NEXT_OBS: next_obs[aid],
                 }
             batch.append(iteration_data)
 

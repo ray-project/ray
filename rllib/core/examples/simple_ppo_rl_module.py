@@ -4,6 +4,7 @@ from typing import List, Mapping, Any
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -21,8 +22,8 @@ torch, nn = try_import_torch()
 def get_ppo_loss(fwd_in, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
-    adv = fwd_in["reward"] - fwd_out["vf"]
-    actor_loss = -(fwd_out["logp"] * adv).mean()
+    adv = fwd_in[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
+    actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
     critic_loss = (adv ** 2).mean()
     loss = actor_loss + critic_loss
 
@@ -210,15 +211,11 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_inference(self) -> ModelSpec:
-        return ModelSpec(
-            {
-                "action_dist": TorchDeterministic,
-            }
-        )
+        return ModelSpec({SampleBatch.ACTION_DIST: TorchDeterministic})
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoded_state = batch["obs"]
+        encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
         pi_out = self.pi(encoded_state)
@@ -229,31 +226,25 @@ class SimplePPOModule(TorchRLModule):
             action, _ = pi_out.chunk(2, dim=-1)
 
         action_dist = TorchDeterministic(action)
-        return {"action_dist": action_dist}
+        return {SampleBatch.ACTION_DIST: action_dist}
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return ModelSpec(
-            {
-                "obs": self.encoder.input_specs()
+        return ModelSpec({
+            SampleBatch.OBS: (
+                self.encoder.input_specs()
                 if self.encoder
-                else self.pi.input_specs(),
-            }
-        )
+                else self.pi.input_specs()
+            )
+        })
 
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
-        return ModelSpec(
-            {
-                "action_dist": TorchCategorical
-                if self._is_discrete
-                else TorchDiagGaussian,
-            }
-        )
+        return ModelSpec({SampleBatch.ACTION_DIST: self.__get_action_dist_type()})
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoded_state = batch["obs"]
+        encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
         pi_out = self.pi(encoded_state)
@@ -264,7 +255,7 @@ class SimplePPOModule(TorchRLModule):
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
 
-        return {"action_dist": action_dist}
+        return {SampleBatch.ACTION_DIST: action_dist}
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
@@ -275,10 +266,12 @@ class SimplePPOModule(TorchRLModule):
 
         return ModelSpec(
             {
-                "obs": self.encoder.input_specs()
-                if self.encoder
-                else self.pi.input_specs(),
-                "action": TorchTensorSpec("b, da", da=action_dim),
+                SampleBatch.OBS: (
+                    self.encoder.input_specs() 
+                    if self.encoder 
+                    else self.pi.input_specs()
+                ),
+                SampleBatch.ACTIONS: TorchTensorSpec("b, da", da=action_dim),
             }
         )
 
@@ -286,18 +279,16 @@ class SimplePPOModule(TorchRLModule):
     def output_specs_train(self) -> ModelSpec:
         return ModelSpec(
             {
-                "action_dist": TorchCategorical
-                if self._is_discrete
-                else TorchDiagGaussian,
-                "logp": TorchTensorSpec("b", dtype=torch.float32),
+                SampleBatch.ACTION_DIST: self.__get_action_dist_type(),
+                SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
+                SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
                 "entropy": TorchTensorSpec("b", dtype=torch.float32),
-                "vf": TorchTensorSpec("b", dtype=torch.float32),
             }
         )
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoded_state = batch["obs"]
+        encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
         pi_out = self.pi(encoded_state)
@@ -309,11 +300,15 @@ class SimplePPOModule(TorchRLModule):
             mu, scale = pi_out.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
 
-        logp = action_dist.logp(batch["action"].squeeze(-1))
+        logp = action_dist.logp(batch[SampleBatch.ACTIONS].squeeze(-1))
         entropy = action_dist.entropy()
         return {
-            "action_dist": action_dist,
-            "logp": logp,
+            SampleBatch.ACTION_DIST: action_dist,
+            SampleBatch.ACTION_LOGP: logp,
+            SampleBatch.VF_PREDS: vf.squeeze(-1),
             "entropy": entropy,
-            "vf": vf.squeeze(-1),
         }
+
+
+    def __get_action_dist_type(self):
+        return TorchCategorical if self._is_discrete else TorchDiagGaussian

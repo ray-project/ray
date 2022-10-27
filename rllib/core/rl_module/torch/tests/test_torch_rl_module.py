@@ -1,5 +1,6 @@
 import unittest
 import gym
+from ray.rllib.policy.sample_batch import SampleBatch
 import torch
 import tree
 import numpy as np
@@ -104,21 +105,21 @@ class TestRLModule(unittest.TestCase):
 
                         if fwd_fn == "forward_exploration":
                             fwd_out = module.forward_exploration(
-                                {"obs": to_tensor(obs)[None]}
+                                {SampleBatch.OBS: to_tensor(obs)[None]}
                             )
                             action = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                         elif fwd_fn == "forward_inference":
                             # check if I sample twice, I get the same action
                             fwd_out = module.forward_inference(
-                                {"obs": to_tensor(obs)[None]}
+                                {SampleBatch.OBS: to_tensor(obs)[None]}
                             )
                             action = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                             action2 = to_numpy(
-                                fwd_out["action_dist"].sample().squeeze(0)
+                                fwd_out[SampleBatch.ACTION_DIST].sample().squeeze(0)
                             )
                             check(action, action2)
 
@@ -153,10 +154,10 @@ class TestRLModule(unittest.TestCase):
                     obs, reward, done, _ = env.step(action)
                     batch.append(
                         {
-                            "obs": obs,
-                            "action": action[None] if action.ndim == 0 else action,
-                            "reward": np.array(reward),
-                            "done": np.array(done),
+                            SampleBatch.OBS: obs,
+                            SampleBatch.ACTIONS: action[None] if action.ndim == 0 else action,
+                            SampleBatch.REWARDS: np.array(reward),
+                            SampleBatch.DONES: np.array(done),
                         }
                     )
                     tstep += 1
