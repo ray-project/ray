@@ -2020,8 +2020,8 @@ class AlgorithmConfig:
             "observation_fn": self.observation_fn,
         }
 
-    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
     @property
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
     def num_workers(self):
         """For backward-compatibility purposes only."""
         return self.num_rollout_workers
