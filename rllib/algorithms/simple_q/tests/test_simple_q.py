@@ -45,16 +45,16 @@ class TestSimpleQ(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="CartPole-v0")
-            rw = algo.workers.local_worker()
+            trainer = config.build(env="CartPole-v0")
+            rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
                 assert sb.count == config.rollout_fragment_length
-                results = algo.train()
+                results = trainer.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(algo)
+            check_compute_single_action(trainer)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
@@ -66,11 +66,11 @@ class TestSimpleQ(unittest.TestCase):
                 "fcnet_activation": "linear",
             },
             num_steps_sampled_before_learning_starts=0,
-        ).environment("CartPole-v0")
+        )
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
-            trainer = config.build()
+            trainer = simple_q.SimpleQ(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.
             input_ = SampleBatch(

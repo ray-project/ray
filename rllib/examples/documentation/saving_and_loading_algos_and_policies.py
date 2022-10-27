@@ -115,9 +115,9 @@ my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
     # to avoid a runtime error). Now both agents ("agent0" and "agent1") map to
     # the same policy.
     policy_mapping_fn=lambda agent_id, episode, worker, **kw: "pol1",
-    # Since we defined this above, we have to re-define it here with the updated
+    # Since we defined this above, we have to de-define it here with the updated
     # PolicyIDs, otherwise, RLlib will throw an error (it will think that there is an
-    # unknown PolicyID in this list ("pol2")).
+    # unknown PolicyID in this list (pol2)).
     policies_to_train=["pol1"],
 )
 

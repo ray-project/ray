@@ -18,7 +18,6 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)
@@ -228,8 +227,8 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["Policy"], config: PartialAlgorithmConfigDict
-) -> Type["Policy"]:
+    orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
+) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:

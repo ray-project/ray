@@ -73,8 +73,8 @@ class AlphaZeroConfig(AlgorithmConfig):
         ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -148,12 +148,12 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"
         # Extra configuration that disables exploration.
-        self.evaluation(evaluation_config={
+        self.evaluation_config = {
             "mcts_config": {
                 "argmax_tree_policy": True,
                 "add_dirichlet_noise": False,
             },
-        })
+        }
         # __sphinx_doc_end__
         # fmt: on
 

@@ -35,12 +35,11 @@ class A3CConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = A3CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)\
-        ...     .environment("CartPole-v1")
+        ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
     Example:
         >>> config = A3CConfig()
