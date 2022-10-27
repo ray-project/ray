@@ -166,9 +166,15 @@ def test_batch_prediction_simple():
     ]
 
 
-@pytest.mark.parametrize(
-    "preprocessor,predictor_cls,input_dataset,dataset_format",
-    [
+def test_batch_prediction_various_combination():
+    """Dataset level predictor test against various
+    - Dataset format
+    - Preprocessor implementation (pandas vs numpy)
+    - Predictor implementation (pandas vs numpy)
+    """
+    # Got to inline this rather than using @pytest.mark.parametrize to void
+    # unknown object owner error when running test with python cli.
+    test_cases = [
         (
             DummyPreprocessor(),
             DummyPredictor,
@@ -230,32 +236,26 @@ def test_batch_prediction_simple():
             # taken for predictor.
             "pandas",
         ),
-    ],
-)
-def test_batch_prediction_various_combination(
-    preprocessor, predictor_cls, input_dataset, dataset_format
-):
-    """Dataset level predictor test against various
-    - Dataset format
-    - Preprocessor implementation (pandas vs numpy)
-    - Predictor implementation (pandas vs numpy)
-    """
-    # Test with pandas preprocessor
-    batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
-        predictor_cls,
-    )
-
-    ds = batch_predictor.predict(input_dataset)
-    # Check no fusion needed since we're not doing a dataset read.
-    assert "Stage 1 map_batches" in ds.stats(), ds.stats()
-    assert ds.to_pandas().to_numpy().squeeze().tolist() == [
-        4.0,
-        8.0,
-        12.0,
     ]
 
-    assert ds._dataset_format() == dataset_format
+    for test_case in test_cases:
+        preprocessor, predictor_cls, input_dataset, dataset_format = test_case
+        # Test with pandas preprocessor
+        batch_predictor = BatchPredictor.from_checkpoint(
+            Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
+            predictor_cls,
+        )
+
+        ds = batch_predictor.predict(input_dataset)
+        # Check no fusion needed since we're not doing a dataset read.
+        assert "Stage 1 map_batches" in ds.stats(), ds.stats()
+        assert ds.to_pandas().to_numpy().squeeze().tolist() == [
+            4.0,
+            8.0,
+            12.0,
+        ]
+
+        assert ds._dataset_format() == dataset_format
 
 
 def test_batch_prediction_fs():
@@ -403,4 +403,4 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
