@@ -243,9 +243,9 @@ VERBOSE_TRIAL_NORM_1 = (
     "with parameters={'do': 'complete'}. This trial completed.\n"
 )
 
-# NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic. 
+# NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic.
 # `"Trial train_xxxxx_00001 reported..."` and `"Trial train_xxxxx_00001 completed..."`
-# are printed in separate calls. Sometimes, a status update is printed between the 
+# are printed in separate calls. Sometimes, a status update is printed between the
 # calls. For more information, see #29693.
 VERBOSE_TRIAL_NORM_2_PATTERN = (
     r"Trial train_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\."
@@ -254,8 +254,7 @@ VERBOSE_TRIAL_NORM_2_PATTERN = (
 )
 
 VERBOSE_TRIAL_NORM_3 = (
-    "Trial train_xxxxx_00002 reported acc=7 "
-    "with parameters={'do': 'twice'}.\n"
+    "Trial train_xxxxx_00002 reported acc=7 " "with parameters={'do': 'twice'}.\n"
 )
 
 VERBOSE_TRIAL_NORM_4 = (
