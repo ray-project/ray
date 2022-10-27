@@ -1,9 +1,5 @@
-import warnings
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
-from ray.train._internal.session import get_session
-from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.util import log_once
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
@@ -28,22 +24,6 @@ def _get_deprecation_msg(is_docstring: bool, fn_name: Optional[str] = None):
         "but in a unified manner across Ray Train and Ray Tune."
     )
     return deprecation_msg
-
-
-def _warn_session_misuse(fn_name: str):
-    """Logs warning message on provided fn being used outside of session.
-
-    Args:
-        fn_name: The name of the function to warn about.
-    """
-
-    if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
-        warnings.warn(
-            f"`train.{fn_name}()` is meant to only be "
-            f"called "
-            "inside a training function that is executed by "
-            "`Trainer.run`. Returning None."
-        )
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -86,32 +66,9 @@ def get_dataset_shard(
         The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=get_dataset_shard.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        _warn_session_misuse(get_dataset_shard.__name__)
-        return
-    shard = session.dataset_shard
-    if shard is None:
-        warnings.warn(
-            "No dataset passed in. Returning None. Make sure to "
-            "pass in a Ray Dataset to Trainer.run to use this "
-            "function."
-        )
-    elif isinstance(shard, dict):
-        if not dataset_name:
-            raise RuntimeError(
-                "Multiple datasets were passed into ``Trainer``, "
-                "but no ``dataset_name`` is passed into "
-                "``get_dataset_shard``. Please specify which "
-                "dataset shard to retrieve."
-            )
-        return shard.get(dataset_name)
-    return shard
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -138,16 +95,9 @@ def report(**kwargs) -> None:
             If callbacks are provided, they are executed on these
             intermediate results.
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=report.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        _warn_session_misuse(report.__name__)
-        return
-    session._report_legacy(**kwargs)
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -171,15 +121,9 @@ def world_rank() -> int:
         trainer.shutdown()
 
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=world_rank.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        return 0
-    return session.world_rank
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -202,15 +146,9 @@ def local_rank() -> int:
         trainer.shutdown()
 
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=local_rank.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        return 0
-    return session.local_rank
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -240,16 +178,9 @@ def load_checkpoint() -> Optional[Dict]:
         has been called. Otherwise, the checkpoint that the session was
         originally initialized with. ``None`` if neither exist.
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=load_checkpoint.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        _warn_session_misuse(load_checkpoint.__name__)
-        return
-    return session.loaded_checkpoint
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -274,16 +205,9 @@ def save_checkpoint(**kwargs) -> None:
     Args:
         **kwargs: Any key value pair to be checkpointed by Train.
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=save_checkpoint.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        _warn_session_misuse(save_checkpoint.__name__)
-        return
-    session.checkpoint(**kwargs)
 
 
 @Deprecated(message=_get_deprecation_msg(is_docstring=True))
@@ -303,12 +227,6 @@ def world_size() -> int:
         trainer.run(train_func)
         trainer.shutdown()
     """
-    warnings.warn(
+    raise DeprecationWarning(
         _get_deprecation_msg(is_docstring=False, fn_name=world_size.__name__),
-        DeprecationWarning,
-        stacklevel=2,
     )
-    session = get_session()
-    if session is None:
-        return 1
-    return session.world_size

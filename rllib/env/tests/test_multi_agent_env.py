@@ -335,7 +335,11 @@ class TestMultiAgentEnv(unittest.TestCase):
                     agent_id = "extra_0"
                     policy_id = "p1"  # use p1 so we can easily check it
                     builder.add_init_obs(
-                        fake_eps, agent_id, env_id, policy_id, -1, obs_batch[0]
+                        episode=fake_eps,
+                        agent_id=agent_id,
+                        policy_id=policy_id,
+                        env_id=env_id,
+                        init_obs=obs_batch[0],
                     )
                     for t in range(4):
                         builder.add_action_reward_next_obs(

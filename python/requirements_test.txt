@@ -14,6 +14,7 @@ msrestazure==0.6.4
 boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
+# Keep in sync with `ci/build/upload_build_info.sh`
 cryptography==38.0.1
 cython==0.29.32
 dataclasses; python_version < '3.7'
@@ -47,6 +48,7 @@ Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
 pyarrow==6.0.1
 pydantic==1.9.2
+# Keep in sync with `ci/build/upload_build_info.sh`
 PyOpenSSL==22.1.0
 pygame==2.1.2
 Pygments==2.13.0
