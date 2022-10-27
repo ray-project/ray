@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -214,7 +214,7 @@ class BatchPredictor:
                 # No select columns specified, use all columns.
                 if not select_columns:
                     return batch_data
-                elif select_columns and isinstance(batch_data, np.ndarray):
+                elif isinstance(batch_data, np.ndarray):
                     raise ValueError(
                         f"Column name(s) {select_columns} should not be provided "
                         "for prediction input data type of ``numpy.ndarray``"
@@ -241,7 +241,7 @@ class BatchPredictor:
                 """
                 if not keep_columns:
                     return prediction_output_batch
-                elif keep_columns and (isinstance(input_batch, np.ndarray)):
+                elif isinstance(input_batch, np.ndarray):
                     raise ValueError(
                         f"Column name(s) {keep_columns} should not be provided "
                         "for prediction input data type of ``numpy.ndarray``"
@@ -269,14 +269,7 @@ class BatchPredictor:
                     )
                 )
 
-                if batch_format == BatchFormat.NUMPY:
-                    # User code just need to return Numpy format where we will
-                    # internall convert to Arrow format.
-                    return prediction_output_batch
-                else:
-                    return convert_batch_type_to_pandas(
-                        prediction_output_batch, cast_tensor_columns
-                    )
+                return prediction_output_batch
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers

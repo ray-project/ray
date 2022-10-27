@@ -3,6 +3,8 @@ import time
 from typing import Optional
 
 import pandas as pd
+import pyarrow as pa
+
 import pytest
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 
@@ -23,6 +25,8 @@ class DummyPreprocessor(Preprocessor):
     def _transform_pandas(self, df):
         return df * self.multiplier
 
+
+class DummyWithNumpyPreprocessor(DummyPreprocessor):
     def _transform_numpy(self, np_data):
         return np_data * self.multiplier
 
@@ -68,6 +72,11 @@ class DummyPredictor(Predictor):
             raise ValueError("DummyPredictor does not support GPU prediction.")
         else:
             return data * self.factor
+
+
+class DummyWithNumpyPredictor(DummyPredictor):
+    def _predict_numpy(self, data, **kwargs):
+        return data * self.factor
 
 
 class DummyPredictorFS(DummyPredictor):
@@ -129,7 +138,7 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
         _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
-def test_batch_prediction():
+def test_batch_prediction_simple():
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
@@ -155,6 +164,98 @@ def test_batch_prediction():
         4.0,
         8.0,
     ]
+
+
+@pytest.mark.parametrize(
+    "preprocessor,predictor_cls,input_dataset,dataset_format",
+    [
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Pandas dataset format should be preserved in output.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Pandas dataset format should be preserved in output.
+            "pandas",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Pandas dataset format should be preserved in output.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Output dataset format should be arrow given numpy path is taken
+            # for both preprocessor and predictor.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Output dataset format should be pandas given only pandas
+            # preprocessor is available.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Output dataset format should be arrow given numpy path is taken
+            # for both preprocessor and predictor.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Output dataset format should be pandas given only pandas
+            # preprocessor is available.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Output dataset format should be pandas given panda path is
+            # taken for predictor.
+            "pandas",
+        ),
+    ],
+)
+def test_batch_prediction_various_combination(
+    preprocessor, predictor_cls, input_dataset, dataset_format
+):
+    """Dataset level predictor test against various
+    - Dataset format
+    - Preprocessor implementation (pandas vs numpy)
+    - Predictor implementation (pandas vs numpy)
+    """
+    # Test with pandas preprocessor
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
+        predictor_cls,
+    )
+
+    ds = batch_predictor.predict(input_dataset)
+    # Check no fusion needed since we're not doing a dataset read.
+    assert "Stage 1 map_batches" in ds.stats(), ds.stats()
+    assert ds.to_pandas().to_numpy().squeeze().tolist() == [
+        4.0,
+        8.0,
+        12.0,
+    ]
+
+    assert ds._dataset_format() == dataset_format
 
 
 def test_batch_prediction_fs():
