@@ -84,7 +84,9 @@ class PlasmaAllocator : public IAllocator {
   int64_t FallbackAllocated() const override;
 
  private:
-  absl::optional<Allocation> BuildAllocation(void *addr, size_t size);
+  absl::optional<Allocation> BuildAllocation(void *addr,
+                                             size_t size,
+                                             bool is_fallback_allocated);
 
  private:
   const int64_t kFootprintLimit;

@@ -54,7 +54,7 @@ def run_ray_client(start_cluster):  # noqa F811
 random_state = np.random.RandomState(seed=42)
 
 # Size of test dataframes
-NCOLS, NROWS = (2 ** 6, 2 ** 8)
+NCOLS, NROWS = (2**6, 2**8)
 
 # Range for values for test data
 RAND_LOW = 0
