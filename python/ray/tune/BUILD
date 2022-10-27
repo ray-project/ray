@@ -796,7 +796,7 @@ py_test(
 
 py_test(
     name = "pbt_function",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_function.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],

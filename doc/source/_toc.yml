@@ -101,7 +101,7 @@ parts:
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/examples/tune_analyze_results
-              - file: tune/tutorials/tune-advanced-tutorial
+              - file: tune/examples/pbt_guide
                 sections:
                   - file: tune/examples/pbt_visualization/pbt_visualization
                     title: "Visualizing and Understanding PBT"
