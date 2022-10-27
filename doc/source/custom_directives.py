@@ -109,6 +109,8 @@ MOCK_MODULES = [
     "tensorflow.contrib.slim",
     "tree",
     "wandb",
+    "wandb.data_types",
+    "wandb.util",
     "zoopt",
     "composer",
     "composer.trainer",
