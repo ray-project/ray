@@ -18,6 +18,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)

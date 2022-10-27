@@ -86,8 +86,8 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")
             else:
-                alg1 = cls(config=config, env="CartPole-v0")
-                alg2 = cls(config=config, env="CartPole-v0")
+                alg1 = cls(config=config, env="CartPole-v1")
+                alg2 = cls(config=config, env="CartPole-v1")
 
             policy1 = alg1.get_policy()
 

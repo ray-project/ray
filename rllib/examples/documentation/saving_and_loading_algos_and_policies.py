@@ -1,11 +1,10 @@
 # flake8: noqa
 
 # __create-algo-checkpoint-begin__
-
 # Create a PPO algorithm object using a config object ..
 from ray.rllib.algorithms.ppo import PPOConfig
 
-my_ppo_config = PPOConfig().environment("CartPole-v0")
+my_ppo_config = PPOConfig().environment("CartPole-v1")
 my_ppo = my_ppo_config.build()
 
 # .. train one iteration ..
@@ -40,7 +39,6 @@ my_new_ppo.train()
 my_new_ppo.stop()
 
 # __restore-from-algo-checkpoint-2-begin__
-
 # Re-build a fresh algorithm.
 my_new_ppo = my_ppo_config.build()
 
@@ -55,7 +53,6 @@ my_new_ppo.train()
 my_new_ppo.stop()
 
 # __multi-agent-checkpoints-begin__
-
 import os
 
 # Use our example multi-agent CartPole environment to train in.
@@ -107,7 +104,6 @@ my_ma_algo_clone = Algorithm.from_checkpoint(ma_checkpoint_dir)
 my_ma_algo_clone.stop()
 
 # __multi-agent-checkpoints-restore-policy-sub-set-begin__
-
 # Here, we use the same (multi-agent Algorithm) checkpoint as above, but only restore
 # it with the first Policy ("pol1").
 
@@ -119,9 +115,9 @@ my_ma_algo_only_pol1 = Algorithm.from_checkpoint(
     # to avoid a runtime error). Now both agents ("agent0" and "agent1") map to
     # the same policy.
     policy_mapping_fn=lambda agent_id, episode, worker, **kw: "pol1",
-    # Since we defined this above, we have to de-define it here with the updated
+    # Since we defined this above, we have to re-define it here with the updated
     # PolicyIDs, otherwise, RLlib will throw an error (it will think that there is an
-    # unknown PolicyID in this list (pol2)).
+    # unknown PolicyID in this list ("pol2")).
     policies_to_train=["pol1"],
 )
 
@@ -136,7 +132,6 @@ my_ma_algo_only_pol1.train()
 my_ma_algo_only_pol1.stop()
 
 # __create-policy-checkpoint-begin__
-
 # Retrieve the Policy object from an Algorithm.
 # Note that for normal, single-agent Algorithms, the Policy ID is "default_policy".
 policy1 = my_ma_algo.get_policy(policy_id="pol1")
@@ -148,7 +143,6 @@ policy1.export_checkpoint("/tmp/my_policy_checkpoint")
 # __create-policy-checkpoint-end__
 
 # __restore-policy-begin__
-
 import numpy as np
 
 from ray.rllib.policy.policy import Policy
@@ -166,7 +160,6 @@ print(f"Computed action {action} from given CartPole observation.")
 
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
@@ -225,7 +218,6 @@ algo_w_2_policies.stop()
 
 
 # __export-models-begin__
-
 from ray.rllib.algorithms.ppo import PPOConfig
 
 # Create a new Algorithm (which contains a Policy, which contains a NN Model).
@@ -253,7 +245,6 @@ ppo_policy = ppo.get_policy()
 # 1) .. using the Policy object:
 
 # __export-models-1-begin__
-
 ppo_policy.export_model("/tmp/my_nn_model")
 # .. check /tmp/my_nn_model/ for the keras model files. You should be able to recover
 # the keras model via:
@@ -275,9 +266,9 @@ ppo_policy.export_model("/tmp/my_nn_model")
 
 # __export-models-1-end__
 
-# __export-models-2-begin__
-
 # 2) .. via the Policy's checkpointing method:
+
+# __export-models-2-begin__
 checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 # .. check /tmp/ppo_policy/model/ for the keras model files.
 # You should be able to recover the keras model via:
@@ -289,10 +280,9 @@ checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 
 # __export-models-2-end__
 
+# 3) .. via the Algorithm (Policy) checkpoint:
 
 # __export-models-3-begin__
-
-# 3) .. via the Algorithm (Policy) checkpoint:
 checkpoint_dir = ppo.save()
 # .. check `checkpoint_dir` for the Algorithm checkpoint files.
 # You should be able to recover the keras model via:
@@ -306,7 +296,6 @@ checkpoint_dir = ppo.save()
 
 
 # __export-models-as-onnx-begin__
-
 # Using the same Policy object, we can also export our NN Model in the ONNX format:
 ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
 

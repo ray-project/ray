@@ -411,10 +411,11 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
         num_cpus=1,
         object_store_memory=2 << 30,
         _system_config={
-            "memory_monitor_interval_ms": 0,
+            "memory_monitor_interval_ms": 50,
+            "memory_usage_threshold_fraction": 0.98,
         },
     ):
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.9)
         print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(
@@ -427,7 +428,7 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
         obj_ref = ray.put(np.random.rand(entries))
         ray.get(obj_ref)
 
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.9)
         print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(

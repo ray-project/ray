@@ -90,7 +90,7 @@ def _system_usage():
     usage_data = parts[1:8]
     total_clock_ticks = sum(int(entry) for entry in usage_data)
     # 100 clock ticks per second, 10^9 ns per second
-    usage_ns = total_clock_ticks * 10 ** 7
+    usage_ns = total_clock_ticks * 10**7
     return usage_ns
 
 

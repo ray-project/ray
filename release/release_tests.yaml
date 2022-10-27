@@ -140,7 +140,7 @@
     script: python horovod/workloads/horovod_tune_test.py
     long_running: true
     wait_for_nodes:
-      num_nodes: 3
+      num_nodes: 2
 
     type: sdk_command
     file_manager: job
@@ -599,6 +599,25 @@
     file_manager: job
 
   alert: default
+
+- name: ray-data-bulk-ingest-file-size-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: true
+  env: staging
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_16.yaml
+
+  run:
+    timeout: 900
+    script: bash file_size_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
 
 #######################
 # XGBoost release tests
@@ -1728,7 +1747,7 @@
     test_name: torch_tune_serve_test
     test_suite: golden_notebook_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1737,7 +1756,7 @@
     cluster_compute: gpu_tpl.yaml
 
   run:
-    timeout: 1800
+    timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
 
@@ -3301,31 +3320,6 @@
     type: sdk_command
     file_manager: sdk
 
-- name: non_streaming_shuffle_1tb_1000_partition
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: non_streaming_shuffle_1tb_1000_partition
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
-      --no-streaming
-
-    wait_for_nodes:
-      num_nodes: 20
-
-    type: sdk_command
-    file_manager: sdk
-
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
   working_dir: nightly_tests
@@ -3672,7 +3666,6 @@
 
   frequency: nightly
   team: core
-  env: staging
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
@@ -3714,6 +3707,9 @@
 
   run:
     timeout: 7200
+    wait_for_nodes:
+      num_nodes: 101
+
     script: python stress_tests/test_dead_actors.py
     type: sdk_command
     file_manager: sdk
@@ -3726,6 +3722,8 @@
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
         --num-children=3
 
@@ -3799,7 +3797,7 @@
     test_name: dask_on_ray_1tb_sort
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
@@ -3934,7 +3932,7 @@
     test_name: many_actors
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -4012,7 +4010,7 @@
     test_name: many_pgs
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -4720,6 +4718,28 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
+
+#####################
+# Observability tests
+#####################
+- name: agent_stress_test
+  group: core-observability-test
+  working_dir: dashboard
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: agent_stress_app_config.yaml
+    cluster_compute: agent_stress_compute.yaml
+
+  run:
+    timeout: 14400
+    prepare: rllib train file atari.yaml &
+    script: python mem_check.py
     type: sdk_command
     file_manager: sdk
 

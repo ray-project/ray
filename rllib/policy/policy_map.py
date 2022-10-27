@@ -1,16 +1,24 @@
 from collections import deque
 import threading
-from typing import Dict, Optional, Set
+from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING, Union
 
 import ray
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+import ray.cloudpickle as pickle
+from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.threading import with_lock
 from ray.util.annotations import PublicAPI
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    PolicyID,
+)
 
 tf1, tf, tfv = try_import_tf()
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 @PublicAPI(stability="beta")
@@ -44,6 +52,12 @@ class PolicyMap(dict):
                 "swapped out" by a simple `s = A.get_state(); B.set_state(s)`,
                 where `A` and `B` are policy instances in this map.
         """
+        if policy_config is not None:
+            deprecation_warning(
+                old="PolicyMap(policy_config=..)",
+                error=True,
+            )
+
         super().__init__()
 
         if any(
