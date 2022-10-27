@@ -12,6 +12,7 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
+    CHECKPOINT_ID_ATTR,
 )
 
 # Autofilled session.report() metrics. Keys should be consistent with Tune.
@@ -43,7 +44,7 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 # The key to use to specify the checkpoint id for Tune.
 # This needs to be added to the checkpoint dictionary so if the Tune trial
 # is restarted, the checkpoint_id can continue to increment.
-TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
+TUNE_CHECKPOINT_ID = CHECKPOINT_ID_ATTR
 
 # Env var name
 ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (

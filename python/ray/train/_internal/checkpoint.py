@@ -7,7 +7,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, _LazyCheckpoint
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
@@ -104,13 +104,12 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_metadata = checkpoint_results[0].metadata or {}
 
         # TODO(ml-team): Remove once we remove Backend.decode_data
-        checkpoint_data = decode_checkpoint_fn(checkpoint_data).to_dict()
+        # checkpoint_data = decode_checkpoint_fn(checkpoint_data)
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (
             self._checkpoint_strategy.num_to_keep != 0
             and score_attr not in checkpoint_metadata
-            and score_attr not in checkpoint_data
         ):
             raise ValueError(
                 f"Unable to persist checkpoint for "
@@ -120,15 +119,14 @@ class CheckpointManager(CommonCheckpointManager):
                 f"`session.report()`."
             )
 
+        print(f"score_attr {score_attr}")
+        print(checkpoint_data)
+
         tracked_checkpoint = _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
-            metrics={
-                score_attr: checkpoint_metadata.get(
-                    score_attr, checkpoint_data.get(score_attr, 0.0)
-                )
-            },
+            metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
 
@@ -204,6 +202,8 @@ class CheckpointManager(CommonCheckpointManager):
 
 
 class TuneCheckpointManager(CheckpointManager):
+    _deduplicate_checkpoint_folders_if_possible: bool = False
+
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
     ) -> Optional[Union[Dict, Checkpoint]]:
@@ -212,8 +212,9 @@ class TuneCheckpointManager(CheckpointManager):
         # New path...
         if isinstance(loaded_checkpoint, Checkpoint):
             # The new logic
-            checkpoint_dict = loaded_checkpoint.to_dict()
-            self._latest_checkpoint_id = checkpoint_dict.get(TUNE_CHECKPOINT_ID, 0)
+            self._latest_checkpoint_id = getattr(
+                loaded_checkpoint, TUNE_CHECKPOINT_ID, 0
+            )
             return loaded_checkpoint
         # legacy path...
         if loaded_checkpoint is not None:
@@ -223,13 +224,16 @@ class TuneCheckpointManager(CheckpointManager):
             self._latest_checkpoint_id = loaded_checkpoint.get(TUNE_CHECKPOINT_ID, 0)
         return loaded_checkpoint
 
-    def add_tune_checkpoint_id(self, checkpoint: Dict):
+    def add_tune_checkpoint_id(self, checkpoint: _LazyCheckpoint):
         # Store the checkpoint_id in the file so that the Tune trial can be
         # resumed after failure or cancellation.
-        checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
+        checkpoint.id = self._latest_checkpoint_id
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
+        checkpoint.dir_or_data.delete_old_location = (
+            self._deduplicate_checkpoint_folders_if_possible
+        )
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)

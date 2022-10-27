@@ -24,7 +24,7 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -152,7 +152,9 @@ class Checkpoint:
     # `_SERIALIZED_ATTRS = ("spam",)`, then the value of `"spam"` is serialized with
     # the checkpoint data. When a user constructs a checkpoint from the serialized data,
     # the value of `"spam"` is restored.
-    _SERIALIZED_ATTRS = ()
+    # In subclasses, do _SERIALIZED_ATTRS = Checkpoint._SERIALIZED_ATTRS + ("spam",)
+    # `"_checkpoint_id` is used to track checkpoints in TuneCheckpointManager and is unset otherwise
+    _SERIALIZED_ATTRS = (CHECKPOINT_ID_ATTR,)
 
     @DeveloperAPI
     def __init__(
@@ -227,7 +229,9 @@ class Checkpoint:
         return _CheckpointMetadata(
             checkpoint_type=self.__class__,
             checkpoint_state={
-                attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
+                attr: getattr(self, attr)
+                for attr in self._SERIALIZED_ATTRS
+                if hasattr(self, attr)
             },
         )
 
@@ -566,7 +570,7 @@ class Checkpoint:
         """
         user_provided_path = path is not None
         path = path if user_provided_path else self._get_temporary_checkpoint_dir()
-        path = os.path.normpath(path)
+        path = os.path.normpath(str(path))
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
 

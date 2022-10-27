@@ -16,6 +16,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
+from ray.air._internal.checkpoint_manager import _LazyCheckpoint
 from ray.train.constants import (
     DATE,
     DETAILED_AUTOFILLED_KEYS,
@@ -286,6 +287,7 @@ class _TrainSession:
             checkpoint = None
         elif checkpoint:
             checkpoint = self._encode_data_fn(checkpoint)
+            checkpoint = _LazyCheckpoint(checkpoint)
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,

@@ -1,6 +1,7 @@
 import abc
 import inspect
 import logging
+import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
@@ -12,6 +13,7 @@ from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
+from ray.air._internal.checkpoint_manager import _LazyCheckpoint
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -376,18 +378,24 @@ class BaseTrainer(abc.ABC):
         scaling_config = self.scaling_config
 
         def train_func(config, checkpoint_dir=None):
-            # config already contains merged values.
-            # Instantiate new Trainer in Trainable.
-            trainer = trainer_cls(**config)
+            with tempfile.TemporaryDirectory() as checkpoint_path:
+                if config.get("resume_from_checkpoint", None):
+                    config["resume_from_checkpoint"] = config[
+                        "resume_from_checkpoint"
+                    ].to_checkpoint(checkpoint_path)
 
-            if checkpoint_dir:
-                trainer.resume_from_checkpoint = Checkpoint.from_directory(
-                    checkpoint_dir
-                )
+                # config already contains merged values.
+                # Instantiate new Trainer in Trainable.
+                trainer = trainer_cls(**config)
 
-            trainer.setup()
-            trainer.preprocess_datasets()
-            trainer.training_loop()
+                if checkpoint_dir:
+                    trainer.resume_from_checkpoint = Checkpoint.from_directory(
+                        checkpoint_dir
+                    )
+
+                trainer.setup()
+                trainer.preprocess_datasets()
+                trainer.training_loop()
 
         # Change the name of the training function to match the name of the Trainer
         # class. This will mean the Tune trial name will match the name of Trainer on
@@ -507,6 +515,10 @@ class BaseTrainer(abc.ABC):
         from ray import tune
 
         base_config = self._param_dict
+        if base_config.get("resume_from_checkpoint", None):
+            base_config["resume_from_checkpoint"] = _LazyCheckpoint(
+                base_config["resume_from_checkpoint"]
+            )
         trainable_cls = self._generate_trainable_cls()
 
         # Wrap with `tune.with_parameters` to handle very large values in base_config

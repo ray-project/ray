@@ -7,14 +7,22 @@ import numbers
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.dict import flatten_dict
+from ray._private.services import get_node_ip_address
 from ray.air import Checkpoint, CheckpointConfig
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.filelock import TempFileLock
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
+from ray.air.constants import CHECKPOINT_ID_ATTR, PREPROCESSOR_KEY
+from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.util import log_once
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +31,92 @@ logger = logging.getLogger(__name__)
 class CheckpointStorage(enum.Enum):
     MEMORY = enum.auto()
     PERSISTENT = enum.auto()
+
+
+# Constants for the sync checkpoint dict. See huggingface_trainer.py
+CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
+NODE_IP_KEY = "node_ip"
+CHECKPOINT_CLASS_KEY = "class"
+
+
+class _LazyCheckpoint:
+    """Thin wrapper around Checkpoint to allow for laziness"""
+
+    def __init__(
+        self,
+        checkpoint: Checkpoint,
+        preprocessor: Optional["Preprocessor"] = None,
+        id: Optional[int] = None,
+        *,
+        delete_old_location: bool = False,
+    ) -> None:
+        if checkpoint._local_path:
+            self.checkpoint_reference = {
+                NODE_IP_KEY: get_node_ip_address(),
+                CHECKPOINT_PATH_ON_NODE_KEY: str(
+                    Path(checkpoint._local_path).absolute()
+                ),
+                CHECKPOINT_CLASS_KEY: checkpoint.__class__,
+            }
+        else:
+            self.checkpoint_reference = ray.put(checkpoint)
+
+        self.delete_old_location = delete_old_location
+        self.preprocessor = preprocessor
+        self.id = id
+
+    def commit(self, path: str) -> str:
+        return self.to_checkpoint(path).to_directory(path)
+
+    def to_checkpoint(self, path: str) -> Checkpoint:
+        path = Path(path)
+        if isinstance(self.checkpoint_reference, dict):
+            source_ip = self.checkpoint_reference[NODE_IP_KEY]
+            source_path = self.checkpoint_reference[CHECKPOINT_PATH_ON_NODE_KEY]
+            target_ip = get_node_ip_address()
+
+            if source_ip == target_ip and self.delete_old_location:
+                source_path = Path(source_path)
+                with TempFileLock(f"{os.path.normpath(str(source_path))}.lock"):
+                    for inner in source_path.iterdir():
+                        try:
+                            shutil.move(str(inner.absolute()), str(path.absolute()))
+                        except OSError:
+                            # This file may have already been moved by another rank worker.
+                            # Disregard, as the files are identical across all ranks.
+                            pass
+                    shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
+            else:
+                sync_dir_between_nodes(
+                    source_ip=source_ip,
+                    source_path=source_path,
+                    target_ip=target_ip,
+                    target_path=str(path),
+                    return_futures=False,
+                    max_size_bytes=None,
+                )
+                if self.delete_old_location:
+                    delete_on_node(node_ip=source_ip, path=source_path)
+            checkpoint: Checkpoint = self.checkpoint_reference[
+                CHECKPOINT_CLASS_KEY
+            ].from_directory(path)
+        else:
+            checkpoint: Checkpoint = ray.get(self.checkpoint_reference)
+
+        if self.preprocessor:
+            if checkpoint.uri:
+                checkpoint_path = checkpoint.to_directory(path)
+                save_preprocessor_to_dir(self.preprocessor, checkpoint_path)
+                checkpoint.from_directory(checkpoint_path)
+            else:
+                checkpoint_dict = checkpoint.to_dict()
+                checkpoint_dict[PREPROCESSOR_KEY] = self.preprocessor
+                checkpoint = checkpoint.from_dict(checkpoint_dict)
+
+        if self.id is not None:
+            setattr(checkpoint, CHECKPOINT_ID_ATTR, self.id)
+
+        return checkpoint
 
 
 class _TrackedCheckpoint:
@@ -57,7 +151,9 @@ class _TrackedCheckpoint:
 
     def __init__(
         self,
-        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
+        dir_or_data: Optional[
+            Union[str, Path, Dict, ray.ObjectRef, _LazyCheckpoint, Checkpoint]
+        ],
         storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
@@ -75,11 +171,13 @@ class _TrackedCheckpoint:
         if (
             dir_or_data is not None
             and storage_mode == CheckpointStorage.MEMORY
-            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
+            and not isinstance(
+                dir_or_data, (dict, ray.ObjectRef, _LazyCheckpoint, Checkpoint)
+            )
         ):
             raise ValueError(
-                f"Memory checkpoints only support Ray object references and dicts "
-                f"as their data. Got: {dir_or_data}"
+                "Memory checkpoints only support Ray object references, AIR Checkpoints "
+                f"and dicts as their data. Got: {dir_or_data}"
             )
 
     def commit(self, path: Optional[Path] = None) -> None:
@@ -89,19 +187,25 @@ class _TrackedCheckpoint:
             path: Path to commit checkpoint to.
         """
         if self.storage_mode == CheckpointStorage.MEMORY:
-            # Do not persist memory checkpoints
+            # Do not persist non-lazy memory checkpoints
             return
 
         if not path:
             # If no path is given, skip
             return
 
-        if not isinstance(self.dir_or_data, dict):
-            # Only persist dictionaries
+        if isinstance(self.dir_or_data, _LazyCheckpoint):
+            self.dir_or_data = self.dir_or_data.commit(path)
             return
 
-        checkpoint = Checkpoint.from_dict(self.dir_or_data)
-        self.dir_or_data = checkpoint.to_directory(str(path))
+        if isinstance(self.dir_or_data, dict):
+            checkpoint = Checkpoint.from_dict(self.dir_or_data)
+            self.dir_or_data = checkpoint.to_directory(str(path))
+            return
+
+        if isinstance(self.dir_or_data, Checkpoint):
+            self.dir_or_data = self.dir_or_data.to_directory(str(path))
+            return
 
     def delete(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
@@ -126,8 +230,18 @@ class _TrackedCheckpoint:
         if not checkpoint_data:
             return None
 
+        if isinstance(checkpoint_data, _LazyCheckpoint):
+            raise RuntimeError(
+                "Tried to convert _TrackedCheckpoint to an AIR Checkpoint, "
+                "but checkpoint_data is still lazy. This should never happen. "
+                "Please report an issue to Ray Github."
+            )
+
         if isinstance(checkpoint_data, ray.ObjectRef):
             checkpoint_data = ray.get(checkpoint_data)
+
+        if isinstance(checkpoint_data, Checkpoint):
+            return checkpoint_data
 
         if isinstance(checkpoint_data, str):
             try:
@@ -320,6 +434,7 @@ class _CheckpointManager:
     def _get_checkpoint_score(
         self, checkpoint: _TrackedCheckpoint
     ) -> Tuple[bool, numbers.Number, int]:
+        print(f"_get_checkpoint_score {checkpoint.dir_or_data} {checkpoint.metrics}")
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
