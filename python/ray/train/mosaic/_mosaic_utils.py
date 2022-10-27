@@ -45,10 +45,12 @@ class RayLogger(LoggerDestination):
             if isinstance(val, torch.Tensor):
                 self.data[key] = val.item()
 
-    def batch_checkpoint(self, state: State, logger: Logger) -> None:
+    def epoch_checkpoint(self, state: State, logger: Logger) -> None:
         del logger  # unused
         session.report(self.data)
 
-    def epoch_checkpoint(self, state: State, logger: Logger) -> None:
+    def fit_end(self, state: State, logger: Logger) -> None:
+        # report at close in case the trainer stops in the middle of an epoch.
+        # this may be double counted with epoch checkpoint.
         del logger  # unused
         session.report(self.data)
