@@ -21,7 +21,10 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
-With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
+The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
+one for each Tune trial.
+
+With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
@@ -30,11 +33,6 @@ With the Function API, you can report intermediate metrics by simply calling ``s
 
 .. tip:: Do not use ``session.report`` within a ``Trainable`` class.
 
-Tune will run this function on a separate thread in a Ray actor process.
-
-You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
-such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
-
 In the previous example, we reported on every step, but this metric reporting frequency
 is configurable. For example, we could also report only a single time at the end with the final score:
 
@@ -42,6 +40,16 @@ is configurable. For example, we could also report only a single time at the end
     :language: python
     :start-after: __function_api_report_final_metrics_start__
     :end-before: __function_api_report_final_metrics_end__
+
+It's also possible to return a final set of metrics to Tune by returning them from your function:
+
+.. literalinclude:: /tune/doc_code/trainable.py
+    :language: python
+    :start-after: __function_api_return_final_metrics_start__
+    :end-before: __function_api_return_final_metrics_end__
+
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
+such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. _tune-function-checkpointing:
 
