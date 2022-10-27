@@ -53,8 +53,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
-    waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name,
-                                                      int64_t num_total) mutable {
+    waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name) mutable {
+      int64_t num_total = waiting_tasks_counter_.Get(task_name);
       // Of the waiting tasks of this name, some fraction may be inactive (blocked on
       // object store memory availability). Get this breakdown by querying the pull
       // manager.
@@ -189,6 +189,9 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \return string.
   std::string DebugString() const;
+
+  /// Record time-series metrics.
+  void RecordMetrics();
 
  private:
   /// Metadata for an object that is needed by at least one executing worker

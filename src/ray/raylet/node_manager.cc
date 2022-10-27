@@ -2823,6 +2823,7 @@ void NodeManager::RecordMetrics() {
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
   object_directory_->RecordMetrics(duration_ms);
+  dependency_manager_.RecordMetrics();
 }
 
 void NodeManager::ConsumeSyncMessage(
