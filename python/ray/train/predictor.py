@@ -69,7 +69,7 @@ class Predictor(abc.ABC):
        pandas.DataFrame containing predictions.
     2. ``from_checkpoint``: Logic for creating a Predictor from an
        :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-    3. Optionally ``_predict_arrow`` for better performance when working with
+    3. Optionally ``_predict_numpy`` for better performance when working with
        tensor data to avoid extra copies from Pandas conversions.
     """
 
