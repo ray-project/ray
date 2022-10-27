@@ -10,7 +10,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -57,8 +57,8 @@ if __name__ == "__main__":
                 "attention_use_n_prev_rewards": args.use_n_prev_rewards,
             }
         )
-        # Run with tracing enabled for tfe/tf2.
-        .framework(args.framework, eager_tracing=args.framework in ["tfe", "tf2"])
+        # Run with tracing enabled for tf2.
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
         .rollouts(num_rollout_workers=args.num_workers)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

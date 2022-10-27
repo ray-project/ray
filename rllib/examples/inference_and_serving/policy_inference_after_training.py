@@ -21,7 +21,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         .environment("FrozenLake-v1")
-        # Run with tracing enabled for tfe/tf2?
+        # Run with tracing enabled for tf2?
         .framework(args.framework, eager_tracing=args.eager_tracing)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

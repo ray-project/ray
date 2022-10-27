@@ -335,7 +335,7 @@ class SAC(DQN):
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
             raise ValueError("`grad_clip` value must be > 0.0!")
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if config["framework"] in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run SAC! "
                 "Install it via `pip install tensorflow_probability`. Your "

@@ -57,7 +57,7 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def check_support(alg, config, train=True, check_bounds=False, tfe=False):
+def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["log_level"] = "ERROR"
     config["train_batch_size"] = 10
     config["rollout_fragment_length"] = 10
@@ -125,8 +125,8 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         print(stat)
 
     frameworks = ("tf", "torch")
-    if tfe:
-        frameworks += ("tf2", "tfe")
+    if tf2:
+        frameworks += ("tf2",)
     for _ in framework_iterator(config, frameworks=frameworks):
         # Zip through action- and obs-spaces.
         for a_name, o_name in zip(
@@ -180,7 +180,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
                 sgd_minibatch_size=10,
             )
         )
-        check_support("PPO", config, check_bounds=True, tfe=True)
+        check_support("PPO", config, check_bounds=True, tf2=True)
 
     def test_pg(self):
         check_support(
@@ -188,7 +188,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
             PGConfig().rollouts(num_rollout_workers=1).training(optimizer={}),
             train=False,
             check_bounds=True,
-            tfe=True,
+            tf2=True,
         )
 
 
@@ -224,7 +224,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
                 }
             )
         )
-        check_support("DQN", config, tfe=True)
+        check_support("DQN", config, tf2=True)
 
     def test_sac(self):
         check_support(

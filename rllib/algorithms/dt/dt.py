@@ -82,8 +82,6 @@ class DTConfig(AlgorithmConfig):
         # fmt: on
 
         # Overwriting the trainer config default
-        # If data ingestion/sample_time is slow, increase this.
-        self.num_workers = 0
         # Number of training_step calls between evaluation rollouts.
         self.min_train_timesteps_per_iteration = 5000
 

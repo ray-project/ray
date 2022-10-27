@@ -260,7 +260,7 @@ class TestSAC(unittest.TestCase):
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
                 # Start with the tf vars-dict.
-                assert fw in ["tf2", "tf", "tfe"]
+                assert fw in ["tf2", "tf"]
 
                 weights_dict_list = (
                     policy.model.variables() + policy.target_model.variables()
@@ -271,9 +271,9 @@ class TestSAC(unittest.TestCase):
                     )
                     weights_dict = collector.get_weights()
 
-                if fw == "tfe":
+                if fw == "tf2":
                     log_alpha = weights_dict[10]
-                    weights_dict = self._translate_tfe_weights(weights_dict, map_)
+                    weights_dict = self._translate_tf2_weights(weights_dict, map_)
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)
@@ -339,7 +339,7 @@ class TestSAC(unittest.TestCase):
                 tf_a_grads = [g for g, v in tf_a_grads]
                 tf_e_grads = [g for g, v in tf_e_grads]
 
-            elif fw == "tfe":
+            elif fw == "tf2":
                 with tf.GradientTape() as tape:
                     tf_loss(policy, policy.model, None, input_)
                 c, a, e, t = (
@@ -680,7 +680,7 @@ class TestSAC(unittest.TestCase):
                 framework=fw,
             )
         else:
-            assert fw == "tfe"
+            assert fw == "tf2"
             q_tp1 = fc(
                 relu(
                     fc(
@@ -733,7 +733,7 @@ class TestSAC(unittest.TestCase):
 
         return model_dict
 
-    def _translate_tfe_weights(self, weights_dict, map_):
+    def _translate_tf2_weights(self, weights_dict, map_):
         model_dict = {
             "default_policy/log_alpha": None,
             "default_policy/log_alpha_target": None,
