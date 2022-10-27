@@ -15,7 +15,7 @@ from ray import tune
 import ray.train as train
 from ray.air.config import ScalingConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train.examples.torch_linear_example import LinearDataset
+from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train._internal.worker_group import WorkerGroup

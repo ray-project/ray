@@ -201,7 +201,7 @@ This example shows how you can use Ray Train with PyTorch.
 
 First, set up your dataset and model.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_setup_begin__
 :end-before: __torch_setup_end__
@@ -209,7 +209,7 @@ First, set up your dataset and model.
 
 Now define your single-worker PyTorch training function.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_single_begin__
 :end-before: __torch_single_end__
@@ -217,7 +217,7 @@ Now define your single-worker PyTorch training function.
 
 This training function can be executed with:
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
@@ -231,7 +231,7 @@ easily setup your model & data for distributed training.
 This will automatically wrap your model with ``DistributedDataParallel``
 and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_distributed_begin__
 :end-before: __torch_distributed_end__
@@ -240,7 +240,7 @@ and place it on the right device, and add ``DistributedSampler`` to your DataLoa
 Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
 with 4 workers, and use it to run the new training function!
 
-```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
@@ -254,7 +254,7 @@ with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_ke
 
 First, set up your dataset and model.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_setup_begin__
 :end-before: __tf_setup_end__
@@ -262,7 +262,7 @@ First, set up your dataset and model.
 
 Now define your single-worker TensorFlow training function.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_single_begin__
 :end-before: __tf_single_end__
@@ -270,7 +270,7 @@ Now define your single-worker TensorFlow training function.
 
 This training function can be executed with:
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_single_run_begin__
 :end-before: __tf_single_run_end__
@@ -284,7 +284,7 @@ All you need to do is:
 2. Choose your TensorFlow distributed training strategy. In this example
    we use the ``MultiWorkerMirroredStrategy``.
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_distributed_begin__
 :end-before: __tf_distributed_end__
@@ -293,7 +293,7 @@ All you need to do is:
 Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
 with 4 workers, and use it to run the new training function!
 
-```{literalinclude} /../../python/ray/train/examples/tensorflow_quick_start.py
+```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_trainer_begin__
 :end-before: __tf_trainer_end__
