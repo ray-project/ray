@@ -211,7 +211,7 @@ class RuntimeEnvPluginManager:
         # Set the max size for the cache.  Defaults to 10 GB.
         cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin.name}_CACHE_SIZE_GB".upper()
         cache_size_bytes = int(
-            (1024 ** 3) * float(os.environ.get(cache_size_env_var, 10))
+            (1024**3) * float(os.environ.get(cache_size_env_var, 10))
         )
         return URICache(plugin.delete_uri, cache_size_bytes)
 
