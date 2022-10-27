@@ -1,4 +1,4 @@
-from typing import Iterator, Mapping, Any, Union, Dict, Set, Tuple
+from typing import Iterator, Mapping, Any, Union, Dict, Set
 import pprint
 
 
@@ -10,31 +10,36 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.models.specs.specs_dict import ModelSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module import RLModule
+
 # TODO (Kourosh): change this to module_id later to enforce consistency
 from ray.rllib.utils.policy import validate_policy_id
 
 ModuleID = str
 
+
 class MultiAgentRLModule(RLModule):
     """Base class for multi-agent RLModules.
 
-    This class holds a mapping from module_ids to the underlying RLModules. It provides a convenient way of accessing each individual module, as well as accessing all of them with only one api call.
+    This class holds a mapping from module_ids to the underlying RLModules. It provides
+    a convenient way of accessing each individual module, as well as accessing all of
+    them with only one api call.
 
     The default implementation assumes the data communicated as input and output of
-    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply loops throught each `module_id`, and runs the forward pass of the corresponding 
-    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`. It also 
-    assumes that the underlying RLModules do not share any parameters or communication with one 
-    another. The behavior of modules with such advanced communication would be 
-    undefined by default. To share parameters or communication between the underlying RLModules, you should 
-    implement your own MultiAgentRLModule.
+    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
+    loops throught each `module_id`, and runs the forward pass of the corresponding
+    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
+    It also assumes that the underlying RLModules do not share any parameters or
+    communication with one another. The behavior of modules with such advanced
+    communication would be undefined by default. To share parameters or communication
+    between the underlying RLModules, you should implement your own MultiAgentRLModule.
 
     # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
 
     Input config keys:
         `modules`: Mapping from module_id to each RLModule config.
         `trainable_modules`: Set of module_ids that are trainable. If not specified,
-            all modules are trainable. For those modules that are specified after the 
-            construction of the class, whether they are trainable or not is determined 
+            all modules are trainable. For those modules that are specified after the
+            construction of the class, whether they are trainable or not is determined
             by the `is_trainable` argument of `add_module`.
 
     Each RLModule config values can be of the following forms:
@@ -52,12 +57,11 @@ class MultiAgentRLModule(RLModule):
     def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
         super().__init__(config, **kwargs)
 
-        # TODO (Kourosh): Also make it possible that trainable_modules in config can 
+        # TODO (Kourosh): Also make it possible that trainable_modules in config can
         # accept a Callable[[ModuleID, MultiAgentBatch], bool]
         self._trainable_rl_modules: Set[ModuleID] = set()
         self._rl_modules: Mapping[ModuleID, RLModule] = {}
         self._make_modules()
-
 
     def keys(self) -> Iterator[ModuleID]:
         """Returns an iteratable of module ids."""
@@ -106,7 +110,7 @@ class MultiAgentRLModule(RLModule):
         """Sets the state dict of the multi-agent module.
 
         The default implementation is a mapping from independent module IDs to their
-        corresponding RLModule state_dicts. Override this method to customize the 
+        corresponding RLModule state_dicts. Override this method to customize the
         state_dict for custom more advanced multi-agent use cases.
 
         Args:
@@ -157,7 +161,6 @@ class MultiAgentRLModule(RLModule):
                 "override, set override=True."
             )
 
-
         module = self._build_module_from_spec(module_spec)
 
         if self.is_distributed():
@@ -202,11 +205,10 @@ class MultiAgentRLModule(RLModule):
         modules_info_dict = self.config["modules"]
         trainables = self.config.get("trainable_modules", set())
         for module_id, module_config in modules_info_dict.items():
-            # should be trainable if trainables is not specified or if module_id exists 
+            # should be trainable if trainables is not specified or if module_id exists
             # in the trainables
             is_trainable = not trainables or module_id in trainables
             self.add_module(module_id, module_config, is_trainable=is_trainable)
-            
 
     @override(RLModule)
     def output_specs_train(self) -> ModelSpec:
@@ -286,9 +288,11 @@ class MultiAgentRLModule(RLModule):
                 f"Available modules: {set(self.keys())}"
             )
 
-    def _build_module_from_spec(self, module_spec: Union[RLModule, Mapping[str, Any]]) -> RLModule:
+    def _build_module_from_spec(
+        self, module_spec: Union[RLModule, Mapping[str, Any]]
+    ) -> RLModule:
         """Builds a module from the given module spec.
-        
+
         Args:
             module_spec: The module spec to build the module from.
                 module_spec can be one of the following:
@@ -305,16 +309,13 @@ class MultiAgentRLModule(RLModule):
             mod_class = module_spec.get("module_class")
             if mod_class is None:
                 raise ValueError(
-                    f"key `module_class` is missing in the module "
-                    f"specfication of module"
+                    "key `module_class` is missing in the module "
+                    "specfication of module"
                 )
             mod_config = module_spec.get("module_config", {})
-            module = mod_class(config=mod_config)             
+            module = mod_class(config=mod_config)
         else:
-            raise ValueError(
-                f"Invalid module spec for module: {module_spec}"
-            )
-
+            raise ValueError(f"Invalid module spec for module: {module_spec}")
 
         return module
 
