@@ -1,5 +1,6 @@
 import importlib
 import logging
+import os
 from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
@@ -15,7 +16,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MIN_PYARROW_VERSION = (6, 0, 1)
+# NOTE: Make sure that these lower and upper bounds stay in sync with version
+# constraints given in python/setup.py.
+# Inclusive minimum pyarrow version.
+MIN_PYARROW_VERSION = "6.0.1"
+# Exclusive maximum pyarrow version.
+MAX_PYARROW_VERSION = "7.0.0"
+RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
 
 
@@ -36,32 +43,48 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
+    """Check that pyarrow's version is within the supported bounds."""
     global _VERSION_VALIDATED
+
     if not _VERSION_VALIDATED:
-        import pkg_resources
+        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
+            _VERSION_VALIDATED = True
+            return
 
         try:
-            version_info = pkg_resources.require("pyarrow")
-            version_str = version_info[0].version
-            version = tuple(int(n) for n in version_str.split(".") if "dev" not in n)
-            if version < MIN_PYARROW_VERSION:
-                raise ImportError(
-                    "Datasets requires pyarrow >= "
-                    f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)}, "
-                    f"but {version_str} is installed. Upgrade with "
-                    "`pip install -U pyarrow`."
-                )
-        except pkg_resources.DistributionNotFound:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            return
+
+        import pkg_resources
+
+        if not hasattr(pyarrow, "__version__"):
             logger.warning(
-                "You are using the 'pyarrow' module, but "
-                "the exact version is unknown (possibly carried as "
-                "an internal component by another module). Please "
-                "make sure you are using pyarrow >= "
-                f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)} "
-                "to ensure compatibility with Ray Datasets."
+                "You are using the 'pyarrow' module, but the exact version is unknown "
+                "(possibly carried as an internal component by another module). Please "
+                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION}, < "
+                f"{MAX_PYARROW_VERSION} to ensure compatibility with Ray Datasets. "
+                "If you want to disable this pyarrow version check, set the "
+                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
         else:
-            _VERSION_VALIDATED = True
+            version = pyarrow.__version__
+            if (
+                pkg_resources.packaging.version.parse(version)
+                < pkg_resources.packaging.version.parse(MIN_PYARROW_VERSION)
+            ) or (
+                pkg_resources.packaging.version.parse(version)
+                >= pkg_resources.packaging.version.parse(MAX_PYARROW_VERSION)
+            ):
+                raise ImportError(
+                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
+                    f"{MAX_PYARROW_VERSION}, but {version} is installed. Reinstall "
+                    f'with `pip install -U "pyarrow<{MAX_PYARROW_VERSION}"`. '
+                    "If you want to disable this pyarrow version check, set the "
+                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
+                )
+        _VERSION_VALIDATED = True
 
 
 def _autodetect_parallelism(
