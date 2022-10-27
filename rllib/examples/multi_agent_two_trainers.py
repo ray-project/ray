@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 # Use torch for both policies.
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     register_env(
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
-    single_dummy_env = gym.make("CartPole-v0")
+    single_dummy_env = gym.make("CartPole-v1")
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 

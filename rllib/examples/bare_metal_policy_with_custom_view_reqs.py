@@ -55,7 +55,7 @@ if __name__ == "__main__":
             return BareMetalPolicyWithCustomViewReqs
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "model": {

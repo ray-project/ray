@@ -56,7 +56,7 @@ class MARWILConfig(AlgorithmConfig):
         >>> # Run this from the ray directory root.
         >>> config.offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v0")
+        >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(
@@ -94,7 +94,6 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
-        self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
 

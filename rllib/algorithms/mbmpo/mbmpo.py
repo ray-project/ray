@@ -45,8 +45,8 @@ class MBMPOConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -131,6 +131,7 @@ class MBMPOConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with MBMPO-specific
         # values.
         self.batch_mode = "complete_episodes"
+        self.num_rollout_workers = 2
         # Size of batches collected from each worker.
         self.rollout_fragment_length = 200
         # Do create an actual env on the local worker (worker-idx=0).
@@ -231,7 +232,7 @@ class MBMPOConfig(AlgorithmConfig):
         if horizon is not None:
             self.horizon = horizon
         if dynamics_model is not None:
-            self.dynamics_model = dynamics_model
+            self.dynamics_model.update(dynamics_model)
         if custom_vector_env is not None:
             self.custom_vector_env = custom_vector_env
         if num_maml_steps is not None:

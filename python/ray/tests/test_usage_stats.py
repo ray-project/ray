@@ -682,7 +682,7 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(

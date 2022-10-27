@@ -133,9 +133,9 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = config.build(env=env)
-                    policy = trainer.get_policy()
-                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
                     if fw == "tf":
                         entropy_coeff, lr = policy.get_session().run(
@@ -145,20 +145,21 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
-                        results = trainer.train()
+                        results = algo.train()
                         check_train_results(results)
                         print(results)
 
                     check_compute_single_action(
-                        trainer, include_prev_action_reward=True, include_state=lstm
+                        algo, include_prev_action_reward=True, include_state=lstm
                     )
-                    trainer.stop()
+                    algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
             .environment(
+                "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
             )
             .rollouts(
@@ -171,7 +172,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
@@ -207,6 +208,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -222,7 +224,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -265,6 +267,7 @@ class TestPPO(unittest.TestCase):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -279,7 +282,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check no free log std var by default.
@@ -305,7 +308,7 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw in ["tf2", "tfe"]:
+            if fw == "tf2":
                 PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(

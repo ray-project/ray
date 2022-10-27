@@ -40,7 +40,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
         >>> addr, port = ... # doctest: +SKIP
         >>> pg = PG( # doctest: +SKIP
-        ...     env="CartPole-v0", config={ # doctest: +SKIP
+        ...     env="CartPole-v1", config={ # doctest: +SKIP
         ...         "input": lambda io_ctx: # doctest: +SKIP
         ...             PolicyServerInput(io_ctx, addr, port), # doctest: +SKIP
         ...         # Run just 1 server, in the trainer.
@@ -52,7 +52,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         >>> client = PolicyClient( # doctest: +SKIP
         ...     "localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()  # doctest: +SKIP
-        >>> env = gym.make("CartPole-v0")
+        >>> env = gym.make("CartPole-v1")
         >>> obs = env.reset()
         >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
         >>> reward = env.step(action)[0] # doctest: +SKIP
