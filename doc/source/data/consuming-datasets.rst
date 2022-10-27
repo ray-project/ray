@@ -114,3 +114,10 @@ to repartition the Dataset before writing out.
     :language: python
     :start-after: __write_numpy_begin__
     :end-before: __write_numpy_end__
+
+.. tabbed:: TFRecords
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_tfrecords_begin__
+    :end-before: __write_tfrecords_end__
