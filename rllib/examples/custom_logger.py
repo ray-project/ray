@@ -24,7 +24,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -76,12 +76,12 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     config = {
-        "env": "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1",
+        "env": "CartPole-v1" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
+        # Run with tracing enabled for tf2.
+        "eager_tracing": args.framework == "tf2",
         # Setting up a custom logger config.
         # ----------------------------------
         # The following are different examples of custom logging setups:

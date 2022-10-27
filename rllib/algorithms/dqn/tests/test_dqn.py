@@ -26,7 +26,7 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = (
             dqn.dqn.DQNConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
             .training(num_steps_sampled_before_learning_starts=0)
         )

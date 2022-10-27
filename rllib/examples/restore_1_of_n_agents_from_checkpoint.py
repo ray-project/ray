@@ -32,7 +32,7 @@ parser.add_argument("--pre-training-iters", type=int, default=5)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v0")
+    single_env = gym.make("CartPole-v1")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
