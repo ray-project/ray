@@ -3,7 +3,6 @@ import mock
 import sys
 import uuid
 
-
 import pytest
 
 from ray.autoscaler._private.kuberay.node_provider import (
@@ -122,7 +121,4 @@ def test_create_node_cap_at_max(
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
