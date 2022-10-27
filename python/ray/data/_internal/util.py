@@ -64,7 +64,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION}, < "
-                f"{MAX_PYARROW_VERSION} to ensure compatibility with Ray Datasets."
+                f"{MAX_PYARROW_VERSION} to ensure compatibility with Ray Datasets. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -80,7 +80,7 @@ def _check_pyarrow_version():
                 raise ImportError(
                     f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
                     f"{MAX_PYARROW_VERSION}, but {version} is installed. Reinstall "
-                    f'with `pip install -U "pyarrow<{MAX_PYARROW_VERSION}"`.'
+                    f'with `pip install -U "pyarrow<{MAX_PYARROW_VERSION}"`. '
                     "If you want to disable this pyarrow version check, set the "
                     f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
                 )
