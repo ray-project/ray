@@ -106,6 +106,7 @@ tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
 results = tuner.fit()
 # __function_api_report_final_metrics_end__
 
+# fmt: off
 # __function_api_return_final_metrics_start__
 def trainable(config: dict):
     final_score = 0
@@ -114,6 +115,7 @@ def trainable(config: dict):
 
     return {"score": final_score}  # This sends the score to Tune.
 # __function_api_return_final_metrics_end__
+# fmt: on
 
 # __class_api_example_start__
 from ray import air, tune
