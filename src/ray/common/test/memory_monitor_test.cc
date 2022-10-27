@@ -287,7 +287,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet) {
   std::remove(stat_file_name.c_str());
   std::remove(curr_file_name.c_str());
 
-  ASSERT_EQ(used_bytes, 0);
+  ASSERT_EQ(used_bytes, 123 - 300);
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull) {
