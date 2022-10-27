@@ -178,12 +178,12 @@ class DQNConfig(SimpleQConfig):
             Type[MultiAgentBatch],
         ] = None,
         training_intensity: Optional[float] = None,
-        replay_buffer_config: Optional[dict] = None,
         td_error_loss_fn: Optional[str] = None,
         categorical_distribution_temperature: Optional[float] = None,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
+
         Args:
             num_atoms: Number of atoms for representing the distribution of return.
                 When this is greater than 1, distributional Q-learning is used.
@@ -286,8 +286,6 @@ class DQNConfig(SimpleQConfig):
             self.before_learn_on_batch = before_learn_on_batch
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
         if td_error_loss_fn is not None:
             self.td_error_loss_fn = td_error_loss_fn
             assert self.td_error_loss_fn in [

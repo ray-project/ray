@@ -16,7 +16,6 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.typing import (
     MultiAgentDict,
     EnvInfoDict,
@@ -367,8 +366,8 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     """Create a local rollout worker and a thread that samples from it.
 
     Args:
-        kwargs: args for the RolloutWorker constructor.
-        send_fn: function to send a JSON request to the server.
+        kwargs: Args for the RolloutWorker constructor.
+        send_fn: Function to send a JSON request to the server.
     """
 
     # Since the server acts as an input datasource, we have to reset the
@@ -384,18 +383,18 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # If server has no env (which is the expected case):
     # Generate a dummy ExternalEnv here using RandomEnv and the
     # given observation/action spaces.
-    if kwargs["policy_config"].get("env") is None:
+    if kwargs["config"].env is None:
         from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 
         config = {
-            "action_space": kwargs["policy_config"]["action_space"],
-            "observation_space": kwargs["policy_config"]["observation_space"],
+            "action_space": kwargs["config"].action_space,
+            "observation_space": kwargs["config"].observation_space,
         }
-        _, is_ma = check_multi_agent(kwargs["policy_config"])
+        is_ma = kwargs["config"].is_multi_agent()
         kwargs["env_creator"] = _auto_wrap_external(
             lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(config)
         )
-        kwargs["policy_config"]["env"] = True
+        # kwargs["config"].env = True
     # Otherwise, use the env specified by the server args.
     else:
         real_env_creator = kwargs["env_creator"]

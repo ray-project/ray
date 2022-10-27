@@ -76,9 +76,6 @@ class EagerTFPolicyV2(Policy):
 
         Policy.__init__(self, observation_space, action_space, config)
 
-        config = dict(self.get_default_config(), **config)
-        self.config = config
-
         self._is_training = False
         # Global timestep should be a tensor.
         self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
@@ -101,9 +98,9 @@ class EagerTFPolicyV2(Policy):
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
-        self._max_seq_len = config["model"]["max_seq_len"]
+        self._max_seq_len = self.config["model"]["max_seq_len"]
 
-        self.validate_spaces(observation_space, action_space, config)
+        self.validate_spaces(observation_space, action_space, self.config)
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
@@ -143,11 +140,6 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic

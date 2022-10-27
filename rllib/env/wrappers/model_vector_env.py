@@ -29,14 +29,14 @@ def model_vector_env(env: EnvType) -> BaseEnv:
         env = _VectorizedModelGymEnv(
             make_env=worker.make_sub_env_fn,
             existing_envs=[env],
-            num_envs=worker.num_envs,
+            num_envs=worker.config.num_envs_per_worker,
             observation_space=env.observation_space,
             action_space=env.action_space,
         )
     return convert_to_base_env(
         env,
         make_env=worker.make_sub_env_fn,
-        num_envs=worker.num_envs,
+        num_envs=worker.config.num_envs_per_worker,
         remote_envs=False,
         remote_env_batch_wait_ms=0,
     )

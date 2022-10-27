@@ -2,23 +2,25 @@ from collections import deque
 import gym
 import os
 import threading
-from typing import Callable, Dict, Optional, Set, Type
+from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING, Union
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.annotations import PublicAPI, override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
     PolicyID,
 )
-from ray.tune.utils.util import merge_dicts
 
 tf1, tf, tfv = try_import_tf()
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 @PublicAPI
@@ -36,7 +38,7 @@ class PolicyMap(dict):
         num_workers: int,
         capacity: Optional[int] = None,
         path: Optional[str] = None,
-        policy_config: Optional[AlgorithmConfigDict] = None,
+        policy_config=None,  # deprecated arg: All Policies now bring their own config.
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ):
@@ -52,11 +54,16 @@ class PolicyMap(dict):
                 when needed.
             path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config: The Algorithm's base config dict.
             session_creator: An optional
                 tf1.Session creation callable.
             seed: An optional seed (used to seed tf policies).
         """
+        if policy_config is not None:
+            deprecation_warning(
+                old="PolicyMap(policy_config=..)",
+                error=True,
+            )
+
         super().__init__()
 
         self.worker_index = worker_index
@@ -76,9 +83,6 @@ class PolicyMap(dict):
         self.deque = deque(maxlen=capacity or 10)
         # The file path where to store overflowing policies.
         self.path = path or "."
-        # The core config to use. Each single policy's config override is
-        # added on top of this.
-        self.policy_config: AlgorithmConfigDict = policy_config or {}
         # The orig classes/obs+act spaces, and config overrides of the
         # Policies.
         self.policy_specs: Dict[PolicyID, PolicySpec] = {}
@@ -89,8 +93,14 @@ class PolicyMap(dict):
         self._lock = threading.RLock()
 
     def insert_policy(
-        self, policy_id: PolicyID, policy: Policy, config_override=None
+        self, policy_id: PolicyID, policy: Policy, config_override=None  # deprecated
     ) -> None:
+        if config_override is not None:
+            deprecation_warning(
+                old="PolicyMap.insert_policy(config_override=..)",
+                error=True,
+            )
+
         self[policy_id] = policy
 
         # Store spec (class, obs-space, act-space, and config overrides) such
@@ -100,7 +110,7 @@ class PolicyMap(dict):
             policy_class=type(policy),
             observation_space=policy.observation_space,
             action_space=policy.action_space,
-            config=config_override if config_override is not None else policy.config,
+            config=policy.config,
         )
 
     def create_policy(
@@ -109,8 +119,8 @@ class PolicyMap(dict):
         policy_cls: Type["Policy"],
         observation_space: gym.Space,
         action_space: gym.Space,
-        config_override: PartialAlgorithmConfigDict,
-        merged_config: AlgorithmConfigDict,
+        config_override,  # deprecated arg
+        merged_config: Union["AlgorithmConfig", AlgorithmConfigDict],
     ) -> None:
         """Creates a new policy and stores it to the cache.
 
@@ -123,12 +133,14 @@ class PolicyMap(dict):
             observation_space: The observation space of the
                 policy.
             action_space: The action space of the policy.
-            config_override: The config override
-                dict for this policy. This is the partial dict provided by
-                the user.
-            merged_config: The entire config (merged
-                default config + `config_override`).
+            merged_config: The config object (or complete config dict) for the policy
+                to use.
         """
+        if config_override is not None:
+            deprecation_warning(
+                old="PolicyMap.create_policy(config_override=..)",
+                error=True,
+            )
         _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
         policy = create_policy_for_framework(
@@ -141,7 +153,7 @@ class PolicyMap(dict):
             self.session_creator,
             self.seed,
         )
-        self.insert_policy(policy_id, policy, config_override)
+        self.insert_policy(policy_id, policy)
 
     @with_lock
     @override(dict)
@@ -279,6 +291,8 @@ class PolicyMap(dict):
 
     def _read_from_disk(self, policy_id):
         """Reads a policy ID from disk and re-adds it to the cache."""
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         # Make sure this policy ID is not in the cache right now.
         assert policy_id not in self.cache
         # Read policy state from disk.
@@ -286,9 +300,9 @@ class PolicyMap(dict):
             policy_state = pickle.load(f)
 
         # Get class and config override.
-        merged_conf = merge_dicts(
-            self.policy_config, self.policy_specs[policy_id].config
-        )
+        config = self.policy_specs[policy_id].config
+        if isinstance(config, AlgorithmConfig):
+            config = config.to_dict()
 
         # Create policy object (from its spec: cls, obs-space, act-space,
         # config).
@@ -297,8 +311,8 @@ class PolicyMap(dict):
             self.policy_specs[policy_id].policy_class,
             self.policy_specs[policy_id].observation_space,
             self.policy_specs[policy_id].action_space,
-            self.policy_specs[policy_id].config,
-            merged_conf,
+            config_override=None,  # deprecated, must be None
+            merged_config=config,
         )
         # Restore policy's state.
         policy = self[policy_id]

@@ -1,6 +1,7 @@
 import ray
 import unittest
 import numpy as np
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -107,29 +108,27 @@ class TestEpisodeLastValues(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_singleagent_env(self):
+    def test_single_agent_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
-            policy_spec=EchoPolicy,
-            callbacks=LastInfoCallback,
+            default_policy_class=EchoPolicy,
+            config=AlgorithmConfig()
+            .rollouts(num_rollout_workers=0)
+            .callbacks(LastInfoCallback),
         )
         ev.sample()
 
-    def test_multiagent_env(self):
-        temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)
+    def test_multi_agent_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: EpisodeEnv(NUM_STEPS, NUM_AGENTS),
-            policy_spec={
-                str(agent_id): (
-                    EchoPolicy,
-                    temp_env.observation_space,
-                    temp_env.action_space,
-                    {},
-                )
-                for agent_id in range(NUM_AGENTS)
-            },
-            policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
-            callbacks=LastInfoCallback,
+            default_policy_class=EchoPolicy,
+            config=AlgorithmConfig()
+            .rollouts(num_rollout_workers=0)
+            .callbacks(LastInfoCallback)
+            .multi_agent(
+                policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
+                policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
+            ),
         )
         ev.sample()
 
