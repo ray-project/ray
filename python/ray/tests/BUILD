@@ -217,7 +217,7 @@ py_test_module_list(
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
-    "kuberay/test_autoscaling_config.py"
+    "kuberay/test_autoscaling_config.py",
     "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
