@@ -80,6 +80,13 @@ class RLModule(abc.ABC):
     def __init__(self, config: Mapping[str, Any]) -> None:
         self.config = config
 
+    def get_initial_state(self) -> NestedDict:
+        """Returns the initial state of the module.
+
+        This is used for recurrent models.
+        """
+        return {}
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
         """Returns the output specs of the forward_inference method.

@@ -662,6 +662,11 @@ class Algorithm(Trainable):
                     "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
+        self._trainer_runner = None
+        if self.config.get("use_trainer_runner"):
+            # TODO: Create the trainer runner if use_trainer_runner is activated.
+            self._trainer_runner = ...
+
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 

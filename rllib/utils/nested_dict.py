@@ -121,8 +121,8 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         if isinstance(x, NestedDict):
             self._data = x._data
         elif isinstance(x, Mapping):
-            for k, v in x.items():
-                self[k] = v
+            for k in x:
+                self[k] = x[k]
         elif isinstance(x, Iterable):
             for k, v in x:
                 self[k] = v

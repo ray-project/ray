@@ -21,6 +21,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.utils import NullContextManager, force_list
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -81,7 +82,11 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        model, dist_class = self._init_model_and_dist_class()
+        if is_overridden(self.make_rl_module):
+            model = self.make_rl_module()
+            dist_class = None
+        else:
+            model, dist_class = self._init_model_and_dist_class()
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
@@ -201,6 +206,10 @@ class TorchPolicyV2(Policy):
 
     def loss_initialized(self):
         return self._loss_initialized
+
+    @OverrideToImplementCustomLogic
+    def make_rl_module(self):
+        """Returns the RL Module"""
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -1001,7 +1010,15 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        if is_overridden(self.action_sampler_fn):
+        if isinstance(self.model, RLModule):
+            sample_batch = input_dict
+            if state_batches:
+                sample_batch.update({"state": state_batches})
+            fwd_out = self.model.forward_exploration(sample_batch)
+            action_dist = fwd_out["action_dist"]
+            actions, logp = action_dist.sample(return_logp=True)
+            state_out = fwd_out.get("state_out", [])
+        elif is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
                 self.model,
