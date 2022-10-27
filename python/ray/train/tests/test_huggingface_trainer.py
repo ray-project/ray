@@ -11,11 +11,7 @@ from transformers import (
 import ray.data
 from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import (
-    HuggingFacePredictor,
-    HuggingFaceTrainer,
-    HuggingFaceCheckpoint,
-)
+from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
@@ -95,7 +91,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, HuggingFaceCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = HuggingFaceTrainer(
@@ -113,7 +108,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, HuggingFaceCheckpoint)
     assert "eval_loss" in result2.metrics
 
     predictor = BatchPredictor.from_checkpoint(

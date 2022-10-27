@@ -87,9 +87,8 @@ class HorovodTrainer(DataParallelTrainer):
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
-        from ray.air import session
+        from ray.air import session, Checkpoint
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import TorchCheckpoint
         from ray.air.config import ScalingConfig
 
         input_size = 1
@@ -137,8 +136,8 @@ class HorovodTrainer(DataParallelTrainer):
                     print(f"epoch: {epoch}, loss: {loss.item()}")
                 session.report(
                     {},
-                    checkpoint=TorchCheckpoint.from_state_dict(
-                        model.state_dict()
+                    checkpoint=Checkpoint.from_dict(
+                        dict(model=model.state_dict())
                     ),
                 )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
