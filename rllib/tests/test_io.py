@@ -52,7 +52,7 @@ class AgentIOTest(unittest.TestCase):
 
     def write_outputs(self, output, fw, output_config=None):
         agent = PG(
-            env="CartPole-v0",
+            env="CartPole-v1",
             config={
                 "output": output + (fw if output != "logdir" else ""),
                 "rollout_fragment_length": 250,
@@ -94,7 +94,7 @@ class AgentIOTest(unittest.TestCase):
             self.write_outputs(self.test_dir, fw)
             print("WROTE TO: ", self.test_dir)
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "off_policy_estimation_methods": {},
@@ -137,7 +137,7 @@ class AgentIOTest(unittest.TestCase):
                         f.write(json.dumps(data))
 
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "off_policy_estimation_methods": {},
@@ -154,7 +154,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(frameworks=["tf", "torch"]):
             self.write_outputs(self.test_dir, fw)
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "framework": fw,
@@ -174,7 +174,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": glob.glob(self.test_dir + fw + "/*.json"),
                     "off_policy_estimation_methods": {},
@@ -190,7 +190,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator():
             self.write_outputs(self.test_dir, fw)
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": {
                         self.test_dir + fw: 0.1,
@@ -273,7 +273,7 @@ class AgentIOTest(unittest.TestCase):
             for fw in framework_iterator(frameworks=("torch", "tf")):
                 self.write_outputs(self.test_dir, fw)
                 agent = PG(
-                    env="CartPole-v0",
+                    env="CartPole-v1",
                     config={
                         "input": input_procedure,
                         "input_config": {"input_files": self.test_dir + fw},
@@ -290,7 +290,7 @@ class AgentIOTest(unittest.TestCase):
         ray.init(num_cpus=4, ignore_reinit_error=True)
         for fw in framework_iterator(frameworks=["tf", "torch"]):
             agent = PG(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "num_workers": 2,
                     "output": self.test_dir + fw,

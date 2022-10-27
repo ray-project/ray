@@ -181,7 +181,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_train_cartpole_off_policy(self):
         register_env(
             "test3",
-            lambda _: PartOffPolicyServing(gym.make("CartPole-v0"), off_pol_frac=0.2),
+            lambda _: PartOffPolicyServing(gym.make("CartPole-v1"), off_pol_frac=0.2),
         )
         config = (
             DQNConfig()
@@ -206,7 +206,7 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
-        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
+        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
         config = PGConfig().environment("test").rollouts(num_rollout_workers=0)
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()
@@ -225,7 +225,7 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
-        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
+        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
         config = PGConfig().environment("test2").rollouts(num_rollout_workers=0)
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = config.build()

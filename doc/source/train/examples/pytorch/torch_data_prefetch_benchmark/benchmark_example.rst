@@ -49,4 +49,4 @@ The auto pipeline functionality offers more speed improvement when the model siz
 ========== =================== ======================== ========================
 
 
-.. literalinclude:: /../../python/ray/train/examples/torch_data_prefetch_benchmark/auto_pipeline_for_host_to_device_data_transfer.py
+.. literalinclude:: /../../python/ray/train/examples/pytorch/torch_data_prefetch_benchmark/auto_pipeline_for_host_to_device_data_transfer.py

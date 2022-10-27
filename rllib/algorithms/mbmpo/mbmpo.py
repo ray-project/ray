@@ -131,6 +131,7 @@ class MBMPOConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with MBMPO-specific
         # values.
         self.batch_mode = "complete_episodes"
+        self.num_rollout_workers = 2
         # Size of batches collected from each worker.
         self.rollout_fragment_length = 200
         # Do create an actual env on the local worker (worker-idx=0).

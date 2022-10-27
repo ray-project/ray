@@ -99,7 +99,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_basic(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(num_rollout_workers=0),
         )
@@ -131,7 +131,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_batch_ids(self):
         fragment_len = 100
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 rollout_fragment_length=fragment_len, num_rollout_workers=0
@@ -152,7 +152,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2C(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "num_workers": 1,
                     # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
@@ -204,7 +204,7 @@ class TestRolloutWorker(unittest.TestCase):
             )
 
     def test_query_evaluators(self):
-        register_env("test", lambda _: gym.make("CartPole-v0"))
+        register_env("test", lambda _: gym.make("CartPole-v1"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
             pg = PG(
                 env="test",
@@ -563,7 +563,7 @@ class TestRolloutWorker(unittest.TestCase):
 
         # A gym env's max_episode_steps is smaller than Algorithm's horizon.
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 num_rollout_workers=0,
@@ -646,7 +646,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_async(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
         )
@@ -855,7 +855,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_filter_sync(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 sample_async=True,
@@ -873,7 +873,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_get_filters(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
@@ -893,7 +893,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_sync_filter(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",

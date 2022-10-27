@@ -46,7 +46,6 @@ class PGConfig(AlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with PG-specific values.
-        self.num_workers = 0
         self.lr_schedule = None
         self.lr = 0.0004
         self._disable_preprocessor_api = True
