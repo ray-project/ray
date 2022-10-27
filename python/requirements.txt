@@ -110,3 +110,7 @@ pytest-forked
 
 # For dataset tests
 polars
+
+# for 2.1.0 release ci
+cryptography==38.0.1
+PyOpenSSL==22.1.0
