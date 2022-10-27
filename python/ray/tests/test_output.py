@@ -179,13 +179,13 @@ ray.get([f.remote() for _ in range(15)])
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -230,13 +230,13 @@ sleep(3)
 
 
 def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -654,7 +654,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
