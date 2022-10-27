@@ -1,22 +1,13 @@
 import os
-from typing import Any, Dict, List, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 
-from fsspec.implementations.local import LocalFileSystem
-from fsspec.implementations.http import HTTPFileSystem
 
 import ray
-from ray.data.datasource import (
-    Datasource,
-    WriteResult,
-)
 
-from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
