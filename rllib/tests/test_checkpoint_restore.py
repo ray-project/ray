@@ -6,15 +6,15 @@ import unittest
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.algorithms.apex_ddpg import ApexDDPG, ApexDDPGConfig
-from ray.rllib.algorithms.sac import SAC, SACConfig
-from ray.rllib.algorithms.simple_q import SimpleQ, SimpleQConfig
-from ray.rllib.algorithms.ppo import PPO, PPOConfig
-from ray.rllib.algorithms.es import ES, ESConfig
-from ray.rllib.algorithms.dqn import DQN, DQNConfig
-from ray.rllib.algorithms.ddpg import DDPG, DDPGConfig
-from ray.rllib.algorithms.ars import ARS, ARSConfig
-from ray.rllib.algorithms.a3c import A3C, A3CConfig
+from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
+from ray.rllib.algorithms.sac import SACConfig
+from ray.rllib.algorithms.simple_q import SimpleQConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.es import ESConfig
+from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.algorithms.ddpg import DDPGConfig
+from ray.rllib.algorithms.ars import ARSConfig
+from ray.rllib.algorithms.a3c import A3CConfig
 
 
 def get_mean_action(alg, obs):
@@ -25,63 +25,52 @@ def get_mean_action(alg, obs):
 
 
 algorithms_and_configs = {
-    "A3C":
-    (
-        A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)
-    ),
-    "APEX_DDPG":
-    (
+    "A3C": (A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)),
+    "APEX_DDPG": (
         ApexDDPGConfig()
         .exploration(explore=False)
         .rollouts(observation_filter="MeanStdFilter", num_rollout_workers=2)
         .reporting(min_time_s_per_iteration=1)
         .training(
             optimizer={"num_replay_buffer_shards": 1},
-            num_steps_sampled_before_learning_starts=0
+            num_steps_sampled_before_learning_starts=0,
         )
     ),
-    "ARS":
-    (
+    "ARS": (
         ARSConfig()
         .exploration(explore=False)
         .rollouts(num_rollout_workers=2, observation_filter="MeanStdFilter")
         .training(num_rollouts=10, noise_size=2500000)
     ),
-    "DDPG":
-    (
+    "DDPG": (
         DDPGConfig()
         .exploration(explore=False)
         .reporting(min_sample_timesteps_per_iteration=100)
         .training(num_steps_sampled_before_learning_starts=0)
     ),
-    "DQN":
-    (
+    "DQN": (
         DQNConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
     ),
-    "ES":
-    (
+    "ES": (
         ESConfig()
         .exploration(explore=False)
         .training(episodes_per_batch=10, train_batch_size=100, noise_size=2500000)
         .rollouts(observation_filter="MeanStdFilter", num_rollout_workers=2)
     ),
-    "PPO":
-    (
+    "PPO": (
         PPOConfig()
         .exploration(explore=False)
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
     ),
-    "SimpleQ":
-    (
+    "SimpleQ": (
         SimpleQConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
     ),
-    "SAC":
-    (
+    "SAC": (
         SACConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)

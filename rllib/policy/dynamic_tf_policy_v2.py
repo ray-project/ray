@@ -9,7 +9,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -82,8 +82,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
-        self._init_input_dict_and_dummy_batch(
-            existing_inputs)
+        self._init_input_dict_and_dummy_batch(existing_inputs)
 
         (
             sampled_action,
@@ -444,7 +443,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 if k.startswith("state_in_")
             ]
             # Placeholder for RNN time-chunk valid lengths.
-            if self._state_inputs and self._seq_lens is not None:
+            if self._state_inputs and self._seq_lens is None:
                 self._seq_lens = tf1.placeholder(
                     dtype=tf.int32, shape=[None], name="seq_lens"
                 )
@@ -465,8 +464,8 @@ class DynamicTFPolicyV2(TFPolicy):
         # Setup standard placeholders.
         if self._is_tower:
             assert existing_inputs is not None
-            timestep = existing_inputs["timestep"]
-            explore = False
+            self.timestep_placeholder = existing_inputs["timestep"]
+            self.explore_placeholder = False
             (
                 self._input_dict,
                 self._dummy_batch,
@@ -481,7 +480,9 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             # Placeholder for `is_exploring` flag.
             if not hasattr(self, "explore_placeholder"):
-                self.explore_placeholder = tf1.placeholder_with_default(True, (), name="is_exploring")
+                self.explore_placeholder = tf1.placeholder_with_default(
+                    True, (), name="is_exploring"
+                )
 
             (
                 self._input_dict,
@@ -555,8 +556,9 @@ class DynamicTFPolicyV2(TFPolicy):
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
-    def _init_action_fetches(self) -> Tuple[TensorType, TensorType, TensorType, type,
-                                            Dict[str, TensorType]]:
+    def _init_action_fetches(
+        self,
+    ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -623,7 +625,8 @@ class DynamicTFPolicyV2(TFPolicy):
                     sampled_action_logp,
                 ) = self.exploration.get_exploration_action(
                     action_distribution=action_dist,
-                    timestep=self.timestep_placeholder, explore=self.explore_placeholder
+                    timestep=self.timestep_placeholder,
+                    explore=self.explore_placeholder,
                 )
 
         if dist_inputs is not None:
