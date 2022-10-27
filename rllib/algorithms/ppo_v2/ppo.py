@@ -385,7 +385,9 @@ class PPO(Algorithm):
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_policy import PPOTorchPolicy
+            from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_policy import (
+                PPOTorchPolicy,
+            )
 
             return PPOTorchPolicy
         elif config["framework"] == "tf":
@@ -396,7 +398,6 @@ class PPO(Algorithm):
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 
             return PPOTF2Policy
-
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
@@ -417,7 +418,7 @@ class PPO(Algorithm):
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self._trainer_runner:
-            # TODO: only use _trainer_runner when it is implemented. 
+            # TODO: only use _trainer_runner when it is implemented.
             self._trainer_runner.update(train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -433,10 +434,10 @@ class PPO(Algorithm):
                 self.workers.sync_weights(global_vars=global_vars)
 
         if self._trainer_runner:
-            # the code snippent in the next else statement should go inside the 
-            # owner of loss and optimizer, that implements a special update method with 
+            # the code snippent in the next else statement should go inside the
+            # owner of loss and optimizer, that implements a special update method with
             # update_kl = True passed to it.
-            # TODO: only use _trainer_runner when it is implemented. 
+            # TODO: only use _trainer_runner when it is implemented.
             self._trainer_runner.update(update_kl=True)
         else:
             # For each policy: update KL scale and warn about possible issues
@@ -448,7 +449,8 @@ class PPO(Algorithm):
 
                 # Warn about excessively high value function loss
                 scaled_vf_loss = (
-                    self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+                    self.config["vf_loss_coeff"]
+                    * policy_info[LEARNER_STATS_KEY]["vf_loss"]
                 )
                 policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
                 if (
@@ -461,7 +463,9 @@ class PPO(Algorithm):
                         "extremely large ({}) compared to the policy loss ({}). This "
                         "can prevent the policy from learning. Consider scaling down "
                         "the VF loss by reducing vf_loss_coeff, or disabling "
-                        "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
+                        "vf_share_layers.".format(
+                            policy_id, scaled_vf_loss, policy_loss
+                        )
                     )
                 # Warn about bad clipping configs.
                 train_batch.policy_batches[policy_id].set_get_interceptor(None)
