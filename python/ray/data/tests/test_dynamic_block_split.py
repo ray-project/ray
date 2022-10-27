@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
-from ray.data.datasource.datasource import ReadTask
+from ray.data.datasource.datasource import ReadTask, Reader
 
 from ray.tests.conftest import *  # noqa
 
@@ -25,10 +25,19 @@ def test_read_large_data(ray_start_cluster):
 
         # Data source generates multiple 1G random bytes data
         class LargeBytesDatasource(Datasource):
-            def prepare_read(self, parallelism):
+            def create_reader(self, **read_args):
+                return LargeBytesReader()
+
+        class LargeBytesReader(Reader):
+            def estimate_inmemory_data_size(self):
+                return None
+
+            def get_read_tasks(self, parallelism: int):
                 def _1g_batches_generator():
                     for _ in range(num_batch):
-                        yield pd.DataFrame({"one": [np.random.bytes(1_000_000_000)]})
+                        yield pd.DataFrame(
+                            {"one": [np.random.bytes(1024 * 1024 * 1024)]}
+                        )
 
                 return parallelism * [
                     ReadTask(
