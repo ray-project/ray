@@ -15,11 +15,7 @@ from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
 
 
 @pytest.mark.parametrize(
-    "group_name,expected_index",
-    [
-        ("small-group", 0),
-        ("gpu-group", 1)
-    ]
+    "group_name,expected_index", [("small-group", 0), ("gpu-group", 1)]
 )
 def test_worker_group_index(group_name, expected_index):
     """Basic unit test for _worker_group_index.
@@ -32,12 +28,7 @@ def test_worker_group_index(group_name, expected_index):
 
 
 @pytest.mark.parametrize(
-    "group_index,expected_max_replicas",
-    [
-        (0, 300),
-        (1, 200),
-        (2, None)
-    ]
+    "group_index,expected_max_replicas", [(0, 300), (1, 200), (2, None)]
 )
 def test_worker_group_max_replicas(group_index, expected_max_replicas):
     """Basic unit test for _worker_group_max_replicas.
@@ -54,20 +45,18 @@ def test_worker_group_max_replicas(group_index, expected_max_replicas):
     del no_max_replicas_group["maxReplicas"]
     raycluster_cr["spec"]["workerGroupSpecs"].append(no_max_replicas_group)
 
-    assert _worker_group_max_replicas(raycluster_cr, group_index) == expected_max_replicas
+    assert (
+        _worker_group_max_replicas(raycluster_cr, group_index) == expected_max_replicas
+    )
 
 
 @pytest.mark.parametrize(
     "cur_pod_count,to_add_pod_count,expected_target_replica_count",
-    [
-        (0, 200, 200),
-        (200, 50, 250),
-        (150, 150, 300),
-        (200, 200, 300),
-        (0, 1000, 300)
-    ]
+    [(0, 200, 200), (200, 50, 250), (150, 150, 300), (200, 200, 300), (0, 1000, 300)],
 )
-def test_create_node_cap_at_max(cur_pod_count, to_add_pod_count, expected_target_replica_count):
+def test_create_node_cap_at_max(
+    cur_pod_count, to_add_pod_count, expected_target_replica_count
+):
     """Validates that KuberayNodeProvider does not attempt to create more nodes than allowed
     by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
 
@@ -94,20 +83,34 @@ def test_create_node_cap_at_max(cur_pod_count, to_add_pod_count, expected_target
 
     raycluster_cr = get_basic_ray_cr()
     with mock.patch.object(
-        KuberayNodeProvider, "__init__", mock_init,
+        KuberayNodeProvider,
+        "__init__",
+        mock_init,
     ), mock.patch.object(
-        KuberayNodeProvider, "_get", return_value=raycluster_cr,
+        KuberayNodeProvider,
+        "_get",
+        return_value=raycluster_cr,
     ), mock.patch.object(
-        KuberayNodeProvider, "_patch", mock_patch,
+        KuberayNodeProvider,
+        "_patch",
+        mock_patch,
     ), mock.patch.object(
-        KuberayNodeProvider, "non_terminated_nodes", mock_non_terminated_nodes,
+        KuberayNodeProvider,
+        "non_terminated_nodes",
+        mock_non_terminated_nodes,
     ):
         # Patch out __init__
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         # Patch out _get
-        kr_node_provider.create_node(node_config={}, tags={"ray-user-node-type": "small-group"}, count=to_add_pod_count)
+        kr_node_provider.create_node(
+            node_config={},
+            tags={"ray-user-node-type": "small-group"},
+            count=to_add_pod_count,
+        )
         # Patch _path to return the payload
-        assert kr_node_provider._applied_patch[0]["value"] == expected_target_replica_count
+        assert (
+            kr_node_provider._applied_patch[0]["value"] == expected_target_replica_count
+        )
 
 
 if __name__ == "__main__":
