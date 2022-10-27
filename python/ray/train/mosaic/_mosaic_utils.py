@@ -35,6 +35,8 @@ class RayLogger(LoggerDestination):
 
     def __init__(self, keys: List[str] = None) -> None:
         self.data = {}
+        # report at fit end only if there are additional training batches run after the
+        # last epoch checkpoint report
         self.should_report_fit_end = False
         if keys:
             for key in keys:
@@ -54,6 +56,9 @@ class RayLogger(LoggerDestination):
         del logger  # unused
         self.should_report_fit_end = False
         session.report(self.data)
+
+        # flush the data
+        self.data = {}
 
     def fit_end(self, state: State, logger: Logger) -> None:
         # report at close in case the trainer stops in the middle of an epoch.
