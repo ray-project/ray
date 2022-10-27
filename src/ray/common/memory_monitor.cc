@@ -149,6 +149,8 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
 
 int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
+  // Uses same calculation as libcontainer, that is: memory.current - memory.stat[total_inactive_file]
+  // Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
