@@ -201,6 +201,18 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
     assert ds.take() == readback_ds.take()
 
 
+def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+    """
+    If we try to write a dataset with invalid TFRecord datatypes,
+    ValueError should be raised.
+    """
+
+    ds = ray.data.from_items([{"item": None}])
+
+    with pytest.raises(ValueError):
+        ds.write_tfrecords(tmp_path)
+
+
 if __name__ == "__main__":
     import sys
 
