@@ -13,7 +13,7 @@ class TorchMultiAgentRLModule(MultiAgentRLModule, nn.Module):
         nn.Module.__init__(self)
 
         # after initialization, all submodules need to be TorchRLModules
-        for module_id, module in self.__rl_modules.items():
+        for module_id, module in self._rl_modules.items():
             assert isinstance(
                 module, TorchRLModule
             ), f"Module {module_id} is not a TorchRLModule!"

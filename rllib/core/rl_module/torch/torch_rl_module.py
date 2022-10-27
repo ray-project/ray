@@ -28,7 +28,7 @@ class TorchRLModule(RLModule, nn.Module):
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Makes the module distributed."""
         # TODO (Avnish): Implement this.
-        raise NotImplementedError
+        pass
 
     def is_distributed(self) -> bool:
         """Returns True if the module is distributed."""
