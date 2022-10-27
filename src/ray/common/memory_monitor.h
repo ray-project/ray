@@ -101,7 +101,8 @@ class MemoryMonitor {
   /// \param stat_path file path to the memory.stat file.
   /// \param usage_path file path to the memory.current file
   /// \return the used memory for cgroup v2. Note that the result may be negative,
-  /// which means that there is more inactive file memory than currently used memory. The caller should handle this case.
+  /// which means that there is more inactive file memory than currently used memory. The
+  /// caller should handle this case.
   static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path,
                                             const char *usage_path);
 
