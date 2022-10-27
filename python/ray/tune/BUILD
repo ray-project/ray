@@ -679,7 +679,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "small",
+    size = "medium",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
