@@ -488,7 +488,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if (
             tf1
             and (
-                config.framework_str in ["tf2", "tfe"] or config.enable_tf1_exec_eagerly
+                config.framework_str == "tf2" or config.enable_tf1_exec_eagerly
             )
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
@@ -667,7 +667,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ):
 
             devices = []
-            if self.config.framework_str in ["tf2", "tf", "tfe"]:
+            if self.config.framework_str in ["tf2", "tf"]:
                 devices = get_tf_gpu_devices()
             elif self.config.framework_str == "torch":
                 devices = list(range(torch.cuda.device_count()))

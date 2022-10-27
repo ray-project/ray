@@ -308,7 +308,7 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw in ["tf2", "tfe"]:
+            if fw == "tf2":
                 PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(

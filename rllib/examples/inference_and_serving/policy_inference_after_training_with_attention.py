@@ -21,7 +21,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -93,7 +93,7 @@ if __name__ == "__main__":
             "attention_memory_training": 10,
         },
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
+        # Run with tracing enabled for tf2?
         "eager_tracing": args.eager_tracing,
     }
 

@@ -10,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 def check_support(alg, config, test_eager=False, test_trace=True):
-    config["framework"] = "tfe"
+    config["framework"] = "tf2"
     config["log_level"] = "ERROR"
     # Test both continuous and discrete actions.
     for cont in [True, False]:
