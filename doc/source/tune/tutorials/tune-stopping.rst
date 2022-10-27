@@ -20,15 +20,16 @@ If you've stopped a run and and want to resume from where you left off,
 you can then call ``Tuner.restore()`` like this:
 
 .. code-block:: python
-    :emphasize-lines: 4
 
     tuner = Tuner.restore(
         path="~/ray_results/my_experiment"
     )
     tuner.fit()
 
-There are a few options for resuming an experiment:
-"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
+There are a few options for restoring an experiment:
+``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
+Please see the documentation of
+:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
 ``path`` here is determined by the ``air.RunConfig.name`` you supplied to your ``Tuner()``.
 If you didn't supply name to ``Tuner``, it is likely that your ``path`` looks something like:
@@ -48,18 +49,18 @@ of your original tuning run:
     Number of trials: 1/1 (1 RUNNING)
 
 What's happening under the hood?
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`Here <tune-two-types-of-ckpt>` we talked about two types of Tune checkpoints.
-Both checkpoints come into play when resuming a Tune run.
+:ref:`Here <tune-two-types-of-ckpt>`, we describe the two types of Tune checkpoints:
+experiment-level and trial-level checkpoints.
 
-When resuming an interrupted/errored Tune run, Tune first looks at the experiment-level checkpoint
-to find the list of trials at the time of the interruption. Ray Tune then locates the trial-level
-checkpoint of each trial.
+Upon resuming an interrupted/errored Tune run:
 
-Depending on the specified resume option
-("resume_unfinished", "resume_errored", "restart_errored"), Ray Tune then decides whether to
-restore a given non-finished trial from its latest available checkpoint or start from scratch.
+#. Tune first looks at the experiment-level checkpoint to find the list of trials at the time of the interruption.
+
+#. Tune then locates and restores from the trial-level checkpoint of each trial.
+
+#. Depending on the specified resume option (``resume_unfinished``, ``resume_errored``, ``restart_errored``), Tune decides whether to restore a given unfinished trial from its latest available checkpoint or to start from scratch.
 
 .. _tune-stopping-ref:
 
