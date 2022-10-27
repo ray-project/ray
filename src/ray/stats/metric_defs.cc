@@ -47,6 +47,20 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+/// Tracks actors by state, including pending, running, and idle actors.
+///
+/// To avoid metric collection conflicts between components reporting on the same task,
+/// we use the "Source" required label.
+DEFINE_stats(actors,
+             "Current number of actors currently in a particular state.",
+             // State: the actor state, which is from rpc::ActorTableData::ActorState,
+             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // Name: the name of actor class.
+             // Source: component reporting, e.g., "gcs" or "executor".
+             ("State", "Name", "Source"),
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(

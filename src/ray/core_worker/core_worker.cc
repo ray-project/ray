@@ -63,22 +63,21 @@ class ScopedTaskMetricSetter {
                          TaskCounter &ctr,
                          rpc::TaskStatus status)
       : status_(status), ctr_(ctr) {
-    task_spec_ = ctx.GetCurrentTask();
-    if (task_spec_ != nullptr) {
-      ctr_.SetMetricStatus(task_spec_->GetName(), status);
+    auto task_spec = ctx.GetCurrentTask();
+    if (task_spec != nullptr) {
+      task_name_ = task_spec->GetName();
+    } else {
+      task_name_ = "Unknown task";
     }
+    ctr_.SetMetricStatus(task_name_, status);
   }
 
-  ~ScopedTaskMetricSetter() {
-    if (task_spec_ != nullptr) {
-      ctr_.UnsetMetricStatus(task_spec_->GetName(), status_);
-    }
-  }
+  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_); }
 
  private:
   rpc::TaskStatus status_;
   TaskCounter &ctr_;
-  std::shared_ptr<const TaskSpecification> task_spec_;
+  std::string task_name_;
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
@@ -2300,6 +2299,7 @@ Status CoreWorker::ExecuteTask(
     return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
     {
       std::unique_ptr<ActorHandle> self_actor_handle(
           new ActorHandle(task_spec.GetSerializedActorHandle()));

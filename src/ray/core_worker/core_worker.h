@@ -106,9 +106,42 @@ class TaskCounter {
             });
   }
 
+  void BecomeActor(const std::string &actor_name) {
+    absl::MutexLock l(&mu_);
+    actor_name_ = actor_name;
+  }
+
+  bool IsActor() EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
+
   void RecordMetrics() {
     absl::MutexLock l(&mu_);
     counter_.FlushOnChangeCallbacks();
+    if (IsActor()) {
+      float running = 0.0;
+      float in_get = 0.0;
+      float in_wait = 0.0;
+      if (running_in_wait_counter_.Total() > 0) {
+        in_wait = 1.0;
+      } else if (running_in_get_counter_.Total() > 0) {
+        in_get = 1.0;
+      } else if (num_tasks_running_ > 0) {
+        running = 1.0;
+      }
+      ray::stats::STATS_actors.Record(
+          -(running + in_get + in_wait),
+          {{"State", "ALIVE"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(
+          running,
+          {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(in_get,
+                                      {{"State", "RUNNING_IN_RAY_GET"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(in_wait,
+                                      {{"State", "RUNNING_IN_RAY_WAIT"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"}});
+    }
   }
 
   void IncPending(const std::string &func_name) {
@@ -119,11 +152,14 @@ class TaskCounter {
   void MovePendingToRunning(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kPending}, {func_name, kRunning});
+    num_tasks_running_++;
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
     absl::MutexLock l(&mu_);
     counter_.Swap({func_name, kRunning}, {func_name, kFinished});
+    num_tasks_running_--;
+    RAY_CHECK(num_tasks_running_ >= 0);
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
@@ -179,6 +215,10 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
   CounterMap<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
+
+  // Used for actor state tracking.
+  std::string actor_name_ GUARDED_BY(&mu_) = "";
+  int64_t num_tasks_running_ GUARDED_BY(&mu_) = 0;
 };
 
 /// The root class that contains all the core and language-independent functionalities
