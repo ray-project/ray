@@ -22,9 +22,9 @@ class TestReproDQN(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env("DeterministicCartPole-v0", create_cartpole_deterministic)
+        register_env("DeterministicCartPole-v1", create_cartpole_deterministic)
         config = dqn.DQNConfig().environment(
-            env="DeterministicCartPole-v0", env_config={"seed": 42}
+            env="DeterministicCartPole-v1", env_config={"seed": 42}
         )
         # tf-gpu is excluded for determinism
         # reason: https://github.com/tensorflow/tensorflow/issues/2732
