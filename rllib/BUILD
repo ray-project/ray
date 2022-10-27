@@ -2680,7 +2680,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(

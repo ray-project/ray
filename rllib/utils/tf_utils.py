@@ -243,10 +243,10 @@ def get_tf_eager_cls_if_necessary(
     cls = orig_cls
     framework = config.get("framework", "tf")
 
-    if framework in ["tf2", "tf", "tfe"] and not tf1:
+    if framework in ["tf2", "tf"] and not tf1:
         raise ImportError("Could not import tensorflow!")
 
-    if framework in ["tf2", "tfe"]:
+    if framework == "tf2":
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy

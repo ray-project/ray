@@ -28,6 +28,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -41,25 +42,44 @@ class GcsActor {
   /// Create a GcsActor by actor_table_data.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
-  explicit GcsActor(rpc::ActorTableData actor_table_data)
-      : actor_table_data_(std::move(actor_table_data)) {}
+  /// \param counter The counter to report metrics to.
+  explicit GcsActor(
+      rpc::ActorTableData actor_table_data,
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
+      : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
+    RefreshMetrics();
+  }
 
   /// Create a GcsActor by actor_table_data and task_spec.
   /// This is only for ALIVE actors.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   /// \param task_spec Task spec of the actor.
-  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
+  /// \param counter The counter to report metrics to.
+  explicit GcsActor(
+      rpc::ActorTableData actor_table_data,
+      rpc::TaskSpec task_spec,
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
       : actor_table_data_(std::move(actor_table_data)),
-        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
+        counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+    RefreshMetrics();
   }
 
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace)
-      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+  /// \param ray_namespace Namespace of the actor.
+  /// \param counter The counter to report metrics to.
+  explicit GcsActor(
+      const ray::rpc::TaskSpec &task_spec,
+      std::string ray_namespace,
+      std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+          counter)
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -108,6 +128,17 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    RefreshMetrics();
+  }
+
+  ~GcsActor() {
+    if (last_metric_state_) {
+      RAY_LOG(DEBUG) << "Decrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
+                     << " " << GetActorTableData().class_name();
+      counter_->Decrement(
+          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()));
+    }
   }
 
   /// Get the node id on which this actor is created.
@@ -126,7 +157,9 @@ class GcsActor {
   /// Get the `Address` of this actor.
   const rpc::Address &GetAddress() const;
 
-  /// Update the state of this actor.
+  /// Update the state of this actor and refreshes metrics. Do not update the
+  /// state of the underlying proto directly via set_state(), otherwise metrics
+  /// will get out of sync.
   void UpdateState(rpc::ActorTableData::ActorState state);
   /// Get the state of this gcs actor.
   rpc::ActorTableData::ActorState GetState() const;
@@ -154,14 +187,37 @@ class GcsActor {
   void SetGrantOrReject(bool grant_or_reject);
 
  private:
+  void RefreshMetrics() {
+    auto cur_state = GetState();
+    if (last_metric_state_) {
+      RAY_LOG(DEBUG) << "Swapping state from "
+                     << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
+                     << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
+      counter_->Swap(
+          std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
+          std::make_pair(cur_state, GetActorTableData().class_name()));
+    } else {
+      RAY_LOG(DEBUG) << "Incrementing state at "
+                     << rpc::ActorTableData::ActorState_Name(cur_state) << " "
+                     << GetActorTableData().class_name();
+      counter_->Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
+    }
+    last_metric_state_ = cur_state;
+  }
+
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
+  /// Reference to the counter to use for actor state metrics tracking.
+  std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+      counter_;
   /// Whether the actor's target node only grants or rejects the lease request.
   bool grant_or_reject_ = false;
+  /// The last recorded metric state.
+  std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
@@ -385,6 +441,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Collect stats from gcs actor manager in-memory data structures.
   void RecordMetrics() const;
 
+  // Visible for testing.
+  int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
+    return actor_state_counter_->Get(std::make_pair(state, name));
+  }
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -575,6 +636,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
+  /// Counter of actors broken down by (State, ClassName).
+  std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+      actor_state_counter_;
 
   // Debug info.
   enum CountType {
