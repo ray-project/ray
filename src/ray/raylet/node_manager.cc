@@ -2937,9 +2937,6 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
         } else {
-          RAY_LOG(INFO)
-              << "Killing worker with task "
-              << worker_to_kill->GetAssignedTask().GetTaskSpecification().DebugString();
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
@@ -2950,9 +2947,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           std::string oom_kill_suggestions =
               this->CreateOomKillMessageSuggestions(worker_to_kill);
 
-          RAY_LOG_EVERY_MS(ERROR, 10000) << oom_kill_title << "\n\n"
-                                         << oom_kill_details << "\n\n"
-                                         << oom_kill_suggestions;
+          RAY_LOG(INFO)
+              << "Killing worker with task "
+              << worker_to_kill->GetAssignedTask().GetTaskSpecification().DebugString()
+              << "\n\n"
+              << oom_kill_details << "\n\n"
+              << oom_kill_suggestions;
 
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss << oom_kill_title << oom_kill_details
