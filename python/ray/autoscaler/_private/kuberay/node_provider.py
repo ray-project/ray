@@ -148,7 +148,10 @@ def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
 
 def _worker_group_max_replicas(raycluster: Dict[str, Any], group_index: int) -> Optional[int]:
     """Extract the maxReplicas of a worker group.
+
     If maxReplicas is unset, return None, to be interpreted as "no constraint".
+    At time of writing, it should be impossible for maxReplicas to be unset, but it's better to
+    handle this anyway.
     """
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
@@ -271,7 +274,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Creates a number of nodes within the namespace."""
         url = "rayclusters/{}".format(self.cluster_name)
         raycluster = self._get(url)
-        group_name = tags["ray-user-node-type"]
+        group_name = tags[TAG_RAY_USER_NODE_TYPE]
         group_index = _worker_group_index(raycluster, group_name)
         group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
         tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
