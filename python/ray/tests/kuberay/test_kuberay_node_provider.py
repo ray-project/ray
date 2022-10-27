@@ -1,5 +1,6 @@
 import copy
 import mock
+import sys
 import uuid
 
 
@@ -14,6 +15,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
     "group_name,expected_index", [("small-group", 0), ("gpu-group", 1)]
 )
@@ -27,6 +29,7 @@ def test_worker_group_index(group_name, expected_index):
     assert _worker_group_index(raycluster_cr, group_name) == expected_index
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
     "group_index,expected_max_replicas", [(0, 300), (1, 200), (2, None)]
 )
@@ -50,6 +53,7 @@ def test_worker_group_max_replicas(group_index, expected_max_replicas):
     )
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
     "cur_pod_count,to_add_pod_count,expected_target_replica_count",
     [(0, 200, 200), (200, 50, 250), (150, 150, 300), (200, 200, 300), (0, 1000, 300)],
