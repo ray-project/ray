@@ -387,8 +387,9 @@ class AlgorithmConfig:
                     if k in value
                 }
                 self.multi_agent(**kwargs)
-            # Some keys must use `.update()` from given config dict (to not lose
-            # any sub-keys).
+            # Some keys specify config sub-dicts and therefore should go through the
+            # correct methods to properly `.update()` those from given config dict
+            # (to not lose any sub-keys).
             elif key == "callbacks_class":
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
@@ -397,8 +398,8 @@ class AlgorithmConfig:
                 eval_call[key] = value
             elif key == "exploration_config":
                 self.exploration(exploration_config=value)
-            elif key == "model":
-                self.training(model=value)
+            elif key in ["model", "optimizer", "replay_buffer_config"]:
+                self.training(**{key: value})
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(

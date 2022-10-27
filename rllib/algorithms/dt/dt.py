@@ -95,7 +95,7 @@ class DTConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]],
+        replay_buffer_config: Optional[Dict[str, Any]] = None,
         embed_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
         num_heads: Optional[int] = None,
