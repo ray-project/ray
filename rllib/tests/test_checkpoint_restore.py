@@ -89,14 +89,13 @@ algorithms_and_configs = {
 }
 
 
-def ckpt_restore_test(algo_name, tfe=False, object_store=False, replay_buffer=False):
+def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=False):
     config = algorithms_and_configs[algo_name].to_dict()
     # If required, store replay buffer data in checkpoints as well.
     if replay_buffer:
         config["store_buffer_in_checkpoints"] = True
 
-    frameworks = ["tf"]
-    # frameworks = (["tf2"] if tfe else []) + ["torch", "tf"]
+    frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True] if object_store else [False]:
             print("use_object_store={}".format(use_object_store))
@@ -105,8 +104,8 @@ def ckpt_restore_test(algo_name, tfe=False, object_store=False, replay_buffer=Fa
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")
             else:
-                alg1 = cls(config=config, env="CartPole-v0")
-                alg2 = cls(config=config, env="CartPole-v0")
+                alg1 = cls(config=config, env="CartPole-v1")
+                alg2 = cls(config=config, env="CartPole-v1")
 
             policy1 = alg1.get_policy()
 
@@ -128,21 +127,21 @@ def ckpt_restore_test(algo_name, tfe=False, object_store=False, replay_buffer=Fa
                 else:
                     alg2.restore(checkpoint)
 
-                # Compare optimizer state with re-loaded one.
-                if optim_state:
-                    s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-                    # Tf -> Compare states 1:1.
-                    if fw in ["tf2", "tf", "tfe"]:
-                        check(s2, optim_state)
-                    # For torch, optimizers have state_dicts with keys=params,
-                    # which are different for the two models (ignore these
-                    # different keys, but compare all values nevertheless).
-                    else:
-                        for i, s2_ in enumerate(s2):
-                            check(
-                                list(s2_["state"].values()),
-                                list(optim_state[i]["state"].values()),
-                            )
+            # Compare optimizer state with re-loaded one.
+            if optim_state:
+                s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+                # Tf -> Compare states 1:1.
+                if fw in ["tf2", "tf"]:
+                    check(s2, optim_state)
+                # For torch, optimizers have state_dicts with keys=params,
+                # which are different for the two models (ignore these
+                # different keys, but compare all values nevertheless).
+                else:
+                    for i, s2_ in enumerate(s2):
+                        check(
+                            list(s2_["state"].values()),
+                            list(optim_state[i]["state"].values()),
+                        )
 
                 # Compare buffer content with restored one.
                 if replay_buffer:
@@ -174,7 +173,7 @@ def ckpt_restore_test(algo_name, tfe=False, object_store=False, replay_buffer=Fa
                         raise AssertionError(
                             "algo={} [a1={} a2={}]".format(algo_name, a1, a2)
                         )
-                # Stop both algos.
+            # Stop both algos.
             alg1.stop()
             alg2.stop()
 
