@@ -9,7 +9,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -83,13 +83,15 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self._init_state_inputs(existing_inputs)
         self._init_view_requirements()
-        timestep, explore = self._init_input_dict_and_dummy_batch(existing_inputs)
+        self._init_input_dict_and_dummy_batch(
+            existing_inputs)
+
         (
             sampled_action,
             sampled_action_logp,
             dist_inputs,
             self._policy_extra_action_fetches,
-        ) = self._init_action_fetches(timestep, explore)
+        ) = self._init_action_fetches()
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session(
@@ -130,8 +132,8 @@ class DynamicTFPolicyV2(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
-            explore=explore,
-            timestep=timestep,
+            explore=self.explore_placeholder,
+            timestep=self.timestep_placeholder,
         )
 
     @DeveloperAPI
@@ -448,7 +450,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 if k.startswith("state_in_")
             ]
             # Placeholder for RNN time-chunk valid lengths.
-            if self._state_inputs:
+            if self._state_inputs and not hasattr(self, "_seq_lens"):
                 self._seq_lens = tf1.placeholder(
                     dtype=tf.int32, shape=[None], name="seq_lens"
                 )
@@ -463,8 +465,8 @@ class DynamicTFPolicyV2(TFPolicy):
                 dict of placeholders to use instead of defining new ones.
 
         Returns:
-            timestep: training timestep.
-            explore: whether this policy should explore.
+            timestep_placeholder: training timestep.
+            explore_placeholder: whether this policy should explore.
         """
         # Setup standard placeholders.
         if self._is_tower:
@@ -479,11 +481,14 @@ class DynamicTFPolicyV2(TFPolicy):
             )
         else:
             # Placeholder for (sampling steps) timestep (int).
-            timestep = tf1.placeholder_with_default(
-                tf.zeros((), dtype=tf.int64), (), name="timestep"
-            )
+            if not hasattr(self, "timestep_placeholder"):
+                self.timestep_placeholder = tf1.placeholder_with_default(
+                    tf.zeros((), dtype=tf.int64), (), name="timestep"
+                )
             # Placeholder for `is_exploring` flag.
-            explore = tf1.placeholder_with_default(True, (), name="is_exploring")
+            if not hasattr(self, "explore_placeholder"):
+                self.explore_placeholder = tf1.placeholder_with_default(True, (), name="is_exploring")
+
             (
                 self._input_dict,
                 self._dummy_batch,
@@ -492,7 +497,7 @@ class DynamicTFPolicyV2(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
-        return timestep, explore
+        return self.timestep_placeholder, self.explore_placeholder
 
     def _create_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
@@ -556,9 +561,8 @@ class DynamicTFPolicyV2(TFPolicy):
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
-    def _init_action_fetches(
-        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
-    ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
+    def _init_action_fetches(self) -> Tuple[TensorType, TensorType, TensorType, type,
+                                            Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -585,7 +589,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     seq_lens=self._seq_lens,
                     prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
                     prev_reward_batch=self._input_dict.get(SampleBatch.PREV_REWARDS),
-                    explore=explore,
+                    explore=self.explore_placeholder,
                     is_training=self._input_dict.is_training,
                 )
             # Distribution generation is customized, e.g., DQN, DDPG.
@@ -603,8 +607,8 @@ class DynamicTFPolicyV2(TFPolicy):
                         obs_batch=in_dict[SampleBatch.OBS],
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
-                        explore=explore,
-                        timestep=timestep,
+                        explore=self.explore_placeholder,
+                        timestep=self.timestep_placeholder,
                         is_training=in_dict.is_training,
                     )
                 # Default distribution generation behavior:
@@ -624,7 +628,8 @@ class DynamicTFPolicyV2(TFPolicy):
                     sampled_action,
                     sampled_action_logp,
                 ) = self.exploration.get_exploration_action(
-                    action_distribution=action_dist, timestep=timestep, explore=explore
+                    action_distribution=action_dist,
+                    timestep=self.timestep_placeholder, explore=self.explore_placeholder
                 )
 
         if dist_inputs is not None:

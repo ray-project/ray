@@ -517,7 +517,7 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
