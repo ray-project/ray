@@ -362,7 +362,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
-            trainable(config, **fn_kwargs)
+            return trainable(config, **fn_kwargs)
 
         inner.__name__ = trainable_name
 
@@ -376,7 +376,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         if not use_checkpoint:
 
             def _inner(config):
-                inner(config, checkpoint_dir=None)
+                return inner(config, checkpoint_dir=None)
 
             _inner.__name__ = trainable_name
 
