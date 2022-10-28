@@ -44,7 +44,9 @@ def get_policy_data_from_agent_data(agent_data, policy_map_fn):
         if data[SampleBatch.OBS].ndim == 1:
             policy_data[policy_id][SampleBatch.AGENT_INDEX].append(agent_id)
         else:
-            policy_data[policy_id][SampleBatch.AGENT_INDEX] += [agent_id] * len(data[SampleBatch.OBS])
+            policy_data[policy_id][SampleBatch.AGENT_INDEX] += [agent_id] * len(
+                data[SampleBatch.OBS]
+            )
 
         for k, v in data.items():
             policy_data[policy_id].setdefault(k, [])
@@ -74,7 +76,8 @@ def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
     for policy_id, policy_out in fwd_out.items():
         policy_to_agent_to_action[policy_id] = {}
         for agent_id, agent_out in zip(
-            fwd_in[policy_id][SampleBatch.AGENT_INDEX], policy_out[SampleBatch.ACTION_DIST].sample()
+            fwd_in[policy_id][SampleBatch.AGENT_INDEX],
+            policy_out[SampleBatch.ACTION_DIST].sample(),
         ):
             policy_to_agent_to_action[policy_id][agent_id] = to_numpy(agent_out)
 

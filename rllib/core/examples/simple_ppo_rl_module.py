@@ -24,7 +24,7 @@ def get_ppo_loss(fwd_in, fwd_out):
     # forward train works
     adv = fwd_in[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
     actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
-    critic_loss = (adv ** 2).mean()
+    critic_loss = (adv**2).mean()
     loss = actor_loss + critic_loss
 
     return loss
@@ -230,13 +230,15 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return ModelSpec({
-            SampleBatch.OBS: (
-                self.encoder.input_specs()
-                if self.encoder
-                else self.pi.input_specs()
-            )
-        })
+        return ModelSpec(
+            {
+                SampleBatch.OBS: (
+                    self.encoder.input_specs()
+                    if self.encoder
+                    else self.pi.input_specs()
+                )
+            }
+        )
 
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
@@ -260,18 +262,19 @@ class SimplePPOModule(TorchRLModule):
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
         if self._is_discrete:
-            action_dim = 1
+            action_spec = TorchTensorSpec("b")
         else:
             action_dim = self.config.action_space.shape[0]
+            action_spec = TorchTensorSpec("b, h", h=action_dim)
 
         return ModelSpec(
             {
                 SampleBatch.OBS: (
-                    self.encoder.input_specs() 
-                    if self.encoder 
+                    self.encoder.input_specs()
+                    if self.encoder
                     else self.pi.input_specs()
                 ),
-                SampleBatch.ACTIONS: TorchTensorSpec("b, da", da=action_dim),
+                SampleBatch.ACTIONS: action_spec,
             }
         )
 
@@ -308,7 +311,6 @@ class SimplePPOModule(TorchRLModule):
             SampleBatch.VF_PREDS: vf.squeeze(-1),
             "entropy": entropy,
         }
-
 
     def __get_action_dist_type(self):
         return TorchCategorical if self._is_discrete else TorchDiagGaussian

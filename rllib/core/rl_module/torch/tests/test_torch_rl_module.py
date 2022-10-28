@@ -155,7 +155,9 @@ class TestRLModule(unittest.TestCase):
                     batch.append(
                         {
                             SampleBatch.OBS: obs,
-                            SampleBatch.ACTIONS: action[None] if action.ndim == 0 else action,
+                            SampleBatch.ACTIONS: action[None]
+                            if action.ndim == 0
+                            else action,
                             SampleBatch.REWARDS: np.array(reward),
                             SampleBatch.DONES: np.array(done),
                         }
