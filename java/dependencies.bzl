@@ -15,7 +15,7 @@ def gen_java_deps():
             "com.sun.xml.bind:jaxb-impl:2.3.0",
             "com.typesafe:config:1.3.2",
             "commons-io:commons-io:2.7",
-            "de.ruedigermoeller:fst:2.57",
+            "de.ruedigermoeller:fst:3.0.1",
             "javax.xml.bind:jaxb-api:2.3.0",
             "javax.activation:activation:1.1.1",
             "org.apache.commons:commons-lang3:3.4",
