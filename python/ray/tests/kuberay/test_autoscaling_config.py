@@ -98,7 +98,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 600,
+        "max_workers": 500,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
