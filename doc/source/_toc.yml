@@ -216,6 +216,7 @@ parts:
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
             sections:
+              - file: rllib/rllib-advanced-api
               - file: rllib/rllib-models
               - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts

@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. _rllib-training-doc:
+.. _rllib-getting-started:
 
 Getting Started with RLlib
 ==========================
@@ -83,6 +83,8 @@ You can run these with the ``rllib train file`` command as follows:
 Note that this works with any local YAML file in the correct format, or with remote URLs
 pointing to such files.
 
+
+.. _rllib-training-api:
 
 Using the Python API
 --------------------
