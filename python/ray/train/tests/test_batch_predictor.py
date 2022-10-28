@@ -79,20 +79,10 @@ class DummyPredictor(Predictor):
 
 class DummyWithNumpyPredictor(DummyPredictor):
     def _predict_numpy(self, data, **kwargs):
-        """Match implementation of dl_predictor."""
-        # Single column selection return numpy array so preprocessors can be
-        # reused in both trianing and prediction
-        output_column = "predictions"
-        if isinstance(data, dict) and len(data) == 1:
-            output_column = list(data.keys())[0]
-            data = data[list(data.keys())[0]]
-
-        model_output = data * self.factor
-
-        if isinstance(model_output, dict):
-            return {k: v for k, v in model_output.items()}
+        if isinstance(data, dict):
+            return {k: v * self.factor for k, v in data.items()}
         else:
-            return {output_column: model_output}
+            return data * self.factor
 
 
 class DummyPredictorFS(DummyPredictor):
