@@ -675,6 +675,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
+  /// Creates the detail message for the worker that is killed due to memory running low.
+  const std::string CreateOomKillMessageDetails(
+      const std::shared_ptr<WorkerInterface> &worker,
+      const NodeID &node_id,
+      const MemorySnapshot &system_memory,
+      float usage_threshold) const;
+
+  /// Creates the suggestion message for the worker that is killed due to memory running
+  /// low.
+  const std::string CreateOomKillMessageSuggestions(
+      const std::shared_ptr<WorkerInterface> &worker) const;
+
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetTaskFailureReason(const TaskID &task_id,

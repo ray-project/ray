@@ -89,7 +89,7 @@ class BanditLinTS(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinTSConfig:
-        return BanditLinTSConfig().to_dict()
+        return BanditLinTSConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -105,7 +105,7 @@ class BanditLinUCB(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
-        return BanditLinUCBConfig().to_dict()
+        return BanditLinUCBConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
