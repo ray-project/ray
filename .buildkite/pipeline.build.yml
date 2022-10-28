@@ -623,12 +623,7 @@
     # Combine shards from different files
     - >-
       set -x;
-      SHARD=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/...)
-      SHARD+=" "
-      SHARD+=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-mosaic,-needs_credentials python/ray/air/...)
-      SHARD+=" "
-      SHARD+=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic,-gpu_only,-gpu,-needs_credentials python/ray/train/...)
-      SHARD+=" "
-      SHARD+=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic python/ray/data/...)
-      echo "\$SHARD"
-      echo "\$SHARD" | xargs bazel test --config=ci $(./scripts/bazel_export_options)
+      { python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... && python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-mosaic,-needs_credentials python/ray/air/... && python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic,-gpu_only,-gpu,-needs_credentials python/ray/train/... && python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic python/ray/data/...; } > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)
