@@ -368,8 +368,8 @@ def prep_ray_ml():
     ]
     # We don't need these in the ml docker image
     ignore_requirements = [
-        "python/requirements/ml/requirements_legacy_compat.txt",
-        "python/requirements/ml/requirements_py36_compat.txt",
+        "python/requirements/compat/requirements_legacy_compat.txt",
+        "python/requirements/compat/requirements_py36_compat.txt",
     ]
 
     files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
