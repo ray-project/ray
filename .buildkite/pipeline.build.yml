@@ -539,16 +539,10 @@
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
 
-- label: ":book: Documentation"
+- label: ":book: Documentation and Doctests"
   commands:
     - export LINT=1
-    - echo "--- Setting up Python 3.7 environment."
-    - ./ci/env/install-dependencies.sh
-    # Specifying above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client
-    # (remove thirdparty_files to sidestep an issue with psutil).
-    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
-    - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
+    - DOC_TESTING=1 INSTALL_HOROVOD=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - bazel clean --expunge
     - ./ci/ci.sh build
 
