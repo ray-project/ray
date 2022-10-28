@@ -614,7 +614,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 900
+    timeout: 3600
     script: bash file_size_benchmark.sh
     type: sdk_command
     file_manager: sdk
