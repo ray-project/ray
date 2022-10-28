@@ -364,8 +364,13 @@ class ServeController:
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
-            # TODO: is this the desired behaviour? Should this be a setting?
-            deployment_config.num_replicas = autoscaling_config.min_replicas
+            previous_deployment = self.deployment_state_manager.get_deployment(name)
+            if previous_deployment is None:
+                deployment_config.num_replicas = autoscaling_config.min_replicas
+            else:
+                deployment_config.num_replicas = (
+                    previous_deployment.deployment_config.num_replicas
+                )
 
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
