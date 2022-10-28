@@ -26,6 +26,50 @@ else:
     json_dumps_safer = None
 
 
+WANDB_ENV_VAR = "WANDB_API_KEY"
+WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
+WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
+# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
+# to populate the API key if it isn't already set when initializing the callback.
+# It doesn't take in any arguments and returns the W&B API key.
+# Example: "your.module.wandb_setup_api_key_hook".
+WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
+# Hook that is invoked after running wandb.init in WandbLoggerCallback
+# to process information about the W&B run.
+# It takes in a W&B run object and doesn't return anything.
+# Example: "your.module.wandb_process_run_info_hook".
+WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
+_VALID_TYPES = (
+    Number,
+    wandb.data_types.Audio,
+    wandb.data_types.BoundingBoxes2D,
+    wandb.data_types.Graph,
+    wandb.data_types.Histogram,
+    wandb.data_types.Html,
+    wandb.data_types.Image,
+    wandb.data_types.ImageMask,
+    wandb.data_types.Molecule,
+    wandb.data_types.Object3D,
+    wandb.data_types.Plotly,
+    wandb.data_types.Table,
+    wandb.data_types.Video,
+)
+_VALID_ITERABLE_TYPES = (
+    wandb.data_types.Audio,
+    wandb.data_types.BoundingBoxes2D,
+    wandb.data_types.Graph,
+    wandb.data_types.Histogram,
+    wandb.data_types.Html,
+    wandb.data_types.Image,
+    wandb.data_types.ImageMask,
+    wandb.data_types.Molecule,
+    wandb.data_types.Object3D,
+    wandb.data_types.Plotly,
+    wandb.data_types.Table,
+    wandb.data_types.Video,
+)
+
+
 _MockWandb = MagicMock
 
 
@@ -141,50 +185,6 @@ def _setup_wandb(
     _wandb = _wandb or wandb
 
     return _wandb.init(**wandb_init_kwargs)
-
-
-WANDB_ENV_VAR = "WANDB_API_KEY"
-WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
-WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
-# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
-# to populate the API key if it isn't already set when initializing the callback.
-# It doesn't take in any arguments and returns the W&B API key.
-# Example: "your.module.wandb_setup_api_key_hook".
-WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
-# Hook that is invoked after running wandb.init in WandbLoggerCallback
-# to process information about the W&B run.
-# It takes in a W&B run object and doesn't return anything.
-# Example: "your.module.wandb_process_run_info_hook".
-WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
-_VALID_TYPES = (
-    Number,
-    wandb.data_types.Audio,
-    wandb.data_types.BoundingBoxes2D,
-    wandb.data_types.Graph,
-    wandb.data_types.Histogram,
-    wandb.data_types.Html,
-    wandb.data_types.Image,
-    wandb.data_types.ImageMask,
-    wandb.data_types.Molecule,
-    wandb.data_types.Object3D,
-    wandb.data_types.Plotly,
-    wandb.data_types.Table,
-    wandb.data_types.Video,
-)
-_VALID_ITERABLE_TYPES = (
-    wandb.data_types.Audio,
-    wandb.data_types.BoundingBoxes2D,
-    wandb.data_types.Graph,
-    wandb.data_types.Histogram,
-    wandb.data_types.Html,
-    wandb.data_types.Image,
-    wandb.data_types.ImageMask,
-    wandb.data_types.Molecule,
-    wandb.data_types.Object3D,
-    wandb.data_types.Plotly,
-    wandb.data_types.Table,
-    wandb.data_types.Video,
-)
 
 
 def _is_allowed_type(obj):
