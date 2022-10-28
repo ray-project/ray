@@ -202,19 +202,21 @@ try:
                 namespace="autoscaler",
                 registry=self.registry,
             )
-            self.cluster_resources: Counter = Counter(
+            self.cluster_resources: Counter = Gauge(
                 "cluster_resoruces",
                 "Total logical resources in the cluster.",
                 unit="logical",
                 namespace="autoscaler",
                 registry=self.registry,
+                labelnames=["resource"],
             )
-            self.pending_resources: Counter = Counter(
+            self.pending_resources: Counter = Gauge(
                 "pending_resoruces",
                 "Pending logical resources in the cluster.",
                 unit="logical",
                 namespace="autoscaler",
                 registry=self.registry,
+                labelnames=["resource"],
             )
 
 except ImportError:
