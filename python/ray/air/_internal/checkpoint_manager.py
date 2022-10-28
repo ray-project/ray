@@ -18,11 +18,11 @@ from ray.air._internal.filelock import TempFileLock
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
 from ray.air.constants import CHECKPOINT_ID_ATTR, PREPROCESSOR_KEY
-from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+    from ray.air.checkpoint import _CheckpointMetadata
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class CheckpointStorage(enum.Enum):
 # Constants for the sync checkpoint dict. See huggingface_trainer.py
 CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 NODE_IP_KEY = "node_ip"
-CHECKPOINT_CLASS_KEY = "class"
+CHECKPOINT_METADATA_KEY = "metadata"
 
 
 class _LazyCheckpoint:
@@ -56,7 +56,7 @@ class _LazyCheckpoint:
                 CHECKPOINT_PATH_ON_NODE_KEY: str(
                     Path(checkpoint._local_path).absolute()
                 ),
-                CHECKPOINT_CLASS_KEY: checkpoint.__class__,
+                CHECKPOINT_METADATA_KEY: checkpoint._metadata,
             }
         else:
             self.checkpoint_reference = ray.put(checkpoint)
@@ -82,11 +82,14 @@ class _LazyCheckpoint:
                         try:
                             shutil.move(str(inner.absolute()), str(path.absolute()))
                         except OSError:
-                            # This file may have already been moved by another rank worker.
-                            # Disregard, as the files are identical across all ranks.
                             pass
                     shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
             else:
+                from ray.tune.utils.file_transfer import (
+                    delete_on_node,
+                    sync_dir_between_nodes,
+                )
+
                 sync_dir_between_nodes(
                     source_ip=source_ip,
                     source_path=source_path,
@@ -97,9 +100,13 @@ class _LazyCheckpoint:
                 )
                 if self.delete_old_location:
                     delete_on_node(node_ip=source_ip, path=source_path)
-            checkpoint: Checkpoint = self.checkpoint_reference[
-                CHECKPOINT_CLASS_KEY
-            ].from_directory(path)
+            checkpoint_metadata: "_CheckpointMetadata" = self.checkpoint_reference[
+                CHECKPOINT_METADATA_KEY
+            ]
+            checkpoint: Checkpoint = checkpoint_metadata.checkpoint_type.from_directory(
+                path
+            )
+            checkpoint._metadata = checkpoint_metadata
         else:
             checkpoint: Checkpoint = ray.get(self.checkpoint_reference)
 
@@ -176,8 +183,8 @@ class _TrackedCheckpoint:
             )
         ):
             raise ValueError(
-                "Memory checkpoints only support Ray object references, AIR Checkpoints "
-                f"and dicts as their data. Got: {dir_or_data}"
+                "Memory checkpoints only support Ray object references, "
+                f"AIR Checkpoints and dicts as their data. Got: {dir_or_data}"
             )
 
     def commit(self, path: Optional[Path] = None) -> None:

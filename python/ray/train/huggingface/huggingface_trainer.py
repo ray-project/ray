@@ -419,4 +419,4 @@ def _huggingface_train_loop_per_worker(config):
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)
     else:
-        trainer.train(resume_from_checkpoint=checkpoint_path)
+        trainer.train()

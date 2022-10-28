@@ -153,7 +153,8 @@ class Checkpoint:
     # the checkpoint data. When a user constructs a checkpoint from the serialized data,
     # the value of `"spam"` is restored.
     # In subclasses, do _SERIALIZED_ATTRS = Checkpoint._SERIALIZED_ATTRS + ("spam",)
-    # `"_checkpoint_id` is used to track checkpoints in TuneCheckpointManager and is unset otherwise
+    # `"_checkpoint_id` is used to track checkpoints in TuneCheckpointManager
+    # and is unset otherwise
     _SERIALIZED_ATTRS = (CHECKPOINT_ID_ATTR,)
 
     @DeveloperAPI
@@ -235,6 +236,16 @@ class Checkpoint:
             },
         )
 
+    @_metadata.setter
+    def _metadata(self, metadata: _CheckpointMetadata):
+        if metadata.checkpoint_type is not self.__class__:
+            raise ValueError(
+                f"Checkpoint type in metadata must match {self.__class__}, "
+                f"got {metadata.checkpoint_type}"
+            )
+        for attr, value in metadata.checkpoint_state.items():
+            setattr(self, attr, value)
+
     @property
     def uri(self) -> Optional[str]:
         """Return checkpoint URI, if available.
@@ -264,7 +275,7 @@ class Checkpoint:
             return self._uri
 
         if self._local_path and Path(self._local_path).exists():
-            return "file://" + self._local_path
+            return "file://" + str(self._local_path)
 
         return None
 
@@ -295,7 +306,7 @@ class Checkpoint:
         data_dict = self.to_dict()
         if "bytes_data" in data_dict:
             return data_dict["bytes_data"]
-        return pickle.dumps(self.to_dict())
+        return pickle.dumps(data_dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Checkpoint":
@@ -543,7 +554,7 @@ class Checkpoint:
             local_path = self._local_path
             external_path = _get_external_path(self._uri)
             if local_path:
-                if local_path != path:
+                if Path(local_path) != Path(path):
                     # If this exists on the local path, just copy over
                     if path and os.path.exists(path):
                         shutil.rmtree(path)
