@@ -33,12 +33,6 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 
-#define PRINT_MACRO_HELPER(x) #x
-#define PRINT_MACRO(x) #x "=" PRINT_MACRO_HELPER(x)
-
-#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
-#pragma message(PRINT_MACRO(BOOST_ASIO_DISABLE_LOCAL_SOCKETS))
-#pragma message(PRINT_MACRO(BOOST_ASIO_WINDOWS_RUNTIME))
 
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
@@ -85,7 +79,7 @@ std::string EndpointToUrl(
     break;
   }
 
-#if !defined(_WIN32) && defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+#if BOOST_ASIO_HAS_LOCAL_SOCKETS
   case AF_UNIX:
     scheme = "unix://";
     result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
@@ -120,7 +114,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
     scheme = "tcp://";
   }
   if (scheme == "unix://") {
-#if !defined(_WIN32) && defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+#if BOOST_ASIO_HAS_LOCAL_SOCKETS
     size_t maxlen = sizeof(sockaddr_un().sun_path) / sizeof(*sockaddr_un().sun_path) - 1;
     RAY_CHECK(address.size() <= maxlen)
         << "AF_UNIX path length cannot exceed " << maxlen << " bytes: " << address;
