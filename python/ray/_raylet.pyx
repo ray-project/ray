@@ -159,6 +159,11 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
+# The currently executing task, if any. These are used to synchronize task
+# interruption for ray.cancel.
+current_task_id = None
+current_task_id_lock = threading.Lock()
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -1024,8 +1029,15 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
+
+    global current_task_id
     with gil, disable_client_hook():
         try:
+            task_id = (ray._private.worker.
+                       global_worker.core_worker.get_current_task_id())
+            with current_task_id_lock:
+                current_task_id = task_id
+
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -1069,6 +1081,9 @@ cdef CRayStatus task_execution_handler(
                         job_id=None)
                     sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
+            finally:
+                with current_task_id_lock:
+                    current_task_id = None
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
@@ -1096,12 +1111,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-cdef c_bool kill_main_task() nogil:
+cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
     with gil:
-        if setproctitle.getproctitle() != "ray::IDLE":
+        task_id_to_kill = TaskID(task_id.Binary())
+        with current_task_id_lock:
+            if current_task_id != task_id_to_kill:
+                return False
             _thread.interrupt_main()
             return True
-        return False
 
 
 cdef CRayStatus check_signals() nogil:
@@ -1319,7 +1336,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token):
+                  startup_token, session_name):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1369,6 +1386,7 @@ cdef class CoreWorker:
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
+        options.session_name = session_name
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None

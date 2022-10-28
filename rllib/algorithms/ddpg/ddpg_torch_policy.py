@@ -270,7 +270,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
 
         # Compute RHS of bellman equation.
         q_t_selected_target = (
-            train_batch[SampleBatch.REWARDS] + gamma ** n_step * q_tp1_best_masked
+            train_batch[SampleBatch.REWARDS] + gamma**n_step * q_tp1_best_masked
         ).detach()
 
         # Compute the error (potentially clipped).

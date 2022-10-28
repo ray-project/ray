@@ -13,6 +13,7 @@ import logging
 from typing import List, Optional, Type, Callable
 import numpy as np
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
@@ -178,12 +179,12 @@ class DQNConfig(SimpleQConfig):
             Type[MultiAgentBatch],
         ] = None,
         training_intensity: Optional[float] = None,
-        replay_buffer_config: Optional[dict] = None,
         td_error_loss_fn: Optional[str] = None,
         categorical_distribution_temperature: Optional[float] = None,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
+
         Args:
             num_atoms: Number of atoms for representing the distribution of return.
                 When this is greater than 1, distributional Q-learning is used.
@@ -286,8 +287,6 @@ class DQNConfig(SimpleQConfig):
             self.before_learn_on_batch = before_learn_on_batch
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
         if td_error_loss_fn is not None:
             self.td_error_loss_fn = td_error_loss_fn
             assert self.td_error_loss_fn in [
@@ -332,8 +331,8 @@ def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
 class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DQNConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DQNConfig()
 
     @override(SimpleQ)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

@@ -74,7 +74,7 @@ def main(bucket):
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         checkpoint_freq_s=10,  # Once every 10 seconds
-        checkpoint_size_b=int(10 * 1000 ** 2),  # 10 MB
+        checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
         sync_config=tune.SyncConfig(
