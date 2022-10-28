@@ -6,6 +6,7 @@ from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 
 from ray.air import session
+from ray.air.checkpoint import Checkpoint
 
 
 class RayLogger(LoggerDestination):
@@ -55,14 +56,37 @@ class RayLogger(LoggerDestination):
     def epoch_checkpoint(self, state: State, logger: Logger) -> None:
         del logger  # unused
         self.should_report_fit_end = False
-        session.report(self.data)
-
-        # flush the data
-        self.data = {}
+        self._report(state)
 
     def fit_end(self, state: State, logger: Logger) -> None:
         # report at close in case the trainer stops in the middle of an epoch.
         # this may be double counted with epoch checkpoint.
         del logger  # unused
         if self.should_report_fit_end:
-            session.report(self.data)
+            self._report(state)
+
+    def _report(self, state: State):
+        model_state_dict = state.state_dict()["model"]
+
+        # remove module prefixes when loading the model weights
+        # use this while loop instead of pytorch consume_prefix_in_state_dict_if_present
+        # to check whether prefix has been removed.
+        while True:
+            prefix_removed = False
+            prefix = "module."
+            keys = sorted(model_state_dict.keys())
+            for key in keys:
+                if key.startswith(prefix):
+                    newkey = key[len(prefix) :]
+                    model_state_dict[newkey] = model_state_dict.pop(key)
+                    prefix_removed = True
+
+            if not prefix_removed:
+                break
+
+        session.report(
+            self.data, checkpoint=Checkpoint.from_dict({"model": model_state_dict})
+        )
+
+        # flush the data
+        self.data = {}
