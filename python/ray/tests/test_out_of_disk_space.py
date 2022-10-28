@@ -227,7 +227,7 @@ def test_fallback_allocation_failed(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
         num_cpus=1,
-        object_store_memory=10 * 1024 * 1024,
+        object_store_memory=80 * 1024 * 1024,
         _system_config={
             "local_fs_capacity_threshold": 1,
         },
@@ -238,7 +238,7 @@ def test_fallback_allocation_failed(shutdown_only):
     free_space = get_free_space()
     # ensure the allocation size is greater than both memory store and
     # fallback allocation capacity
-    allocation_size = max(free_space * 2, 15 * 1024 * 1024)
+    allocation_size = min(free_space * 2, 100 * 1024 * 1024)
 
     try:
         ray.put(np.random.rand(allocation_size // 8))

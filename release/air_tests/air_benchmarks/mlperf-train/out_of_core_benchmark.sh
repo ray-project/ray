@@ -5,7 +5,7 @@
 set -x -e pipeline
 
 NUM_IMAGES_PER_FILE="512"
-NUM_FILES="1 128 512"
+NUM_FILES="1 128"
 # TODO(swang): 512 currently fails due to Ray core hanging when out of disk space.
 # NUM_FILES="1 128 512"
 NUM_EPOCHS=1
