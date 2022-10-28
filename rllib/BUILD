@@ -778,7 +778,7 @@ py_test(
     name = "test_memory_leaks_generic",
     main = "algorithms/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/tests/test_memory_leaks.py"]
 )
 
@@ -1619,7 +1619,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_unity3d",
     tags = ["team:rllib", "env", "exclusive"],
-    size = "medium",
+    size = "small",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "unity3d", "8860"],
     data = glob(["examples/serving/*.py"]),
@@ -1676,7 +1676,7 @@ py_test(
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
     tags = ["team:rllib", "evaluation"],
-    size = "large",
+    size = "medium",
     srcs = ["evaluation/tests/test_envs_that_crash.py"]
 )
 
@@ -1767,7 +1767,7 @@ py_test(
 py_test(
     name = "test_check_specs",
     tags = ["team:rllib", "models"],
-    size = "medium",
+    size = "small",
     srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
@@ -1796,7 +1796,7 @@ py_test(
 py_test(
     name = "test_distributions_v2",
     tags = ["team:rllib", "models"],
-    size = "medium",
+    size = "small",
     srcs = ["models/tests/test_distributions_v2.py"]
 )
 
@@ -2403,7 +2403,7 @@ py_test(
     name = "tests/test_supported_multi_agent_off_policy",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
@@ -2454,7 +2454,7 @@ py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
 )
@@ -2463,7 +2463,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )
@@ -3556,7 +3556,7 @@ py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
