@@ -324,7 +324,7 @@ class Algorithm(Trainable):
         """
         config = config or self.get_default_config()
 
-        # Resolve possible dict into an AlgorithmConfig object as well as
+        # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
         # which normally would expect a PPOConfig object).
@@ -336,10 +336,15 @@ class Algorithm(Trainable):
                 config = AlgorithmConfig.from_dict(
                     config_dict=self.merge_trainer_configs(default_config, config, True)
                 )
+            # Default config is an AlgorithmConfig -> update its properties
+            # from the given config dict.
             else:
                 config = default_config.update_from_dict(config)
         else:
             default_config = self.get_default_config()
+            # Given AlgorithmConfig is not of the same type as the default config:
+            # This could be the case e.g. if the user is building an algo from a
+            # generic AlgorithmConfig() object.
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
 
@@ -351,8 +356,9 @@ class Algorithm(Trainable):
             )
             config.environment(env)
 
-        # Freeze our AlgorithmConfig object (no more changes possible).
-        config.freeze(validate=True)
+        # Validate and freeze our AlgorithmConfig object (no more changes possible).
+        config.validate()
+        config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
         # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
@@ -598,9 +604,10 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
-        # Validate evaluation config.
+        # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
-        self.evaluation_config.freeze(validate=True)
+        self.evaluation_config.validate()
+        self.evaluation_config.freeze()
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.

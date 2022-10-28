@@ -240,7 +240,7 @@ class PPOConfig(AlgorithmConfig):
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
         calculated_min_rollout_size = (
-            self.num_rollout_workers
+            max(self.num_rollout_workers, 1)
             * self.num_envs_per_worker
             * self.rollout_fragment_length
         )

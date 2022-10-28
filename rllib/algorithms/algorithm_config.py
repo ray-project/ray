@@ -442,14 +442,11 @@ class AlgorithmConfig:
                 cp.evaluation_config._is_frozen = False
         return cp
 
-    def freeze(self, validate: bool = False) -> None:
+    def freeze(self) -> None:
         """Freezes this config object, such that no attributes can be set anymore.
 
         Algorithms should use this method to make sure that their config objects
         remain read-only after this.
-
-        Args:
-            validate: Whether to also validate the frozen config object.
         """
         if self._is_frozen:
             return
@@ -462,9 +459,6 @@ class AlgorithmConfig:
         # TODO: Flip out all set/dict/list values into frozen versions
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
-
-        if validate:
-            self.validate()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:

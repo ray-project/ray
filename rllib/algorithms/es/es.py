@@ -242,7 +242,7 @@ class Worker:
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
-        self.config = config
+        self.config = config.to_dict()
         self.config.update(policy_params)
         self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
@@ -364,11 +364,7 @@ class ES(Algorithm):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
-            self.config = self.merge_trainer_configs(
-                self.get_default_config(), config, self._allow_unknown_configs
-            )
-        else:
-            self.config = config.to_dict()
+            self.config = self.get_default_config().update_from_dict(config)
 
         # Call super's validation method.
         self.config.validate()

@@ -358,11 +358,7 @@ class ARS(Algorithm):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
-            self.config = self.merge_trainer_configs(
-                self.get_default_config(), config, self._allow_unknown_configs
-            )
-        else:
-            self.config = config.to_dict()
+            self.config = self.get_default_config().update_from_dict(config)
 
         # Validate our config dict.
         self.config.validate()
