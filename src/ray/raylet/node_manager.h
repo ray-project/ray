@@ -187,21 +187,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return string.
   std::string DebugString() const;
 
-  /// Returns workers sorted by the time of the last submitted task, in descending order.
-  ///
-  /// \return the list of sorted workers
-  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
-      const;
-
-  /// Returns debug string of the workers.
-  ///
-  /// \param workers The workers to be printed.
-  /// \param num_workers The number of workers to print starting from the beginning of the
-  /// worker list. \return the debug string.
-  std::string WorkersDebugString(
-      const std::vector<std::shared_ptr<WorkerInterface>> workers,
-      int64_t num_workers) const;
-
   /// Record metrics.
   void RecordMetrics();
 
@@ -516,117 +501,117 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
 
-  void HandleUpdateResourceUsage(const rpc::UpdateResourceUsageRequest &request,
+  void HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
                                  rpc::UpdateResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `RequestResourceReport` request.
-  void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
+  void HandleRequestResourceReport(rpc::RequestResourceReportRequest request,
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetResourceLoad` request.
-  void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+  void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PrepareBundleResources` request.
-  void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
+  void HandlePrepareBundleResources(rpc::PrepareBundleResourcesRequest request,
                                     rpc::PrepareBundleResourcesReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CommitBundleResources` request.
-  void HandleCommitBundleResources(const rpc::CommitBundleResourcesRequest &request,
+  void HandleCommitBundleResources(rpc::CommitBundleResourcesRequest request,
                                    rpc::CommitBundleResourcesReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ResourcesReturn` request.
-  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
+  void HandleCancelResourceReserve(rpc::CancelResourceReserveRequest request,
                                    rpc::CancelResourceReserveReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
-  void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
+  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReportWorkerBacklog` request.
-  void HandleReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request,
+  void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
-  void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
+  void HandleReturnWorker(rpc::ReturnWorkerRequest request,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedWorkers` request.
-  void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
+  void HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ShutdownRaylet` request.
-  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+  void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
-  void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+  void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
                           rpc::PinObjectIDsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
-  void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+  void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
                           rpc::GetNodeStatsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GlobalGC` request.
-  void HandleGlobalGC(const rpc::GlobalGCRequest &request,
+  void HandleGlobalGC(rpc::GlobalGCRequest request,
                       rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `FormatGlobalMemoryInfo`` request.
-  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+  void HandleFormatGlobalMemoryInfo(rpc::FormatGlobalMemoryInfoRequest request,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
+  void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedBundles` request.
-  void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
+  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetSystemConfig` request.
-  void HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
+  void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetTasksInfo` request.
-  void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+  void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
                           rpc::GetTasksInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetTaskFailureCause` request.
-  void HandleGetTaskFailureCause(const rpc::GetTaskFailureCauseRequest &request,
+  void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                  rpc::GetTaskFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
-  void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+  void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NotifyGCSRestart` request
-  void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+  void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
@@ -689,6 +674,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+
+  /// Creates the detail message for the worker that is killed due to memory running low.
+  const std::string CreateOomKillMessageDetails(
+      const std::shared_ptr<WorkerInterface> &worker,
+      const NodeID &node_id,
+      const MemorySnapshot &system_memory,
+      float usage_threshold) const;
+
+  /// Creates the suggestion message for the worker that is killed due to memory running
+  /// low.
+  const std::string CreateOomKillMessageSuggestions(
+      const std::shared_ptr<WorkerInterface> &worker) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.

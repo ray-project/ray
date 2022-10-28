@@ -143,9 +143,12 @@ public class Serve {
       return;
     }
 
-    client.shutdown();
     LongPollClientFactory.stop();
-    LongPollClientFactory.clearAllCache();
+    client.shutdown();
+    clearContext();
+  }
+
+  public static void clearContext() {
     setGlobalClient(null);
     setInternalReplicaContext(null);
   }
@@ -231,7 +234,7 @@ public class Serve {
     return getGlobalClient(false);
   }
 
-  public static void setGlobalClient(ServeControllerClient client) {
+  private static void setGlobalClient(ServeControllerClient client) {
     GLOBAL_CLIENT = client;
   }
 
@@ -264,6 +267,10 @@ public class Serve {
         LogUtil.format(
             "There is no instance running on this Ray cluster. "
                 + "Please call `serve.start(detached=True) to start one."));
+    LOGGER.info(
+        "Got controller handle with name `{}` in namespace `{}`.",
+        controllerName,
+        Constants.SERVE_NAMESPACE);
 
     ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName, true);
 

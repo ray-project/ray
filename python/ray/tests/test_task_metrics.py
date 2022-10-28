@@ -6,8 +6,9 @@ import pytest
 
 import ray
 
+from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
+    raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -27,23 +28,25 @@ SLOW_METRIC_CONFIG = {
 }
 
 
-def raw_metrics(info):
-    metrics_page = "localhost:{}".format(info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    res = fetch_prometheus_metrics([metrics_page])
-    return res
-
-
 def tasks_by_state(info) -> dict:
+    return tasks_breakdown(info, lambda s: s.labels["State"])
+
+
+def tasks_by_name_and_state(info) -> dict:
+    return tasks_breakdown(info, lambda s: (s.labels["Name"], s.labels["State"]))
+
+
+def tasks_breakdown(info, key_fn) -> dict:
     res = raw_metrics(info)
     if "ray_tasks" in res:
-        states = defaultdict(int)
+        breakdown = defaultdict(int)
         for sample in res["ray_tasks"]:
-            states[sample.labels["State"]] += sample.value
-            if states[sample.labels["State"]] == 0:
-                del states[sample.labels["State"]]
-        print("Tasks by state: {}".format(states))
-        return states
+            key = key_fn(sample)
+            breakdown[key] += sample.value
+            if breakdown[key] == 0:
+                del breakdown[key]
+        print("Task label breakdown: {}".format(breakdown))
+        return breakdown
     else:
         return {}
 
@@ -74,6 +77,10 @@ ray.get(a)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -142,6 +149,11 @@ ray.get(w)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
+    assert tasks_by_name_and_state(info) == {
+        ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -175,6 +187,11 @@ ray.get(w)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
+    assert tasks_by_name_and_state(info) == {
+        ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -207,6 +224,10 @@ ray.get(a)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("f", "RUNNING"): 1.0,
+        ("g", "PENDING_ARGS_AVAIL"): 5.0,
+    }
     proc.kill()
 
 
@@ -242,6 +263,12 @@ ray.get(z)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("F.__init__", "FINISHED"): 1.0,
+        ("F.g", "FINISHED"): 10.0,
+        ("F.f", "RUNNING"): 1.0,
+        ("F.g", "SUBMITTED_TO_WORKER"): 9.0,
+    }
     proc.kill()
 
 
@@ -269,11 +296,16 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 2.0,
+        "FAILED": 1.0,
+        "FINISHED": 1.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("g", "FAILED"): 1.0,
+        ("f", "FINISHED"): 1.0,
+    }
     proc.kill()
 
 
@@ -296,7 +328,42 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 1.0,  # Only recorded as finished once.
+        "FAILED": 1.0,  # Only recorded as finished once.
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+    proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_task_failure(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+import os
+
+ray.init("auto")
+
+@ray.remote
+def f():
+    print("RUNNING FAILING TASK")
+    os._exit(1)
+
+@ray.remote
+def g():
+    assert False
+
+f.remote()
+g.remote()
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
+    expected = {
+        "FAILED": 2.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
@@ -366,6 +433,7 @@ ray.get(a)
     )
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
 def test_pull_manager_stats(shutdown_only):
     info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
 
@@ -389,15 +457,60 @@ def f(x):
 ray.get([f.remote(x) for x in buf])"""
 
     proc = run_string_as_driver_nonblocking(driver)
-    expected = {
-        "RUNNING": 2.0,
-        "PENDING_ARGS_FETCH": 7.0,
-        "PENDING_OBJ_STORE_MEM_AVAIL": 91.0,
-    }
+
+    # This test is non-deterministic since pull bundles can sometimes end up fallback
+    # allocated. This leads to slightly more objects pulled than you'd expect.
+    def close_to_expected(stats):
+        assert len(stats) == 3, stats
+        assert stats["RUNNING"] == 2, stats
+        assert 7 <= stats["PENDING_NODE_ASSIGNMENT"] <= 17, stats
+        assert 81 <= stats["PENDING_OBJ_STORE_MEM_AVAIL"] <= 91, stats
+        assert sum(stats.values()) == 100, stats
+        return True
+
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: close_to_expected(tasks_by_state(info)),
+        timeout=20,
+        retry_interval_ms=500,
     )
     proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_stale_view_cleanup_when_job_exits(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        m.setenv(RAY_WORKER_TIMEOUT_S, 5)
+        info = ray.init(num_cpus=2, **METRIC_CONFIG)
+        print(info)
+
+        driver = """
+import ray
+import time
+import numpy as np
+
+ray.init("auto")
+
+@ray.remote
+def g():
+    time.sleep(999)
+
+ray.get(g.remote())
+    """
+
+        proc = run_string_as_driver_nonblocking(driver)
+        expected = {
+            "RUNNING": 1.0,
+        }
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
+
+        proc.kill()
+        print("Killing a driver.")
+        expected = {}
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
 
 
 if __name__ == "__main__":

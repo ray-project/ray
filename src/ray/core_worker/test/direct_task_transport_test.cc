@@ -97,11 +97,12 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void CompletePendingTask(const TaskID &,
                            const rpc::PushTaskReply &,
-                           const rpc::Address &actor_addr) override {
+                           const rpc::Address &actor_addr,
+                           bool is_application_error) override {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override {
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -109,8 +110,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override {
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
   }
 
@@ -128,11 +128,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_inlined_dependencies += inlined_dependency_ids.size();
     num_contained_ids += contained_ids.size();
   }
-
-  void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 

@@ -239,7 +239,7 @@ def test_fallback_allocation_failure(shutdown_only):
 )
 def test_plasma_allocate(shutdown_only):
     address = ray.init(
-        object_store_memory=300 * 1024 ** 2,
+        object_store_memory=300 * 1024**2,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
@@ -247,7 +247,7 @@ def test_plasma_allocate(shutdown_only):
         _temp_dir="/tmp/for_test_plasma_allocate",
     )
     res = []
-    data = np.random.randint(low=0, high=256, size=(90 * 1024 ** 2,), dtype=np.uint8)
+    data = np.random.randint(low=0, high=256, size=(90 * 1024**2,), dtype=np.uint8)
     for _ in range(3):
         res.append(ray.put(data))
     # keep reference for second and third object, force evict first object

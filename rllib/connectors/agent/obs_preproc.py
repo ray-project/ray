@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -43,9 +43,10 @@ class ObsPreprocessorConnector(AgentConnector):
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
+        assert type(d) == dict, (
+            "Single agent data must be of type Dict[str, TensorStructType] but is of "
+            "type {}".format(type(d))
+        )
 
         if SampleBatch.OBS in d:
             d[SampleBatch.OBS] = self._preprocessor.transform(d[SampleBatch.OBS])
@@ -57,11 +58,11 @@ class ObsPreprocessorConnector(AgentConnector):
         return ac_data
 
     def to_state(self):
-        return ObsPreprocessorConnector.__name__, {}
+        return ObsPreprocessorConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
-        return ObsPreprocessorConnector(ctx, **params)
+    def from_state(ctx: ConnectorContext, params: Any):
+        return ObsPreprocessorConnector(ctx)
 
 
 register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)

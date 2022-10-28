@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-training-apis:
+
 Training APIs
 =============
 
@@ -50,6 +52,9 @@ Evaluating Trained Policies
 In order to save checkpoints from which to evaluate policies,
 set ``--checkpoint-freq`` (number of training iterations between checkpoints)
 when running ``rllib train``.
+When working with RLlib Algorithms directly (not via ``rllib train``), you can refer to
+:ref:`this guide here <rllib-saving-and-loading-algos-and-policies-docs>` on how to produce checkpoints and
+restore Algorithms and Policies from them for evaluation.
 
 
 An example of evaluating a previously trained DQN policy is as follows:
@@ -57,16 +62,18 @@ An example of evaluating a previously trained DQN policy is as follows:
 .. code-block:: bash
 
     rllib rollout \
-        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
+        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1 \
         --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN policy from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
+located in the directory ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/``
 and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
 For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
+.. _rllib-algo-configuration:
 
 Configuration
 -------------
@@ -168,8 +175,6 @@ Common Parameters
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 The following is a list of the common algorithm hyper-parameters:
 
@@ -292,13 +297,6 @@ The following is a list of the common algorithm hyper-parameters:
     # a) handles window generation and rendering itself (returning True) or
     # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
     "render_env": False,
-    # If True, stores videos in this relative directory inside the default
-    # output dir (~/ray_results/...). Alternatively, you can specify an
-    # absolute path (str), in which the env recordings should be
-    # stored instead.
-    # Set to False for not recording anything.
-    # Note: This setting replaces the deprecated `monitor` key.
-    "record_env": False,
     # Whether to clip rewards during Policy's postprocessing.
     # None (default): Clip for Atari only (r=sign(r)).
     # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -351,20 +349,19 @@ The following is a list of the common algorithm hyper-parameters:
     # === Deep Learning Framework Settings ===
     # tf: TensorFlow (static-graph)
     # tf2: TensorFlow 2.x (eager or traced, if eager_tracing=True)
-    # tfe: TensorFlow eager (or traced, if eager_tracing=True)
     # torch: PyTorch
     "framework": "tf",
     # Enable tracing in eager mode. This greatly improves performance
     # (speedup ~2x), but makes it slightly harder to debug since Python
     # code won't be evaluated after the initial eager pass.
-    # Only possible if framework=[tf2|tfe].
+    # Only supported if framework=tf2.
     "eager_tracing": False,
     # Maximum number of tf.function re-traces before a runtime error is raised.
     # This is to prevent unnoticed retraces of methods inside the
     # `..._eager_traced` Policy, which could slow down execution by a
     # factor of 4, without the user noticing what the root cause for this
     # slowdown could be.
-    # Only necessary for framework=[tf2|tfe].
+    # Only supported for framework=tf2.
     # Set to None to ignore the re-trace count and never throw an error.
     "eager_max_retraces": 20,
 
@@ -730,8 +727,8 @@ Here is an example of the basic usage (for a more complete example, see `custom_
        print(pretty_print(result))
 
        if i % 100 == 0:
-           checkpoint = algo.save()
-           print("checkpoint saved at", checkpoint)
+           checkpoint_dir = algo.save()
+           print(f"Checkpoint saved in directory {checkpoint_dir}")
 
     # Also, in case you have trained a model outside of ray/RLlib and have created
     # an h5-file with weight values in it, e.g.
@@ -811,12 +808,24 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
         metric="episode_reward_mean", mode="max"
     )
 
-Loading and restoring a trained agent from a checkpoint is simple:
+Loading and restoring a trained algorithm from a checkpoint is simple.
+For RLlib checkpoint versions of >= v1.0 (you can find your checkpoint's version by
+looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory), do:
 
 .. code-block:: python
 
-    agent = ppo.PPO(config=config, env=env_class)
-    agent.restore(checkpoint_path)
+    from ray.rllib.algorithms.algorithm import Algorithm
+    algo = Algorithm.from_checkpoint(checkpoint_path)
+
+
+For older RLlib checkpoint versions (v0.1), you can still restore an algorithm via:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.ppo import PPO
+    algo = PPO(config=config, env=env_class)
+    algo.restore(checkpoint_path)
+
 
 
 Computing Actions
@@ -1543,7 +1552,7 @@ Eager Mode
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
-``"framework": "[tf2|tfe]"`` / ``"eager_tracing": true`` config options or using
+``"framework": "tf2"`` / ``"eager_tracing": true`` config options or using
 ``rllib train --config '{"framework": "tf2"}' [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.

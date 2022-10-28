@@ -5,8 +5,8 @@ from datetime import datetime
 import functools
 import gym
 import importlib
+import json
 import logging
-import math
 import numpy as np
 import os
 from packaging import version
@@ -25,14 +25,16 @@ from typing import (
     Type,
     Union,
 )
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -58,9 +60,9 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -69,6 +71,7 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     override,
 )
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -89,7 +92,7 @@ from ray.rllib.utils.metrics import (
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
@@ -107,15 +110,16 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.experiment.trial import ExportFormat
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -198,7 +202,7 @@ class Algorithm(Trainable):
     ]
 
     # List of keys that are always fully overridden if present in any dict or sub-dict
-    _override_all_key_list = ["off_policy_estimation_methods"]
+    _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = [
         "episode_reward_mean",
@@ -207,43 +211,154 @@ class Algorithm(Trainable):
         "num_env_steps_trained",
     ]
 
+    @staticmethod
+    def from_checkpoint(
+        checkpoint: Union[str, Checkpoint],
+        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> "Algorithm":
+        """Creates a new algorithm instance from a given checkpoint.
+
+        Note: This method must remain backward compatible from 2.0.0 on.
+
+        Args:
+            checkpoint: The path (str) to the checkpoint directory to use
+                or an AIR Checkpoint instance to restore from.
+            policy_ids: Optional list of PolicyIDs to recover. This allows users to
+                restore an Algorithm with only a subset of the originally present
+                Policies.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The instantiated Algorithm.
+        """
+        checkpoint_info = get_checkpoint_info(checkpoint)
+
+        # Not possible for (v0.1) (algo class and config information missing
+        # or very hard to retrieve).
+        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+            raise ValueError(
+                "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
+                "In this case, do the following:\n"
+                "1) Create a new Algorithm object using your original config.\n"
+                "2) Call the `restore()` method of this algo object passing it"
+                " your checkpoint dir or AIR Checkpoint object."
+            )
+
+        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+            raise ValueError(
+                "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
+                "()` must be 1.0 or later! You are using a checkpoint with "
+                f"version v{checkpoint_info['checkpoint_version']}."
+            )
+
+        state = Algorithm._checkpoint_info_to_algorithm_state(
+            checkpoint_info=checkpoint_info,
+            policy_ids=policy_ids,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+        return Algorithm.from_state(state)
+
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
+        if algorithm_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! "
+                "Cannot create new Algorithm."
+            )
+        # algo_class = get_algorithm_class(algo_class_name)
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algorithm_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+        # Return the new algo.
+        return new_algo
+
     @PublicAPI
     def __init__(
         self,
-        config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
-        env: Optional[Union[str, EnvType]] = None,
+        config: Optional[AlgorithmConfig] = None,
+        env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
-            config: Algorithm-specific configuration dict.
-            env: Name of the environment to use (e.g. a gym-registered str),
-                a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
-                class directly. Note that this arg can also be specified via
-                the "env" key in `config`.
+            config: Algorithm-specific configuration object.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
-
         """
+        config = config or self.get_default_config()
 
-        # User provided (partial) config (this may be w/o the default
-        # Algorithm's Config object). Will get merged with AlgorithmConfig()
-        # in self.setup().
-        config = config or {}
-        # Resolve AlgorithmConfig into a plain dict.
-        # TODO: In the future, only support AlgorithmConfig objects here.
-        if isinstance(config, AlgorithmConfig):
-            config = config.to_dict()
+        # Resolve possible dict into an AlgorithmConfig object as well as
+        # resolving generic config objects into specific ones (e.g. passing
+        # an `AlgorithmConfig` super-class instance into a PPO constructor,
+        # which normally would expect a PPOConfig object).
+        if isinstance(config, dict):
+            default_config = self.get_default_config()
+            # `self.get_default_config()` also returned a dict ->
+            # Last resort: Create core AlgorithmConfig from merged dicts.
+            if isinstance(default_config, dict):
+                config = AlgorithmConfig.from_dict(
+                    config_dict=self.merge_trainer_configs(default_config, config, True)
+                )
+            else:
+                config = default_config.update_from_dict(config)
+        else:
+            default_config = self.get_default_config()
+            if not isinstance(config, type(default_config)):
+                config = default_config.update_from_dict(config.to_dict())
+
+        if env is not None:
+            deprecation_warning(
+                old=f"algo = Algorithm(env='{env}', ...)",
+                new=f"algo = AlgorithmConfig().environment('{env}').build()",
+                error=False,
+            )
+            config.environment(env)
+
+        # Freeze our AlgorithmConfig object (no more changes possible).
+        config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
         # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
         # type (e.g. a gym.Env).
         self._env_id, self.env_creator = self._get_env_id_and_creator(
-            env or config.get("env"), config
+            config.env, config
         )
         env_descr = (
             self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
@@ -266,7 +381,7 @@ class Algorithm(Trainable):
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
-            if config.get("logger_config") and "type" in config["logger_config"]:
+            if config.logger_config and "type" in config.logger_config:
 
                 def default_logger_creator(config):
                     """Creates a custom logger with the default prefix."""
@@ -293,6 +408,9 @@ class Algorithm(Trainable):
         self._episodes_to_be_collected = []
         self._remote_workers_for_metrics = []
 
+        # The fully qualified AlgorithmConfig used for evaluation
+        # (or None if evaluation not setup).
+        self.evaluation_config: Optional[AlgorithmConfig] = None
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
         # If evaluation duration is "auto", use a AsyncRequestsManager to be more
@@ -310,7 +428,11 @@ class Algorithm(Trainable):
             }
         }
 
-        super().__init__(config=config, logger_creator=logger_creator, **kwargs)
+        super().__init__(
+            config=config,
+            logger_creator=logger_creator,
+            **kwargs,
+        )
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
@@ -326,19 +448,24 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlgorithmConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig) -> None:
 
-        # Setup our config: Merge the user-supplied config (which could
-        # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
-        )
-        self.config["env"] = self._env_id
+        # Setup our config: Merge the user-supplied config dict (which could
+        # be a partial config dict) with the class' default.
+        if not isinstance(config, AlgorithmConfig):
+            assert isinstance(config, PartialAlgorithmConfigDict)
+            config_obj = self.get_default_config()
+            if not isinstance(config_obj, AlgorithmConfig):
+                assert isinstance(config, PartialAlgorithmConfigDict)
+                config_obj = AlgorithmConfig().from_dict(config_obj)
+            config_obj.update_from_dict(config)
+            config_obj.env = self._env_id
+            self.config = config_obj
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
@@ -383,10 +510,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new='config["evaluation_config"]'
-                '["off_policy_estimation_methods"]={}'.format(
-                    ope_dict,
-                ),
+                new="config.evaluation(evaluation_config={"
+                f"'off_policy_estimation_methods'={ope_dict}"
+                "})",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
@@ -423,8 +549,8 @@ class Algorithm(Trainable):
                 self.workers = WorkerSet(
                     env_creator=self.env_creator,
                     validate_env=self.validate_env,
-                    policy_class=self.get_default_policy_class(self.config),
-                    trainer_config=self.config,
+                    default_policy_class=self.get_default_policy_class(self.config),
+                    config=self.config,
                     num_workers=self.config["num_workers"],
                     local_worker=True,
                     logdir=self.logdir,
@@ -473,73 +599,15 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
+        # Validate evaluation config.
+        self.evaluation_config = self.config.get_evaluation_config_object()
+        self.validate_config(self.evaluation_config)
+
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
-
-        # Update with evaluation settings:
-        user_eval_config = copy.deepcopy(self.config["evaluation_config"])
-
-        # Assert that user has not unset "in_evaluation".
-        assert (
-            "in_evaluation" not in user_eval_config
-            or user_eval_config["in_evaluation"] is True
-        )
-
-        # Merge user-provided eval config with the base config. This makes sure
-        # the eval config is always complete, no matter whether we have eval
-        # workers or perform evaluation on the (non-eval) local worker.
-        eval_config = merge_dicts(self.config, user_eval_config)
-        self.config["evaluation_config"] = eval_config
-
-        if self.config.get("evaluation_num_workers", 0) > 0 or self.config.get(
-            "evaluation_interval"
-        ):
-            logger.debug(f"Using evaluation_config: {user_eval_config}.")
-
-            # Validate evaluation config.
-            self.validate_config(eval_config)
-
-            # Set the `in_evaluation` flag.
-            eval_config["in_evaluation"] = True
-
-            # Evaluation duration unit: episodes.
-            # Switch on `complete_episode` rollouts. Also, make sure
-            # rollout fragments are short so we never have more than one
-            # episode in one rollout.
-            if eval_config["evaluation_duration_unit"] == "episodes":
-                eval_config.update(
-                    {
-                        "batch_mode": "complete_episodes",
-                        "rollout_fragment_length": 1,
-                    }
-                )
-            # Evaluation duration unit: timesteps.
-            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
-            #   strictly along episode borders.
-            # Set `rollout_fragment_length` such that desired steps are divided
-            # equally amongst workers or - in "auto" duration mode - set it
-            # to a reasonably small number (10), such that a single `sample()`
-            # call doesn't take too much time and we can stop evaluation as soon
-            # as possible after the train step is completed.
-            else:
-                eval_config.update(
-                    {
-                        "batch_mode": "truncate_episodes",
-                        "rollout_fragment_length": 10
-                        if self.config["evaluation_duration"] == "auto"
-                        else int(
-                            math.ceil(
-                                self.config["evaluation_duration"]
-                                / (self.config["evaluation_num_workers"] or 1)
-                            )
-                        ),
-                    }
-                )
-
-            self.config["evaluation_config"] = eval_config
-
+        if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
             _, env_creator = self._get_env_id_and_creator(
-                eval_config.get("env"), eval_config
+                self.evaluation_config.env, self.evaluation_config
             )
 
             # Create a separate evaluation worker set for evaluation.
@@ -549,8 +617,8 @@ class Algorithm(Trainable):
             self.evaluation_workers: WorkerSet = WorkerSet(
                 env_creator=env_creator,
                 validate_env=None,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=eval_config,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -587,13 +655,14 @@ class Algorithm(Trainable):
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
             if isinstance(method_type, type) and issubclass(
-                method_type, OffPolicyEstimator
+                method_type, OfflineEvaluator
             ):
+                # TODO(kourosh) : Add an integration test for all these
+                # offline evaluators.
                 policy = self.get_policy()
-                gamma = self.config["gamma"]
-                self.reward_estimators[name] = method_type(
-                    policy, gamma, **method_config
-                )
+                if issubclass(method_type, OffPolicyEstimator):
+                    method_config["gamma"] = self.config["gamma"]
+                self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
@@ -613,7 +682,10 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -795,7 +867,7 @@ class Algorithm(Trainable):
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
             unit = self.config["evaluation_duration_unit"]
-            eval_cfg = self.config["evaluation_config"]
+            eval_cfg = self.evaluation_config
             rollout = eval_cfg["rollout_fragment_length"]
             num_envs = eval_cfg["num_envs_per_worker"]
             auto = self.config["evaluation_duration"] == "auto"
@@ -910,6 +982,8 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when
+                        # the dataset gets huge (should be ok for now).
                         all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
@@ -933,19 +1007,34 @@ class Algorithm(Trainable):
             # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
 
-            if self.reward_estimators:
-                # Compute off-policy estimates
+            # Compute off-policy estimates
+            estimates = defaultdict(list)
+            # for each batch run the estimator's fwd pass
+            for name, estimator in self.reward_estimators.items():
+                for batch in all_batches:
+                    estimate_result = estimator.estimate(
+                        batch,
+                        split_batch_by_episode=self.config[
+                            "ope_split_batch_by_episode"
+                        ],
+                    )
+                    estimates[name].append(estimate_result)
+
+            # collate estimates from all batches
+            if estimates:
                 metrics["off_policy_estimator"] = {}
-                total_batch = concat_samples(all_batches)
-                for name, estimator in self.reward_estimators.items():
-                    estimates = estimator.estimate(total_batch)
-                    metrics["off_policy_estimator"][name] = estimates
+                for name, estimate_list in estimates.items():
+                    avg_estimate = tree.map_structure(
+                        lambda *x: np.mean(x, axis=0), *estimate_list
+                    )
+                    metrics["off_policy_estimator"][name] = avg_estimate
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
         self.callbacks.on_evaluate_end(
             algorithm=self, evaluation_metrics=self.evaluation_metrics
         )
@@ -978,7 +1067,7 @@ class Algorithm(Trainable):
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
         unit = self.config["evaluation_duration_unit"]
-        eval_cfg = self.config["evaluation_config"]
+        eval_cfg = self.evaluation_config
         rollout = eval_cfg["rollout_fragment_length"]
         num_envs = eval_cfg["num_envs_per_worker"]
         auto = self.config["evaluation_duration"] == "auto"
@@ -1146,6 +1235,11 @@ class Algorithm(Trainable):
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
+
+        # Trigger `on_evaluate_end` callback.
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
 
         # Return evaluation results.
         return self.evaluation_metrics
@@ -1554,7 +1648,7 @@ class Algorithm(Trainable):
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1570,6 +1664,9 @@ class Algorithm(Trainable):
 
         Args:
             policy_id: ID of the policy to add.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
+                or a dot `.` or space ` ` at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -1581,7 +1678,7 @@ class Algorithm(Trainable):
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -1603,11 +1700,9 @@ class Algorithm(Trainable):
         Returns:
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
-
-        Raises:
-            ValueError: If both `policy_cls` AND `policy` are provided.
-            KeyError: If the given `policy_id` already exists in this Algorithm.
         """
+        validate_policy_id(policy_id, error=True)
+
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
         if workers is not None:
@@ -1729,15 +1824,20 @@ class Algorithm(Trainable):
     def export_policy_checkpoint(
         self,
         export_dir: str,
-        filename_prefix: str = "model",
+        filename_prefix=DEPRECATED_VALUE,  # deprecated arg, do not use anymore
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> None:
-        """Exports policy model checkpoint to a local directory.
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
-            export_dir: Writable local directory.
-            filename_prefix: file name prefix of checkpoint files.
-            policy_id: Optional policy id to export.
+            export_dir: Writable local directory to store the AIR Checkpoint
+                information into.
+            policy_id: Optional policy ID to export. If not provided, will export
+                "default_policy". If `policy_id` does not exist in this Algorithm,
+                will raise a KeyError.
+
+        Raises:
+            KeyError if `policy_id` cannot be found in this Algorithm.
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
@@ -1747,7 +1847,18 @@ class Algorithm(Trainable):
             >>>     algo.train() # doctest: +SKIP
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
-        self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
+        # `filename_prefix` should not longer be used as new Policy checkpoints
+        # contain more than one file with a fixed filename structure.
+        if filename_prefix != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.export_policy_checkpoint(filename_prefix=...)",
+                error=True,
+            )
+
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
+        policy.export_checkpoint(export_dir)
 
     @DeveloperAPI
     def import_policy_model_from_h5(
@@ -1774,17 +1885,80 @@ class Algorithm(Trainable):
 
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration)
-        )
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+        """Exports AIR Checkpoint to a local directory and returns its directory path.
 
-        return checkpoint_path
+        The structure of an Algorithm checkpoint dir will be as follows::
+
+            policies/
+                pol_1/
+                    policy_state.pkl
+                pol_2/
+                    policy_state.pkl
+            rllib_checkpoint.json
+            algorithm_state.pkl
+
+        Note: `rllib_checkpoint.json` contains a "version" key (e.g. with value 0.1)
+        helping RLlib to remain backward compatible wrt. restoring from checkpoints from
+        Ray 2.0 onwards.
+
+        Args:
+            checkpoint_dir: The directory where the checkpoint files will be stored.
+
+        Returns:
+            The path to the created AIR Checkpoint directory.
+        """
+        state = self.__getstate__()
+
+        # Extract policy states from worker state (Policies get their own
+        # checkpoint sub-dirs).
+        policy_states = {}
+        if "worker" in state and "policy_states" in state["worker"]:
+            policy_states = state["worker"].pop("policy_states", {})
+
+        # Add RLlib checkpoint version.
+        state["checkpoint_version"] = CHECKPOINT_VERSION
+
+        # Write state (w/o policies) to disk.
+        state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
+        with open(state_file, "wb") as f:
+            pickle.dump(state, f)
+
+        # Write rllib_checkpoint.json.
+        with open(os.path.join(checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
+            json.dump(
+                {
+                    "type": "Algorithm",
+                    "checkpoint_version": str(state["checkpoint_version"]),
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
+                },
+                f,
+            )
+
+        # Write individual policies to disk, each in their own sub-directory.
+        for pid, policy_state in policy_states.items():
+            # From here on, disallow policyIDs that would not work as directory names.
+            validate_policy_id(pid, error=True)
+            policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+            os.makedirs(policy_dir, exist_ok=True)
+            policy = self.get_policy(pid)
+            policy.export_checkpoint(policy_dir, policy_state=policy_state)
+
+        return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str) -> None:
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
+    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+        # Checkpoint is provided as a directory name.
+        # Restore from the checkpoint file or dir.
+        if isinstance(checkpoint, str):
+            checkpoint_info = get_checkpoint_info(checkpoint)
+            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
+                checkpoint_info
+            )
+        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
+        else:
+            checkpoint_data = checkpoint
+        self.__setstate__(checkpoint_data)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -1807,7 +1981,7 @@ class Algorithm(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-        cls, config: PartialAlgorithmConfigDict
+        cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
 
         # Default logic for RLlib Algorithms:
@@ -1817,8 +1991,14 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls.get_default_config(), **config)
-        eval_cf = cf["evaluation_config"]
+        default_config = cls.get_default_config()
+        # TODO: Have to make this work for now for AlgorithmConfigs (returned by
+        #  get_default_config(). Use only AlgorithmConfigs once all Algorithms
+        #  return an AlgorothmConfig from their get_default_config() method.
+        if not isinstance(default_config, dict):
+            default_config = default_config.to_dict()
+        cf = dict(default_config, **config)
+        eval_cf = cf["evaluation_config"] or {}
 
         local_worker = {
             "CPU": cf["num_cpus_for_driver"],
@@ -1870,14 +2050,14 @@ class Algorithm(Trainable):
 
     @staticmethod
     def _get_env_id_and_creator(
-        env_specifier: Union[str, EnvType, None], config: PartialAlgorithmConfigDict
+        env_specifier: Union[str, EnvType, None], config: AlgorithmConfig
     ) -> Tuple[Optional[str], EnvCreator]:
         """Returns env_id and creator callable given original env id from config.
 
         Args:
             env_specifier: An env class, an already tune registered env ID, a known
                 gym env name, or None (if no env is used).
-            config: The Algorithm's (maybe partial) config dict.
+            config: The AlgorithmConfig object.
 
         Returns:
             Tuple consisting of a) env ID string and b) env creator callable.
@@ -1910,7 +2090,7 @@ class Algorithm(Trainable):
         elif isinstance(env_specifier, type):
             env_id = env_specifier  # .__name__
 
-            if config.get("remote_worker_envs"):
+            if config["remote_worker_envs"]:
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.
@@ -1984,12 +2164,15 @@ class Algorithm(Trainable):
 
     @classmethod
     @override(Trainable)
-    def resource_help(cls, config: AlgorithmConfigDict) -> str:
+    def resource_help(cls, config: Union[AlgorithmConfig, AlgorithmConfigDict]) -> str:
         return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers`, `num_gpus`, and other configs. See "
-            "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: {}".format(config)
+            "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
+            "`AlgorithmConfig.resources("
+            "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
+            "`AgorithmConfig.rollouts(num_rollout_workers=..)`. See "
+            "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
+            "(each Algorithm has its own subclass of this class) for more info.\n\n"
+            f"The config of this Algorithm is: {config}"
         )
 
     @classmethod
@@ -2036,17 +2219,18 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(config: PartialAlgorithmConfigDict) -> None:
-        """Validates the config dictionary wrt the framework settings.
+    def validate_framework(
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
+    ) -> None:
+        """Validates the config object (or dictionary) wrt. the framework settings.
 
         Args:
-            config: The config dictionary to be validated.
-
+            config: The config object (or dictionary) to be validated.
         """
         _tf1, _tf, _tfv = None, None, None
         _torch = None
         framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        tf_valid_frameworks = {"tf", "tf2"}
         if framework not in tf_valid_frameworks and framework != "torch":
             return
         elif framework in tf_valid_frameworks:
@@ -2080,7 +2264,7 @@ class Algorithm(Trainable):
         def resolve_tf_settings():
             """Check and resolve tf settings."""
 
-            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+            if _tf1 and config["framework"] == "tf2":
                 if config["framework"] == "tf2" and _tfv < 2:
                     raise ValueError(
                         "You configured `framework`=tf2, but your installed "
@@ -2114,47 +2298,39 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates a given config dict for this Algorithm.
+    def validate_config(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> None:
+        """Validates a given config object (or dictionary) for this Algorithm.
 
         Users should override this method to implement custom validation
         behavior. It is recommended to call `super().validate_config()` in
         this override.
 
         Args:
-            config: The given config dict to check.
+            config: The given config object (or dictionary) to check.
 
         Raises:
             ValueError: If there is something wrong with the config.
         """
-        model_config = config.get("model")
-        if model_config is None:
-            config["model"] = model_config = {}
+        from ray.rllib.models.catalog import MODEL_DEFAULTS
 
-        # Use DefaultCallbacks class, if callbacks is None.
-        if config["callbacks"] is None:
-            config["callbacks"] = DefaultCallbacks
-        # Check, whether given `callbacks` is a callable.
-        if not callable(config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{config['callbacks']}!"
-            )
+        model_config = config.get("model", MODEL_DEFAULTS)
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-        if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=False)
 
-        # Validate "multiagent" sub-dict and convert policy 4-tuples to
-        # PolicySpec objects.
-        policies, is_multi_agent = check_multi_agent(config)
+        framework = config.get("framework", "tf")
 
-        framework = config.get("framework")
+        if simple_optim_setting is True:
+            pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config.get("num_gpus", 0) > 1:
-            if framework in ["tfe", "tf2"]:
+        elif config.get("num_gpus", 0) > 1:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            if framework == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)
@@ -2174,18 +2350,32 @@ class Algorithm(Trainable):
                 config["simple_optimizer"] = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif is_multi_agent:
+            elif (
+                (isinstance(config, AlgorithmConfig) and config.is_multi_agent())
+                or isinstance(config, dict)
+                and AlgorithmConfig.from_dict(config).is_multi_agent()
+            ):
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
                 default_policy_cls = self.get_default_policy_class(config)
+                policies = config["multiagent"]["policies"]
+                policy_specs = (
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
                 if any(
-                    (p.policy_class or default_policy_cls) is None
+                    (spec.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p.policy_class or default_policy_cls,
+                        spec.policy_class or default_policy_cls,
                         (DynamicTFPolicy, TorchPolicy),
                     )
-                    for p in config["multiagent"]["policies"].values()
+                    for spec in policy_specs
                 ):
                     config["simple_optimizer"] = True
                 else:
@@ -2195,10 +2385,10 @@ class Algorithm(Trainable):
 
         # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2"]:
+            if framework == "tf2":
                 raise ValueError(
                     "`simple_optimizer=False` not supported for "
-                    "framework={}!".format(framework)
+                    "config.framework({})!".format(framework)
                 )
 
         # Check model config.
@@ -2220,154 +2410,11 @@ class Algorithm(Trainable):
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=True,
             )
-            model_config["lstm_use_prev_action"] = prev_a_r
-            model_config["lstm_use_prev_reward"] = prev_a_r
-
-        # Check batching/sample collection settings.
-        if config["batch_mode"] not in ["truncate_episodes", "complete_episodes"]:
-            raise ValueError(
-                "`batch_mode` must be one of [truncate_episodes|"
-                "complete_episodes]! Got {}".format(config["batch_mode"])
-            )
 
         # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )
-
-        # Metrics settings.
-        if (
-            config.get("metrics_smoothing_episodes", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="metrics_smoothing_episodes",
-                new="metrics_num_episodes_for_smoothing",
-                error=True,
-            )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
-        if config.get("min_iter_time_s", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="min_iter_time_s",
-                new="min_time_s_per_iteration",
-                error=True,
-            )
-            config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
-
-        if config.get("min_time_s_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="min_time_s_per_reporting",
-                new="min_time_s_per_iteration",
-                error=True,
-            )
-            config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
-
-        if (
-            config.get("min_sample_timesteps_per_reporting", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="min_sample_timesteps_per_reporting",
-                new="min_sample_timesteps_per_iteration",
-                error=True,
-            )
-            config["min_sample_timesteps_per_iteration"] = (
-                config["min_sample_timesteps_per_reporting"] or 0
-            )
-
-        if (
-            config.get("min_train_timesteps_per_reporting", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="min_train_timesteps_per_reporting",
-                new="min_train_timesteps_per_iteration",
-                error=True,
-            )
-            config["min_train_timesteps_per_iteration"] = (
-                config["min_train_timesteps_per_reporting"] or 0
-            )
-
-        if config.get("collect_metrics_timeout", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="collect_metrics_timeout",
-            #     new="metrics_episode_collection_timeout_s",
-            #     error=False,
-            # )
-            config["metrics_episode_collection_timeout_s"] = config[
-                "collect_metrics_timeout"
-            ]
-
-        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="timesteps_per_iteration",
-                new="`min_sample_timesteps_per_iteration` OR "
-                "`min_train_timesteps_per_iteration`",
-                error=True,
-            )
-            config["min_sample_timesteps_per_iteration"] = (
-                config["timesteps_per_iteration"] or 0
-            )
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
-
-        # Evaluation settings.
-
-        # Deprecated setting: `evaluation_num_episodes`.
-        if config.get("evaluation_num_episodes", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=True,
-            )
-            config["evaluation_duration"] = config["evaluation_num_episodes"]
-            config["evaluation_duration_unit"] = "episodes"
-            config["evaluation_num_episodes"] = DEPRECATED_VALUE
-
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
-        # None (also set `evaluation_interval` to 1).
-        if config["evaluation_num_workers"] > 0 and not config["evaluation_interval"]:
-            logger.warning(
-                f"You have specified {config['evaluation_num_workers']} "
-                "evaluation workers, but your `evaluation_interval` is None! "
-                "Therefore, evaluation will not occur automatically with each"
-                " call to `Algorithm.train()`. Instead, you will have to call "
-                "`Algorithm.evaluate()` manually in order to trigger an "
-                "evaluation run."
-            )
-        # If `evaluation_num_workers=0` and
-        # `evaluation_parallel_to_training=True`, warn that you need
-        # at least one remote eval worker for parallel training and
-        # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif config["evaluation_num_workers"] == 0 and config.get(
-            "evaluation_parallel_to_training", False
-        ):
-            logger.warning(
-                "`evaluation_parallel_to_training` can only be done if "
-                "`evaluation_num_workers` > 0! Setting "
-                "`evaluation_parallel_to_training` to False."
-            )
-            config["evaluation_parallel_to_training"] = False
-
-        # If `evaluation_duration=auto`, error if
-        # `evaluation_parallel_to_training=False`.
-        if config["evaluation_duration"] == "auto":
-            if not config["evaluation_parallel_to_training"]:
-                raise ValueError(
-                    "`evaluation_duration=auto` not supported for "
-                    "`evaluation_parallel_to_training=False`!"
-                )
-        # Make sure, it's an int otherwise.
-        elif (
-            not isinstance(config["evaluation_duration"], int)
-            or config["evaluation_duration"] <= 0
-        ):
-            raise ValueError(
-                "`evaluation_duration` ({}) must be an int and "
-                ">0!".format(config["evaluation_duration"])
-            )
 
     @staticmethod
     @ExperimentalAPI
@@ -2510,10 +2557,23 @@ class Algorithm(Trainable):
         else:
             return self.import_policy_model_from_h5(import_file)
 
-    def __getstate__(self) -> dict:
-        state = {}
+    @PublicAPI
+    def __getstate__(self) -> Dict:
+        """Returns current state of Algorithm, sufficient to restore it from scratch.
+
+        Returns:
+            The current state dict of this Algorithm, which can be used to sufficiently
+            restore the algorithm from scratch without any other information.
+        """
+        # Add config to state so complete Algorithm can be reproduced w/o it.
+        state = {
+            "algorithm_class": type(self),
+            "config": self.config,
+        }
+
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
+
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2523,10 +2583,24 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
+        else:
+            state["counters"] = self._counters
 
         return state
 
-    def __setstate__(self, state: dict):
+    @PublicAPI
+    def __setstate__(self, state) -> None:
+        """Sets the algorithm to the provided state.
+
+        Args:
+            state: The state dict to restore this Algorithm instance to. `state` may
+                have been returned by a call to an Algorithm's `__getstate__()` method.
+        """
+        # TODO (sven): Validate that our config and the config in state are compatible.
+        #  For example, the model architectures may differ.
+        #  Also, what should the behavior be if e.g. some training parameter
+        #  (e.g. lr) changed?
+
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
@@ -2559,6 +2633,127 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
+        elif "counters" in state:
+            self._counters = state["counters"]
+
+    @staticmethod
+    def _checkpoint_info_to_algorithm_state(
+        checkpoint_info: dict,
+        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> Dict:
+        """Converts a checkpoint info or object to a proper Algorithm state dict.
+
+        The returned state dict can be used inside self.__setstate__().
+
+        Args:
+            checkpoint_info: A checkpoint info dict as returned by
+                `ray.rllib.utils.checkpoints.get_checkpoint_info(
+                [checkpoint dir or AIR Checkpoint])`.
+            policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
+                listed here will be included in the returned state. Note that
+                state items such as filters, the `is_policy_to_train` function, as
+                well as the multi-agent `policy_ids` dict will be adjusted as well,
+                based on this arg.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to include in the returned state.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?) to include in the returned state.
+
+        Returns:
+             The state dict usable within the `self.__setstate__()` method.
+        """
+        if checkpoint_info["type"] != "Algorithm":
+            raise ValueError(
+                "`checkpoint` arg passed to "
+                "`Algorithm._checkpoint_info_to_algorithm_state()` must be an "
+                f"Algorithm checkpoint (but is {checkpoint_info['type']})!"
+            )
+
+        with open(checkpoint_info["state_file"], "rb") as f:
+            state = pickle.load(f)
+
+        # New checkpoint format: Policies are in separate sub-dirs.
+        # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
+        # the plain state here.
+        if (
+            checkpoint_info["checkpoint_version"] > version.Version("0.1")
+            and state.get("worker") is not None
+        ):
+            worker_state = state["worker"]
+
+            # Retrieve the set of all required policy IDs.
+            policy_ids = set(
+                policy_ids if policy_ids is not None else worker_state["policy_ids"]
+            )
+
+            # Remove those policies entirely from filters that are not in
+            # `policy_ids`.
+            worker_state["filters"] = {
+                pid: filter
+                for pid, filter in worker_state["filters"].items()
+                if pid in policy_ids
+            }
+
+            # Compile actual config object.
+            algo_cls = state["algorithm_class"]
+            if isinstance(algo_cls, str):
+                algo_cls = get_trainable_cls(algo_cls)
+            default_config = algo_cls.get_default_config()
+            if isinstance(default_config, AlgorithmConfig):
+                new_config = default_config.update_from_dict(state["config"])
+            else:
+                new_config = Algorithm.merge_trainer_configs(
+                    default_config, state["config"]
+                )
+
+            # Remove policies from multiagent dict that are not in `policy_ids`.
+            new_policies = new_config.policies
+            if isinstance(new_policies, (set, list, tuple)):
+                new_policies = {pid for pid in new_policies if pid in policy_ids}
+            else:
+                new_policies = {
+                    pid: spec for pid, spec in new_policies.items() if pid in policy_ids
+                }
+            new_config.multi_agent(
+                policies=new_policies,
+                policies_to_train=policies_to_train,
+            )
+            state["config"] = new_config.to_dict()
+
+            # Prepare local `worker` state to add policies' states into it,
+            # read from separate policy checkpoint files.
+            worker_state["policy_states"] = {}
+            for pid in policy_ids:
+                policy_state_file = os.path.join(
+                    checkpoint_info["checkpoint_dir"],
+                    "policies",
+                    pid,
+                    "policy_state.pkl",
+                )
+                if not os.path.isfile(policy_state_file):
+                    raise ValueError(
+                        "Given checkpoint does not seem to be valid! No policy "
+                        f"state file found for PID={pid}. "
+                        f"The file not found is: {policy_state_file}."
+                    )
+
+                with open(policy_state_file, "rb") as f:
+                    worker_state["policy_states"][pid] = pickle.load(f)
+
+            if policy_mapping_fn is not None:
+                worker_state["policy_mapping_fn"] = policy_mapping_fn
+            if policies_to_train is not None:
+                worker_state["is_policy_to_train"] = policies_to_train
+
+        return state
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
@@ -2600,10 +2795,7 @@ class Algorithm(Trainable):
         # In case we are training (in a thread) parallel to evaluation,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
-        if (
-            self.config.get("framework") in ["tf2", "tfe"]
-            and not tf.executing_eagerly()
-        ):
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
         results = None
@@ -2654,7 +2846,6 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2676,7 +2867,7 @@ class Algorithm(Trainable):
                         self._automatic_evaluation_duration_fn,
                         unit,
                         self.config["evaluation_num_workers"],
-                        self.config["evaluation_config"],
+                        self.evaluation_config,
                         train_future,
                     )
                 )
@@ -2689,11 +2880,13 @@ class Algorithm(Trainable):
             num_recreated = self.try_recover_from_step_attempt(
                 error=e,
                 worker_set=self.evaluation_workers,
-                ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
-                recreate=self.config["evaluation_config"].get(
-                    "recreate_failed_workers"
-                ),
+                ignore=self.evaluation_config.get("ignore_worker_failures"),
+                recreate=self.evaluation_config.get("recreate_failed_workers"),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2701,7 +2894,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2828,6 +3020,7 @@ class Algorithm(Trainable):
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
             # TODO: Backward compatibility.
             results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
+
         # TODO: Backward compatibility.
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
@@ -2884,8 +3077,8 @@ class Algorithm(Trainable):
         return WorkerSet(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
+            default_policy_class=policy_class,
+            config=config,
             num_workers=num_workers,
             local_worker=local_worker,
             logdir=self.logdir,
