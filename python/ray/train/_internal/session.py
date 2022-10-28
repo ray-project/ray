@@ -26,6 +26,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     TIMESTAMP,
     TRAINING_ITERATION,
+    CHECKPOINT_METADATA_KEY,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
@@ -47,12 +48,13 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    driver_ip: str
 
 
 @dataclass
 class TrainingResult:
     type: TrainingResultType
-    data: Union[Dict, Checkpoint]
+    data: Union[Dict, Checkpoint, str]
     metadata: Optional[Dict] = None
 
 
@@ -287,10 +289,20 @@ class _TrainSession:
         elif checkpoint:
             checkpoint = self._encode_data_fn(checkpoint)
 
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        if (
+            checkpoint
+            and checkpoint._local_path
+            and self.get_current_ip() == self.trial_info.driver_ip
+        ):
+            metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
+            checkpoint = str(checkpoint._local_path)
+
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
-            metadata=self._auto_fill_checkpoint_metrics({}),
+            metadata=metadata,
         )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)

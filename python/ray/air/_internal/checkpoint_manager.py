@@ -57,7 +57,7 @@ class _TrackedCheckpoint:
 
     def __init__(
         self,
-        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
+        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef, Checkpoint]],
         storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
@@ -75,11 +75,11 @@ class _TrackedCheckpoint:
         if (
             dir_or_data is not None
             and storage_mode == CheckpointStorage.MEMORY
-            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef, Checkpoint))
         ):
             raise ValueError(
-                f"Memory checkpoints only support Ray object references and dicts "
-                f"as their data. Got: {dir_or_data}"
+                f"Memory checkpoints only support Ray object references, dicts "
+                f"and AIR Checkpoint as their data. Got: {dir_or_data}"
             )
 
     def commit(self, path: Optional[Path] = None) -> None:
@@ -94,6 +94,12 @@ class _TrackedCheckpoint:
 
         if not path:
             # If no path is given, skip
+            return
+
+        if isinstance(self.dir_or_data, Checkpoint):
+            self.dir_or_data = self.dir_or_data.to_directory(
+                str(path), move_instead_of_copy=True
+            )
             return
 
         if not isinstance(self.dir_or_data, dict):

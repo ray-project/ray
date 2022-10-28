@@ -42,10 +42,16 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        if isinstance(checkpoint.dir_or_data, dict):
-            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        if air_checkpoint._local_path:
+            save_preprocessor_to_dir(self.preprocessor, air_checkpoint._local_path)
         else:
-            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
+            metadata = air_checkpoint._metadata
+            checkpoint_dict = air_checkpoint.to_dict()
+            checkpoint_dict[PREPROCESSOR_KEY] = self.preprocessor
+            air_checkpoint = air_checkpoint.from_dict(checkpoint_dict)
+            air_checkpoint._metadata = metadata
+            checkpoint.dir_or_data = air_checkpoint
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -342,6 +348,7 @@ class DataParallelTrainer(BaseTrainer):
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
         )
 
         backend_executor = self._backend_executor_cls(

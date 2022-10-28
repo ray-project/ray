@@ -67,3 +67,6 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
 # "en".
 DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
+
+# Key for AIR Checkpoint metadata in TrainingResult metadata
+CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
