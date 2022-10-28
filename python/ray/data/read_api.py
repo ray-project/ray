@@ -311,12 +311,14 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    context = DatasetContext.get_current()
-    if context.read_write_local_node:
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
+    if not ray.util.client.ray.is_connected():
+        paths = read_args.get("paths", None)
+        fs = read_args.get("filesystem", None)
+        if paths and _is_local_fs(paths, fs):
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
 
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
@@ -1332,6 +1334,19 @@ def from_huggingface(
             "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
             f"got {type(dataset)}"
         )
+
+
+def _is_local_fs(
+    paths: Union[str, List[str]], filesystem: "pyarrow.fs.FileSystem"
+) -> bool:
+    from pyarrow.fs import _resolve_filesystem_and_path
+
+    if isinstance(paths, str):
+        path = paths
+    else:
+        path = paths[0]
+    fs, _ = _resolve_filesystem_and_path(path, filesystem)
+    return fs.type_name == "local"
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
