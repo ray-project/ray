@@ -75,19 +75,18 @@ class MultiAgentRLModule(RLModule):
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Makes the module distributed.
 
-        It loops through all the modules and calls their make_distributed method.
-
         Args:
             dist_config: The optional distributed configuration to use for all make
                 distributed calls.
         """
-        for module in self._rl_modules.values():
-            module.make_distributed(dist_config)
+        # TODO (Avnish) Implement this.
+        pass
 
     @override(RLModule)
     def is_distributed(self) -> bool:
         """Returns True if all sub-modules are distributed."""
-        return all(module.is_distributed() for module in self._rl_modules.values())
+        # TODO (Avnish) Implement this.
+        return False
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
