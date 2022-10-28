@@ -89,12 +89,10 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
     return absl::nullopt;
   }
   allocated_ += bytes;
-  return BuildAllocation(mem, bytes, /* is_fallback_allocated */ false);
+  return BuildAllocation(mem, bytes);
 }
 
 absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
-  bool is_fallback_allocated = false;
-
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   RAY_LOG(DEBUG) << "fallback allocating " << bytes;
@@ -110,10 +108,9 @@ absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
   allocated_ += bytes;
   // The allocation was servicable using the initial region, no need to fallback.
   if (internal::IsOutsideInitialAllocation(mem)) {
-    is_fallback_allocated = true;
     fallback_allocated_ += bytes;
   }
-  return BuildAllocation(mem, bytes, is_fallback_allocated);
+  return BuildAllocation(mem, bytes);
 }
 
 void PlasmaAllocator::Free(Allocation allocation) {
@@ -132,9 +129,7 @@ int64_t PlasmaAllocator::Allocated() const { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() const { return fallback_allocated_; }
 
-absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
-                                                            size_t size,
-                                                            bool is_fallback_allocated) {
+absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr, size_t size) {
   if (addr == nullptr) {
     return absl::nullopt;
   }
@@ -148,8 +143,7 @@ absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
                       std::move(fd),
                       offset,
                       0 /* device_number*/,
-                      mmap_size,
-                      is_fallback_allocated);
+                      mmap_size);
   }
   return absl::nullopt;
 }
