@@ -16,7 +16,9 @@ Getting Started
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
-First, `download Prometheus. <https://prometheus.io/download/>`_
+First, `download Prometheus <https://prometheus.io/download/>`_. Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
+
+Then, unzip the the archive into a local directory using the following command.
 
 .. code-block:: bash
 
@@ -55,17 +57,6 @@ Now, you can access Ray metrics from the default Prometheus url, `http://localho
 
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
 
-Export Metrics from Prometheus Endpoint
----------------------------------------
-
-It's also possible to expose metrics through `ray start`.
-
-.. code-block:: bash
-
-    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
-
-Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
-
 .. _grafana:
 
 Grafana
@@ -75,9 +66,9 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
-First, `download Grafana. <https://grafana.com/grafana/download>`_
+First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
-Then run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
+Then go to to the location of the binary and run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
 
 .. code-block:: shell
 
@@ -86,7 +77,10 @@ Then run grafana using the built in configuration found in `/tmp/ray/session_lat
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
 If this is your first time, you can login with the username: `admin` and password `admin`.
 
-You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same dashboard is also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/grafana_login.png
+    :align: center
+
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same metric graphs are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
     :align: center
@@ -123,3 +117,15 @@ If you open this in the browser, you should see the following output:
   ray_num_requests_total{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 2.0
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
+
+Customize prometheus export port
+--------------------------------
+
+Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
+To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.
+
+.. code-block:: bash
+
+    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
+
+Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
