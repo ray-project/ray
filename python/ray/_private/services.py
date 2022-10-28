@@ -1510,7 +1510,6 @@ def start_raylet(
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
-        f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
@@ -1739,7 +1738,7 @@ def determine_plasma_store_config(
                     "sure to set this to more than 30% of available RAM.".format(
                         ray._private.utils.get_user_temp_dir(),
                         shm_avail,
-                        object_store_memory * (1.1) / (2**30),
+                        object_store_memory * (1.1) / (2 ** 30),
                     )
                 )
         else:
@@ -1789,29 +1788,27 @@ def determine_plasma_store_config(
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
             "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
-                object_store_memory / 2**30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                object_store_memory / 2 ** 30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
             )
         )
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(round(object_store_memory / 10**9, 2), plasma_directory)
+        "using {}.".format(round(object_store_memory / 10 ** 9, 2), plasma_directory)
     )
 
     return plasma_directory, object_store_memory
 
 
 def start_monitor(
-    redis_address: str,
     gcs_address: str,
     logs_dir: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
-    redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1820,7 +1817,6 @@ def start_monitor(
     """Run a process to monitor the other processes.
 
     Args:
-        redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -1828,7 +1824,6 @@ def start_monitor(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
-        redis_password: The password of the redis server.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1848,8 +1843,6 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if redis_address is not None:
-        command.append(f"--redis-address={redis_address}")
     if gcs_address is not None:
         command.append(f"--gcs-address={gcs_address}")
     if stdout_file is None and stderr_file is None:
@@ -1863,8 +1856,6 @@ def start_monitor(
         command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
-    if redis_password:
-        command.append("--redis-password=" + redis_password)
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
     process_info = start_ray_process(
