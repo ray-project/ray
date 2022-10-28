@@ -49,8 +49,8 @@ class CQLConfig(SACConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
     """
 
     def __init__(self, algo_class=None):
@@ -138,10 +138,6 @@ class CQL(SAC):
                 new="min_train_timesteps_per_iteration",
                 error=True,
             )
-            config["min_train_timesteps_per_iteration"] = config[
-                "timesteps_per_iteration"
-            ]
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Call super's validation method.
         super().validate_config(config)
@@ -155,7 +151,7 @@ class CQL(SAC):
         if config["simple_optimizer"] is not True and config["framework"] == "torch":
             config["simple_optimizer"] = True
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if config["framework"] in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run CQL! "
                 "Install it via `pip install tensorflow_probability`. Your "

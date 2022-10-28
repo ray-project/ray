@@ -69,7 +69,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -131,7 +131,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
+        # Run with tracing enabled for tf2?
         "eager_tracing": args.eager_tracing,
     }
 

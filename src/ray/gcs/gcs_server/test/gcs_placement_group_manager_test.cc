@@ -346,8 +346,12 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), true);
 
+  // Sleep 1 second so that io_service_ can invoke SchedulePendingPlacementGroups.
+  // If we invoke it from this thread, then both threads race and cause use-after-free
+  // bugs.
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
   // Make sure it is not rescheduled
-  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
   mock_placement_group_scheduler_->placement_groups_.clear();
 
