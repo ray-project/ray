@@ -1010,14 +1010,18 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
+        extra_fetches = {}
         if isinstance(self.model, RLModule):
             sample_batch = input_dict
             if state_batches:
                 sample_batch.update({"state": state_batches})
             fwd_out = self.model.forward_exploration(sample_batch)
-            action_dist = fwd_out["action_dist"]
+            # anything but action_dist and state_out is an extra fetch
+            action_dist = fwd_out.pop("action_dist")
             actions, logp = action_dist.sample(return_logp=True)
-            state_out = fwd_out.get("state_out", [])
+            state_out = fwd_out.pop("state_out", [])
+            extra_fetches = fwd_out
+            dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
@@ -1064,9 +1068,10 @@ class TorchPolicyV2(Policy):
         input_dict[SampleBatch.ACTIONS] = actions
 
         # Add default and custom fetches.
-        extra_fetches = self.extra_action_out(
-            input_dict, state_batches, self.model, action_dist
-        )
+        if not extra_fetches:
+            extra_fetches = self.extra_action_out(
+                input_dict, state_batches, self.model, action_dist
+            )
 
         # Action-dist inputs.
         if dist_inputs is not None:
