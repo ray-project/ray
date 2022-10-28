@@ -134,36 +134,36 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
                             list(optim_state[i]["state"].values()),
                         )
 
-                # Compare buffer content with restored one.
-                if replay_buffer:
-                    data = alg1.local_replay_buffer.replay_buffers[
-                        "default_policy"
-                    ]._storage[42 : 42 + 42]
-                    new_data = alg2.local_replay_buffer.replay_buffers[
-                        "default_policy"
-                    ]._storage[42 : 42 + 42]
-                    check(data, new_data)
+            # Compare buffer content with restored one.
+            if replay_buffer:
+                data = alg1.local_replay_buffer.replay_buffers[
+                    "default_policy"
+                ]._storage[42 : 42 + 42]
+                new_data = alg2.local_replay_buffer.replay_buffers[
+                    "default_policy"
+                ]._storage[42 : 42 + 42]
+                check(data, new_data)
 
-                for _ in range(1):
-                    if "DDPG" in algo_name or "SAC" in algo_name:
-                        obs = np.clip(
-                            np.random.uniform(size=3),
-                            policy1.observation_space.low,
-                            policy1.observation_space.high,
-                        )
-                    else:
-                        obs = np.clip(
-                            np.random.uniform(size=4),
-                            policy1.observation_space.low,
-                            policy1.observation_space.high,
-                        )
-                    a1 = get_mean_action(alg1, obs)
-                    a2 = get_mean_action(alg2, obs)
-                    print("Checking computed actions", alg1, obs, a1, a2)
-                    if abs(a1 - a2) > 0.1:
-                        raise AssertionError(
-                            "algo={} [a1={} a2={}]".format(algo_name, a1, a2)
-                        )
+            for _ in range(1):
+                if "DDPG" in algo_name or "SAC" in algo_name:
+                    obs = np.clip(
+                        np.random.uniform(size=3),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high,
+                    )
+                else:
+                    obs = np.clip(
+                        np.random.uniform(size=4),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high,
+                    )
+                a1 = get_mean_action(alg1, obs)
+                a2 = get_mean_action(alg2, obs)
+                print("Checking computed actions", alg1, obs, a1, a2)
+                if abs(a1 - a2) > 0.1:
+                    raise AssertionError(
+                        "algo={} [a1={} a2={}]".format(algo_name, a1, a2)
+                    )
             # Stop both algos.
             alg1.stop()
             alg2.stop()
