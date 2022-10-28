@@ -219,7 +219,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet) {
   stat_file.open(stat_file_name);
   stat_file << "random_key "
             << "random_value" << std::endl;
-  stat_file << "total_inactive_file "
+  stat_file << "inactive_file "
             << "123" << std::endl;
   stat_file << "another_random_key "
             << "some_value" << std::endl;
@@ -246,7 +246,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet) {
   stat_file.open(stat_file_name);
   stat_file << "random_key "
             << "random_value" << std::endl;
-  stat_file << "total_inactive_file "
+  stat_file << "inactive_file "
             << "123" << std::endl;
   stat_file.close();
 
@@ -271,7 +271,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet) {
   stat_file.open(stat_file_name);
   stat_file << "random_key "
             << "random_value" << std::endl;
-  stat_file << "total_inactive_file "
+  stat_file << "inactive_file "
             << "300" << std::endl;
   stat_file.close();
 
@@ -340,7 +340,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull) {
   stat_file.open(stat_file_name);
   stat_file << "random_key "
             << "random_value" << std::endl;
-  stat_file << "total_inactive_file "
+  stat_file << "inactive_file "
             << "300" << std::endl;
   stat_file.close();
 

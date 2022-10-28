@@ -150,7 +150,7 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
 int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
                                                   const char *usage_path) {
   // Uses same calculation as libcontainer, that is: memory.current -
-  // memory.stat[total_inactive_file]. Source:
+  // memory.stat[inactive_file]. Source:
   // https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
@@ -173,7 +173,7 @@ int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
-    if (title == "total_inactive_file") {
+    if (title == kCgroupsV2MemoryStatInactiveKey) {
       inactive_file_bytes = value;
       break;
     }
