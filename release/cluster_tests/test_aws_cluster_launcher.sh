@@ -5,5 +5,5 @@ set -x -e
 
 ray down -y ./aws_cluster.yaml
 ray up -y ./aws_cluster.yaml
-ray exec config.yaml 'python -c "import ray; ray.init()"'
+ray exec ./aws_cluster.yaml 'python -c "import ray; ray.init()"'
 ray down -y ./aws_cluster.yaml
