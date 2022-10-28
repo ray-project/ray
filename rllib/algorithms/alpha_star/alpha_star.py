@@ -324,8 +324,8 @@ class AlphaStar(appo.APPO):
 
     @classmethod
     @override(appo.APPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlphaStarConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaStarConfig()
 
     @override(appo.APPO)
     def validate_config(self, config: AlgorithmConfigDict):

@@ -2,13 +2,13 @@ from typing import List, Optional
 
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -68,7 +68,7 @@ class ApexDDPGConfig(DDPGConfig):
         self.n_step = 3
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
-        self.num_workers = 32
+        self.num_rollout_workers = 32
         self.min_sample_timesteps_per_iteration = 25000
         self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
@@ -173,8 +173,8 @@ class ApexDDPGConfig(DDPGConfig):
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ApexDDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ApexDDPGConfig()
 
     @override(DDPG)
     def setup(self, config: PartialAlgorithmConfigDict):

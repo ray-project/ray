@@ -537,11 +537,8 @@ class Dataset(Generic[T]):
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
-            for block in blocks:
-                batcher.add(block)
-            batcher.done_adding()
-            while batcher.has_any():
-                batch = batcher.next_batch()
+
+            def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
@@ -567,6 +564,20 @@ class Dataset(Generic[T]):
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
+            # Process batches for each block.
+            for block in blocks:
+                batcher.add(block)
+                while batcher.has_batch():
+                    batch = batcher.next_batch()
+                    yield from process_next_batch(batch)
+
+            # Process any last remainder batch.
+            batcher.done_adding()
+            if batcher.has_any():
+                batch = batcher.next_batch()
+                yield from process_next_batch(batch)
+
+            # Yield remainder block from output buffer.
             output_buffer.finalize()
             if output_buffer.has_next():
                 yield output_buffer.next()
@@ -669,6 +680,44 @@ class Dataset(Generic[T]):
 
         return self.map_batches(
             lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
+        )
+
+    def select_columns(
+        self,
+        cols: List[str],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Select one or more columns from the dataset.
+
+        All input columns used to select need to be in the schema of the dataset.
+
+        Examples:
+            >>> import ray
+            >>> # Create a dataset with 3 columns
+            >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
+            ...      for i in range(10)])
+            >>> # Select only "col1" and "col2" columns.
+            >>> ds = ds.select_columns(cols=["col1", "col2"])
+            >>> ds
+            Dataset(num_blocks=1, num_rows=10, schema={col1: int64, col2: int64})
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            cols: Names of the columns to select. If any name is not included in the
+                dataset schema, an exception will be raised.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+        return self.map_batches(
+            lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            compute=compute,
+            **ray_remote_args,
         )
 
     def flat_map(

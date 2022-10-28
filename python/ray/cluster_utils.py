@@ -286,10 +286,8 @@ class Cluster:
                 the node appears in the client table.
         """
         ray._private.services.wait_for_node(
-            self.redis_address,
             node.gcs_address,
             node.plasma_store_socket_name,
-            self.redis_password,
             timeout,
         )
 

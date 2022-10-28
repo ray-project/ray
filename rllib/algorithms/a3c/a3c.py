@@ -78,6 +78,7 @@ class A3CConfig(AlgorithmConfig):
         self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
@@ -154,8 +155,8 @@ class A3CConfig(AlgorithmConfig):
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A3CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A3CConfig()
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):

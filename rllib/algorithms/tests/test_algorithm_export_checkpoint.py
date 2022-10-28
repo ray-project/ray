@@ -40,7 +40,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
                 "num_agents": 2,
             }
         else:
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
         algo = cls(config=config)
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
