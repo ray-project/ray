@@ -130,7 +130,7 @@ if __name__ == "__main__":
     ray.init()
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         "observation_filter": lambda size: CustomFilter(size),
         "num_workers": 0,
     }

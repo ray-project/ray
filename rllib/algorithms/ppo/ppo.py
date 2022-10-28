@@ -54,8 +54,8 @@ class PPOConfig(AlgorithmConfig):
         ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -101,6 +101,7 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
@@ -341,7 +342,8 @@ class PPO(Algorithm):
             * config["rollout_fragment_length"]
         )
         if (
-            config["train_batch_size"] > 0
+            not config.get("in_evaluation")
+            and config["train_batch_size"] > 0
             and config["train_batch_size"] % calculated_min_rollout_size != 0
         ):
             new_rollout_fragment_length = math.ceil(
@@ -366,7 +368,11 @@ class PPO(Algorithm):
         # `postprocessing_fn`), iff generalized advantage estimation is used
         # (value function estimate at end of truncated episode to estimate
         # remaining value).
-        if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
+        if (
+            not config.get("in_evaluation")
+            and config["batch_mode"] == "truncate_episodes"
+            and not config["use_gae"]
+        ):
             raise ValueError(
                 "Episode truncation is not supported without a value "
                 "function (to estimate the return at the end of the truncated"

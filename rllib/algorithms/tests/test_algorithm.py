@@ -9,7 +9,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BC, BCConfig
+from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
@@ -237,7 +237,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
@@ -275,7 +275,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
@@ -309,7 +309,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             a3c.A3CConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
 
@@ -339,12 +339,12 @@ class TestAlgorithm(unittest.TestCase):
     def test_space_inference_from_remote_workers(self):
         # Expect to not do space inference if the learner has an env.
 
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
 
         config = (
             pg.PGConfig()
             .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
         )
 
         # No env on driver -> expect longer build time due to space
@@ -381,19 +381,19 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
-        config = pg.PGConfig().environment(env="CartPole-v0")
+        config = pg.PGConfig().environment(env="CartPole-v1")
         config.validate_workers_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
-        config.num_workers = 1
+        config.num_rollout_workers = 1
         t0 = time.time()
         algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         algo.stop()
 
-        config.num_workers = 5
+        config.num_rollout_workers = 5
         t0 = time.time()
         algo = config.build()
         total_time_5 = time.time() - t0
@@ -409,7 +409,7 @@ class TestAlgorithm(unittest.TestCase):
             script_path.parent.parent.parent, "tests/data/cartpole/small.json"
         )
 
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
 
         offline_rl_config = (
             BCConfig()
@@ -420,7 +420,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=1,
                 evaluation_num_workers=1,
                 evaluation_config={
-                    "env": "CartPole-v0",
+                    "env": "CartPole-v1",
                     "input": "sampler",
                     "observation_space": None,  # Test, whether this is inferred.
                     "action_space": None,  # Test, whether this is inferred.
@@ -429,14 +429,14 @@ class TestAlgorithm(unittest.TestCase):
             .offline_data(input_=[input_file])
         )
 
-        bc = BC(config=offline_rl_config)
+        bc = offline_rl_config.build()
         bc.train()
         bc.stop()
 
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = pg.PGConfig().environment(env="CartPole-v0")
+        config = pg.PGConfig().environment(env="CartPole-v1")
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))

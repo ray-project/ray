@@ -35,11 +35,12 @@ class A3CConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = A3CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        ...     .rollouts(num_rollout_workers=4)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> config = A3CConfig()
@@ -77,6 +78,7 @@ class A3CConfig(AlgorithmConfig):
         self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.

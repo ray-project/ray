@@ -10,7 +10,7 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     # Example config causing
     config = {
-        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
+        # Also try common gym envs like: "CartPole-v1" or "Pendulum-v1".
         "env": (MultiAgentCustomRenderedEnv if args.multi_agent else CustomRenderedEnv),
         "env_config": {
             "corridor_length": 10,
