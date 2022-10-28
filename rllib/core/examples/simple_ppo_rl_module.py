@@ -23,7 +23,7 @@ def get_ppo_loss(fwd_in, fwd_out):
     # forward train works
     adv = fwd_in["reward"] - fwd_out["vf"]
     actor_loss = -(fwd_out["logp"] * adv).mean()
-    critic_loss = (adv ** 2).mean()
+    critic_loss = (adv**2).mean()
     loss = actor_loss + critic_loss
 
     return loss

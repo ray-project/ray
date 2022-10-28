@@ -39,7 +39,7 @@ _RAYLET_LOG_MAX_PUBLISH_LINES = 20
 
 # Reads at most this amount of Raylet logs from the tail, for publishing and
 # checking if the Raylet was terminated gracefully.
-_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024**2
 
 try:
     create_task = asyncio.create_task
@@ -257,7 +257,7 @@ class DashboardAgent:
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:

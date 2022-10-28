@@ -349,7 +349,7 @@ class GlobalState:
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10 ** 6 * time_in_seconds
+        time_in_microseconds = 10**6 * time_in_seconds
         return time_in_microseconds
 
     # Colors are specified at
