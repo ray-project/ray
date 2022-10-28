@@ -451,8 +451,8 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ImpalaConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ImpalaConfig()
 
     @override(Algorithm)
     def get_default_policy_class(

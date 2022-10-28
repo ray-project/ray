@@ -119,6 +119,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -308,7 +309,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
+        config: Optional[AlgorithmConfig] = None,
         env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
@@ -323,8 +324,10 @@ class Algorithm(Trainable):
         """
         config = config or self.get_default_config()
 
-        # Resolve possible dict into an AlgorithmConfig object.
-        # TODO: In the future, only support AlgorithmConfig objects here.
+        # Resolve possible dict into an AlgorithmConfig object as well as
+        # resolving generic config objects into specific ones (e.g. passing
+        # an `AlgorithmConfig` super-class instance into a PPO constructor,
+        # which normally would expect a PPOConfig object).
         if isinstance(config, dict):
             default_config = self.get_default_config()
             # `self.get_default_config()` also returned a dict ->
@@ -335,6 +338,10 @@ class Algorithm(Trainable):
                 )
             else:
                 config = default_config.update_from_dict(config)
+        else:
+            default_config = self.get_default_config()
+            if not isinstance(config, type(default_config)):
+                config = default_config.update_from_dict(config.to_dict())
 
         if env is not None:
             deprecation_warning(
@@ -441,12 +448,12 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> Union[AlgorithmConfig, AlgorithmConfigDict]:
+    def get_default_config(cls) -> AlgorithmConfig:
         return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]):
+    def setup(self, config: AlgorithmConfig) -> None:
 
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
@@ -2694,8 +2701,20 @@ class Algorithm(Trainable):
                 for pid, filter in worker_state["filters"].items()
                 if pid in policy_ids
             }
+
+            # Compile actual config object.
+            algo_cls = state["algorithm_class"]
+            if isinstance(algo_cls, str):
+                algo_cls = get_trainable_cls(algo_cls)
+            default_config = algo_cls.get_default_config()
+            if isinstance(default_config, AlgorithmConfig):
+                new_config = default_config.update_from_dict(state["config"])
+            else:
+                new_config = Algorithm.merge_trainer_configs(
+                    default_config, state["config"]
+                )
+
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            new_config = AlgorithmConfig.from_dict(state["config"])
             new_policies = new_config.policies
             if isinstance(new_policies, (set, list, tuple)):
                 new_policies = {pid for pid in new_policies if pid in policy_ids}

@@ -184,7 +184,7 @@ class SlateQConfig(AlgorithmConfig):
         super().training(**kwargs)
 
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            self.replay_buffer_config.update(replay_buffer_config)
         if fcnet_hiddens_per_candidate is not None:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
         if target_network_update_freq is not None:
@@ -230,8 +230,8 @@ def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SlateQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SlateQConfig()
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

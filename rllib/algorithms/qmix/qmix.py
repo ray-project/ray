@@ -1,5 +1,6 @@
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
@@ -21,7 +22,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import deprecation_warning
 
@@ -80,9 +81,6 @@ class QMixConfig(SimpleQConfig):
         self.lr = 0.0005
         self.train_batch_size = 32
         self.target_network_update_freq = 500
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
@@ -215,11 +213,11 @@ class QMixConfig(SimpleQConfig):
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return QMixConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return QMixConfig()
 
     @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfig) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -227,7 +225,7 @@ class QMix(SimpleQ):
             raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return QMixTorchPolicy
 
     @override(SimpleQ)

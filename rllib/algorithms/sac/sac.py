@@ -304,8 +304,8 @@ class SAC(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SACConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SACConfig()
 
     @override(DQN)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

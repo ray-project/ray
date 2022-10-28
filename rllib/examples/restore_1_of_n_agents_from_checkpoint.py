@@ -17,7 +17,7 @@ import random
 import ray
 from ray import air
 from ray import tune
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -73,25 +73,20 @@ if __name__ == "__main__":
         pol_id = random.choice(policy_ids)
         return pol_id
 
-    config = {
-        "env": MultiAgentCartPole,
-        "env_config": {
-            "num_agents": args.num_agents,
-        },
+    config = (
+        PPOConfig()
+        .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
+        .framework(args.framework)
+        .training(num_sgd_iter=10)
+        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_sgd_iter": 10,
-        "multiagent": {
-            "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
-        },
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     # Do some training and store the checkpoint.
     results = tune.Tuner(
         "PPO",
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop={"training_iteration": args.pre_training_iters},
             verbose=1,
@@ -106,7 +101,7 @@ if __name__ == "__main__":
     print(f".. best checkpoint was: {best_checkpoint}")
 
     # Create a new dummy Algorithm to "fix" our checkpoint.
-    new_algo = PPO(config=config)
+    new_algo = config.build()
     # Get untrained weights for all policies.
     untrained_weights = new_algo.get_weights()
     # Restore all policies from checkpoint.
@@ -135,14 +130,12 @@ if __name__ == "__main__":
     }
 
     # Make sure, the non-1st policies are not updated anymore.
-    config["multiagent"]["policies_to_train"] = [
-        pid for pid in policy_ids if pid != "policy_0"
-    ]
+    config.policies_to_train = [pid for pid in policy_ids if pid != "policy_0"]
 
     results = tune.run(
         "PPO",
         stop=stop,
-        config=config,
+        config=config.to_dict(),
         restore=new_checkpoint,
         verbose=1,
     )

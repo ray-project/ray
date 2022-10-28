@@ -251,13 +251,22 @@ class AlphaZeroConfig(AlgorithmConfig):
         if mcts_config is not None:
             self.mcts_config = mcts_config
         if ranked_rewards is not None:
-            self.ranked_rewards = ranked_rewards
+            self.ranked_rewards.update(ranked_rewards)
         if num_steps_sampled_before_learning_starts is not None:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
 
         return self
+
+    def update_from_dict(self, config_dict) -> "AlphaZeroConfig":
+        config_dict = config_dict.copy()
+
+        if "ranked_rewards" in config_dict:
+            value = config_dict.pop("ranked_rewards")
+            self.training(ranked_rewards=value)
+
+        return super().update_from_dict(config_dict)
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
@@ -320,8 +329,8 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlphaZeroConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaZeroConfig()
 
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings."""

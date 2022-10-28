@@ -48,20 +48,6 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = (
-        R2D2Config()
-        .environment(env="CartPole-v1")
-        .training(model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20))
-        .framework(framework=args.framework)
-        .rollouts(num_rollout_workers=4)
-    )
-
-    stop_config = {
-        "episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
-    }
-
     # This is where we add prioritized experiences replay
     # The training iteration function that is shared by DQN and R2D2 already
     # includes a priority update step.
@@ -75,7 +61,22 @@ if __name__ == "__main__":
         "zero_init_states": True,
     }
 
-    config.training(replay_buffer_config=replay_buffer_config)
+    config = (
+        R2D2Config()
+        .environment("CartPole-v1")
+        .framework(framework=args.framework)
+        .rollouts(num_rollout_workers=4)
+        .training(
+            model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20),
+            replay_buffer_config=replay_buffer_config,
+        )
+    )
+
+    stop_config = {
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+        "training_iteration": args.stop_iters,
+    }
 
     results = tune.Tuner(
         "R2D2", param_space=config.to_dict(), run_config=air.RunConfig(stop=stop_config)

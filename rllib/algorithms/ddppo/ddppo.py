@@ -21,6 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -41,7 +42,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -196,8 +196,8 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
     def validate_config(self, config):

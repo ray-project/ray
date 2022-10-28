@@ -21,6 +21,7 @@ import ray
 from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
 from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -40,7 +41,6 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -389,8 +389,8 @@ class ApexDQN(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ApexDQNConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ApexDQNConfig()
 
     @override(DQN)
     def validate_config(self, config):

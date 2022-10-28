@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 import ray
 from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -369,6 +370,8 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        eval_call = {}
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -389,14 +392,19 @@ class AlgorithmConfig:
                     if k in value
                 }
                 self.multi_agent(**kwargs)
-            # Some keys must use `.update()` from given config dict (to not lose
-            # any sub-keys).
+            # Some keys specify config sub-dicts and therefore should go through the
+            # correct methods to properly `.update()` those from given config dict
+            # (to not lose any sub-keys).
             elif key == "callbacks_class":
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
-            elif key == "model":
-                self.training(model=value)
+            elif key.startswith("evaluation_"):
+                eval_call[key] = value
+            elif key == "exploration_config":
+                self.exploration(exploration_config=value)
+            elif key in ["model", "optimizer", "replay_buffer_config"]:
+                self.training(**{key: value})
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -407,6 +415,8 @@ class AlgorithmConfig:
                         f"`config_dict`! Property {key} not supported."
                     )
                 setattr(self, key, value)
+
+        self.evaluation(**eval_call)
 
         return self
 
@@ -473,7 +483,11 @@ class AlgorithmConfig:
         if logger_creator is not None:
             self.logger_creator = logger_creator
 
-        return self.algo_class(
+        algo_class = self.algo_class
+        if isinstance(self.algo_class, str):
+            algo_class = get_algorithm_class(self.algo_class)
+
+        return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
             logger_creator=self.logger_creator,
         )
@@ -1036,6 +1050,8 @@ class AlgorithmConfig:
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
         enable_async_evaluation: Optional[bool] = None,
+        # Deprecated args.
+        evaluation_num_episodes=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -1113,6 +1129,15 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        if evaluation_num_episodes != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
+                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
+                "evaluation_duration_unit='episodes')",
+                error=False,
+            )
+            evaluation_duration = evaluation_num_episodes
+
         if evaluation_interval is not None:
             self.evaluation_interval = evaluation_interval
         if evaluation_duration is not None:
@@ -1917,6 +1942,13 @@ class AlgorithmConfig:
         #    f"(`config['{key}'] = {value}`), "
         #    f"but via setting their properties directly (config.{prop} = {value})."
         # )
+        if key == "multiagent":
+            raise AttributeError(
+                "Cannot set `multiagent` key in an AlgorithmConfig!\nTry setting "
+                "the multi-agent components of your AlgorithmConfig object via the "
+                "`multi_agent()` method and its arguments.\nE.g. `config.multi_agent("
+                "policies=.., policy_mapping_fn.., policies_to_train=..)`."
+            )
         super().__setattr__(key, value)
 
     def __contains__(self, item) -> bool:

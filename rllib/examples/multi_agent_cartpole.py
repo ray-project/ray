@@ -15,6 +15,7 @@ import random
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.models.shared_weights_model import (
     SharedWeightsModel1,
@@ -90,20 +91,16 @@ if __name__ == "__main__":
         pol_id = random.choice(policy_ids)
         return pol_id
 
-    config = {
-        "env": MultiAgentCartPole,
-        "env_config": {
-            "num_agents": args.num_agents,
-        },
+    config = (
+        PPOConfig()
+        .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
+        .framework(args.framework)
+        .training(num_sgd_iter=10)
+        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_sgd_iter": 10,
-        "multiagent": {
-            "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
-        },
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     stop = {
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
@@ -111,7 +108,9 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        "PPO",
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:
