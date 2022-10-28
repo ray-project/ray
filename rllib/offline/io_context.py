@@ -35,6 +35,8 @@ class IOContext:
                 worker, >0 for any of the remote workers.
             worker: The RolloutWorker object reference.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         self.log_dir = log_dir or os.getcwd()
         self.config = config or AlgorithmConfig()
         self.worker_index = worker_index
