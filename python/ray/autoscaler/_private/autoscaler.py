@@ -107,9 +107,7 @@ class AutoscalerSummary:
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
-    pending_resources: Dict[str, int] = field(
-        default_factory=lambda: {}
-    )
+    pending_resources: Dict[str, int] = field(default_factory=lambda: {})
 
 
 class NonTerminatedNodes:
@@ -1434,7 +1432,6 @@ class StandardAutoscaler:
             if count:
                 pending_launches[node_type] = count
 
-
         pending_resources = {}
         for node_resources in self.resource_demand_scheduler.calculate_node_resources(
             nodes=[node_id for node_id, _, _, _ in pending_nodes],
@@ -1450,7 +1447,9 @@ class StandardAutoscaler:
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
-            pending_nodes=[(ip, node_type, status) for _, ip, node_type, status in pending_nodes],
+            pending_nodes=[
+                (ip, node_type, status) for _, ip, node_type, status in pending_nodes
+            ],
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
             node_availability_summary=self.node_provider_availability_tracker.summary(),
