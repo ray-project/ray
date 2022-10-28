@@ -73,20 +73,10 @@ class RayLogger(LoggerDestination):
         model_state_dict = state.state_dict()["model"]
 
         # remove module prefixes when loading the model weights
-        # use this while loop instead of pytorch consume_prefix_in_state_dict_if_present
-        # to check whether prefix has been removed.
-        while True:
-            prefix_removed = False
-            prefix = "module."
-            keys = sorted(model_state_dict.keys())
-            for key in keys:
-                if key.startswith(prefix):
-                    newkey = key[len(prefix) :]
-                    model_state_dict[newkey] = model_state_dict.pop(key)
-                    prefix_removed = True
-
-            if not prefix_removed:
-                break
+        for i in range(2):
+            torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+                model_state_dict, "module."
+            )
 
         session.report(
             self.data, checkpoint=Checkpoint.from_dict({"model": model_state_dict})

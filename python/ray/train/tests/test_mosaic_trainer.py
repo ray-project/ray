@@ -323,7 +323,7 @@ def test_checkpoint_model(ray_start_4_cpus):
 
     trainer_init_config = {
         "model": model,
-        "max_duration": "1ep",
+        "max_duration": "2ep",
     }
 
     trainer = MosaicTrainer(
@@ -334,7 +334,7 @@ def test_checkpoint_model(ray_start_4_cpus):
 
     result2 = trainer.fit()
 
-    # Accuracy should increase after one additional epoch of training
+    # Accuracy should increase after two additional epochs of training
     acc_key = "metrics/train/Accuracy"
     assert result.metrics[acc_key] <= result2.metrics[acc_key]
 
