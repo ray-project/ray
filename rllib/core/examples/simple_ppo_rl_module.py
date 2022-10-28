@@ -242,22 +242,41 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_exploration(self) -> ModelSpec:
-        return ModelSpec({SampleBatch.ACTION_DIST: self.__get_action_dist_type()})
-
+        specs = {SampleBatch.ACTION_DIST: self.__get_action_dist_type()}
+        if self._is_discrete:
+            specs[SampleBatch.ACTION_DIST_INPUTS] = {
+                "logits": TorchTensorSpec("b, h", h=self.config.action_space.n)
+            }
+        else:
+            specs[SampleBatch.ACTION_DIST_INPUTS] = {
+                "loc": TorchTensorSpec("b, h", h=self.config.action_space.shape[0]),
+                "scale": TorchTensorSpec("b, h", h=self.config.action_space.shape[0]),
+            }
+        
+        return ModelSpec(specs)
+        
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+        """PPO forward pass during exploration.
+        
+        Besides the action distribution, this method also returns the parameters of the policy distribution to be used for computing KL divergence between the old policy and the new policy during training. 
+        """
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
         pi_out = self.pi(encoded_state)
 
+        output = {}
         if self._is_discrete:
-            action_dist = TorchCategorical(pi_out)
+            action_dist = TorchCategorical(logits=pi_out)
+            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": pi_out}
         else:
-            mu, scale = pi_out.chunk(2, dim=-1)
-            action_dist = TorchDiagGaussian(mu, scale.exp())
-
-        return {SampleBatch.ACTION_DIST: action_dist}
+            loc, log_std = pi_out.chunk(2, dim=-1)
+            scale = log_std.exp()
+            action_dist = TorchDiagGaussian(loc, scale)
+            output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
+        output[SampleBatch.ACTION_DIST] = action_dist
+        return output
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
