@@ -8,12 +8,12 @@ similarities with other ETL data processing libraries, but also has its own focu
 In this API guide, we will provide API mappings for users who come from those data
 libraries, so you can quickly map what you may already know to Ray Datasets APIs.
 
-Note:
+.. note::
 
-- This is meant to map APIs that perform comparable but not necessarily identical operations.
-  Please check the API reference for exact semantics and usage.
-- This list may not be exhaustive: Ray Datasets is not a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
-  In addition, we try to focus on common APIs or APIs that are less obvious to see a connection.
+  - This is meant to map APIs that perform comparable but not necessarily identical operations.
+    Please check the API reference for exact semantics and usage.
+  - This list may not be exhaustive: Ray Datasets is not a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
+    In addition, we try to focus on common APIs or APIs that are less obvious to see a connection.
 
 .. _api-guide-for-pandas-users:
 
@@ -25,41 +25,41 @@ For Pandas Users
 
    * - Pandas DataFrame API
      - Ray Datasets API
-   * - pandas.DataFrame.head()
+   * - df.head()
      - :meth:`ds.show() <ray.data.Dataset.show>` or :meth:`ds.take() <ray.data.Dataset.take>`
-   * - pandas.DataFrame.dtypes
+   * - df.dtypes
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
    * - len(df) or df.shape[0]
      - :meth:`ds.count() <ray.data.Dataset.count>`
-   * - pandas.DataFrame.truncate()
+   * - df.truncate()
      - :meth:`ds.limit() <ray.data.Dataset.limit>`
-   * - pandas.DataFrame.iterrows()
-     - :meth:`ds.iterrows() <ray.data.Dataset.iter_rows>`
-   * - pandas.DataFrame.drop()
+   * - df.iterrows()
+     - :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>`
+   * - df.drop()
      - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
-   * - pandas.DataFrame.transform()
+   * - df.transform()
      - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` or :meth:`ds.map() <ray.data.Dataset.map>`
-   * - pandas.DataFrame.groupby()
+   * - df.groupby()
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
-   * - pandas.DataFrame.groupby().apply()
+   * - df.groupby().apply()
      - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedDataset.map_groups>`
-   * - pandas.DataFrame.sample()
+   * - df.sample()
      - :meth:`ds.random_sample() <ray.data.Dataset.random_sample>`
-   * - pandas.DataFrame.sort_values()
+   * - df.sort_values()
      - :meth:`ds.sort() <ray.data.Dataset.sort>`
-   * - pandas.DataFrame.append()
+   * - df.append()
      - :meth:`ds.union() <ray.data.Dataset.union>`
-   * - pandas.DataFrame.aggregate()
+   * - df.aggregate()
      - :meth:`ds.aggregate() <ray.data.Dataset.aggregate>`
-   * - pandas.DataFrame.min()
+   * - df.min()
      - :meth:`ds.min() <ray.data.Dataset.min>`
-   * - pandas.DataFrame.max()
+   * - df.max()
      - :meth:`ds.max() <ray.data.Dataset.max>`
-   * - pandas.DataFrame.sum()
+   * - df.sum()
      - :meth:`ds.sum() <ray.data.Dataset.sum>`
-   * - pandas.DataFrame.mean()
+   * - df.mean()
      - :meth:`ds.mean() <ray.data.Dataset.mean>`
-   * - pandas.DataFrame.std()
+   * - df.std()
      - :meth:`ds.std() <ray.data.Dataset.std>`
 
 .. _api-guide-for-pyarrow-users:
@@ -72,17 +72,17 @@ For PyArrow Users
 
    * - PyArrow Table API
      - Ray Datasets API
-   * - pyarrow.Table.schema
+   * - pa.Table.schema
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
-   * - pyarrow.Table.num_rows
+   * - pa.Table.num_rows
      - :meth:`ds.count() <ray.data.Dataset.count>`
-   * - pyarrow.Table.filter()
+   * - pa.Table.filter()
      - :meth:`ds.filter() <ray.data.Dataset.filter>`
-   * - pyarrow.Table.drop()
+   * - pa.Table.drop()
      - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
-   * - pyarrow.Table.add_column()
+   * - pa.Table.add_column()
      - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
-   * - pyarrow.Table.groupby()
+   * - pa.Table.groupby()
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
-   * - pyarrow.Table.sort_by()
+   * - pa.Table.sort_by()
      - :meth:`ds.sort() <ray.data.Dataset.sort>`
