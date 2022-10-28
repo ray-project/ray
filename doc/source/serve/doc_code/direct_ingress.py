@@ -84,6 +84,7 @@ async def main():
     print(struct.unpack("f", resp.prediction))
 
 
+# for python>=3.7, please use asyncio.run(main())
 asyncio.get_event_loop().run_until_complete(main())
 
 # __end_client__
