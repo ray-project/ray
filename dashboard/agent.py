@@ -257,7 +257,7 @@ class DashboardAgent:
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:
