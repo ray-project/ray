@@ -4,7 +4,6 @@ import time
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     SignalActor,
     generate_system_config_map,
@@ -78,9 +77,7 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD
-    )
+    monitor = Monitor(address, None)
     return monitor
 
 
