@@ -28,7 +28,7 @@ updates:
       prefix: "[air/do-not-merge]"
       include: "scope"
     ignore: *
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 0
     reviewers:
       - "ray-project/ray-tune"
   # Data Requirements.
