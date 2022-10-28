@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <afunix.h>
 #else
 #include <sys/un.h>
@@ -28,9 +30,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
-#endif
 #include <boost/asio/ip/tcp.hpp>
 
 #include "ray/util/filesystem.h"
