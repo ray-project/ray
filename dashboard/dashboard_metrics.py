@@ -67,15 +67,11 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
-            # For the below metrics, we intentionally not
-            # specify unit so that these metrics will be
-            # shared with metrics reported from
-            # reporter_agent.py
             self.metrics_dashboard_cpu = Gauge(
                 "component_cpu",
                 "Dashboard CPU percentage usage.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="",
+                unit="percentage",
                 namespace="ray",
                 registry=self.registry,
             )
@@ -83,7 +79,7 @@ try:
                 "component_rss",
                 "Dashboard RSS usage.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="",
+                unit="mb",
                 namespace="ray",
                 registry=self.registry,
             )

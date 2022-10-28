@@ -1,4 +1,3 @@
-import sys
 import json
 import os
 import pathlib
@@ -114,8 +113,8 @@ _AUTOSCALER_METRICS = [
 _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_duration_seconds",
     "ray_dashboard_api_requests_count",
-    "ray_component_cpu",
-    "ray_component_rss",
+    "ray_component_cpu_percentage",
+    "ray_component_rss_mb",
 ]
 
 _NODE_METRICS = [
@@ -142,18 +141,10 @@ _NODE_METRICS = [
 ]
 
 _NODE_COMPONENT_METRICS = [
-    "ray_component_cpu",
-    "ray_component_rss",
-    "ray_component_uss",
+    "ray_component_cpu_percentage",
+    "ray_component_rss_mb",
+    "ray_component_uss_mb",
 ]
-
-if sys.platform == "linux":
-    # Below metrics are only available in Linux.
-    _NODE_COMPONENT_METRICS += [
-        "ray_component_pss",
-        "ray_component_shm",
-        "ray_component_swap",
-    ]
 
 
 @pytest.fixture

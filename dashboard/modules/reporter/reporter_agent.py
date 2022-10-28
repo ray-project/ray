@@ -210,39 +210,21 @@ METRICS_GAUGES = {
         "bytes/sec",
         ["ip", "SessionName"],
     ),
-    "component_cpu": Gauge(
-        "component_cpu",
+    "component_cpu_percentage": Gauge(
+        "component_cpu_percentage",
         "Total CPU usage of the components on a node.",
         "percentage",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_rss": Gauge(
-        "component_rss",
+    "component_rss_mb": Gauge(
+        "component_rss_mb",
         "RSS usage of all components on the node.",
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_shm": Gauge(
-        "component_shm",
-        "SHM usage of all components on the node. Only available on Linux.",
-        "MB",
-        COMPONENT_METRICS_TAG_KEYS,
-    ),
-    "component_uss": Gauge(
-        "component_uss",
-        "USS usage of all components on the node. Only available on Linux",
-        "MB",
-        COMPONENT_METRICS_TAG_KEYS,
-    ),
-    "component_pss": Gauge(
-        "component_pss",
-        "PSS usage of all components on the node. Only available on Linux",
-        "MB",
-        COMPONENT_METRICS_TAG_KEYS,
-    ),
-    "component_swap": Gauge(
-        "component_swap",
-        "Swap usage of all components on the node. Only available on Linux",
+    "component_uss_mb": Gauge(
+        "component_uss_mb",
+        "USS usage of all components on the node.",
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
@@ -807,20 +789,13 @@ class ReporterAgent(
             records = []
             total_cpu_percentage = 0.0
             total_rss = 0.0
-            total_shm = 0.0
             total_uss = 0.0
-            total_pss = 0.0
-            total_swap = 0.0
             for stat in stats:
                 total_cpu_percentage += float(stat["cpu_percent"]) * 100.0
                 total_rss += float(stat["memory_info"].rss) / 1.0e6
                 mem_full_info = stat.get("memory_full_info")
                 if mem_full_info is not None:
                     total_uss += float(mem_full_info.uss) / 1.0e6
-                    if sys.platform == "linux":
-                        total_pss += float(mem_full_info.pss) / 1.0e6
-                        total_shm += float(stat["memory_info"].shared) / 1.0e6
-                        total_swap += float(mem_full_info.swap) / 1.0e6
 
             tags = {"ip": ip, "Component": component_name}
             if pid:
@@ -828,47 +803,23 @@ class ReporterAgent(
 
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_cpu"],
+                    gauge=METRICS_GAUGES["component_cpu_percentage"],
                     value=total_cpu_percentage,
                     tags=tags,
                 )
             )
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_rss"],
+                    gauge=METRICS_GAUGES["component_rss_mb"],
                     value=total_rss,
                     tags=tags,
                 )
             )
-            if total_shm > 0.0:
-                records.append(
-                    Record(
-                        gauge=METRICS_GAUGES["component_shm"],
-                        value=total_shm,
-                        tags=tags,
-                    )
-                )
             if total_uss > 0.0:
                 records.append(
                     Record(
-                        gauge=METRICS_GAUGES["component_uss"],
+                        gauge=METRICS_GAUGES["component_uss_mb"],
                         value=total_uss,
-                        tags=tags,
-                    )
-                )
-            if total_pss > 0.0:
-                records.append(
-                    Record(
-                        gauge=METRICS_GAUGES["component_pss"],
-                        value=total_pss,
-                        tags=tags,
-                    )
-                )
-            if total_swap > 0.0:
-                records.append(
-                    Record(
-                        gauge=METRICS_GAUGES["component_swap"],
-                        value=total_swap,
                         tags=tags,
                     )
                 )
