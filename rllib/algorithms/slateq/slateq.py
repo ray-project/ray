@@ -35,8 +35,8 @@ class SlateQConfig(AlgorithmConfig):
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
@@ -112,7 +112,6 @@ class SlateQConfig(AlgorithmConfig):
         }
         # Switch to greedy actions in evaluation workers.
         self.evaluation_config = {"explore": False}
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
@@ -120,6 +119,8 @@ class SlateQConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation(evaluation_config={"explore": False})
         # __sphinx_doc_end__
         # fmt: on
 

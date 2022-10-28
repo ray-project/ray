@@ -25,8 +25,8 @@ tf1, tf, tfv = try_import_tf()
 # >> x.numpy()
 # 0.0
 
-# RLlib will automatically enable eager mode, if you specify your "framework"
-# config key to be either "tfe" or "tf2".
+# RLlib will automatically enable eager mode, if you set
+# AlgorithmConfig.framework("tf2", eager_tracing=False).
 # If you would like to remain in tf static-graph mode, but still use tf2.x's
 # new APIs (some of which are not supported by tf1.x), specify your "framework"
 # as "tf" and check for the version (tfv) to be 2:
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
