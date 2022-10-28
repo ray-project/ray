@@ -121,7 +121,8 @@ Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
 Customize prometheus export port
 --------------------------------
 
-It's also possible to customize the port that metrics gets exposed through `ray start`.
+Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
+To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.
 
 .. code-block:: bash
 
