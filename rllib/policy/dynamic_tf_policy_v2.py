@@ -474,12 +474,12 @@ class DynamicTFPolicyV2(TFPolicy):
             )
         else:
             # Placeholder for (sampling steps) timestep (int).
-            if not hasattr(self, "timestep_placeholder"):
+            if not hasattr(self, "timestep"):
                 self.timestep = tf1.placeholder_with_default(
                     tf.zeros((), dtype=tf.int64), (), name="timestep"
                 )
             # Placeholder for `is_exploring` flag.
-            if not hasattr(self, "explore_placeholder"):
+            if not hasattr(self, "timestep"):
                 self.explore = tf1.placeholder_with_default(
                     True, (), name="is_exploring"
                 )
