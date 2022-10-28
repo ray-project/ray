@@ -150,6 +150,7 @@ Status CreateRequestQueue::ProcessRequests() {
                         << dump;
         }
         FinishRequest(request_it);
+        return Status::OutOfDisk("System running out of disk.");
       }
     }
   }
