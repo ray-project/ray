@@ -91,7 +91,7 @@ ds.repartition(3).write_numpy("/tmp/multi_numpy")
 # fmt: on
 
 # fmt: off
-# __write_tfrecord_sbegin__
+# __write_tfrecords_begin__
 import ray
 
 ds = ray.data.from_items(
