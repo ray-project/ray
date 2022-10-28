@@ -3,6 +3,7 @@ import math
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -35,11 +36,12 @@ class A2CConfig(A3CConfig):
         >>> from ray import tune
         >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=2)
+        ...     .rollouts(num_rollout_workers=2)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> import ray.air as air
@@ -71,6 +73,7 @@ class A2CConfig(A3CConfig):
         self.microbatch_size = None
 
         # Override some of A3CConfig's default values with A2C-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10
@@ -107,8 +110,8 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A2CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A2CConfig()
 
     @override(A3C)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
