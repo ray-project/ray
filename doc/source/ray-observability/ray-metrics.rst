@@ -118,8 +118,8 @@ If you open this in the browser, you should see the following output:
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
 
-Customize prometheus export port.
---------------------------------------------------
+Customize prometheus export port
+--------------------------------
 
 It's also possible to customize the port that metrics gets exposed through `ray start`.
 
