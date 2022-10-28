@@ -3022,7 +3022,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker) const {
   std::stringstream not_retriable_recommendation_ss;
-  if (!worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+  if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
     if (worker->GetAssignedTask().GetTaskSpecification().IsNormalTask()) {
       not_retriable_recommendation_ss << "max_retries";
@@ -3082,7 +3082,8 @@ void NodeManager::ReportWorkerOOMKillStats() {
         << ", to see more information about the workers killed on this node, "
            "use `ray logs raylet.out "
            "-ip "
-        << initial_config_.node_manager_address << "`";
+        << initial_config_.node_manager_address << "`\n\n"
+        << CreateOomKillMessageSuggestions({});
   }
   number_workers_killed_by_oom_ = 0;
   number_workers_killed_ = 0;
