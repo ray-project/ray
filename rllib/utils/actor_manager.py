@@ -1,6 +1,6 @@
 from collections import defaultdict
 import logging
-from typing import Callable, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar
 
 import ray
 from ray.actor import ActorHandle
@@ -11,6 +11,49 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
+
+
+class ResultOrError:
+    """A wrapper around a result or an error.
+    
+    This is used to return data from FaultTolerantActorManager
+    that allows us to distinguish between error and actual results.
+
+    Users of this class should always use ResultOrError.Result() and
+    ResultOrError.Error() to construct instances of this class.
+    """
+    def __init__(self, result: Any = None, error: Exception = None):
+        assert (result is None) != (error is None), (
+            "Must provide one of, and only one of, result or error."
+        )
+        self.result = result
+        self.error = error
+        self.ok = (self.result is not None)
+
+    @classmethod
+    def Result(cls, result: Any):
+        return cls(result=result)
+
+    @classmethod
+    def Error(cls, error: Exception):
+        return cls(error=error)
+
+
+class CallResults:
+    def __init__(self):
+        self.result_or_errors = []
+
+    def add_result_or_error(self, actor_idx: int, result_or_error: ResultOrError):
+        self.result_or_errors.append((actor_idx, result_or_error))
+
+    def iter(self) -> Iterator[ResultOrError]:
+        for i, r in self.result_or_errors:
+            yield i, r
+
+    def ignore_errors(self) -> Iterator[ResultOrError]:
+        for i, r in self.result_or_errors:
+            if not r.ok: continue
+            yield i, r
 
 
 class FaultTolerantActorManager:
