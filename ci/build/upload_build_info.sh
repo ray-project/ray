@@ -36,6 +36,6 @@ if [[ -z "${BUILDKITE-}" ]]; then
 else
     # Codepath for Buildkite
     # Keep cryptography/openssl in sync with `requirements_test.txt`
-    pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
+    pip install -q docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
     python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
 fi
