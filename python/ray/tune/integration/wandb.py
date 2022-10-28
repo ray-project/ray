@@ -1,3 +1,4 @@
+# Deprecate: Remove whole file in 2.4
 from typing import List, Dict, Callable, Optional
 
 from ray.air.integrations.wandb import _setup_wandb
@@ -53,7 +54,7 @@ class WandbLoggerCallback(_WandbLoggerCallback):
 @Deprecated(
     message=(
         "The WandbTrainableMixin is deprecated. "
-        "Use `ray.air.intergations.wandb.setup_wandb` instead."
+        "Use `ray.air.integrations.wandb.setup_wandb` instead."
     )
 )
 def wandb_mixin(func: Callable):
@@ -135,7 +136,7 @@ def wandb_mixin(func: Callable):
 @Deprecated(
     message=(
         "The WandbTrainableMixin is deprecated. "
-        "Use `ray.air.intergations.wandb.setup_wandb` instead."
+        "Use `ray.air.integrations.wandb.setup_wandb` instead."
     )
 )
 class WandbTrainableMixin:
