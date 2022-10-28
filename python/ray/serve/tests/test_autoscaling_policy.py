@@ -930,7 +930,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
         )
         dead_actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "DEAD")]
         )
 
         return len(live_actors) == 2 and len(dead_actors) == 2
@@ -944,7 +944,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 def test_e2e_preserve_prev_replicas_rest_api(serve_instance):
     signal = SignalActor.options(name="signal", namespace="serve").remote()
 
-    # Step 1: Prepare the
+    # Step 1: Prepare the script in a zip file so it can be submitted via REST API.
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_path:
         with zipfile.ZipFile(tmp_path, "w") as zip_obj:
             with zip_obj.open("app.py", "w") as f:
@@ -965,6 +965,7 @@ app = f.bind()
 """.encode()
                 )
 
+    # Step 2: Deploy it with max_replicas=1
     payload = {
         "import_path": "app:app",
         "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
@@ -987,6 +988,7 @@ app = f.bind()
     client.deploy_application(payload)
     wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
 
+    # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
         return requests.get("http://localhost:8000/").text
@@ -1004,12 +1006,13 @@ app = f.bind()
     signal.send.remote()
     existing_pid = ray.get(ref)
 
+    # Step 4: Change the max replicas to 2
     payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
     client.deploy_application(payload)
     wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
     wait_for_condition(check_one_replicas, retry_interval_ms=1000, timeout=20)
 
-    # Make sure it is the same replica
+    # Step 5: Make sure it is the same replica (lightweight change).
     for _ in range(10):
         other_pid = ray.get(send_request.remote())
         assert other_pid == existing_pid
