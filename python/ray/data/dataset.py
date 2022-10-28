@@ -2013,15 +2013,15 @@ class Dataset(Generic[T]):
         Returns:
             A list of all the records in the dataset.
         """
-        if limit is not None:
-            raise ValueError(
-                'take_all() does not accept the "limit" argument any more. take_all() '
-                f"will take the entire dataset. Use take(limit={limit}) instead when "
-                "you want to set a limit."
-            )
         output = []
         for row in self.iter_rows():
             output.append(row)
+            if limit is not None and len(output) > limit:
+                raise ValueError(
+                    "The dataset has more than the given limit of {} records.".format(
+                        limit
+                    )
+                )
         return output
 
     def show(self, limit: int = 20) -> None:
