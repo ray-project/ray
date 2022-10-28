@@ -224,6 +224,7 @@ parts:
               - file: rllib/rllib-offline
               - file: rllib/rllib-connector
               - file: rllib/rllib-dev
+              - file: rllib/rllib-cli
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 

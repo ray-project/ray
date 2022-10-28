@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-training-apis:
+
 Training APIs
 =============
 
@@ -70,6 +72,8 @@ and renders its behavior in the environment specified by ``--env``.
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
 For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
+.. _rllib-algo-configuration:
 
 Configuration
 -------------
