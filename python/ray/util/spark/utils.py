@@ -1,5 +1,4 @@
 import subprocess
-from urllib.parse import urlparse
 import os
 import sys
 import random
@@ -237,7 +236,7 @@ def _calc_mem_per_ray_worker(
 def _resolve_target_spark_tasks(calculated_limits):
     """
     Return the max value of a list of spark task total count calculations based on the
-    provided configuration arguments to `init_cluster`.
+    provided configuration arguments to `init_ray_cluster`.
     Args:
         calculated_limits: A list of calculated values wherein the highest value based on
             spark cluster worker instance sizes and user-specified ray cluster configuration is
@@ -264,11 +263,11 @@ def get_target_spark_tasks(
 
     if num_spark_tasks is not None:
         if num_spark_tasks == -1:
-            # num_spark_tasks=-1 represents using all available spark task slots
+            # num_worker_nodes=-1 represents using all available spark task slots
             num_spark_tasks = max_concurrent_tasks
         elif num_spark_tasks <= 0:
             raise ValueError(
-                "The value of 'num_spark_tasks' argument must be either a positive integer or -1."
+                "The value of 'num_worker_nodes' argument must be either a positive integer or -1."
             )
     else:
         calculated_tasks = [1]
@@ -383,18 +382,17 @@ def _port_acquisition_delay():
         mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
         file_ref = os.open(file, mode)
         locked_file_ref = None
-        lock_time = 10.0
-        start = current = time.time()
-        while current < start + lock_time:
+        # Allow for retrying getting a file lock a maximum number of seconds
+        max_lock_iter = 60 * 2
+        for _ in range(max_lock_iter):
             try:
-                fcntl.flock(file_ref, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(file_ref, fcntl.LOCK_EX)
             except (IOError, OSError):
                 pass
             else:
                 locked_file_ref = file_ref
                 break
             time.sleep(1.0)
-            current = time.time()
         if locked_file_ref is None:
             os.close(file_ref)
         return locked_file_ref
@@ -408,4 +406,6 @@ def _port_acquisition_delay():
         raise RuntimeError(
             "Failed to acquire lock for port assignment contention resolution."
         )
+    # Set a sleep while the file is locked to allow for port acquisition for each ray worker
+    time.sleep(10)
     release_lock(file_lock)

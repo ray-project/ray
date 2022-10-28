@@ -248,7 +248,6 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0",
         ],
-        "spark": ["pyspark >= 3.3.0"],
     }
 
     # Ray Serve depends on the Ray dashboard components.

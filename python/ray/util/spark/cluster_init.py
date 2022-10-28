@@ -6,8 +6,9 @@ import time
 import threading
 import logging
 import uuid
-
 from packaging.version import Version
+
+from ray.util.annotations import PublicAPI
 
 from .utils import (
     exec_cmd,
@@ -22,13 +23,13 @@ from .utils import (
     get_max_num_concurrent_tasks,
     get_target_spark_tasks,
     _HEAP_TO_SHARED_RATIO,
-    _resolve_target_spark_tasks, _port_acquisition_delay,
+    _port_acquisition_delay,
 )
 
 if not sys.platform.startswith("linux"):
     raise RuntimeError("Ray on spark ony supports linux system.")
 
-_logger = logging.getLogger("ray.spark")
+_logger = logging.getLogger("ray.util.spark")
 
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
 try:
@@ -41,7 +42,7 @@ except ImportError:
 
 
 def wait_ray_node_available(hostname, port, timeout, error_on_failure):
-    # Wait Ray head node spin up.
+    # Wait for the Ray head node to start.
     for _ in range(timeout):
         time.sleep(1)
         if check_port_open(hostname, port):
@@ -51,9 +52,10 @@ def wait_ray_node_available(hostname, port, timeout, error_on_failure):
         raise RuntimeError(error_on_failure)
 
 
+@PublicAPI(stability="alpha")
 class RayClusterOnSpark:
     """
-    This class is the type of instance returned by the `init_cluster` API.
+    This class is the type of instance returned by the `init_ray_cluster` API.
     Its main functionality is to:
     Connect to, disconnect from, and shutdown the Ray cluster running on Apache Spark.
     Serve as a Python context manager for the `RayClusterOnSpark` instance.
@@ -96,16 +98,18 @@ class RayClusterOnSpark:
                     [
                         node
                         for node in ray.nodes()
-                        if node["Alive"] and node["Resources"].get("CPU", 0) > 0
+                        if node["Alive"]
                     ]
                 )
-                if cur_alive_worker_count == self.num_ray_workers:
+                # The head node is included. If alive count is greater than worker count,
+                # the ray cluster is fully initialized
+                if cur_alive_worker_count > self.num_ray_workers:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
                     last_alive_worker_count = cur_alive_worker_count
                     last_progress_move_time = time.time()
-                    _logger.warning(
+                    _logger.info(
                         "Ray worker nodes are starting. Progress: "
                         f"({cur_alive_worker_count} / {self.num_ray_workers})"
                     )
@@ -136,7 +140,7 @@ class RayClusterOnSpark:
 
     def shutdown(self):
         """
-        Shutdown the ray cluster created by the `init_cluster` API.
+        Shutdown the ray cluster created by the `init_ray_cluster` API.
         """
         if not self.is_shutdown:
             if self.ray_context is not None:
@@ -172,8 +176,9 @@ def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
 
 
-def init_cluster(
-    num_spark_tasks=None,
+@PublicAPI(stability="alpha")
+def init_ray_cluster(
+    num_worker_nodes=None,
     total_cpus=None,
     total_gpus=None,
     total_heap_memory_bytes=None,
@@ -193,15 +198,16 @@ def init_cluster(
     that will run on the Spark cluster's worker nodes.
     The returned instance can be used to connect to, disconnect from and shutdown the ray cluster.
     This instance can also be used as a context manager (used by encapsulating operations within
-    `with init_cluster(...):`). Upon entering the managed scope, the ray cluster is initiated
+    `with init_ray_cluster(...):`). Upon entering the managed scope, the ray cluster is initiated
     and connected to. When exiting the scope, the ray cluster is disconnected and shut down.
 
     Args
-        num_spark_tasks: The number of spark tasks that the spark job will create.
-            This argument represents how many concurrent spark tasks will be used to create the
-            ray cluster. The ray cluster's total available resources (memory, CPU and/or GPU)
+        num_worker_nodes: The number of spark worker nodes that the spark job will be submitted to.
+            This argument represents how many concurrent spark tasks will be available in the
+            creation of the ray cluster. The ray cluster's total available resources
+            (memory, CPU and/or GPU)
             is equal to the quantity of resources allocated within these spark tasks.
-            Specifying the `num_spark_tasks` as `-1` represents a ray cluster configuration that
+            Specifying the `num_worker_nodes` as `-1` represents a ray cluster configuration that
             will use all available spark tasks slots (and resources allocated to the spark
             application) on the spark cluster.
             To create a spark cluster that is intended to be used exclusively as a shared ray
@@ -223,7 +229,7 @@ def init_cluster(
             will create a subdirectory "ray-logs-{head_port}_{random_suffix}" beneath this path.
         safe_mode: Boolean flag to fast-fail initialization of the ray cluster if the available
             spark cluster does not have sufficient resources to fulfill the resource allocation
-            for both memory and (cpu or gpu). When set to true, if the requested resources are
+            for memory, cpu and gpu. When set to true, if the requested resources are
             not available for minimum recommended functionality, an exception will be raised that
             details the inadequate spark cluster configuration settings. If overridden as `False`,
             a warning is raised.
@@ -233,7 +239,7 @@ def init_cluster(
     head_options = head_options or {}
     worker_options = worker_options or {}
 
-    num_spark_tasks_specified = num_spark_tasks is not None
+    num_worker_nodes_specified = num_worker_nodes is not None
     total_resources_req_specified = (
         total_cpus is not None
         or total_gpus is not None
@@ -241,11 +247,11 @@ def init_cluster(
         or total_object_store_memory_bytes is not None
     )
 
-    if (num_spark_tasks_specified and total_resources_req_specified) or (
-        not num_spark_tasks_specified and not total_resources_req_specified
+    if (num_worker_nodes_specified and total_resources_req_specified) or (
+        not num_worker_nodes_specified and not total_resources_req_specified
     ):
         raise ValueError(
-            "You should specify either 'num_spark_tasks' argument or an argument group of "
+            "You should specify either 'num_worker_nodes' argument or an argument group of "
             "'total_cpus', 'total_gpus', 'total_heap_memory_bytes' and "
             "'total_object_store_memory_bytes'."
         )
@@ -275,13 +281,13 @@ def init_cluster(
 
     max_concurrent_tasks = get_max_num_concurrent_tasks(spark.sparkContext)
 
-    num_spark_tasks = get_target_spark_tasks(
+    num_worker_nodes = get_target_spark_tasks(
         max_concurrent_tasks,
         num_spark_task_cpus,
         num_spark_task_gpus,
         ray_worker_heap_mem_bytes,
         ray_worker_object_store_mem_bytes,
-        num_spark_tasks,
+        num_worker_nodes,
         total_cpus,
         total_gpus,
         total_heap_memory_bytes,
@@ -309,7 +315,7 @@ def init_cluster(
             "memory size is calculated by (SPARK_WORKER_NODE_PHYSICAL_MEMORY - SHARED_MEMORY) / "
             "num_local_spark_task_slots * 0.8. To increase the heap space available, "
             "increase the memory in the spark cluster by changing instance types or worker count, "
-            "reduce the target `num_spark_tasks`, or apply a lower "
+            "reduce the target `num_worker_nodes`, or apply a lower "
             "`heap_to_object_store_memory_ratio`."
         )
     if insufficient_resources:
@@ -359,10 +365,13 @@ def init_cluster(
         "--disable-usage-stats",
         f"--port={ray_head_port}",
         "--include-dashboard=false",
-        f"--num-cpus=0",  # disallow ray tasks scheduled to ray head node.
-        # limit the memory usage of head node because no task running on it.
+        # disallow ray tasks with cpu requirements from being scheduled on the head node.
+        f"--num-cpus=0",
+        # limit the memory allocation to the head node (actual usage may increase beyond this
+        # for processing of tasks and actors).
         f"--memory={128 * 1024 * 1024}",
-        # limit the object store memory usage of head node because no task running on it.
+        # limit the object store memory allocation to the head node (actual usage may increase
+        # beyond this for processing of tasks and actors).
         f"--object-store-memory={128 * 1024 * 1024}",
         *_convert_ray_node_options(head_options),
     ]
@@ -415,7 +424,7 @@ def init_cluster(
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
 
-        _worker_logger = logging.getLogger("ray.spark.worker")
+        _worker_logger = logging.getLogger("ray.util.spark.worker")
 
         context = TaskContext.get()
         task_id = context.partitionId()
@@ -424,8 +433,9 @@ def init_cluster(
         #  it might cause Raylet to have a port conflict, likely due to a race condition.
         #  A sleep is added here to attempt to avoid resource allocation contention with available
         #  ports.
-        if sys.platform.startswith("linux"):
-            _port_acquisition_delay()
+        port_acquisition_thread = threading.Thread(
+            target=_port_acquisition_delay, args=[]
+        )
 
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
@@ -505,22 +515,49 @@ def init_cluster(
 
         _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
+        def _worker_exec_cmd(
+            cmd,
+            synchronous,
+            capture_output,
+            stream_output,
+            extra_env,
+            preexec_fn,
+            stdout,
+            stderr,
+        ):
+            exec_cmd(
+                cmd,
+                synchronous=synchronous,
+                capture_output=capture_output,
+                stream_output=stream_output,
+                extra_env=extra_env,
+                preexec_fn=preexec_fn,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
         # TODO: write to NFS mount
         with open(
             os.path.join(ray_log_dir, f"ray-start-worker-{task_id}.log"),
             "w",
             buffering=1,
         ) as worker_log_fp:
-            exec_cmd(
-                ray_worker_cmd,
-                synchronous=True,
-                capture_output=False,
-                stream_output=False,
-                extra_env=ray_worker_extra_envs,
-                preexec_fn=setup_sigterm_on_parent_death,
-                stdout=worker_log_fp,
-                stderr=subprocess.STDOUT,
+            worker_thread = threading.Thread(
+                target=_worker_exec_cmd,
+                args=(
+                    ray_worker_cmd,
+                    True,
+                    False,
+                    False,
+                    ray_worker_extra_envs,
+                    setup_sigterm_on_parent_death,
+                    worker_log_fp,
+                    subprocess.STDOUT,
+                ),
             )
+            port_acquisition_thread.start()
+            worker_thread.start()
+            port_acquisition_thread.join(timeout=60 * 4)
 
         # Delete the worker temp and log directories at the conclusion of running the
         # submitted task.
@@ -538,7 +575,7 @@ def init_cluster(
         address=f"{ray_head_hostname}:{ray_head_port}",
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
-        num_ray_workers=num_spark_tasks,
+        num_ray_workers=num_worker_nodes,
     )
 
     def backgroud_job_thread_fn():
@@ -550,7 +587,7 @@ def init_cluster(
                 f"{ray_head_hostname}:{ray_head_port}",
             )
             spark.sparkContext.parallelize(
-                list(range(num_spark_tasks)), num_spark_tasks
+                list(range(num_worker_nodes)), num_worker_nodes
             ).mapPartitions(ray_cluster_job_mapper).collect()
         finally:
             # NB:

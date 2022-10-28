@@ -2,11 +2,11 @@ from unittest.mock import patch
 import os
 
 import pytest
-from ray.spark import (
+from ray.util.spark.utils import (
     get_spark_task_assigned_physical_gpus,
+    _calc_mem_per_ray_worker,
+    get_target_spark_tasks,
 )
-
-from ray.spark.utils import _calc_mem_per_ray_worker, get_target_spark_tasks
 
 
 def test_get_spark_task_assigned_physical_gpus():
@@ -76,7 +76,7 @@ def test_target_spark_tasks():
     assert gpu_defined_task_count == 20
 
     # Invalid configuration raises
-    with pytest.raises(ValueError, match="The value of `num_spark_tasks argument"):
+    with pytest.raises(ValueError, match="The value of `num_worker_nodes` argument"):
         get_target_spark_tasks(
             max_concurrent_tasks=400,
             num_spark_task_cpus=None,

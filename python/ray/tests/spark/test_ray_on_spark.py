@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import ray
 
-from ray import spark as ray_spark
-from ray.spark import check_port_open
+from ray.util.spark import init_ray_cluster, RayClusterOnSpark
+from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
 import functools
@@ -38,14 +38,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_cpu_allocation(self):
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks):
+            with init_ray_cluster(num_spark_tasks=num_spark_tasks):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
                     assert worker_res['CPU'] == self.num_cpus_per_spark_task
 
     def test_basic_ray_app(self):
-        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+        with init_ray_cluster(num_spark_tasks=self.max_spark_tasks):
             @ray.remote
             def f(x):
                 return x * x
@@ -55,14 +55,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert results == [i * i for i in range(32)]
 
     def test_ray_cluster_shutdown(self):
-        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+        with init_ray_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
             def fake_shutdown(_):
                 pass
 
-            with patch.object(ray_spark.RayClusterOnSpark, "shutdown", fake_shutdown):
+            with patch.object(RayClusterOnSpark, "shutdown", fake_shutdown):
                 cluster._cancel_background_spark_job()
                 time.sleep(20)
 
@@ -74,7 +74,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not check_port_open(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+        with init_ray_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
             cluster._cancel_background_spark_job()
             time.sleep(5)
 
@@ -91,7 +91,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     def test_gpu_allocation(self):
 
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks) as cluster:
+            with init_ray_cluster(num_spark_tasks=num_spark_tasks):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
@@ -99,7 +99,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
     def test_basic_ray_app_using_gpu(self):
 
-        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+        with init_ray_cluster(num_spark_tasks=self.max_spark_tasks):
 
             @ray.remote(num_cpus=1, num_gpus=1)
             def f(_):
