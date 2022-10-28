@@ -611,7 +611,7 @@
   team: core
   cluster:
     cluster_env: app_config_oom.yaml
-    cluster_compute: compute_cpu_16.yaml
+    cluster_compute: compute_cpu_2x8.yaml
 
   run:
     timeout: 3600
