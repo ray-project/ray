@@ -15,14 +15,18 @@ class RayLogger(LoggerDestination):
     This logger allows utilizing all necessary logging and logged data handling provided
     by the Composer library. All the logged information is saved in the data dictionary
     every time a new information is logged, but to reduce unnecessary reporting, the
-    most up-to-date logged information is reported as metrics every batch checkpoint and
-    epoch checkpoint (see Composer's Event module for more details).
+    most up-to-date logged information is reported as metrics every epoch checkpoint
+    (see Composer's Event module for more details). Along with the metrics, model
+    weights are reported with Ray``Checkpoint``. The model weights saved in each
+    checkpoint has already removed the ``module`` wrapper added by Composer models and
+    Ray distributed training. As such the checkpointed weights can be directly loaded
+    via PyTorch ``load_state_dict`` call.
 
     Because ray's metric dataframe will not include new keys that is reported after the
     very first report call, any logged information with the keys not included in the
-    first batch checkpoint would not be retrievable after training. In other words, if
-    the log level is greater than `LogLevel.BATCH` for some data, they would not be
-    present in `Result.metrics_dataframe`. To allow preserving those information, the
+    first epoch checkpoint would not be retrievable after training. In other words, if
+    the log level is greater than `LogLevel.EPOCH` for some data, they would not be
+    present in `Result.metrics_dataframe`. To allow preserving such information, the
     user can provide keys to be always included in the reported data by using `keys`
     argument in the constructor. For `MosaicTrainer`, use
     `trainer_init_config['log_keys']` to populate these keys.

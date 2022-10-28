@@ -102,7 +102,13 @@ class MosaicTrainer(TorchTrainer):
         ...     scaling_config=scaling_config,
         ... ) # doctest: +SKIP
         ...
-        >>> trainer.fit() # doctest: +SKIP
+        >>> result = trainer.fit() #doctest: +SKIP
+        >>> model = torchvision.models.resnet18(num_classes=10) #doctest: +SKIP
+        >>> # load checkpointed model weights
+        >>> model.load_state_dict(
+        ...     result.checkpoint.to_dict()["model"],
+        ...     strict=True
+        ... ) #doctest: +SKIP
 
 
     Args:
