@@ -299,6 +299,45 @@ def test_monitor_callbacks(ray_start_4_cpus):
         )
 
 
+def test_checkpoint_model(ray_start_4_cpus):
+    from ray.train.mosaic import MosaicTrainer
+
+    model = torchvision.models.resnet18(num_classes=10)
+
+    trainer_init_config = {
+        "model": model,
+        "max_duration": "5ep",
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    # load checkpointed model weights
+    model.load_state_dict(result.checkpoint.to_dict()["model"], strict=True)
+
+    trainer_init_config = {
+        "model": model,
+        "max_duration": "1ep",
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result2 = trainer.fit()
+
+    # Accuracy should increase after one additional epoch of training
+    acc_key = "metrics/train/Accuracy"
+    assert result.metrics[acc_key] <= result2.metrics[acc_key]
+
+
 if __name__ == "__main__":
     import sys
 
