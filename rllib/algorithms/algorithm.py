@@ -119,6 +119,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -2700,8 +2701,20 @@ class Algorithm(Trainable):
                 for pid, filter in worker_state["filters"].items()
                 if pid in policy_ids
             }
+
+            # Compile actual config object.
+            algo_cls = state["algorithm_class"]
+            if isinstance(algo_cls, str):
+                algo_cls = get_trainable_cls(algo_cls)
+            default_config = algo_cls.get_default_config()
+            if isinstance(default_config, AlgorithmConfig):
+                new_config = default_config.update_from_dict(state["config"])
+            else:
+                new_config = Algorithm.merge_trainer_configs(
+                    default_config, state["config"]
+                )
+
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            new_config = AlgorithmConfig.from_dict(state["config"])
             new_policies = new_config.policies
             if isinstance(new_policies, (set, list, tuple)):
                 new_policies = {pid for pid in new_policies if pid in policy_ids}

@@ -404,7 +404,10 @@ class AlgorithmConfig:
             elif key == "exploration_config":
                 self.exploration(exploration_config=value)
             elif key in ["model", "optimizer", "replay_buffer_config"]:
-                self.training(**{key: value})
+                try:
+                    self.training(**{key: value})
+                except Exception as e:
+                    raise e  # TODO
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(

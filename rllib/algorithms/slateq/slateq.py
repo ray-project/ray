@@ -184,7 +184,7 @@ class SlateQConfig(AlgorithmConfig):
         super().training(**kwargs)
 
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            self.replay_buffer_config.update(replay_buffer_config)
         if fcnet_hiddens_per_candidate is not None:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
         if target_network_update_freq is not None:
