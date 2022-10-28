@@ -19,11 +19,13 @@ from ray.tune.integration.wandb import (
 from ray.air.callbacks.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
+    _QueueItem,
+)
+from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
-    _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
