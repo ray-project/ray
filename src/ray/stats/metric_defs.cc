@@ -47,6 +47,20 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+/// Tracks actors by state, including pending, running, and idle actors.
+///
+/// To avoid metric collection conflicts between components reporting on the same task,
+/// we use the "Source" required label.
+DEFINE_stats(actors,
+             "Current number of actors currently in a particular state.",
+             // State: the actor state, which is from rpc::ActorTableData::ActorState,
+             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // Name: the name of actor class.
+             // Source: component reporting, e.g., "gcs" or "executor".
+             ("State", "Name", "Source"),
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
@@ -217,17 +231,19 @@ DEFINE_stats(gcs_storage_operation_count,
 DEFINE_stats(object_store_memory,
              "Object store memory by various sub-kinds on this node",
              /// Location:
-             ///    TODO(rickyx): spill fallback from in memory
-             ///    - IN_MEMORY: currently in shared memory(e.g. /dev/shm) and
-             ///      fallback allocated. This is memory already sealed.
+             ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
+             ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
+             ///      e.g. /tmp.
              ///    - SPILLED: current number of bytes from objects spilled
              ///      to external storage. Note this might be smaller than
              ///      the physical storage incurred on the external storage because
              ///      Ray might fuse spilled objects into a single file, so a deleted
              ///      spill object might still exist in the spilled file. Check
              ///      spilled object fusing for more details.
-             ///    - UNSEALED: unsealed bytes that come from objects just created.
-             ("Location"),
+             /// ObjectState:
+             ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+             ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+             (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
              (),
              ray::stats::GAUGE);
 

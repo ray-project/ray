@@ -103,7 +103,7 @@ class MADDPGConfig(AlgorithmConfig):
         # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
-        self.num_workers = 1
+        self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
         # fmt: on
         # __sphinx_doc_end__

@@ -60,9 +60,9 @@ CUDA_FULL = {
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
-# image being used in ~/.buildkite/Dockerfile.gpu to match the same image being used
+# image being used in ~/ci/docker/Dockerfile.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu112"
+ML_CUDA_VERSION = "cu116"
 
 DEFAULT_PYTHON_VERSION = "py37"
 
@@ -361,11 +361,15 @@ def prep_ray_ml():
     ml_requirements_files = [
         "python/requirements/ml/requirements_ml_docker.txt",
         "python/requirements/ml/requirements_dl.txt",
-        "python/requirements/ml/requirements_py36_compat.txt",
         "python/requirements/ml/requirements_tune.txt",
         "python/requirements/ml/requirements_rllib.txt",
         "python/requirements/ml/requirements_train.txt",
         "python/requirements/ml/requirements_upstream.txt",
+    ]
+    # We don't need these in the ml docker image
+    ignore_requirements = [
+        "python/requirements/ml/requirements_legacy_compat.txt",
+        "python/requirements/ml/requirements_py36_compat.txt",
     ]
 
     files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
@@ -374,7 +378,7 @@ def prep_ray_ml():
         print(rel)
         if not rel.startswith("python/requirements/ml"):
             continue
-        elif rel not in ml_requirements_files:
+        elif rel not in ml_requirements_files and rel not in ignore_requirements:
             raise RuntimeError(
                 f"A new requirements file was found in the repository, but it has "
                 f"not been added to `build-docker-images.py` "

@@ -22,15 +22,27 @@ _SYSTEM_CONFIG = {
 }
 
 
-def objects_by_loc(info: RayContext) -> Dict:
+def _objects_by_tag(info: RayContext, tag: str) -> Dict:
     res = raw_metrics(info)
     objects_info = defaultdict(int)
     if "ray_object_store_memory" in res:
         for sample in res["ray_object_store_memory"]:
-            objects_info[sample.labels["Location"]] += sample.value
+            # NOTE: SPILLED sample doesn't report sealing states. So need to
+            # filter those empty label value out.
+            print(sample)
+            if tag in sample.labels and sample.labels[tag] != "":
+                objects_info[sample.labels[tag]] += sample.value
 
-    print(f"Objects by location: {objects_info}")
+    print(f"Objects by {tag}: {objects_info}")
     return objects_info
+
+
+def objects_by_seal_state(info: RayContext) -> Dict:
+    return _objects_by_tag(info, "ObjectState")
+
+
+def objects_by_loc(info: RayContext) -> Dict:
+    return _objects_by_tag(info, "Location")
 
 
 def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
@@ -61,9 +73,9 @@ def test_all_shared_memory(shutdown_only):
     )
 
     expected = {
-        "IN_MEMORY": 80 * MiB,
+        "MMAP_SHM": 80 * MiB,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -77,9 +89,9 @@ def test_all_shared_memory(shutdown_only):
     del objs_in_use
 
     expected = {
-        "IN_MEMORY": 0,
+        "MMAP_SHM": 0,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -108,9 +120,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     objs1 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
     expected = {
-        "IN_MEMORY": 100 * MiB,
+        "MMAP_SHM": 100 * MiB,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -124,9 +136,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     objs2 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
     expected = {
-        "IN_MEMORY": 100 * MiB,
+        "MMAP_SHM": 100 * MiB,
+        "MMAP_DISK": 0,
         "SPILLED": 100 * MiB,
-        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -138,9 +150,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     # Delete spilled objects
     del objs1
     expected = {
-        "IN_MEMORY": 100 * MiB,
+        "MMAP_SHM": 100 * MiB,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -152,9 +164,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     # Delete all
     del objs2
     expected = {
-        "IN_MEMORY": 0,
+        "MMAP_SHM": 0,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -166,7 +178,7 @@ def test_spilling(object_spilling_config, shutdown_only):
 
 @pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
 def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
-    """Test objects allocated in shared memory"""
+    """Test object store metric on raylet controlled by `metric_report_interval_ms`"""
     import time
 
     info = ray.init(
@@ -178,9 +190,9 @@ def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms)
     obj = ray.get(ray.put(np.zeros(20 * MiB, dtype=np.uint8)))
 
     expected = {
-        "IN_MEMORY": 20 * MiB,
+        "MMAP_SHM": 20 * MiB,
+        "MMAP_DISK": 0,
         "SPILLED": 0,
-        "UNSEALED": 0,
     }
     start = time.time()
     wait_for_condition(
@@ -195,6 +207,129 @@ def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms)
     assert (end - start) * 1000 > metric_report_interval_ms, "Reporting too quickly"
 
     del obj
+
+
+def test_fallback_memory(shutdown_only):
+    """Test some fallback allocated objects"""
+
+    expected_fallback = 6
+    expected_in_memory = 5
+    obj_size_mb = 20
+
+    # So expected_in_memory objects could fit in object store
+    delta_mb = 5
+    info = ray.init(
+        object_store_memory=expected_in_memory * obj_size_mb * MiB + delta_mb * MiB,
+        _system_config=_SYSTEM_CONFIG,
+    )
+    obj_refs = [
+        ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
+        for _ in range(expected_in_memory)
+    ]
+
+    # Getting and using the objects to prevent spilling
+    in_use_objs = [ray.get(obj) for obj in obj_refs]
+
+    # No fallback and spilling yet
+    expected = {
+        "MMAP_SHM": expected_in_memory * obj_size_mb * MiB,
+        "MMAP_DISK": 0,
+        "SPILLED": 0,
+    }
+
+    wait_for_condition(
+        # 2KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Fallback allocated and make them not spillable
+    obj_refs_fallback = []
+    in_use_objs_fallback = []
+    for _ in range(expected_fallback):
+        obj = ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
+        in_use_objs_fallback.append(ray.get(obj))
+        obj_refs_fallback.append(obj)
+
+        # NOTE(rickyx): I actually wasn't aware this reference would
+        # keep the reference count? Removing this line would cause
+        # a single object not deleted.
+        del obj
+
+    # Fallback allocated and still no spilling
+    expected = {
+        "MMAP_SHM": expected_in_memory * obj_size_mb * MiB,
+        "MMAP_DISK": expected_fallback * obj_size_mb * MiB,
+        "SPILLED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Free all of them
+    del in_use_objs
+    del obj_refs
+    del in_use_objs_fallback
+    del obj_refs_fallback
+
+    expected = {
+        "MMAP_SHM": 0,
+        "MMAP_DISK": 0,
+        "SPILLED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+
+def test_seal_memory(shutdown_only):
+    """Test objects sealed states reported correctly"""
+    import numpy as np
+
+    info = ray.init(
+        object_store_memory=100 * MiB,
+        _system_config=_SYSTEM_CONFIG,
+    )
+
+    # Allocate 80MiB data
+    objs_in_use = ray.get(
+        [ray.put(np.zeros(20 * MiB, dtype=np.uint8)) for _ in range(4)]
+    )
+
+    expected = {
+        "SEALED": 80 * MiB,
+        "UNSEALED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    del objs_in_use
+
+    expected = {
+        "SEALED": 0,
+        "UNSEALED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
 
 
 if __name__ == "__main__":

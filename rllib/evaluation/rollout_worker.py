@@ -164,7 +164,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+        ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
         ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
@@ -487,9 +487,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if (
             tf1
-            and (
-                config.framework_str in ["tf2", "tfe"] or config.enable_tf1_exec_eagerly
-            )
+            and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
             and not tf1.executing_eagerly()
@@ -667,7 +665,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ):
 
             devices = []
-            if self.config.framework_str in ["tf2", "tf", "tfe"]:
+            if self.config.framework_str in ["tf2", "tf"]:
                 devices = get_tf_gpu_devices()
             elif self.config.framework_str == "torch":
                 devices = list(range(torch.cuda.device_count()))
@@ -858,7 +856,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
             ...   config=AlgorithmConfig(), # doctest: +SKIP
             ... )
@@ -939,7 +937,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTFPolicy) # doctest: +SKIP
             >>> print(worker.sample_with_count()) # doctest: +SKIP
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
@@ -965,7 +963,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
@@ -1086,7 +1084,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
@@ -1159,7 +1157,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
