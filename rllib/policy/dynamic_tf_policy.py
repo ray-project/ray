@@ -250,8 +250,8 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup standard placeholders.
         if self._is_tower:
-            timestep = existing_inputs["timestep"]
-            explore = False
+            self.timestep = existing_inputs["timestep"]
+            self.explore = False
             self._input_dict, self._dummy_batch = self._get_input_dict_and_dummy_batch(
                 self.view_requirements, existing_inputs
             )
@@ -277,12 +277,13 @@ class DynamicTFPolicy(TFPolicy):
                     self._input_dict,
                     self._dummy_batch,
                 ) = self._get_input_dict_and_dummy_batch(self.view_requirements, {})
+
             # Placeholder for (sampling steps) timestep (int).
-            timestep = tf1.placeholder_with_default(
+            self.timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep"
             )
             # Placeholder for `is_exploring` flag.
-            explore = tf1.placeholder_with_default(True, (), name="is_exploring")
+            self.explore = tf1.placeholder_with_default(True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
@@ -308,7 +309,7 @@ class DynamicTFPolicy(TFPolicy):
                     seq_lens=self._seq_lens,
                     prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
                     prev_reward_batch=self._input_dict.get(SampleBatch.PREV_REWARDS),
-                    explore=explore,
+                    explore=self.explore,
                     is_training=self._input_dict.is_training,
                 )
                 if len(action_sampler_outputs) == 4:
@@ -340,8 +341,8 @@ class DynamicTFPolicy(TFPolicy):
                             input_dict=in_dict,
                             state_batches=self._state_inputs,
                             seq_lens=self._seq_lens,
-                            explore=explore,
-                            timestep=timestep,
+                            explore=self.explore,
+                            timestep=self.timestep,
                             is_training=in_dict.is_training,
                         )
                     # Trying the old way (to stay backward compatible).
@@ -363,7 +364,7 @@ class DynamicTFPolicy(TFPolicy):
                                 seq_lens=self._seq_lens,
                                 prev_action_batch=in_dict.get(SampleBatch.PREV_ACTIONS),
                                 prev_reward_batch=in_dict.get(SampleBatch.PREV_REWARDS),
-                                explore=explore,
+                                explore=self.explore,
                                 is_training=in_dict.is_training,
                             )
                         else:
@@ -386,7 +387,9 @@ class DynamicTFPolicy(TFPolicy):
                     sampled_action,
                     sampled_action_logp,
                 ) = self.exploration.get_exploration_action(
-                    action_distribution=action_dist, timestep=timestep, explore=explore
+                    action_distribution=action_dist,
+                    timestep=self.timestep,
+                    explore=self.explore,
                 )
 
         if dist_inputs is not None:
@@ -441,8 +444,8 @@ class DynamicTFPolicy(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
-            explore=explore,
-            timestep=timestep,
+            explore=self.explore,
+            timestep=self.timestep,
         )
 
         # Phase 2 init.

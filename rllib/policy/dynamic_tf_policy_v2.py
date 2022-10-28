@@ -130,8 +130,8 @@ class DynamicTFPolicyV2(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
-            explore=self.explore_placeholder,
-            timestep=self.timestep_placeholder,
+            explore=self.explore,
+            timestep=self.timestep,
         )
 
     @DeveloperAPI
@@ -464,8 +464,8 @@ class DynamicTFPolicyV2(TFPolicy):
         # Setup standard placeholders.
         if self._is_tower:
             assert existing_inputs is not None
-            self.timestep_placeholder = existing_inputs["timestep"]
-            self.explore_placeholder = False
+            self.timestep = existing_inputs["timestep"]
+            self.explore = False
             (
                 self._input_dict,
                 self._dummy_batch,
@@ -475,12 +475,12 @@ class DynamicTFPolicyV2(TFPolicy):
         else:
             # Placeholder for (sampling steps) timestep (int).
             if not hasattr(self, "timestep_placeholder"):
-                self.timestep_placeholder = tf1.placeholder_with_default(
+                self.timestep = tf1.placeholder_with_default(
                     tf.zeros((), dtype=tf.int64), (), name="timestep"
                 )
             # Placeholder for `is_exploring` flag.
             if not hasattr(self, "explore_placeholder"):
-                self.explore_placeholder = tf1.placeholder_with_default(
+                self.explore = tf1.placeholder_with_default(
                     True, (), name="is_exploring"
                 )
 
@@ -492,7 +492,7 @@ class DynamicTFPolicyV2(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
-        return self.timestep_placeholder, self.explore_placeholder
+        return self.timestep, self.explore
 
     def _create_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
@@ -585,7 +585,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     seq_lens=self._seq_lens,
                     prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
                     prev_reward_batch=self._input_dict.get(SampleBatch.PREV_REWARDS),
-                    explore=self.explore_placeholder,
+                    explore=self.explore,
                     is_training=self._input_dict.is_training,
                 )
             # Distribution generation is customized, e.g., DQN, DDPG.
@@ -603,8 +603,8 @@ class DynamicTFPolicyV2(TFPolicy):
                         obs_batch=in_dict[SampleBatch.OBS],
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
-                        explore=self.explore_placeholder,
-                        timestep=self.timestep_placeholder,
+                        explore=self.explore,
+                        timestep=self.timestep,
                         is_training=in_dict.is_training,
                     )
                 # Default distribution generation behavior:
@@ -625,8 +625,8 @@ class DynamicTFPolicyV2(TFPolicy):
                     sampled_action_logp,
                 ) = self.exploration.get_exploration_action(
                     action_distribution=action_dist,
-                    timestep=self.timestep_placeholder,
-                    explore=self.explore_placeholder,
+                    timestep=self.timestep,
+                    explore=self.explore,
                 )
 
         if dist_inputs is not None:

@@ -104,11 +104,13 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
             # Check optimizer state as well.
             optim_state = policy1.get_state().get("_optimizer_variables")
 
-            # Test if we can restore multiple times
             if use_object_store:
                 checkpoint = alg1.save_to_object()
             else:
                 checkpoint = alg1.save()
+
+            # Test if we can restore multiple times (at least twice, assuming failure
+            # would mainly stem from improperly reused variables)
             for num_restores in range(2):
                 # Sync the models
                 if use_object_store:
