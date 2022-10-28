@@ -167,18 +167,21 @@ def learn_test_multi_agent_plus_evaluate(algo):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
-        config = {
-            "num_gpus": 0,
-            "num_workers": 1,
-            "evaluation_config": {"explore": False},
-            "framework": fw,
-            "env": MultiAgentCartPole,
-            "multiagent": {
-                "policies": {"pol0", "pol1"},
-                "policy_mapping_fn": policy_fn,
-            },
-        }
+        config = (
+            algo.get_default_config()
+            .environment(MultiAgentCartPole)
+            .framework(fw)
+            .rollouts(num_rollout_workers=1)
+            .multi_agent(
+                policies={"pol0", "pol1"},
+                policy_mapping_fn=policy_fn,
+            )
+            .resources(num_gpus=0)
+            .evaluation(evaluation_config={"explore": False})
+        )
+
         stop = {"episode_reward_mean": 100.0}
+
         results = tune.Tuner(
             algo,
             param_space=config,

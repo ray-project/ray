@@ -6,6 +6,7 @@ import pytest
 
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.offline import IOContext
 from ray.rllib.offline.dataset_reader import (
     DatasetReader,
@@ -35,7 +36,10 @@ class TestDatasetReader(unittest.TestCase):
             {"input": "dataset", "input_config": input_config}
         )
 
-        ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
+        ioctx = IOContext(
+            config=AlgorithmConfig().training(train_batch_size=1200),
+            worker_index=0,
+        )
         reader = DatasetReader(dataset, ioctx)
         assert len(reader.next()) >= 1200
 
