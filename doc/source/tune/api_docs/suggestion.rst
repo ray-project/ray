@@ -214,7 +214,7 @@ Optuna (tune.search.optuna.OptunaSearch)
 SigOpt (tune.search.sigopt.SigOptSearch)
 ----------------------------------------
 
-You will need to use the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__
+You will need to use the `SigOpt experiment and space specification <https://docs.sigopt.com/ai-module-api-references/experiments>`__
 to specify your search space.
 
 .. autoclass:: ray.tune.search.sigopt.SigOptSearch

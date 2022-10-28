@@ -16,6 +16,7 @@ Dataset API
     ray.data.Dataset.filter
     ray.data.Dataset.add_column
     ray.data.Dataset.drop_columns
+    ray.data.Dataset.select_columns
     ray.data.Dataset.random_sample
     ray.data.Dataset.limit
 
@@ -104,6 +105,7 @@ Dataset API
 
     ray.data.Dataset.count
     ray.data.Dataset.schema
+    ray.data.Dataset.default_batch_format
     ray.data.Dataset.num_blocks
     ray.data.Dataset.size_bytes
     ray.data.Dataset.input_files
@@ -142,6 +144,8 @@ Basic Transformations
 .. automethod:: ray.data.Dataset.add_column
 
 .. automethod:: ray.data.Dataset.drop_columns
+
+.. automethod:: ray.data.Dataset.select_columns
 
 .. automethod:: ray.data.Dataset.random_sample
 
@@ -256,6 +260,8 @@ Inspecting Metadata
 
 .. automethod:: ray.data.Dataset.schema
 
+.. automethod:: ray.data.Dataset.default_batch_format
+
 .. automethod:: ray.data.Dataset.num_blocks
 
 .. automethod:: ray.data.Dataset.size_bytes
@@ -263,23 +269,23 @@ Inspecting Metadata
 .. automethod:: ray.data.Dataset.input_files
 
 .. automethod:: ray.data.Dataset.stats
-    
+
 .. automethod:: ray.data.Dataset.get_internal_block_refs
 
 Execution
 ---------
-    
+
 .. automethod:: ray.data.Dataset.fully_executed
-    
+
 .. automethod:: ray.data.Dataset.is_fully_executed
-    
+
 .. automethod:: ray.data.Dataset.lazy
 
 Serialization
 -------------
-    
+
 .. automethod:: ray.data.Dataset.has_serializable_lineage
-    
+
 .. automethod:: ray.data.Dataset.serialize_lineage
-    
+
 .. automethod:: ray.data.Dataset.deserialize_lineage

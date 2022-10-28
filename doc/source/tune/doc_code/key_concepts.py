@@ -5,7 +5,7 @@ from ray.air import session
 
 
 def objective(x, a, b):  # Define an objective function.
-    return a * (x ** 0.5) + b
+    return a * (x**0.5) + b
 
 
 def trainable(config):  # Pass a "config" dictionary into your trainable.
@@ -24,7 +24,7 @@ from ray import tune
 
 
 def objective(x, a, b):
-    return a * (x ** 2) + b
+    return a * (x**2) + b
 
 
 class Trainable(tune.Trainable):
@@ -73,15 +73,15 @@ tuner.fit()
 # __config_start__
 config = {
     "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
-    "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
+    "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to multiples of 0.2
     "loguniform": tune.loguniform(1e-4, 1e-1),  # Uniform float in log space
-    "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),  # Round to increments of 0.00005
+    "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),  # Round to multiples of 0.00005
     "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
-    "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
+    "qrandn": tune.qrandn(10, 2, 0.2),  # Round to multiples of 0.2
     "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
-    "qrandint": tune.qrandint(-21, 12, 3),  # Round to increments of 3 (includes 12)
+    "qrandint": tune.qrandint(-21, 12, 3),  # Round to multiples of 3 (includes 12)
     "lograndint": tune.lograndint(1, 10),  # Random integer in log space
-    "qlograndint": tune.qlograndint(1, 10, 2),  # Round to increments of 2
+    "qlograndint": tune.qlograndint(1, 10, 2),  # Round to multiples of 2
     "choice": tune.choice(["a", "b", "c"]),  # Choose one of these options uniformly
     "func": tune.sample_from(
         lambda spec: spec.config.uniform * 0.01

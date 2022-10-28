@@ -3,6 +3,7 @@ import platform
 import random
 import subprocess
 import sys
+import tempfile
 
 import numpy as np
 import pytest
@@ -10,6 +11,10 @@ import pytest
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
+from ray._private.external_storage import (
+    FileSystemStorage,
+    ExternalStorageRayStorageImpl,
+)
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -141,6 +146,39 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
     # After all, make sure all objects are deleted upon worker failures.
     wait_for_condition(lambda: is_dir_empty(temp_folder))
     assert_no_thrashing(address["address"])
+
+
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_delete_file_non_exists(shutdown_only, tmp_path):
+    ray.init(storage=str(tmp_path))
+
+    def create_spilled_files(num_files):
+        spilled_files = []
+        uris = []
+        for _ in range(3):
+            fd, path = tempfile.mkstemp()
+            with os.fdopen(fd, "w") as tmp:
+                tmp.write("stuff")
+            spilled_files.append(path)
+            uris.append((path + "?offset=0&size=10").encode("ascii"))
+        return spilled_files, uris
+
+    for storage in [
+        ExternalStorageRayStorageImpl("session"),
+        FileSystemStorage("/tmp"),
+    ]:
+        spilled_files, uris = create_spilled_files(3)
+        storage.delete_spilled_objects(uris)
+        for file in spilled_files:
+            assert not os.path.exists(file)
+
+        # delete should succeed even if some files doesn't exist.
+        spilled_files1, uris1 = create_spilled_files(3)
+        spilled_files += spilled_files1
+        uris += uris1
+        storage.delete_spilled_objects(uris)
+        for file in spilled_files:
+            assert not os.path.exists(file)
 
 
 @pytest.mark.skipif(

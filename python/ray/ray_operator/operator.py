@@ -109,7 +109,6 @@ class RayCluster:
         mtr = monitor.Monitor(
             address,
             autoscaling_config=self.config_path,
-            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
             prefix_cluster_info=True,
             stop_event=self.monitor_stop_event,
             retry_on_failure=False,

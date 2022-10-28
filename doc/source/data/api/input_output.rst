@@ -48,10 +48,21 @@ Text
 
 .. autofunction:: ray.data.read_text
 
+Images (experimental)
+---------------------
+
+.. autofunction:: ray.data.read_images
+
 Binary
 ------
 
 .. autofunction:: ray.data.read_binary_files
+
+TFRecords
+---------
+
+.. autofunction:: ray.data.read_tfrecords
+
 
 Pandas
 ------
@@ -128,6 +139,9 @@ HuggingFace
 
 .. autofunction:: ray.data.from_huggingface
 
+
+.. _data_source_api:
+
 Datasource API
 --------------
 
@@ -140,6 +154,9 @@ Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+.. autoclass:: ray.data.datasource.Reader
     :members:
 
 
@@ -155,7 +172,7 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
 
-.. autoclass:: ray.data.datasource.ImageFolderDatasource
+.. autoclass:: ray.data.datasource.ImageDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.JSONDatasource
@@ -176,13 +193,16 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
+.. autoclass:: ray.data.datasource.TFRecordDatasource
+    :members:
+
 Partitioning API
 ----------------
 
-.. autoclass:: ray.data.datasource.PartitionStyle
+.. autoclass:: ray.data.datasource.Partitioning
     :members:
 
-.. autoclass:: ray.data.datasource.PathPartitionScheme
+.. autoclass:: ray.data.datasource.PartitionStyle
     :members:
 
 .. autoclass:: ray.data.datasource.PathPartitionEncoder

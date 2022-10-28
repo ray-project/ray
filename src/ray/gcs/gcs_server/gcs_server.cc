@@ -111,7 +111,8 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
                             config_.redis_password,
-                            config_.enable_sharding_conn);
+                            config_.enable_sharding_conn,
+                            config_.enable_redis_ssl);
 }
 
 void GcsServer::Start() {
@@ -189,8 +190,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
+  global_gc_throttler_ =
+      std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
+
   periodical_runner_.RunFnPeriodically(
-      [this] { DumpDebugStateToFile(); },
+      [this] {
+        DumpDebugStateToFile();
+        TryGlobalGC();
+      },
       /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
       "GCSServer.deadline_timer.debug_state_dump");
 
@@ -413,7 +420,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
-  auto scheduler =
+  gcs_placement_group_scheduler_ =
       std::make_shared<GcsPlacementGroupScheduler>(main_service_,
                                                    gcs_table_storage_,
                                                    *gcs_node_manager_,
@@ -423,7 +430,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
-      scheduler,
+      gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
@@ -440,7 +447,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 std::string GcsServer::StorageType() const {
   if (RayConfig::instance().gcs_storage() == "memory") {
     if (!config_.redis_address.empty()) {
-      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address;
+      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
+                    << ":" << config_.redis_port;
       return "redis";
     }
     return "memory";
@@ -647,6 +655,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_type(),
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
+        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
       });
 
   // Install job event listeners.
@@ -661,10 +670,22 @@ void GcsServer::InstallEventListeners() {
       main_service_.post(
           [this] {
             // Because resources have been changed, we need to try to schedule the
-            // pending actors.
+            // pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
             cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingActors");
+    });
+
+    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
+      main_service_.post(
+          [this] {
+            // Because some placement group resources have been committed or deleted, we
+            // need to try to schedule the pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          },
+          "GcsServer.SchedulePendingPGActors");
     });
   }
 }
@@ -721,6 +742,37 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+  }
+}
+
+void GcsServer::TryGlobalGC() {
+  if (cluster_task_manager_->GetPendingQueueSize() == 0) {
+    task_pending_schedule_detected_ = 0;
+    return;
+  }
+  // Trigger global gc to solve task pending.
+  // To avoid spurious triggers, only those after two consecutive
+  // detections and under throttling are sent out (similar to
+  // `NodeManager::WarnResourceDeadlock()`).
+  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+    rpc::ResourcesData resources_data;
+    resources_data.set_should_global_gc(true);
+
+    if (RayConfig::instance().use_ray_syncer()) {
+      auto msg = std::make_shared<syncer::RaySyncMessage>();
+      msg->set_version(absl::GetCurrentTimeNanos());
+      msg->set_node_id(local_node_id_.Binary());
+      msg->set_message_type(syncer::MessageType::COMMANDS);
+      std::string serialized_msg;
+      RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+      msg->set_sync_message(std::move(serialized_msg));
+      ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
+    } else {
+      resources_data.set_node_id(local_node_id_.Binary());
+      gcs_ray_syncer_->Update(resources_data);
+    }
+
+    global_gc_throttler_->RunNow();
   }
 }
 

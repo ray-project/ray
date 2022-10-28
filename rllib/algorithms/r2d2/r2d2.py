@@ -1,13 +1,13 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -36,15 +36,16 @@ class R2D2Config(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
+        >>> from ray import air
         >>> from ray import tune
         >>> config = R2D2Config()
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "R2D2",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -123,7 +124,7 @@ class R2D2Config(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.batch_mode = "complete_episodes"
 
         # fmt: on
@@ -187,18 +188,18 @@ class R2D2(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return R2D2Config().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return R2D2Config()
 
     @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
 
     @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfig) -> None:
         """Checks and updates the config based on settings.
 
         Rewrites rollout_fragment_length to take into account burn-in and
@@ -207,7 +208,10 @@ class R2D2(DQN):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
+        if (
+            not config.get("in_evaluation")
+            and config["replay_buffer_config"].get("replay_sequence_length", -1) != -1
+        ):
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"
@@ -231,7 +235,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.dqn.r2d2::R2D2_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.r2d2.r2d2::R2D2Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

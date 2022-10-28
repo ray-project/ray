@@ -198,7 +198,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
    * ``bash Miniforge3-MacOSX-arm64.sh``
 
-   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
 
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
 
@@ -261,7 +261,7 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 .. code-block:: bash
 
   conda config --env --add channels conda-forge
-  conda env create -n ray  # works with mamba too
+  conda create -n ray  # works with mamba too
   conda activate ray
   pip install ray  # or `conda install ray-core`
 

@@ -18,6 +18,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 try:
@@ -59,6 +60,13 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="This test relies on gcs server randomly choosing raylets "
+    + "for actors without required resources, which is only supported by "
+    + "raylet-based actor scheduler. The same test logic for gcs-based "
+    + "actor scheduler can be found at `test_actor_distribution_balance`.",
+)
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -167,7 +175,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_restarts=0)
+    @ray.remote(max_restarts=0, scheduling_strategy="SPREAD")
     class Counter:
         def __init__(self):
             self.x = 0
@@ -1380,6 +1388,41 @@ def test_get_actor_in_remote_workers(ray_start_cluster):
         return ray.get(proc.procTask.remote(1, 2))
 
     assert (1, 2) == ray.get(submit_named_actors.remote())
+
+
+def test_resource_leak_when_cancel_actor_in_phase_of_creating(ray_start_cluster):
+    """Make sure there is no resource leak when cancel an actor in phase of
+    creating.
+
+    Check https://github.com/ray-project/ray/issues/27743. # noqa
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self, signal_1, signal_2):
+            signal_1.send.remote()
+            ray.get(signal_2.wait.remote())
+            pass
+
+    signal_1 = SignalActor.remote()
+    signal_2 = SignalActor.remote()
+    actor = Actor.remote(signal_1, signal_2)
+
+    wait_for_condition(lambda: ray.available_resources()["CPU"] != 2)
+
+    # Checking that the constructor of `Actor`` is invoked.
+    ready_ids, _ = ray.wait([signal_1.wait.remote()], timeout=3.0)
+    assert len(ready_ids) == 1
+
+    # Kill the actor which is in the phase of creating.
+    ray.kill(actor)
+
+    # Ensure there is no resource leak.
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 2)
 
 
 if __name__ == "__main__":

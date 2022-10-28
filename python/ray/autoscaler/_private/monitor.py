@@ -127,16 +127,12 @@ class Monitor:
 
     This process periodically collects stats from the GCS and triggers
     autoscaler updates.
-
-    Attributes:
-        redis: A connection to the Redis server.
     """
 
     def __init__(
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
-        redis_password: Optional[str] = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
         stop_event: Optional[Event] = None,
@@ -152,9 +148,6 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-        if redis_password is not None:
-            logger.warning("redis_password has been deprecated.")
-        # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=self.gcs_address)
 
@@ -253,6 +246,12 @@ class Monitor:
 
         mirror_node_types = {}
         cluster_full = False
+        if (
+            hasattr(response, "cluster_full_of_actors_detected_by_gcs")
+            and response.cluster_full_of_actors_detected_by_gcs
+        ):
+            # GCS has detected the cluster full of actors.
+            cluster_full = True
         for resource_message in resources_batch_data.batch:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
@@ -271,7 +270,7 @@ class Monitor:
                 hasattr(resource_message, "cluster_full_of_actors_detected")
                 and resource_message.cluster_full_of_actors_detected
             ):
-                # Aggregate this flag across all batches.
+                # A worker node has detected the cluster full of actors.
                 cluster_full = True
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
@@ -336,10 +335,13 @@ class Monitor:
             try:
                 if self.stop_event and self.stop_event.is_set():
                     break
+                gcs_request_start_time = time.time()
                 self.update_load_metrics()
+                gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
+                    "gcs_request_time": gcs_request_time,
                     "load_metrics_report": asdict(self.load_metrics.summary()),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
@@ -360,6 +362,11 @@ class Monitor:
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
+                        status[
+                            "non_terminated_nodes_time"
+                        ] = (
+                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
+                        )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
@@ -370,6 +377,7 @@ class Monitor:
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
                             )
+
                     self.event_summarizer.clear()
 
                 as_json = json.dumps(status)
@@ -499,26 +507,16 @@ def log_resource_batch_data_if_desired(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the monitor to connect to.")
+        description=("Parse GCS server for the monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
-    )
-    parser.add_argument(
-        "--redis-address", required=False, type=str, help="the address to use for Redis"
     )
     parser.add_argument(
         "--autoscaling-config",
         required=False,
         type=str,
         help="the path to the autoscaling config file",
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="the password to use for Redis",
     )
     parser.add_argument(
         "--logging-level",
@@ -574,6 +572,7 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
@@ -596,12 +595,11 @@ if __name__ == "__main__":
 
     bootstrap_address = args.gcs_address
     if bootstrap_address is None:
-        raise ValueError("One of --gcs-address or --redis-address must be set!")
+        raise ValueError("--gcs-address must be set!")
 
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
-        redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,
     )
 

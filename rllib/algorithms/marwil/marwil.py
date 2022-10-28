@@ -56,13 +56,13 @@ class MARWILConfig(AlgorithmConfig):
         >>> # Run this from the ray directory root.
         >>> config.offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v0")
+        >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "MARWIL",
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -94,7 +94,6 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
-        self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
 
@@ -198,8 +197,8 @@ class MARWILConfig(AlgorithmConfig):
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MARWILConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MARWILConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -280,7 +279,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

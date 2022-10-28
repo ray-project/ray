@@ -1,0 +1,36 @@
+base_image: {{ env["RAY_IMAGE_NIGHTLY_GPU"] | default("anyscale/ray-ml:2.0.0-py37-gpu") }}
+debian_packages: []
+env_vars: {"RAY_INTERNAL_MEM_PROFILE_COMPONENTS": "dashboard_agent"}
+debian_packages:
+  - htop
+  - curl
+
+python:
+  pip_packages:
+    - anyscale>=0.5.47
+    - gcsfs==2022.5.0
+    - gym==0.20.0
+    - openskill
+    - protobuf>=3.15.3,<4.0.0
+    - pyarrow==6.0.1
+    - semidbm==0.5.1
+    - trueskill
+    - wandb
+    - memray
+    - typer
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall ale-py -y
+  - pip install ale-py==0.7
+  - pip uninstall importlib-metadata -y
+  - pip install importlib-metadata==4.13.0
+  - pip install gym[atari] autorom[accept-rom-license]
+  - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - sudo apt-get update
+  - echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+  - sudo apt-get install -y apt-transport-https ca-certificates gnupg
+  - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+  - sudo apt-get update && sudo apt-get install -y google-cloud-sdk

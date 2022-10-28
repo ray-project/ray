@@ -1,6 +1,6 @@
 from ray.air import ScalingConfig, RunConfig, session
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
 from ray.train.torch import TorchTrainer
+from ray.air.callbacks.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback
 
 

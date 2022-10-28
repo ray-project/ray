@@ -9,14 +9,16 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union, Callable, List
+from typing import Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
+from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -33,7 +35,7 @@ from ray.tune.result import (
     DEBUG_METRICS,
 )
 from ray.tune.resources import Resources
-from ray.tune.syncer import Syncer
+from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -243,6 +245,7 @@ class Trial:
     def __init__(
         self,
         trainable_name: str,
+        *,
         config: Optional[Dict] = None,
         trial_id: Optional[str] = None,
         local_dir: Optional[str] = DEFAULT_RESULTS_DIR,
@@ -251,18 +254,14 @@ class Trial:
         resources: Optional[Resources] = None,
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,
-        checkpoint_freq: int = 0,
-        checkpoint_at_end: bool = False,
-        sync_on_checkpoint: bool = True,
-        keep_checkpoints_num: Optional[int] = None,
-        checkpoint_score_attr: str = TRAINING_ITERATION,
+        experiment_dir_name: Optional[str] = None,
+        sync_config: Optional[SyncConfig] = None,
+        checkpoint_config: Optional[CheckpointConfig] = None,
         export_formats: Optional[List[str]] = None,
         restore_path: Optional[str] = None,
         trial_name_creator: Optional[Callable[["Trial"], str]] = None,
         trial_dirname_creator: Optional[Callable[["Trial"], str]] = None,
-        log_to_file: Optional[str] = None,
+        log_to_file: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None,
         max_failures: int = 0,
         stub: bool = False,
         _setup_default_resource: bool = True,
@@ -361,25 +360,28 @@ class Trial:
         self.custom_trial_name = None
         self.custom_dirname = None
 
+        self.experiment_dir_name = experiment_dir_name
+
         # Checkpointing fields
         self.saving_to = None
-        if remote_checkpoint_dir:
-            self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
-        else:
-            self.remote_checkpoint_dir_prefix = None
 
-        if custom_syncer == "auto" or not isinstance(custom_syncer, Syncer):
-            custom_syncer = None
-        self.custom_syncer = custom_syncer
+        # Checkpoint syncing
+        self.sync_config = sync_config or SyncConfig()
 
-        self.checkpoint_freq = checkpoint_freq
-        self.checkpoint_at_end = checkpoint_at_end
-        self.keep_checkpoints_num = keep_checkpoints_num
-        self.checkpoint_score_attr = checkpoint_score_attr
-        self.sync_on_checkpoint = sync_on_checkpoint
+        self.custom_syncer = None
+        if isinstance(self.sync_config.syncer, Syncer):
+            self.custom_syncer = sync_config.syncer
+
+        # Checkpoint config
+        checkpoint_config = checkpoint_config or CheckpointConfig()
+        checkpoint_config.checkpoint_score_attribute = (
+            checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
+        )
+
+        self.checkpoint_config = checkpoint_config
+
         self.checkpoint_manager = _CheckpointManager(
-            keep_checkpoints_num,
-            checkpoint_score_attr,
+            checkpoint_config=self.checkpoint_config,
             delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
@@ -387,6 +389,8 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        # Reset after each successful restore.
+        self.num_restore_failures = 0
 
         # AutoML fields
         self.results = None
@@ -451,6 +455,17 @@ class Trial:
     def last_result(self, val: dict):
         self._last_result = val
 
+    def get_runner_ip(self) -> Optional[str]:
+        if self.location.hostname:
+            return self.location.hostname
+
+        if not self.runner:
+            return None
+
+        hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
+        self.location = _Location(hostname, pid)
+        return self.location.hostname
+
     @property
     def logdir(self):
         if not self.relative_logdir:
@@ -482,6 +497,18 @@ class Trial:
         return self.location.hostname
 
     @property
+    def sync_on_checkpoint(self):
+        return self.sync_config.sync_on_checkpoint
+
+    @property
+    def checkpoint_at_end(self):
+        return self.checkpoint_config.checkpoint_at_end
+
+    @property
+    def checkpoint_freq(self):
+        return self.checkpoint_config.checkpoint_frequency
+
+    @property
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
@@ -510,9 +537,11 @@ class Trial:
         This is different from **per experiment** remote checkpoint dir.
         """
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
-        if not self.remote_checkpoint_dir_prefix:
+        if not self.sync_config.upload_dir or not self.experiment_dir_name:
             return None
-        return os.path.join(self.remote_checkpoint_dir_prefix, self.relative_logdir)
+        return os.path.join(
+            self.sync_config.upload_dir, self.experiment_dir_name, self.relative_logdir
+        )
 
     @property
     def uses_cloud_checkpointing(self):
@@ -542,12 +571,8 @@ class Trial:
             resources=None,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
-            remote_checkpoint_dir=self.remote_checkpoint_dir,
-            checkpoint_freq=self.checkpoint_freq,
-            checkpoint_at_end=self.checkpoint_at_end,
-            sync_on_checkpoint=self.sync_on_checkpoint,
-            keep_checkpoints_num=self.keep_checkpoints_num,
-            checkpoint_score_attr=self.checkpoint_score_attr,
+            sync_config=self.sync_config,
+            checkpoint_config=self.checkpoint_config,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
@@ -627,11 +652,23 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
-        if exc and self.logdir:
+    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        if isinstance(exc, _TuneRestoreError):
+            exc = exc.exc
+            if self.num_restore_failures >= int(
+                os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
+            ):
+                # Restore was unsuccessful, try again without checkpoint.
+                self.clear_checkpoint()
+                self.num_failures += 1
+            else:
+                self.num_restore_failures += 1
+        else:
             self.num_failures += 1
+
+        if self.logdir:
             self.error_file = os.path.join(self.logdir, "error.txt")
-            if exc and isinstance(exc, RayTaskError):
+            if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
                 self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
                 with open(self.pickled_error_file, "wb") as f:
@@ -697,6 +734,7 @@ class Trial:
         assert self.is_restoring
         self.last_result = self.restoring_from.metrics
         self.restoring_from = None
+        self.num_restore_failures = 0
         self.invalidate_json_state()
 
     def should_recover(self):
@@ -707,7 +745,15 @@ class Trial:
         `self.checkpoint_freq` is `0` or because the trial failed before
         a checkpoint has been made.
         """
-        return self.num_failures < self.max_failures or self.max_failures < 0
+        return (
+            self.num_failures < self.max_failures
+            or self.max_failures < 0
+            or (
+                self.num_failures == self.max_failures
+                and self.num_restore_failures
+                < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
+            )
+        )
 
     def update_last_result(self, result):
         if self.experiment_tag:

@@ -1,0 +1,23 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: anyscale-user
+          Value: '{{env["ANYSCALE_USER"]}}'
+        - Key: anyscale-expiration
+          Value: '{{env["EXPIRATION_1D"]}}'
+
+head_node_type:
+    name: head_node
+    instance_type:  m5.16xlarge
+    resources: {"cpu": 85}
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m5.4xlarge
+      min_workers: 0
+      max_workers: 0
+      use_spot: false

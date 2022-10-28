@@ -275,6 +275,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
+  RAY_CHECK_EQ(
+      gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
@@ -285,6 +287,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
+  RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""),
+               1);
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -296,9 +300,12 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
+  RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
   ASSERT_TRUE(worker_client_->Reply());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
+  RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
 }
 
 TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
@@ -1278,6 +1285,108 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
   }
 }
 
+namespace gcs {
+TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id, /*max_restarts*/ -1);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
+        finished_actors.emplace_back(actor);
+      });
+  RAY_CHECK_OK(status);
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Make sure actor in the phase of creating, that is the worker id is not nil and the
+  // actor state is not alive yet.
+  actor->UpdateAddress(RandomAddress());
+  const auto &worker_id = actor->GetWorkerID();
+  ASSERT_TRUE(!worker_id.IsNil());
+  ASSERT_NE(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Then handle the kill actor requst (restart).
+  rpc::KillActorViaGcsReply reply;
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_force_kill(true);
+  // Set the `no_restart` flag to true so that the actor will restart again.
+  request.set_no_restart(false);
+  gcs_actor_manager_->HandleKillActorViaGcs(
+      request,
+      &reply,
+      /*send_reply_callback*/
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+
+  // Make sure the `KillActor` rpc is send.
+  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
+  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
+
+  // Make sure the actor is restarting.
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+}
+
+TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id, /*max_restarts*/ -1);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
+        finished_actors.emplace_back(actor);
+      });
+  RAY_CHECK_OK(status);
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Make sure actor in the phase of creating, that is the worker id is not nil and the
+  // actor state is not alive yet.
+  actor->UpdateAddress(RandomAddress());
+  const auto &worker_id = actor->GetWorkerID();
+  ASSERT_TRUE(!worker_id.IsNil());
+  ASSERT_NE(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Then handle the kill actor requst (no restart).
+  rpc::KillActorViaGcsReply reply;
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_force_kill(true);
+  // Set the `no_restart` flag to true so that the actor will be destoryed.
+  request.set_no_restart(true);
+  gcs_actor_manager_->HandleKillActorViaGcs(
+      request,
+      &reply,
+      /*send_reply_callback*/
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+
+  // Make sure the `KillActor` rpc is send.
+  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
+  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
+
+  // Make sure the actor is dead.
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+}
+
+}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {

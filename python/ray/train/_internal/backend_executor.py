@@ -81,6 +81,7 @@ class BackendExecutor:
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
+        self._last_failure = None
         self._initialization_hook = None
         self._placement_group = None
 
@@ -229,7 +230,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
-            all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
+            all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():
                 os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
@@ -395,10 +396,8 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`session.report()` (legacy API:"
-                    "`train.report()` and `train.save_checkpoint()`) "
-                    "are called the same number of times on all "
-                    "workers."
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
                 )
             else:
                 # Return None if all results are None.
@@ -409,15 +408,13 @@ class BackendExecutor:
             raise RuntimeError(
                 "Some workers returned results with "
                 "different types. Make sure that "
-                "`session.report()` (legacy API:"
-                "`train.report()` and `train.save_checkpoint()`) "
-                "are called the same number of times on all "
-                "workers."
+                "`session.report()` are called the "
+                "same number of times on all workers."
             )
         return results
 
     def pause_reporting(self):
-        """Disable workers from enqueuing results from `train.report()`.
+        """Disable workers from enqueuing results from ``session.report()``.
 
         Note: Already reported results may still be enqueued at this point,
               and should be handled appropriately.
@@ -474,10 +471,11 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success = check_for_failure(remote_values)
+        success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
+            self._last_failure = exception
             self._increment_failures()
             logger.warning(
                 "Failure identified during training. Restarting all workers and "
@@ -521,13 +519,14 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            raise RuntimeError(
-                "Training has failed even after "
+            exc = RuntimeError(
+                "Training has failed after "
                 f"{self._num_failures} "
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from None
+            )
+            raise exc.with_traceback(None) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group
