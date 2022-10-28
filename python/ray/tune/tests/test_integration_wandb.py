@@ -3,7 +3,6 @@ import tempfile
 from collections import namedtuple
 from dataclasses import dataclass
 from multiprocessing import Queue
-import pytest
 from typing import Tuple, Dict
 from unittest.mock import (
     Mock,
@@ -11,6 +10,7 @@ from unittest.mock import (
 )
 
 import numpy as np
+import pytest
 
 import ray
 from ray.tune import Trainable
@@ -59,7 +59,7 @@ class _MockWandbConfig:
     kwargs: Dict
 
 
-class _MockWandbAPI(object):
+class _MockWandbAPI:
     def __init__(self):
         self.logs = Queue()
 
@@ -123,9 +123,6 @@ def test_wandb_logger_config(wandb_env):
         PlacementGroupFactory([{"CPU": 1}]),
         "/tmp",
     )
-
-    if WANDB_ENV_VAR in os.environ:
-        del os.environ[WANDB_ENV_VAR]
 
     # Read project and group name from environment variable
     os.environ[WANDB_PROJECT_ENV_VAR] = "test_project_from_env_var"
