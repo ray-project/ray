@@ -4821,6 +4821,6 @@
 
   run:
     timeout: 1800
-    script: bash test_aws_cluster_launcher.py
+    script: bash test_aws_cluster_launcher.sh
     type: sdk_command
     file_manager: sdk
