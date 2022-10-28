@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 from typing import Any, Mapping, Type
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.core.rl_module import RLModule, MultiAgentRLModule
+=======
+from typing import Any, Mapping
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.core.rl_module import RLModule
+>>>>>>> 7b4b88b4082297d3790b9e542090228970708270
 
 torch, nn = try_import_torch()
 
@@ -11,8 +17,11 @@ class TorchRLModule(RLModule, nn.Module):
         nn.Module.__init__(self)
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
-        """This is only done because Torch DDP requires a forward method to be
-        implemented for backpropagation to work."""
+        """forward pass of the module.
+
+        This is aliased to forward_train because Torch DDP requires a forward method to
+        be implemented for backpropagation to work.
+        """
         return self.forward_train(batch, **kwargs)
 
     def get_state(self) -> Mapping[str, Any]:

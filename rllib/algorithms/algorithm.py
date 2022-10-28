@@ -7,7 +7,6 @@ import gym
 import importlib
 import json
 import logging
-import math
 import numpy as np
 import os
 from packaging import version
@@ -36,7 +35,6 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -62,9 +60,9 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -95,7 +93,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
@@ -204,7 +201,7 @@ class Algorithm(Trainable):
     ]
 
     # List of keys that are always fully overridden if present in any dict or sub-dict
-    _override_all_key_list = ["off_policy_estimation_methods"]
+    _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = [
         "episode_reward_mean",
@@ -311,40 +308,50 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
-        env: Optional[Union[str, EnvType]] = None,
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
+        env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
-            config: Algorithm-specific configuration dict.
-            env: Name of the environment to use (e.g. a gym-registered str),
-                a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
-                class directly. Note that this arg can also be specified via
-                the "env" key in `config`.
+            config: Algorithm-specific configuration object.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
-
         """
+        config = config or self.get_default_config()
 
-        # User provided (partial) config (this may be w/o the default
-        # Algorithm's Config object). Will get merged with AlgorithmConfig()
-        # in self.setup().
-        config = config or {}
-        # Resolve AlgorithmConfig into a plain dict.
+        # Resolve possible dict into an AlgorithmConfig object.
         # TODO: In the future, only support AlgorithmConfig objects here.
-        if isinstance(config, AlgorithmConfig):
-            config = config.to_dict()
+        if isinstance(config, dict):
+            default_config = self.get_default_config()
+            # `self.get_default_config()` also returned a dict ->
+            # Last resort: Create core AlgorithmConfig from merged dicts.
+            if isinstance(default_config, dict):
+                config = AlgorithmConfig.from_dict(
+                    config_dict=self.merge_trainer_configs(default_config, config, True)
+                )
+            else:
+                config = default_config.update_from_dict(config)
+
+        if env is not None:
+            deprecation_warning(
+                old=f"algo = Algorithm(env='{env}', ...)",
+                new=f"algo = AlgorithmConfig().environment('{env}').build()",
+                error=False,
+            )
+            config.environment(env)
+
+        # Freeze our AlgorithmConfig object (no more changes possible).
+        config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
         # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
         # type (e.g. a gym.Env).
         self._env_id, self.env_creator = self._get_env_id_and_creator(
-            env or config.get("env"), config
+            config.env, config
         )
         env_descr = (
             self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
@@ -367,7 +374,7 @@ class Algorithm(Trainable):
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
-            if config.get("logger_config") and "type" in config["logger_config"]:
+            if config.logger_config and "type" in config.logger_config:
 
                 def default_logger_creator(config):
                     """Creates a custom logger with the default prefix."""
@@ -394,6 +401,9 @@ class Algorithm(Trainable):
         self._episodes_to_be_collected = []
         self._remote_workers_for_metrics = []
 
+        # The fully qualified AlgorithmConfig used for evaluation
+        # (or None if evaluation not setup).
+        self.evaluation_config: Optional[AlgorithmConfig] = None
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
         # If evaluation duration is "auto", use a AsyncRequestsManager to be more
@@ -411,7 +421,11 @@ class Algorithm(Trainable):
             }
         }
 
-        super().__init__(config=config, logger_creator=logger_creator, **kwargs)
+        super().__init__(
+            config=config,
+            logger_creator=logger_creator,
+            **kwargs,
+        )
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
@@ -427,19 +441,24 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlgorithmConfig().to_dict()
+    def get_default_config(cls) -> Union[AlgorithmConfig, AlgorithmConfigDict]:
+        return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]):
 
-        # Setup our config: Merge the user-supplied config (which could
-        # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
-        )
-        self.config["env"] = self._env_id
+        # Setup our config: Merge the user-supplied config dict (which could
+        # be a partial config dict) with the class' default.
+        if not isinstance(config, AlgorithmConfig):
+            assert isinstance(config, PartialAlgorithmConfigDict)
+            config_obj = self.get_default_config()
+            if not isinstance(config_obj, AlgorithmConfig):
+                assert isinstance(config, PartialAlgorithmConfigDict)
+                config_obj = AlgorithmConfig().from_dict(config_obj)
+            config_obj.update_from_dict(config)
+            config_obj.env = self._env_id
+            self.config = config_obj
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
@@ -484,10 +503,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new='config["evaluation_config"]'
-                '["off_policy_estimation_methods"]={}'.format(
-                    ope_dict,
-                ),
+                new="config.evaluation(evaluation_config={"
+                f"'off_policy_estimation_methods'={ope_dict}"
+                "})",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
@@ -524,8 +542,8 @@ class Algorithm(Trainable):
                 self.workers = WorkerSet(
                     env_creator=self.env_creator,
                     validate_env=self.validate_env,
-                    policy_class=self.get_default_policy_class(self.config),
-                    trainer_config=self.config,
+                    default_policy_class=self.get_default_policy_class(self.config),
+                    config=self.config,
                     num_workers=self.config["num_workers"],
                     local_worker=True,
                     logdir=self.logdir,
@@ -574,67 +592,15 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
+        # Validate evaluation config.
+        self.evaluation_config = self.config.get_evaluation_config_object()
+        self.validate_config(self.evaluation_config)
+
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
-
-        # Update with evaluation settings:
-        user_eval_config = copy.deepcopy(self.config["evaluation_config"])
-
-        # Merge user-provided eval config with the base config. This makes sure
-        # the eval config is always complete, no matter whether we have eval
-        # workers or perform evaluation on the (non-eval) local worker.
-        eval_config = merge_dicts(self.config, user_eval_config)
-        self.config["evaluation_config"] = eval_config
-
-        if self.config.get("evaluation_num_workers", 0) > 0 or self.config.get(
-            "evaluation_interval"
-        ):
-            logger.debug(f"Using evaluation_config: {user_eval_config}.")
-
-            # Validate evaluation config.
-            self.validate_config(eval_config)
-
-            # Set the `in_evaluation` flag.
-            eval_config["in_evaluation"] = True
-
-            # Evaluation duration unit: episodes.
-            # Switch on `complete_episode` rollouts. Also, make sure
-            # rollout fragments are short so we never have more than one
-            # episode in one rollout.
-            if eval_config["evaluation_duration_unit"] == "episodes":
-                eval_config.update(
-                    {
-                        "batch_mode": "complete_episodes",
-                        "rollout_fragment_length": 1,
-                    }
-                )
-            # Evaluation duration unit: timesteps.
-            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
-            #   strictly along episode borders.
-            # Set `rollout_fragment_length` such that desired steps are divided
-            # equally amongst workers or - in "auto" duration mode - set it
-            # to a reasonably small number (10), such that a single `sample()`
-            # call doesn't take too much time and we can stop evaluation as soon
-            # as possible after the train step is completed.
-            else:
-                eval_config.update(
-                    {
-                        "batch_mode": "truncate_episodes",
-                        "rollout_fragment_length": 10
-                        if self.config["evaluation_duration"] == "auto"
-                        else int(
-                            math.ceil(
-                                self.config["evaluation_duration"]
-                                / (self.config["evaluation_num_workers"] or 1)
-                            )
-                        ),
-                    }
-                )
-
-            self.config["evaluation_config"] = eval_config
-
+        if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
             _, env_creator = self._get_env_id_and_creator(
-                eval_config.get("env"), eval_config
+                self.evaluation_config.env, self.evaluation_config
             )
 
             # Create a separate evaluation worker set for evaluation.
@@ -644,8 +610,8 @@ class Algorithm(Trainable):
             self.evaluation_workers: WorkerSet = WorkerSet(
                 env_creator=env_creator,
                 validate_env=None,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=eval_config,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.evaluation_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -681,7 +647,6 @@ class Algorithm(Trainable):
                 mod, obj = method_type.rsplit(".", 1)
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
-
             if isinstance(method_type, type) and issubclass(
                 method_type, OfflineEvaluator
             ):
@@ -710,7 +675,10 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -892,7 +860,7 @@ class Algorithm(Trainable):
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
             unit = self.config["evaluation_duration_unit"]
-            eval_cfg = self.config["evaluation_config"]
+            eval_cfg = self.evaluation_config
             rollout = eval_cfg["rollout_fragment_length"]
             num_envs = eval_cfg["num_envs_per_worker"]
             auto = self.config["evaluation_duration"] == "auto"
@@ -1092,7 +1060,7 @@ class Algorithm(Trainable):
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
         unit = self.config["evaluation_duration_unit"]
-        eval_cfg = self.config["evaluation_config"]
+        eval_cfg = self.evaluation_config
         rollout = eval_cfg["rollout_fragment_length"]
         num_envs = eval_cfg["num_envs_per_worker"]
         auto = self.config["evaluation_duration"] == "auto"
@@ -1673,7 +1641,7 @@ class Algorithm(Trainable):
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union[AlgorithmConfig, PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1703,7 +1671,7 @@ class Algorithm(Trainable):
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -2006,7 +1974,7 @@ class Algorithm(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-        cls, config: PartialAlgorithmConfigDict
+        cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
 
         # Default logic for RLlib Algorithms:
@@ -2016,8 +1984,14 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls.get_default_config(), **config)
-        eval_cf = cf["evaluation_config"]
+        default_config = cls.get_default_config()
+        # TODO: Have to make this work for now for AlgorithmConfigs (returned by
+        #  get_default_config(). Use only AlgorithmConfigs once all Algorithms
+        #  return an AlgorothmConfig from their get_default_config() method.
+        if not isinstance(default_config, dict):
+            default_config = default_config.to_dict()
+        cf = dict(default_config, **config)
+        eval_cf = cf["evaluation_config"] or {}
 
         local_worker = {
             "CPU": cf["num_cpus_for_driver"],
@@ -2069,14 +2043,14 @@ class Algorithm(Trainable):
 
     @staticmethod
     def _get_env_id_and_creator(
-        env_specifier: Union[str, EnvType, None], config: PartialAlgorithmConfigDict
+        env_specifier: Union[str, EnvType, None], config: AlgorithmConfig
     ) -> Tuple[Optional[str], EnvCreator]:
         """Returns env_id and creator callable given original env id from config.
 
         Args:
             env_specifier: An env class, an already tune registered env ID, a known
                 gym env name, or None (if no env is used).
-            config: The Algorithm's (maybe partial) config dict.
+            config: The AlgorithmConfig object.
 
         Returns:
             Tuple consisting of a) env ID string and b) env creator callable.
@@ -2109,7 +2083,7 @@ class Algorithm(Trainable):
         elif isinstance(env_specifier, type):
             env_id = env_specifier  # .__name__
 
-            if config.get("remote_worker_envs"):
+            if config["remote_worker_envs"]:
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.
@@ -2183,12 +2157,15 @@ class Algorithm(Trainable):
 
     @classmethod
     @override(Trainable)
-    def resource_help(cls, config: AlgorithmConfigDict) -> str:
+    def resource_help(cls, config: Union[AlgorithmConfig, AlgorithmConfigDict]) -> str:
         return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers`, `num_gpus`, and other configs. See "
-            "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: {}".format(config)
+            "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
+            "`AlgorithmConfig.resources("
+            "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
+            "`AgorithmConfig.rollouts(num_rollout_workers=..)`. See "
+            "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
+            "(each Algorithm has its own subclass of this class) for more info.\n\n"
+            f"The config of this Algorithm is: {config}"
         )
 
     @classmethod
@@ -2235,17 +2212,18 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(config: PartialAlgorithmConfigDict) -> None:
-        """Validates the config dictionary wrt the framework settings.
+    def validate_framework(
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
+    ) -> None:
+        """Validates the config object (or dictionary) wrt. the framework settings.
 
         Args:
-            config: The config dictionary to be validated.
-
+            config: The config object (or dictionary) to be validated.
         """
         _tf1, _tf, _tfv = None, None, None
         _torch = None
         framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        tf_valid_frameworks = {"tf", "tf2"}
         if framework not in tf_valid_frameworks and framework != "torch":
             return
         elif framework in tf_valid_frameworks:
@@ -2279,7 +2257,7 @@ class Algorithm(Trainable):
         def resolve_tf_settings():
             """Check and resolve tf settings."""
 
-            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+            if _tf1 and config["framework"] == "tf2":
                 if config["framework"] == "tf2" and _tfv < 2:
                     raise ValueError(
                         "You configured `framework`=tf2, but your installed "
@@ -2313,47 +2291,39 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates a given config dict for this Algorithm.
+    def validate_config(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> None:
+        """Validates a given config object (or dictionary) for this Algorithm.
 
         Users should override this method to implement custom validation
         behavior. It is recommended to call `super().validate_config()` in
         this override.
 
         Args:
-            config: The given config dict to check.
+            config: The given config object (or dictionary) to check.
 
         Raises:
             ValueError: If there is something wrong with the config.
         """
-        model_config = config.get("model")
-        if model_config is None:
-            config["model"] = model_config = {}
+        from ray.rllib.models.catalog import MODEL_DEFAULTS
 
-        # Use DefaultCallbacks class, if callbacks is None.
-        if config["callbacks"] is None:
-            config["callbacks"] = DefaultCallbacks
-        # Check, whether given `callbacks` is a callable.
-        if not callable(config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{config['callbacks']}!"
-            )
+        model_config = config.get("model", MODEL_DEFAULTS)
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-        if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=False)
 
-        # Validate "multiagent" sub-dict and convert policy 4-tuples to
-        # PolicySpec objects.
-        policies, is_multi_agent = check_multi_agent(config)
+        framework = config.get("framework", "tf")
 
-        framework = config.get("framework")
+        if simple_optim_setting is True:
+            pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        if config.get("num_gpus", 0) > 1:
-            if framework in ["tfe", "tf2"]:
+        elif config.get("num_gpus", 0) > 1:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            if framework == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)
@@ -2373,18 +2343,32 @@ class Algorithm(Trainable):
                 config["simple_optimizer"] = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif is_multi_agent:
+            elif (
+                (isinstance(config, AlgorithmConfig) and config.is_multi_agent())
+                or isinstance(config, dict)
+                and AlgorithmConfig.from_dict(config).is_multi_agent()
+            ):
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
                 default_policy_cls = self.get_default_policy_class(config)
+                policies = config["multiagent"]["policies"]
+                policy_specs = (
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
                 if any(
-                    (p.policy_class or default_policy_cls) is None
+                    (spec.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p.policy_class or default_policy_cls,
+                        spec.policy_class or default_policy_cls,
                         (DynamicTFPolicy, TorchPolicy),
                     )
-                    for p in config["multiagent"]["policies"].values()
+                    for spec in policy_specs
                 ):
                     config["simple_optimizer"] = True
                 else:
@@ -2394,10 +2378,10 @@ class Algorithm(Trainable):
 
         # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2"]:
+            if framework == "tf2":
                 raise ValueError(
                     "`simple_optimizer=False` not supported for "
-                    "framework={}!".format(framework)
+                    "config.framework({})!".format(framework)
                 )
 
         # Check model config.
@@ -2419,154 +2403,11 @@ class Algorithm(Trainable):
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=True,
             )
-            model_config["lstm_use_prev_action"] = prev_a_r
-            model_config["lstm_use_prev_reward"] = prev_a_r
-
-        # Check batching/sample collection settings.
-        if config["batch_mode"] not in ["truncate_episodes", "complete_episodes"]:
-            raise ValueError(
-                "`batch_mode` must be one of [truncate_episodes|"
-                "complete_episodes]! Got {}".format(config["batch_mode"])
-            )
 
         # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )
-
-        # Metrics settings.
-        if (
-            config.get("metrics_smoothing_episodes", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="metrics_smoothing_episodes",
-                new="metrics_num_episodes_for_smoothing",
-                error=True,
-            )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
-        if config.get("min_iter_time_s", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="min_iter_time_s",
-                new="min_time_s_per_iteration",
-                error=True,
-            )
-            config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
-
-        if config.get("min_time_s_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="min_time_s_per_reporting",
-                new="min_time_s_per_iteration",
-                error=True,
-            )
-            config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
-
-        if (
-            config.get("min_sample_timesteps_per_reporting", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="min_sample_timesteps_per_reporting",
-                new="min_sample_timesteps_per_iteration",
-                error=True,
-            )
-            config["min_sample_timesteps_per_iteration"] = (
-                config["min_sample_timesteps_per_reporting"] or 0
-            )
-
-        if (
-            config.get("min_train_timesteps_per_reporting", DEPRECATED_VALUE)
-            != DEPRECATED_VALUE
-        ):
-            deprecation_warning(
-                old="min_train_timesteps_per_reporting",
-                new="min_train_timesteps_per_iteration",
-                error=True,
-            )
-            config["min_train_timesteps_per_iteration"] = (
-                config["min_train_timesteps_per_reporting"] or 0
-            )
-
-        if config.get("collect_metrics_timeout", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="collect_metrics_timeout",
-            #     new="metrics_episode_collection_timeout_s",
-            #     error=False,
-            # )
-            config["metrics_episode_collection_timeout_s"] = config[
-                "collect_metrics_timeout"
-            ]
-
-        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="timesteps_per_iteration",
-                new="`min_sample_timesteps_per_iteration` OR "
-                "`min_train_timesteps_per_iteration`",
-                error=True,
-            )
-            config["min_sample_timesteps_per_iteration"] = (
-                config["timesteps_per_iteration"] or 0
-            )
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
-
-        # Evaluation settings.
-
-        # Deprecated setting: `evaluation_num_episodes`.
-        if config.get("evaluation_num_episodes", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=True,
-            )
-            config["evaluation_duration"] = config["evaluation_num_episodes"]
-            config["evaluation_duration_unit"] = "episodes"
-            config["evaluation_num_episodes"] = DEPRECATED_VALUE
-
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
-        # None (also set `evaluation_interval` to 1).
-        if config["evaluation_num_workers"] > 0 and not config["evaluation_interval"]:
-            logger.warning(
-                f"You have specified {config['evaluation_num_workers']} "
-                "evaluation workers, but your `evaluation_interval` is None! "
-                "Therefore, evaluation will not occur automatically with each"
-                " call to `Algorithm.train()`. Instead, you will have to call "
-                "`Algorithm.evaluate()` manually in order to trigger an "
-                "evaluation run."
-            )
-        # If `evaluation_num_workers=0` and
-        # `evaluation_parallel_to_training=True`, warn that you need
-        # at least one remote eval worker for parallel training and
-        # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif config["evaluation_num_workers"] == 0 and config.get(
-            "evaluation_parallel_to_training", False
-        ):
-            logger.warning(
-                "`evaluation_parallel_to_training` can only be done if "
-                "`evaluation_num_workers` > 0! Setting "
-                "`evaluation_parallel_to_training` to False."
-            )
-            config["evaluation_parallel_to_training"] = False
-
-        # If `evaluation_duration=auto`, error if
-        # `evaluation_parallel_to_training=False`.
-        if config["evaluation_duration"] == "auto":
-            if not config["evaluation_parallel_to_training"]:
-                raise ValueError(
-                    "`evaluation_duration=auto` not supported for "
-                    "`evaluation_parallel_to_training=False`!"
-                )
-        # Make sure, it's an int otherwise.
-        elif (
-            not isinstance(config["evaluation_duration"], int)
-            or config["evaluation_duration"] <= 0
-        ):
-            raise ValueError(
-                "`evaluation_duration` ({}) must be an int and "
-                ">0!".format(config["evaluation_duration"])
-            )
 
     @staticmethod
     @ExperimentalAPI
@@ -2854,11 +2695,19 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            policies_dict = state["config"]["multiagent"]["policies"]
-            policies_dict = {
-                pid: spec for pid, spec in policies_dict.items() if pid in policy_ids
-            }
-            state["config"]["multiagent"]["policies"] = policies_dict
+            new_config = AlgorithmConfig.from_dict(state["config"])
+            new_policies = new_config.policies
+            if isinstance(new_policies, (set, list, tuple)):
+                new_policies = {pid for pid in new_policies if pid in policy_ids}
+            else:
+                new_policies = {
+                    pid: spec for pid, spec in new_policies.items() if pid in policy_ids
+                }
+            new_config.multi_agent(
+                policies=new_policies,
+                policies_to_train=policies_to_train,
+            )
+            state["config"] = new_config.to_dict()
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
@@ -2927,10 +2776,7 @@ class Algorithm(Trainable):
         # In case we are training (in a thread) parallel to evaluation,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
-        if (
-            self.config.get("framework") in ["tf2", "tfe"]
-            and not tf.executing_eagerly()
-        ):
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
         results = None
@@ -3002,7 +2848,7 @@ class Algorithm(Trainable):
                         self._automatic_evaluation_duration_fn,
                         unit,
                         self.config["evaluation_num_workers"],
-                        self.config["evaluation_config"],
+                        self.evaluation_config,
                         train_future,
                     )
                 )
@@ -3015,10 +2861,8 @@ class Algorithm(Trainable):
             num_recreated = self.try_recover_from_step_attempt(
                 error=e,
                 worker_set=self.evaluation_workers,
-                ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
-                recreate=self.config["evaluation_config"].get(
-                    "recreate_failed_workers"
-                ),
+                ignore=self.evaluation_config.get("ignore_worker_failures"),
+                recreate=self.evaluation_config.get("recreate_failed_workers"),
             )
         # `self._evaluate_async` handles its own worker failures and already adds
         # this metric, but `self.evaluate` doesn't.
@@ -3214,8 +3058,8 @@ class Algorithm(Trainable):
         return WorkerSet(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
+            default_policy_class=policy_class,
+            config=config,
             num_workers=num_workers,
             local_worker=local_worker,
             logdir=self.logdir,

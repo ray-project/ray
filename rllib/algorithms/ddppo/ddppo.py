@@ -58,8 +58,8 @@ class DDPPOConfig(PPOConfig):
         ...             .rollouts(num_rollout_workers=10)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -92,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -181,7 +182,7 @@ class DDPPO(PPO):
             config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
-        if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
+        if "train_batch_size" in config and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
                 "Set rollout_fragment_length instead of train_batch_size for DDPPO."
@@ -237,7 +238,10 @@ class DDPPO(PPO):
                 "num_gpus_per_worker=1."
             )
         # `batch_mode` must be "truncate_episodes".
-        if config["batch_mode"] != "truncate_episodes":
+        if (
+            not config.get("in_evaluation")
+            and config["batch_mode"] != "truncate_episodes"
+        ):
             raise ValueError(
                 "Distributed data parallel requires truncate_episodes batch mode."
             )

@@ -106,7 +106,6 @@ class QMixConfig(SimpleQConfig):
         self.framework_str = "torch"
 
         # .rollouts()
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.batch_mode = "complete_episodes"
 
@@ -136,11 +135,9 @@ class QMixConfig(SimpleQConfig):
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
-        self.evaluation_interval = None
-        self.evaluation_duration = 10
-        self.evaluation_config = {
-            "explore": False,
-        }
+        self.evaluation(
+            evaluation_config={"explore": False}
+        )
         # __sphinx_doc_end__
         # fmt: on
 

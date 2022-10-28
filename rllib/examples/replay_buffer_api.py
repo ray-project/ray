@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     config = (
         R2D2Config()
-        .environment(env="CartPole-v0")
+        .environment(env="CartPole-v1")
         .training(model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20))
         .framework(framework=args.framework)
         .rollouts(num_rollout_workers=4)
