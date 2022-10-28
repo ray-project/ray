@@ -107,9 +107,9 @@ if __name__ == "__main__":
         temp_file.flush()
         api_key_file = temp_file.name
 
-    # tune_function(api_key_file)
+    tune_function(api_key_file)
     tune_setup(api_key_file)
-    # tune_trainable(api_key_file)
+    tune_trainable(api_key_file)
 
     if args.mock_api:
         temp_file.close()

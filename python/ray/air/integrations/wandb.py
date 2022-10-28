@@ -30,7 +30,7 @@ _MockWandb = MagicMock
 
 
 def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs):
-    """Setup a Weights & Biases session.
+    """Set up a Weights & Biases session.
 
     This function can be used to initialize a Weights & Biases session in a
     (distributed) training or tuning run.

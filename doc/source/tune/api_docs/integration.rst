@@ -68,7 +68,7 @@ Weights and Biases (tune.integration.wandb)
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
     :noindex:
 
-.. autofunction:: ray.tune.integration.wandb.wandb_mixin
+.. autofunction:: ray.air.integrations.wandb.setup_wandb
 
 
 .. _tune-integration-xgboost:
