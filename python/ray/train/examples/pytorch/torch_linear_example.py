@@ -5,7 +5,7 @@ from ray.air import session
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train.torch import TorchTrainer
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.air.config import ScalingConfig
 
 
@@ -48,8 +48,7 @@ def validate_epoch(dataloader, model, loss_fn):
     import copy
 
     model_copy = copy.deepcopy(model)
-    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
-    return result
+    return model_copy.cpu().state_dict(), loss
 
 
 def train_func(config):
@@ -76,12 +75,12 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     results = []
-
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        result = validate_epoch(validation_loader, model, loss_fn)
+        state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
+        result = dict(loss=loss)
         results.append(result)
-        session.report(result)
+        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
 
     return results
 
