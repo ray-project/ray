@@ -25,6 +25,15 @@ import ray
 
 torch, _ = try_import_torch()
 
+ESTIMATOR_OUTPUTS = {
+    "v_behavior",
+    "v_behavior_std",
+    "v_target",
+    "v_target_std",
+    "v_gain",
+    "v_delta",
+}
+
 
 class TestOPE(unittest.TestCase):
     """Compilation tests for using OPE both standalone and in an RLlib Algorithm"""
@@ -35,7 +44,7 @@ class TestOPE(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
 
-        env_name = "CartPole-v0"
+        env_name = "CartPole-v1"
         cls.gamma = 0.99
         n_episodes = 3
         cls.q_model_config = {"n_iters": 160}
@@ -55,10 +64,10 @@ class TestOPE(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
                 off_policy_estimation_methods={
-                    "is": {"type": ImportanceSampling},
-                    "wis": {"type": WeightedImportanceSampling},
-                    "dm_fqe": {"type": DirectMethod},
-                    "dr_fqe": {"type": DoublyRobust},
+                    "is": {"type": ImportanceSampling, "epsilon_greedy": 0.1},
+                    "wis": {"type": WeightedImportanceSampling, "epsilon_greedy": 0.1},
+                    "dm_fqe": {"type": DirectMethod, "epsilon_greedy": 0.1},
+                    "dr_fqe": {"type": DoublyRobust, "epsilon_greedy": 0.1},
                 },
             )
         )
@@ -75,49 +84,38 @@ class TestOPE(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_ope_standalone(self):
-        # Test all OPE methods standalone
-        estimator_outputs = {
-            "v_behavior",
-            "v_behavior_std",
-            "v_target",
-            "v_target_std",
-            "v_gain",
-            "v_gain_std",
-        }
-        estimator = ImportanceSampling(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.assertEqual(estimates.keys(), estimator_outputs)
+    def test_is_and_wis_standalone(self):
+        ope_classes = [
+            ImportanceSampling,
+            WeightedImportanceSampling,
+        ]
 
-        estimator = WeightedImportanceSampling(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        estimates = estimator.estimate(self.batch)
-        self.assertEqual(estimates.keys(), estimator_outputs)
+        for class_module in ope_classes:
+            estimator = class_module(
+                policy=self.algo.get_policy(),
+                gamma=self.gamma,
+            )
+            estimates = estimator.estimate(self.batch)
+            self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
+            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
 
-        estimator = DirectMethod(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_config=self.q_model_config,
-        )
-        losses = estimator.train(self.batch)
-        assert losses, "DM estimator did not return mean loss"
-        estimates = estimator.estimate(self.batch)
-        self.assertEqual(estimates.keys(), estimator_outputs)
+    def test_dm_and_dr_standalone(self):
+        ope_classes = [
+            DirectMethod,
+            DoublyRobust,
+        ]
 
-        estimator = DoublyRobust(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-            q_model_config=self.q_model_config,
-        )
-        losses = estimator.train(self.batch)
-        assert losses, "DM estimator did not return mean loss"
-        estimates = estimator.estimate(self.batch)
-        self.assertEqual(estimates.keys(), estimator_outputs)
+        for class_module in ope_classes:
+            estimator = class_module(
+                policy=self.algo.get_policy(),
+                gamma=self.gamma,
+                q_model_config=self.q_model_config,
+            )
+            losses = estimator.train(self.batch)
+            assert losses, f"{class_module.__name__} estimator did not return mean loss"
+            estimates = estimator.estimate(self.batch)
+            self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
+            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
 
     def test_ope_in_algo(self):
         # Test OPE in DQN, during training as well as by calling evaluate()

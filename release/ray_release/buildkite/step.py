@@ -15,9 +15,12 @@ from ray_release.config import (
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
-from ray_release.util import python_version_str
+from ray_release.util import python_version_str, DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
+
+RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
+RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
@@ -29,10 +32,10 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
         "RELEASE_AWS_DB_TABLE": "release_test_result",
         "AWS_REGION": "us-west-2",
     },
-    "agents": {"queue": "runner_queue_branch"},
+    "agents": {"queue": str(RELEASE_QUEUE_DEFAULT)},
     "plugins": [
         {
-            "docker#v3.9.0": {
+            "docker#v5.2.0": {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
@@ -85,7 +88,7 @@ def get_step(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0]["docker#v3.9.0"][
+    step["plugins"][0]["docker#v5.2.0"][
         "image"
     ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 
@@ -111,6 +114,11 @@ def get_step(
     step["concurrency"] = concurrency_limit
 
     step["priority"] = priority_val
+
+    # Set queue to QUEUE_CLIENT for client tests
+    # (otherwise keep default QUEUE_DEFAULT)
+    if test.get("run", {}).get("type") == "client":
+        step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)

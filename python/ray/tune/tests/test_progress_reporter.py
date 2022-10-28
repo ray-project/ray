@@ -1,5 +1,6 @@
 import collections
 import os
+import regex as re
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
@@ -17,6 +18,7 @@ from ray.tune.progress_reporter import (
     _time_passed_str,
     _trial_progress_str,
     TuneReporterBase,
+    _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.trial import Trial
@@ -241,14 +243,19 @@ VERBOSE_TRIAL_NORM_1 = (
     "with parameters={'do': 'complete'}. This trial completed.\n"
 )
 
-VERBOSE_TRIAL_NORM_2 = """
-Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
-Trial train_xxxxx_00001 completed. Last result: _metric=6
-"""
+# NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic.
+# `"Trial train_xxxxx_00001 reported..."` and `"Trial train_xxxxx_00001 completed..."`
+# are printed in separate calls. Sometimes, a status update is printed between the
+# calls. For more information, see #29693.
+VERBOSE_TRIAL_NORM_2_PATTERN = (
+    r"Trial train_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\.\n"
+    r"(?s).*"
+    r"Trial train_xxxxx_00001 completed\. Last result: _metric=6\n"
+)
 
-VERBOSE_TRIAL_NORM_3 = """
-Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
-"""
+VERBOSE_TRIAL_NORM_3 = (
+    "Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
+)
 
 VERBOSE_TRIAL_NORM_4 = (
     "Trial train_xxxxx_00002 reported acc=8 "
@@ -638,7 +645,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertNotIn(VERBOSE_EXP_OUT_1, output)
                 self.assertNotIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -654,7 +661,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -670,7 +677,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNotNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
@@ -686,7 +693,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
@@ -737,6 +744,21 @@ class ProgressReporterTest(unittest.TestCase):
             trials, metric_columns=["some_metric"], force_table=True
         )
         assert any(len(row) <= 90 for row in progress_str.split("\n"))
+
+
+def test_max_len():
+    assert (
+        _max_len("some_long_string/even_longer", max_len=28)
+        == "some_long_string/even_longer"
+    )
+    assert _max_len("some_long_string/even_longer", max_len=15) == ".../even_longer"
+
+    assert (
+        _max_len(
+            "19_character_string/19_character_string/too_long", max_len=20, wrap=True
+        )
+        == "...r_string/19_chara\ncter_string/too_long"
+    )
 
 
 if __name__ == "__main__":

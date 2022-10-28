@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -49,8 +50,8 @@ class CQLConfig(SACConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
     """
 
     def __init__(self, algo_class=None):
@@ -124,8 +125,8 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CQLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CQLConfig()
 
     @override(SAC)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -136,12 +137,8 @@ class CQL(SAC):
             deprecation_warning(
                 old="timesteps_per_iteration",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
-            config["min_train_timesteps_per_iteration"] = config[
-                "timesteps_per_iteration"
-            ]
-            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Call super's validation method.
         super().validate_config(config)
@@ -155,7 +152,7 @@ class CQL(SAC):
         if config["simple_optimizer"] is not True and config["framework"] == "torch":
             config["simple_optimizer"] = True
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if config["framework"] in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run CQL! "
                 "Install it via `pip install tensorflow_probability`. Your "
@@ -222,7 +219,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

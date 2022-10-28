@@ -21,7 +21,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -44,7 +44,7 @@ parser.add_argument(
 parser.add_argument(
     "--stop-iters",
     type=int,
-    default=200,
+    default=2,
     help="Number of iterations to train before we do inference.",
 )
 parser.add_argument(
@@ -56,7 +56,7 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward",
     type=float,
-    default=150.0,
+    default=0.8,
     help="Reward at which we stop training before we do inference.",
 )
 parser.add_argument(
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             "lstm_use_prev_reward": args.prev_reward,
         },
         "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
+        # Run with tracing enabled for tf2?
         "eager_tracing": args.eager_tracing,
     }
 

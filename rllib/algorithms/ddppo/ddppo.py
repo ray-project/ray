@@ -21,6 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -41,7 +42,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -55,14 +55,15 @@ class DDPPOConfig(PPOConfig):
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
         >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
         ...             .resources(num_gpus=1)\
-        ...             .rollouts(num_workers=10)
+        ...             .rollouts(num_rollout_workers=10)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
@@ -73,11 +74,11 @@ class DDPPOConfig(PPOConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "DDPPO",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -91,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -180,7 +182,7 @@ class DDPPO(PPO):
             config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
-        if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
+        if "train_batch_size" in config and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
                 "Set rollout_fragment_length instead of train_batch_size for DDPPO."
@@ -188,14 +190,14 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        config["train_batch_size"] = config.get(
-            "rollout_fragment_length", DEFAULT_CONFIG["rollout_fragment_length"]
-        ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
+        self.config["train_batch_size"] = (
+            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
+        )
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
     def validate_config(self, config):
@@ -236,7 +238,10 @@ class DDPPO(PPO):
                 "num_gpus_per_worker=1."
             )
         # `batch_mode` must be "truncate_episodes".
-        if config["batch_mode"] != "truncate_episodes":
+        if (
+            not config.get("in_evaluation")
+            and config["batch_mode"] != "truncate_episodes"
+        ):
             raise ValueError(
                 "Distributed data parallel requires truncate_episodes batch mode."
             )
@@ -374,7 +379,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

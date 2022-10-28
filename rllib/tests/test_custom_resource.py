@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray import air
 from ray import tune
 
 
@@ -15,7 +16,7 @@ def test_custom_resource(algorithm):
     )
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         "num_workers": 1,
         "num_gpus": 0,
         "framework": "torch",
@@ -27,13 +28,12 @@ def test_custom_resource(algorithm):
 
     stop = {"training_iteration": 1}
 
-    tune.run(
+    tune.Tuner(
         algorithm,
-        config=config,
-        stop=stop,
-        num_samples=1,
-        verbose=0,
-    )
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=0),
+        tune_config=tune.TuneConfig(num_samples=1),
+    ).fit()
 
 
 if __name__ == "__main__":

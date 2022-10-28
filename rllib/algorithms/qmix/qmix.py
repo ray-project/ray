@@ -1,5 +1,6 @@
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
@@ -21,7 +22,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import deprecation_warning
 
@@ -34,7 +35,7 @@ class QMixConfig(SimpleQConfig):
         >>> from ray.rllib.algorithms.qmix import QMixConfig
         >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=TwoStepGame)
@@ -43,6 +44,7 @@ class QMixConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.algorithms.qmix import QMixConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
@@ -53,11 +55,11 @@ class QMixConfig(SimpleQConfig):
         >>> config.environment(env=TwoStepGame)
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "QMix",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -79,9 +81,6 @@ class QMixConfig(SimpleQConfig):
         self.lr = 0.0005
         self.train_batch_size = 32
         self.target_network_update_freq = 500
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
@@ -105,7 +104,6 @@ class QMixConfig(SimpleQConfig):
         self.framework_str = "torch"
 
         # .rollouts()
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.batch_mode = "complete_episodes"
 
@@ -135,11 +133,9 @@ class QMixConfig(SimpleQConfig):
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
-        self.evaluation_interval = None
-        self.evaluation_duration = 10
-        self.evaluation_config = {
-            "explore": False,
-        }
+        self.evaluation(
+            evaluation_config={"explore": False}
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -190,7 +186,7 @@ class QMixConfig(SimpleQConfig):
                 "This is now the same parameter as in other "
                 "algorithms. `grad_clip` will be overwritten by "
                 "`grad_norm_clipping={}`".format(grad_norm_clipping),
-                error=False,
+                error=True,
             )
             grad_clip = grad_norm_clipping
 
@@ -217,11 +213,11 @@ class QMixConfig(SimpleQConfig):
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return QMixConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return QMixConfig()
 
     @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfig) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -229,7 +225,7 @@ class QMix(SimpleQ):
             raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return QMixTorchPolicy
 
     @override(SimpleQ)
@@ -318,7 +314,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

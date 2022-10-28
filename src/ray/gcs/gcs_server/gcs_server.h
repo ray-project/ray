@@ -34,6 +34,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -47,6 +48,7 @@ struct GcsServerConfig {
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;
+  bool enable_redis_ssl = false;
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
@@ -59,6 +61,7 @@ class GcsNodeManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
+class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
@@ -168,6 +171,8 @@ class GcsServer {
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
+  void TryGlobalGC();
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
@@ -202,6 +207,8 @@ class GcsServer {
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  /// The gcs placement group scheduler.
+  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.
@@ -264,6 +271,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int task_pending_schedule_detected_ = 0;
+  /// Throttler for global gc
+  std::unique_ptr<Throttler> global_gc_throttler_;
 };
 
 }  // namespace gcs

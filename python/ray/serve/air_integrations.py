@@ -1,14 +1,23 @@
 from collections import defaultdict
+import inspect
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-
+from pydantic import BaseModel
 import numpy as np
+from abc import abstractmethod
+import starlette
+from fastapi import Depends, FastAPI
 
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve._private.utils import require_packages
-from ray.util.annotations import PublicAPI
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
+from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.serve._private.http_util import ASGIHTTPSender
+
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
@@ -19,6 +28,8 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _load_checkpoint(
@@ -165,6 +176,43 @@ class _BatchingManager:
         return split_list_of_dict
 
 
+@DeveloperAPI
+class SimpleSchemaIngress:
+    def __init__(
+        self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
+    ):
+        """Create a FastAPI endpoint annotated with http_adapter dependency.
+
+        Args:
+            http_adapter(str, HTTPAdapterFn, None, Type[pydantic.BaseModel]):
+              The FastAPI input conversion function or a pydantic model class.
+              By default, Serve will directly pass in the request object
+              starlette.requests.Request. You can pass in any FastAPI dependency
+              resolver. When you pass in a string, Serve will import it.
+              Please refer to Serve HTTP adatper documentation to learn more.
+        """
+        install_serve_encoders_to_fastapi()
+        http_adapter = load_http_adapter(http_adapter)
+        self.app = FastAPI()
+
+        @self.app.get("/")
+        @self.app.post("/")
+        async def handle_request(inp=Depends(http_adapter)):
+            resp = await self.predict(inp)
+            return resp
+
+    @abstractmethod
+    async def predict(self, inp):
+        raise NotImplementedError()
+
+    async def __call__(self, request: starlette.requests.Request):
+        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
+        # generate FastAPI on the fly, we should find a way to unify the two.
+        sender = ASGIHTTPSender()
+        await self.app(request.scope, receive=request.receive, send=sender)
+        return sender.build_asgi_response()
+
+
 @PublicAPI(stability="alpha")
 class PredictorWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
@@ -208,6 +256,20 @@ class PredictorWrapper(SimpleSchemaIngress):
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
+
+        # Automatic set use_gpu in predictor constructor if user provided
+        # explicit GPU resources
+        if (
+            "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and "use_gpu" not in predictor_from_checkpoint_kwargs
+            and len(ray.get_gpu_ids()) > 0
+        ):
+            logger.info(
+                "GPU resources identified in `PredictorDeployment`. "
+                "Automatically enabling GPU prediction for this predictor. To "
+                "disable set `use_gpu` to `False` in `PredictorDeployment`."
+            )
+            predictor_from_checkpoint_kwargs["use_gpu"] = True
 
         self.model = predictor_cls.from_checkpoint(
             checkpoint, **predictor_from_checkpoint_kwargs

@@ -13,8 +13,10 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
+from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
@@ -250,11 +252,20 @@ class _MockTrialExecutor(RayTrialExecutor):
         pass
 
     def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
-        return _TrackedCheckpoint(
-            dir_or_data=trial.trainable_name,
-            storage_mode=CheckpointStorage.PERSISTENT,
-            metrics=result,
-        )
+        if type == CheckpointStorage.MEMORY:
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data={"data": trial.trainable_name},
+                storage_mode=CheckpointStorage.MEMORY,
+                metrics=result,
+            )
+            trial.on_checkpoint(checkpoint)
+            return checkpoint
+        else:
+            return _TrackedCheckpoint(
+                dir_or_data=trial.trainable_name,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=result,
+            )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -289,9 +300,14 @@ class _MockTrialRunner:
         if action == TrialScheduler.CONTINUE:
             pass
         elif action == TrialScheduler.PAUSE:
-            self._pause_trial(trial)
+            self.pause_trial(trial)
         elif action == TrialScheduler.STOP:
             self.trial_executor.stop_trial(trial)
+
+    def pause_trial(self, trial, should_checkpoint: bool = True):
+        if should_checkpoint:
+            self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
+        trial.status = Trial.PAUSED
 
     def stop_trial(self, trial):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
@@ -310,10 +326,6 @@ class _MockTrialRunner:
 
     def get_live_trials(self):
         return {t for t in self.trials if t.status != Trial.TERMINATED}
-
-    def _pause_trial(self, trial):
-        self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
-        trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
@@ -728,7 +740,7 @@ class BOHBSuite(unittest.TestCase):
         for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
             decision = sched.on_trial_result(runner, trial, trial_result)
             self.assertEqual(decision, TrialScheduler.PAUSE)
-            runner._pause_trial(trial)
+            runner.pause_trial(trial)
         spy_result = result(0, 1)
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
@@ -756,7 +768,7 @@ class BOHBSuite(unittest.TestCase):
         for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
             decision = sched.on_trial_result(runner, trial, trial_result)
             self.assertEqual(decision, TrialScheduler.PAUSE)
-            runner._pause_trial(trial)
+            runner.pause_trial(trial)
         spy_result = result(0, 1)
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
@@ -784,7 +796,7 @@ class BOHBSuite(unittest.TestCase):
         for trial, trial_result in zip(trials, all_results):
             decision = sched.on_trial_result(runner, trial, trial_result)
             self.assertEqual(decision, TrialScheduler.PAUSE)
-            runner._pause_trial(trial)
+            runner.pause_trial(trial)
 
         run_trial = sched.choose_trial_to_run(runner)
         self.assertEqual(run_trial, trials[1])
@@ -844,20 +856,20 @@ class _MockTrial(Trial):
         self.custom_trial_name = None
         self.custom_dirname = None
         self._default_result_or_future = None
+        self.checkpoint_manager = _CheckpointManager(
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="episode_reward_mean",
+            ),
+            delete_fn=lambda c: None,
+        )
 
     def on_checkpoint(self, checkpoint):
+        super().on_checkpoint(checkpoint)
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             self.restored_checkpoint = checkpoint.dir_or_data["data"]
         else:
             self.restored_checkpoint = checkpoint.dir_or_data
-
-    @property
-    def checkpoint(self):
-        return _TrackedCheckpoint(
-            dir_or_data={"data": self.trainable_name},
-            storage_mode=CheckpointStorage.MEMORY,
-            metrics=None,
-        )
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -1142,6 +1154,67 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(type(trials[0].config["int_factor"]), int)
         self.assertEqual(trials[0].config["const_factor"], 3)
 
+    def testExploitsCorrectCheckpoint(self):
+        """When trial 0 attempts to exploit trial 1, PBT replaces trial 0's in-memory
+        checkpoint with a copy of trial 1's in-memory checkpoint. A trial may have
+        both memory and persistent checkpoints, so this test checks that trial 0 uses
+        trial 1's in-memory checkpoint rather than its own persistent checkpoint, even
+        if trial 0's persistent checkpoint is more recent in terms of checkpoint id.
+        """
+        pbt, runner = self.basicSetup(
+            num_trials=2, perturbation_interval=1, step_once=False, synch=True
+        )
+        trials = runner.get_trials()
+
+        memory = _TrackedCheckpoint(
+            dir_or_data={"data": 0},
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics=result(0, 0),
+        )
+        trials[0].on_checkpoint(memory)
+        self.assertEqual(trials[0].checkpoint, memory)
+        self.assertEqual(trials[0].checkpoint.id, 0)
+
+        # Save persistent checkpoint for trial 0 with a fresher checkpoint id
+        # This happens naturally in a regular run of PBT, since the CheckpointManager
+        # counters are not always in synch, and a trial's own persistent checkpoint
+        # could have a more recent checkpoint id if the memory checkpoint has been
+        # replaced with another trial's checkpoint
+        persistent = _TrackedCheckpoint(
+            dir_or_data="not used",
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics=result(0, 0),
+        )
+        trials[0].on_checkpoint(persistent)
+        self.assertEqual(trials[0].checkpoint, persistent)
+        self.assertEqual(trials[0].checkpoint.id, 1)
+
+        # Trial 0 result, score=0
+        self.on_trial_result(pbt, runner, trials[0], result(1, 0), TrialScheduler.PAUSE)
+        # Trial 1 result, score=100
+        self.on_trial_result(
+            pbt, runner, trials[1], result(1, 100), TrialScheduler.PAUSE
+        )
+        trial1_checkpoint = trials[1].checkpoint
+        assert (
+            trial1_checkpoint
+        ), "Trial 1 should have saved a checkpoint, since it is in the upper quantile"
+        assert trials[0].checkpoint.storage_mode == CheckpointStorage.MEMORY, (
+            "Trial 0 should exploit trial 1 by using its in-memory checkpoint. Instead,"
+            " it's using a different checkpoint of type "
+            f"{trials[0].checkpoint.storage_mode}\n"
+            f"Expected:\n{trial1_checkpoint}\nActual:\n{trials[0].checkpoint}"
+        )
+        assert trials[0].checkpoint != memory
+        # PBT ensures that the exploited checkpoint is used by setting the id to 1
+        # more than the last checkpoint id (the persistent checkpoint had id = 1).
+        self.assertEqual(trials[0].checkpoint.id, 2)
+        assert trials[0].checkpoint.metrics.get("episode_reward_mean") == 100, (
+            "Trial 0's checkpoint (score=0) is not correctly exploiting "
+            "Trial 1's checkpoint (score=100)\n"
+            f"Expected:\n{trial1_checkpoint}\nActual:\n{trials[0].checkpoint}"
+        )
+
     def testTuneSamplePrimitives(self):
         pbt, runner = self.basicSetup(
             resample_prob=1.0,
@@ -1177,41 +1250,59 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
+        def explore_fn(
+            config, mutations, resample_probability, custom_explore_fn=lambda x: x
+        ):
+            new_config, _ = _explore(
+                config,
+                mutations,
+                resample_probability,
+                perturbation_factors=(1.2, 0.8),
+                custom_explore_fn=custom_explore_fn,
+            )
+            return new_config
+
         # Categorical case
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0), {3, 4})
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: explore_fn({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0), {8, 10}
         )
         assertProduces(
-            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
-        )
-        assertProduces(
-            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
-        )
-        assertProduces(
-            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: explore_fn({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0),
             {3, 4, 8, 10},
         )
 
+        # Check that tuple also works
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": (3, 4, 8, 10)}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": (3, 4, 8, 10)}, 0.0), {3, 4})
+
+        # Passing in an invalid types should raise an error
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": {3, 4, 8, 10}}, 0.0)
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": "invalid"}, 0.0)
+
         # Continuous case
         assertProduces(
-            lambda: _explore(
-                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0
             ),
             {10.0, 100.0},
         )
@@ -1239,7 +1330,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1249,7 +1340,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                lambda x: x,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1261,7 +1351,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1271,7 +1361,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                custom_explore_fn,
+                custom_explore_fn=custom_explore_fn,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1792,7 +1882,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {}
-        self.on_trial_result(pbt, runner, trials[0], result(1, 10))
+        self.on_trial_result(
+            pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
+        )
         self.on_trial_result(
             pbt, runner, trials[2], result(1, 200), TrialScheduler.CONTINUE
         )
@@ -2242,7 +2334,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # skip trial complete in this mock setting
 
     def testPBTNanInf(self):
-        scheduler = PopulationBasedTraining(metric="episode_reward_mean", mode="max")
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean",
+            mode="max",
+            hyperparam_mutations={"ignored": [1]},
+        )
         t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2322,7 +2418,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(MedianStoppingRule)
 
     def testAnonymousMetricEndToEndPBT(self):
-        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
+        self._testAnonymousMetricEndToEnd(
+            lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
+        )
 
 
 if __name__ == "__main__":
