@@ -1,11 +1,13 @@
 import os
 import sys
+import tempfile
 import time
+from unittest import mock
+from typing import List, Iterable
+import zipfile
 
 import pytest
-from unittest import mock
-
-from typing import List, Iterable
+import requests
 
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_policy import (
@@ -19,6 +21,7 @@ from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 import ray.experimental.state.api as state_api
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 
 import ray
 from ray import serve
@@ -935,6 +938,81 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     wait_for_condition(
         check_two_new_replicas_two_old, retry_interval_ms=1000, timeout=20
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_e2e_preserve_prev_replicas_rest_api(serve_instance):
+    signal = SignalActor.options(name="signal", namespace="serve").remote()
+
+    # Step 1: Prepare the
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_path:
+        with zipfile.ZipFile(tmp_path, "w") as zip_obj:
+            with zip_obj.open("app.py", "w") as f:
+                f.write(
+                    """
+from ray import serve
+import ray
+import os
+
+@serve.deployment
+def f():
+    signal = ray.get_actor("signal", namespace="serve")
+    ray.get(signal.wait.remote())
+    return os.getpid()
+
+
+app = f.bind()
+""".encode()
+                )
+
+    payload = {
+        "import_path": "app:app",
+        "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
+        "deployments": [
+            {
+                "name": "f",
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 1,
+                    "downscale_delay_s": 600,
+                    "upscale_delay_s": 0,
+                    "metrics_interval_s": 1,
+                    "look_back_period_s": 1,
+                },
+            }
+        ],
+    }
+
+    client = ServeSubmissionClient("http://localhost:52365")
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+
+    @ray.remote
+    def send_request():
+        return requests.get("http://localhost:8000/").text
+
+    ref = send_request.remote()
+
+    def check_one_replicas():
+        actors = state_api.list_actors(
+            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 1
+
+    wait_for_condition(check_one_replicas, retry_interval_ms=1000, timeout=20)
+
+    signal.send.remote()
+    existing_pid = ray.get(ref)
+
+    payload["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
+    client.deploy_application(payload)
+    wait_for_condition(lambda: client.get_status()["app_status"]["status"] == "RUNNING")
+    wait_for_condition(check_one_replicas, retry_interval_ms=1000, timeout=20)
+
+    # Make sure it is the same replica
+    for _ in range(10):
+        other_pid = ray.get(send_request.remote())
+        assert other_pid == existing_pid
 
 
 if __name__ == "__main__":
