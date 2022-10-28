@@ -202,6 +202,20 @@ try:
                 namespace="autoscaler",
                 registry=self.registry,
             )
+            self.cluster_resources: Counter = Counter(
+                "cluster_resoruces",
+                "Total logical resources in the cluster.",
+                unit="logical",
+                namespace="autoscaler",
+                registry=self.registry,
+            )
+            self.pending_resources: Counter = Counter(
+                "pending_resoruces",
+                "Pending logical resources in the cluster.",
+                unit="logical",
+                namespace="autoscaler",
+                registry=self.registry,
+            )
 
 except ImportError:
 

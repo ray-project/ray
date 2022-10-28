@@ -1928,6 +1928,8 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
+        assert summary.pending_resources == {"GPU": 1, "CPU": 144}, summary.pending_resources
+
         # Check dict conversion
         summary_dict = asdict(summary)
         assert summary_dict["active_nodes"]["m4.large"] == 2
