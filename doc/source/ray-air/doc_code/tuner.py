@@ -79,7 +79,7 @@ result_grid = tuner.fit()
 # __torch_start__
 from ray import tune
 from ray.tune import Tuner
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchTrainer
