@@ -88,10 +88,11 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     result = train_mosaic_cifar10().metrics_dataframe
 
     # check the max epoch value
-    assert result["epoch"][result.index[-1]] == 1
+    assert result["epoch"][result.index[-1]] == 4
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 2
+    assert result["_training_iteration"][result.index[-1]] == 5
+    assert len(result) == 5
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])

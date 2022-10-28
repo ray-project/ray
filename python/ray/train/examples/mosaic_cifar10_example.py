@@ -82,7 +82,7 @@ def train_mosaic_cifar10(num_workers=2, use_gpu=False):
     from ray.train.mosaic import MosaicTrainer
 
     trainer_init_config = {
-        "max_duration": "2ep",
+        "max_duration": "5ep",
         "algorithms": [LabelSmoothing()],
         "should_eval": False,
     }
