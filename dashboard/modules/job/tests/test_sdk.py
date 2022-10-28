@@ -307,11 +307,10 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("allow_driver_on_worker_nodes", [True, False])
-def test_jobs_run_on_head_by_default_E2E(
-    ray_start_cluster_head_with_env_vars, allow_driver_on_worker_nodes
-):
-
+def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
+    allow_driver_on_worker_nodes = (
+        os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR) == "1"
+    )
     # Cluster setup
     cluster = ray_start_cluster_head_with_env_vars
     cluster.add_node(dashboard_agent_listen_port=52366)
