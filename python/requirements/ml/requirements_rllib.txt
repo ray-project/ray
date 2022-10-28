@@ -22,7 +22,7 @@ supersuit==3.3.3; python_version >= '3.7'
 pybullet==3.2.0
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
-tensorflow_estimator==2.6.0
+tensorflow_estimator==2.9.0
 # DeepMind's OpenSpiel
 open-spiel==1.0.2
 
@@ -34,8 +34,8 @@ higher==0.2.1
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
 # ONNX
-onnx==1.9.0
-onnxruntime==1.9.0
-tf2onnx==1.8.5
+onnx==1.12.0
+onnxruntime==1.12.0
+tf2onnx==1.12.1
 typer==0.6.1
 rich==12.0.1
