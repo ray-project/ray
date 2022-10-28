@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-training-doc:
+
 Training APIs
 =============
 
@@ -9,8 +11,11 @@ Getting Started
 ---------------
 
 At a high level, RLlib provides an ``Algorithm`` class which
-holds a policy for environment interaction. Through the algorithm's interface, the policy can
-be trained, checkpointed, or an action computed. In multi-agent training, the algorithm manages the querying and optimization of multiple policies at once.
+holds a policy for environment interaction.
+Through the algorithm's interface, you can train the policy compute actions, or store
+your algorithms.
+In multi-agent training, the algorithm manages the querying
+and optimization of multiple policies at once.
 
 .. image:: images/rllib-api.svg
 
