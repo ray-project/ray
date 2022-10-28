@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -145,6 +145,18 @@ def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
     return group_names.index(group_name)
 
 
+def _worker_group_max_replicas(
+    raycluster: Dict[str, Any], group_index: int
+) -> Optional[int]:
+    """Extract the maxReplicas of a worker group.
+
+    If maxReplicas is unset, return None, to be interpreted as "no constraint".
+    At time of writing, it should be impossible for maxReplicas to be unset, but it's
+    better to handle this anyway.
+    """
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
+
+
 class KuberayNodeProvider(NodeProvider):  # type: ignore
     def __init__(
         self,
@@ -263,16 +275,28 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Creates a number of nodes within the namespace."""
         url = "rayclusters/{}".format(self.cluster_name)
         raycluster = self._get(url)
-        group_name = tags["ray-user-node-type"]
+        group_name = tags[TAG_RAY_USER_NODE_TYPE]
         group_index = _worker_group_index(raycluster, group_name)
+        group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
         tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
         current_replica_count = len(self.non_terminated_nodes(tag_filters))
+        target_replica_count = current_replica_count + count
+        # Cap the replica count to maxReplicas.
+        if group_max_replicas is not None and group_max_replicas < target_replica_count:
+            # This is a race condition. We need a more permanent solution.
+            # See https://github.com/ray-project/kuberay/issues/560.
+            logger.warning(
+                "Autoscaler attempted to create "
+                + "more than maxReplicas pods of type {}.".format(group_name)
+            )
+            target_replica_count = group_max_replicas
+
         path = f"/spec/workerGroupSpecs/{group_index}/replicas"
         payload = [
             {
                 "op": "replace",
                 "path": path,
-                "value": current_replica_count + count,
+                "value": target_replica_count,
             },
         ]
         self._patch(url, payload)
