@@ -64,7 +64,7 @@ class TestDNC(unittest.TestCase):
                         "nr_cells": 10,
                         "cell_size": 8,
                     },
-                }
+                },
             )
             .resources(num_cpus_per_worker=2.0)
         )

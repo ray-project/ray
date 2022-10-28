@@ -52,14 +52,11 @@ class ParrotEnv(gym.Env):
 # Create an RLlib Algorithm instance from a PPOConfig to learn how to
 # act in the above environment.
 config = (
-    PPOConfig()
-    .environment(
+    PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
         env=ParrotEnv,
         # Config dict to be passed to our custom env's constructor.
-        env_config={
-            "parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))
-        },
+        env_config={"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
     )
     # Parallelize environment rollouts.
     .rollouts(num_rollout_workers=3)

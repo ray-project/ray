@@ -84,12 +84,14 @@ if __name__ == "__main__":
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework, eager_tracing=args.eager_tracing)
-        .training(model={
-            "use_lstm": True,
-            "lstm_cell_size": 256,
-            "lstm_use_prev_action": args.prev_action,
-            "lstm_use_prev_reward": args.prev_reward,
-        })
+        .training(
+            model={
+                "use_lstm": True,
+                "lstm_cell_size": 256,
+                "lstm_use_prev_action": args.prev_action,
+                "lstm_use_prev_reward": args.prev_reward,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

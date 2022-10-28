@@ -50,16 +50,15 @@ class SimpleCorridor(gym.Env):
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
 config = (
-    PPOConfig()
-    .environment(
+    PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
         env=SimpleCorridor,
         # Config dict to be passed to our custom env's constructor.
         # Use corridor with 20 fields (including S and G).
         env_config={"corridor_length": 28},
     )
-        # Parallelize environment rollouts.
-        .rollouts(num_rollout_workers=3)
+    # Parallelize environment rollouts.
+    .rollouts(num_rollout_workers=3)
 )
 # Construct the actual (PPO) algorithm object from the config.
 algo = config.build()

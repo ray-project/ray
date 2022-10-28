@@ -64,13 +64,15 @@ class TestModels(unittest.TestCase):
             ppo.PPOConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
-            .training(model={
-                "custom_model": RNNModel,
-                "custom_model_config": {
-                    "hiddens_size": 64,
-                    "cell_size": 128,
-                },
-            })
+            .training(
+                model={
+                    "custom_model": RNNModel,
+                    "custom_model_config": {
+                        "hiddens_size": 64,
+                        "cell_size": 128,
+                    },
+                }
+            )
         )
         algo = config.build()
         for _ in range(2):

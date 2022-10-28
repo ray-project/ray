@@ -508,7 +508,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy",
                     }[aid]
-                )
+                ),
             )
         )
 

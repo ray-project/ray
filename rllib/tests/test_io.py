@@ -198,16 +198,14 @@ class AgentIOTest(unittest.TestCase):
             algo.stop()
 
     def test_agent_input_dict(self):
-        config = (
-            PGConfig()
-            .environment("CartPole-v1")
-            .training(train_batch_size=2000)
-        )
+        config = PGConfig().environment("CartPole-v1").training(train_batch_size=2000)
         for fw in framework_iterator(config):
-            config.offline_data(input_={
-                self.test_dir + fw: 0.1,
-                "sampler": 0.9,
-            })
+            config.offline_data(
+                input_={
+                    self.test_dir + fw: 0.1,
+                    "sampler": 0.9,
+                }
+            )
             self.write_outputs(self.test_dir, fw)
             algo = config.build()
             result = algo.train()
@@ -296,9 +294,9 @@ class AgentIOTest(unittest.TestCase):
 
         config = (
             PGConfig()
-                .environment("CartPole-v1")
-                .rollouts(num_rollout_workers=2, rollout_fragment_length=250)
-                .evaluation(off_policy_estimation_methods={})
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=250)
+            .evaluation(off_policy_estimation_methods={})
         )
 
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):

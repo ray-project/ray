@@ -146,9 +146,7 @@ def model_import_test(config):
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
     for fw in framework_iterator(config, ["tf", "torch"]):
-        config.model["custom_model"] = (
-            "keras_model" if fw != "torch" else "torch_model"
-        )
+        config.model["custom_model"] = "keras_model" if fw != "torch" else "torch_model"
 
         agent = config.build()
 
@@ -200,12 +198,14 @@ class TestModelImport(unittest.TestCase):
         ray.shutdown()
 
     def test_ppo(self):
-        model_import_test(config=(
-            PPOConfig()
-            .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
-            .training(model={"vf_share_layers": True})
-        ))
+        model_import_test(
+            config=(
+                PPOConfig()
+                .environment("CartPole-v1")
+                .rollouts(num_rollout_workers=0)
+                .training(model={"vf_share_layers": True})
+            )
+        )
 
 
 if __name__ == "__main__":

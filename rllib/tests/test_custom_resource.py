@@ -23,7 +23,6 @@ def test_custom_resource(algorithm):
         .framework("torch")
         .rollouts(num_rollout_workers=1)
         .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
-
     )
     if algorithm == "APEX":
         config.num_steps_sampled_before_learning_starts = 0

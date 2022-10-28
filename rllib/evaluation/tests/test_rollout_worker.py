@@ -187,11 +187,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        config = (
-            PGConfig()
-            .environment("fail")
-            .rollouts(num_rollout_workers=2)
-        )
+        config = PGConfig().environment("fail").rollouts(num_rollout_workers=2)
         for _ in framework_iterator(config):
             # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside

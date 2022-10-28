@@ -9,9 +9,10 @@ class TestCheckMultiAgent(unittest.TestCase):
             TypeError,
             "got an unexpected keyword argument 'wrong_key'",
             lambda: (
-                PGConfig()
-                .multi_agent(policies={"p0"}, policies_to_train=["p0"], wrong_key=1)
-            )
+                PGConfig().multi_agent(
+                    policies={"p0"}, policies_to_train=["p0"], wrong_key=1
+                )
+            ),
         )
 
     def test_multi_agent_bad_policy_ids(self):
@@ -30,22 +31,20 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "config.multi_agent\\(count_steps_by=..\\) must be one of",
-            lambda: (
-                PGConfig().multi_agent(count_steps_by="invalid_value")
-            )
+            lambda: (PGConfig().multi_agent(count_steps_by="invalid_value")),
         )
 
     def test_setting_multiagent_should_fail(self):
-        config = PGConfig().multi_agent(policies={
-            "pol1": (None, None, None, None),
-            "pol2": (None, None, None, {"lr": 0.001}),
-        })
+        config = PGConfig().multi_agent(
+            policies={
+                "pol1": (None, None, None, None),
+                "pol2": (None, None, None, {"lr": 0.001}),
+            }
+        )
 
         def set_ma(config):
             print(config["multiagent"])  # ok
-            config["multiagent"] = {
-                "policies": {"pol1", "pol2"}  # not ok
-            }
+            config["multiagent"] = {"policies": {"pol1", "pol2"}}  # not ok
 
         self.assertRaisesRegex(
             AttributeError,
