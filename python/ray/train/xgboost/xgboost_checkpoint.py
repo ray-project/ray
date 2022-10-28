@@ -1,4 +1,3 @@
-# flake8: noqa: E501
 import os
 import tempfile
 from typing import TYPE_CHECKING, Optional
