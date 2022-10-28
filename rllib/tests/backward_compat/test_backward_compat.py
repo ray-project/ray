@@ -127,7 +127,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = PPO(config)
+        algo = PPO(config=config)
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])

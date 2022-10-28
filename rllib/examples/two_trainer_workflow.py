@@ -66,13 +66,6 @@ parser.add_argument(
 
 # Define new Algorithm with custom execution_plan/workflow.
 class MyAlgo(Algorithm):
-    @classmethod
-    @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
-        # Run this Algorithm with new `training_step` API and set some PPO-specific
-        # parameters.
-        return PPOConfig().training(num_sgd_iter=10, sgd_minibatch_size=128)
-
     @override(Algorithm)
     def setup(self, config):
         # Call super's `setup` to create rollout workers.
@@ -170,7 +163,7 @@ if __name__ == "__main__":
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
             None,
             None,
-            PPOConfig(),
+            PPOConfig().training(num_sgd_iter=10, sgd_minibatch_size=128),
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
@@ -190,7 +183,6 @@ if __name__ == "__main__":
         AlgorithmConfig()
         .environment("multi_agent_cartpole")
         .framework("torch" if args.torch else "tf")
-        .training()
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

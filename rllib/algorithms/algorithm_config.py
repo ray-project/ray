@@ -1053,6 +1053,8 @@ class AlgorithmConfig:
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
         enable_async_evaluation: Optional[bool] = None,
+        # Deprecated args.
+        evaluation_num_episodes=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -1130,6 +1132,15 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        if evaluation_num_episodes != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
+                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
+                "evaluation_duration_unit='episodes')",
+                error=False,
+            )
+            evaluation_duration = evaluation_num_episodes
+
         if evaluation_interval is not None:
             self.evaluation_interval = evaluation_interval
         if evaluation_duration is not None:
@@ -1934,6 +1945,13 @@ class AlgorithmConfig:
         #    f"(`config['{key}'] = {value}`), "
         #    f"but via setting their properties directly (config.{prop} = {value})."
         # )
+        if key == "multiagent":
+            raise AttributeError(
+                "Cannot set `multiagent` key in an AlgorithmConfig!\nTry setting "
+                "the multi-agent components of your AlgorithmConfig object via the "
+                "`multi_agent()` method and its arguments.\nE.g. `config.multi_agent("
+                "policies=.., policy_mapping_fn.., policies_to_train=..)`."
+            )
         super().__setattr__(key, value)
 
     def __contains__(self, item) -> bool:
