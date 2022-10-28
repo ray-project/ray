@@ -7,6 +7,8 @@ from numbers import Number
 from types import ModuleType
 from typing import Any, Dict, Optional, Sequence
 
+from mock.mock import MagicMock
+
 from ray import logger
 from ray.air import session
 from ray._private.storage import _load_class
@@ -19,7 +21,17 @@ except ImportError:
     wandb = None
 
 
-def setup_wandb(config: Dict):
+_MockWandb = MagicMock
+
+
+def setup_wandb(config: Dict, rank_zero_only: bool = True):
+    try:
+        # Do a try-catch here if we are not in a train session
+        if rank_zero_only and session.get_local_rank() != 0:
+            return _MockWandb()
+    except Exception:
+        pass
+
     return _setup_wandb(
         trial_id=session.get_trial_id(),
         trial_name=session.get_trial_name(),
