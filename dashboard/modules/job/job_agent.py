@@ -154,6 +154,8 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
+        return ws
+
     def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)
