@@ -36,7 +36,7 @@ from .ppo_torch_rl_module import SimplePPOModule, PPOModuleConfig, FCConfig
 
 
 class PPOTorchPolicy(
-    ValueNetworkMixin,
+    # ValueNetworkMixin,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
@@ -58,7 +58,7 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        ValueNetworkMixin.__init__(self, config)
+        # ValueNetworkMixin.__init__(self, config)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -107,13 +107,16 @@ class PPOTorchPolicy(
             The PPO loss tensor given the input batch.
         """
 
-        logits, state = model(train_batch)
-        curr_action_dist = dist_class(logits, model)
+        fwd_out = model.forward_train(train_batch)
+        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
+        state = fwd_out.get("state_out", {})
+        breakpoint()
 
+        # TODO (Kourosh): come back to RNNs later
         # RNN case: Mask away 0-padded chunks at end of time axis.
         if state:
             B = len(train_batch[SampleBatch.SEQ_LENS])
-            max_seq_len = logits.shape[0] // B
+            max_seq_len = train_batch[SampleBatch.OBS].shape[0] // B
             mask = sequence_mask(
                 train_batch[SampleBatch.SEQ_LENS],
                 max_seq_len,
@@ -233,11 +236,12 @@ class PPOTorchPolicy(
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
     ):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak
-        # in torch (issue #6962).
-        # TODO: no_grad still necessary?
-        with torch.no_grad():
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
+        return sample_batch
+        # # Do all post-processing always with no_grad().
+        # # Not using this here will introduce a memory leak
+        # # in torch (issue #6962).
+        # # TODO: no_grad still necessary?
+        # with torch.no_grad():
+        #     return compute_gae_for_sample_batch(
+        #         self, sample_batch, other_agent_batches, episode
+        #     )

@@ -95,6 +95,7 @@ class TestPPO(unittest.TestCase):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = ppo.PPOConfig().framework("torch").environment("CartPole-v0")
         algo = config.build()
+        breakpoint()
 
     # def test_ppo_compilation_and_schedule_mixins(self):
     #     """Test whether PPO can be built with all frameworks."""
