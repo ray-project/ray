@@ -611,9 +611,9 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
-    number_workers_killed_ ++;
+    number_workers_killed_++;
   } else if (disconnect_type == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
-    number_workers_killed_by_oom_ ++;
+    number_workers_killed_by_oom_++;
   }
 }
 
@@ -3074,16 +3074,15 @@ void NodeManager::GCTaskFailureReason() {
 
 void NodeManager::ReportWorkerOOMKillStats() {
   if (number_workers_killed_by_oom_ > 0) {
-    RAY_LOG(ERROR) << "Workers (tasks / actors) killed due to memory pressure (OOM) at node (ID: " << self_node_id_
-                   << ", IP: " << initial_config_.node_manager_address
-                   << ") over the last period = "
-                   << number_workers_killed_by_oom_
-                   << ", other worker crashes = " << number_workers_killed_
-                   << ", to see more information about the workers killed on this node, "
-                      "use `ray logs raylet.out "
-                      "-ip "
-                   << initial_config_.node_manager_address
-                   << "`";
+    RAY_LOG(ERROR)
+        << "Workers (tasks / actors) killed due to memory pressure (OOM) at node (ID: "
+        << self_node_id_ << ", IP: " << initial_config_.node_manager_address
+        << ") over the last period = " << number_workers_killed_by_oom_
+        << ", other worker crashes = " << number_workers_killed_
+        << ", to see more information about the workers killed on this node, "
+           "use `ray logs raylet.out "
+           "-ip "
+        << initial_config_.node_manager_address << "`";
   }
   number_workers_killed_by_oom_ = 0;
   number_workers_killed_ = 0;
