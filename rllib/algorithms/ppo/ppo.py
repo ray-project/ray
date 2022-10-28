@@ -190,6 +190,10 @@ class PPOConfig(AlgorithmConfig):
         if vf_loss_coeff is not None:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not None:
+            if isinstance(entropy_coeff, int):
+                entropy_coeff = float(entropy_coeff)
+            if entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not None:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -211,6 +215,72 @@ class PPOConfig(AlgorithmConfig):
             )
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # SGD minibatch size must be smaller than train_batch_size (b/c
+        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
+        # each `num_sgd_iter`).
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        if self.sgd_minibatch_size > self.train_batch_size > 0:
+            raise ValueError(
+                "`sgd_minibatch_size` ({}) must be <= "
+                "`train_batch_size` ({}).".format(
+                    self.sgd_minibatch_size, self.train_batch_size
+                )
+            )
+
+        # Check for mismatches between `train_batch_size` and
+        # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
+        # if necessary.
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        calculated_min_rollout_size = (
+            self.num_rollout_workers
+            * self.num_envs_per_worker
+            * self.rollout_fragment_length
+        )
+        if (
+            not self.in_evaluation
+            and self.train_batch_size > 0
+            and self.train_batch_size % calculated_min_rollout_size != 0
+        ):
+            new_rollout_fragment_length = math.ceil(
+                self.train_batch_size
+                / (self.num_rollout_workers * self.num_envs_per_worker)
+            )
+            raise ValueError(
+                "`train_batch_size` ({}) cannot be achieved with your other "
+                "settings (num_rollout_workers={} num_envs_per_worker={} "
+                "rollout_fragment_length={})! Try setting rollout_fragment_length to "
+                "{}.".format(
+                    self.train_batch_size,
+                    self.num_rollout_workers,
+                    self.num_envs_per_worker,
+                    self.rollout_fragment_length,
+                    new_rollout_fragment_length,
+                )
+            )
+
+        # Episodes may only be truncated (and passed into PPO's
+        # `postprocessing_fn`), iff generalized advantage estimation is used
+        # (value function estimate at end of truncated episode to estimate
+        # remaining value).
+        if (
+            not self.in_evaluation
+            and self.batch_mode == "truncate_episodes"
+            and not self.use_gae
+        ):
+            raise ValueError(
+                "Episode truncation is not supported without a value "
+                "function (to estimate the return at the end of the truncated"
+                " trajectory). Consider setting "
+                "batch_mode=complete_episodes."
+            )
 
 
 class UpdateKL:
@@ -296,99 +366,6 @@ class PPO(Algorithm):
         return PPOConfig()
 
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Algorithm's config dict.
-
-        Args:
-            config: The Algorithm's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if isinstance(config["entropy_coeff"], int):
-            config["entropy_coeff"] = float(config["entropy_coeff"])
-
-        if config["entropy_coeff"] < 0.0:
-            raise DeprecationWarning("entropy_coeff must be >= 0.0")
-
-        # SGD minibatch size must be smaller than train_batch_size (b/c
-        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if (
-            config["train_batch_size"] > 0
-            and config["sgd_minibatch_size"] > config["train_batch_size"]
-        ):
-            raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    config["sgd_minibatch_size"], config["train_batch_size"]
-                )
-            )
-
-        # Check for mismatches between `train_batch_size` and
-        # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
-        # if necessary.
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        num_workers = config["num_workers"] or 1
-        calculated_min_rollout_size = (
-            num_workers
-            * config["num_envs_per_worker"]
-            * config["rollout_fragment_length"]
-        )
-        if (
-            not config.get("in_evaluation")
-            and config["train_batch_size"] > 0
-            and config["train_batch_size"] % calculated_min_rollout_size != 0
-        ):
-            new_rollout_fragment_length = math.ceil(
-                config["train_batch_size"]
-                / (num_workers * config["num_envs_per_worker"])
-            )
-            logger.warning(
-                "`train_batch_size` ({}) cannot be achieved with your other "
-                "settings (num_workers={} num_envs_per_worker={} "
-                "rollout_fragment_length={})! Auto-adjusting "
-                "`rollout_fragment_length` to {}.".format(
-                    config["train_batch_size"],
-                    config["num_workers"],
-                    config["num_envs_per_worker"],
-                    config["rollout_fragment_length"],
-                    new_rollout_fragment_length,
-                )
-            )
-            config["rollout_fragment_length"] = new_rollout_fragment_length
-
-        # Episodes may only be truncated (and passed into PPO's
-        # `postprocessing_fn`), iff generalized advantage estimation is used
-        # (value function estimate at end of truncated episode to estimate
-        # remaining value).
-        if (
-            not config.get("in_evaluation")
-            and config["batch_mode"] == "truncate_episodes"
-            and not config["use_gae"]
-        ):
-            raise ValueError(
-                "Episode truncation is not supported without a value "
-                "function (to estimate the return at the end of the truncated"
-                " trajectory). Consider setting "
-                "batch_mode=complete_episodes."
-            )
-
-        # Multi-agent mode and multi-GPU optimizer.
-        if config["multiagent"]["policies"] and not config["simple_optimizer"]:
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially"
-                " by the multi-GPU optimizer. Consider setting "
-                "simple_optimizer=True if this doesn't work for you."
-            )
-
-    @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -406,7 +383,7 @@ class PPO(Algorithm):
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )

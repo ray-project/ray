@@ -204,6 +204,29 @@ class DreamerConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
+        if self.framework_str != "torch":
+            raise ValueError("Dreamer not supported in Tensorflow yet!")
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("truncate_episodes not supported")
+        if self.num_rollout_workers != 0:
+            raise ValueError("Distributed Dreamer not supported yet!")
+        if self.clip_actions:
+            raise ValueError("Clipping is done inherently via policy tanh!")
+        if self.dreamer_train_iters <= 0:
+            raise ValueError(
+                "`dreamer_train_iters` must be a positive integer. "
+                f"Received {self.dreamer_train_iters} instead."
+            )
+        if self.env_config.get("frame_skip", 0) > 1:
+            self.horizon /= self.env_config["frame_skip"]
+
 
 def _postprocess_gif(gif: np.ndarray):
     """Process provided gif to a format that can be logged to Tensorboard."""
@@ -260,7 +283,7 @@ class DreamerIteration:
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED if self.config.count_steps_by == "agent_steps" else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -300,30 +323,6 @@ class Dreamer(Algorithm):
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return DreamerConfig()
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        config["action_repeat"] = config["env_config"]["frame_skip"]
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
-        if config["framework"] != "torch":
-            raise ValueError("Dreamer not supported in Tensorflow yet!")
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("truncate_episodes not supported")
-        if config["num_workers"] != 0:
-            raise ValueError("Distributed Dreamer not supported yet!")
-        if config["clip_actions"]:
-            raise ValueError("Clipping is done inherently via policy tanh!")
-        if config["dreamer_train_iters"] <= 0:
-            raise ValueError(
-                "`dreamer_train_iters` must be a positive integer. "
-                f"Received {config['dreamer_train_iters']} instead."
-            )
-        if config["action_repeat"] > 1:
-            config["horizon"] = config["horizon"] / config["action_repeat"]
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict):
@@ -368,7 +367,7 @@ class Dreamer(Algorithm):
 
         batch_size = config["batch_size"]
         dreamer_train_iters = config["dreamer_train_iters"]
-        act_repeat = config["action_repeat"]
+        act_repeat = config["env_config"]["frame_skip"]
 
         rollouts = ParallelRollouts(workers)
         rollouts = rollouts.for_each(
@@ -399,7 +398,7 @@ class Dreamer(Algorithm):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED if self.config.count_steps_by == "agent_steps" else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:

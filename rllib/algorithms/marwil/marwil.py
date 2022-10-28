@@ -159,6 +159,7 @@ class MARWILConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         return self
 
+    @override(AlgorithmConfig)
     def evaluation(
         self,
         **kwargs,
@@ -177,6 +178,7 @@ class MARWILConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
@@ -193,29 +195,30 @@ class MARWILConfig(AlgorithmConfig):
             )
         return super().build(env, logger_creator)
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.beta < 0.0 or self.beta > 1.0:
+            raise ValueError("`beta` must be within 0.0 and 1.0!")
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+
+        if self.postprocess_inputs is False and self.beta > 0.0:
+            raise ValueError(
+                "`postprocess_inputs` must be True for MARWIL (to "
+                "calculate accum., discounted returns)! Try setting "
+                "`config.offline_data(postprocess_inputs=True)`."
+            )
+
 
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return MARWILConfig()
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["beta"] < 0.0 or config["beta"] > 1.0:
-            raise ValueError("`beta` must be within 0.0 and 1.0!")
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
-
-        if config["postprocess_inputs"] is False and config["beta"] > 0.0:
-            raise ValueError(
-                "`postprocess_inputs` must be True for MARWIL (to "
-                "calculate accum., discounted returns)!"
-            )
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

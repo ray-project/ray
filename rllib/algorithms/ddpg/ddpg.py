@@ -254,6 +254,28 @@ class DDPGConfig(SimpleQConfig):
 
         return self
 
+    @override(SimpleQConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.model["custom_model"]:
+            raise ValueError(
+                "Try setting config.training(use_state_preprocessor=True) "
+                "since a custom model was specified."
+            )
+
+        if self.grad_clip is not None and self.grad_clip <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try seting "
+                    "config.training(batch_mode='complete_episodes')."
+                )
+
 
 class DDPG(SimpleQ):
     @classmethod
@@ -276,31 +298,6 @@ class DDPG(SimpleQ):
             from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
 
             return DDPGTF2Policy
-
-    @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["model"]["custom_model"]:
-            logger.warning(
-                "Setting use_state_preprocessor=True since a custom model "
-                "was specified."
-            )
-            config["use_state_preprocessor"] = True
-
-        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-            raise ValueError("`grad_clip` value must be > 0.0!")
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting "
-                    "batch_mode=complete_episodes."
-                )
-                config["batch_mode"] = "complete_episodes"
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg.DDPGConfig instead!

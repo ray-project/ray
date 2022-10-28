@@ -56,6 +56,13 @@ class BCConfig(MARWILConfig):
         # No off-policy estimation.
         self.off_policy_estimation_methods = {}
 
+    @override(MARWILConfig)
+    def validate(self) -> None:
+        super().validate()
+
+        if self.beta != 0.0:
+            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
+
 
 class BC(MARWIL):
     """Behavioral Cloning (derived from MARWIL).
@@ -67,14 +74,6 @@ class BC(MARWIL):
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-    @override(MARWIL)
-    def validate_config(self, config: AlgorithmConfig) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["beta"] != 0.0:
-            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 # Deprecated: Use ray.rllib.algorithms.bc.BCConfig instead!

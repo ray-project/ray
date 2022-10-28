@@ -286,6 +286,30 @@ class SACConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.use_state_preprocessor != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config['use_state_preprocessor']",
+                error=False,
+            )
+            self.use_state_preprocessor = DEPRECATED_VALUE
+
+        if self.grad_clip is not None and self.grad_clip <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
+
+        if self.framework in ["tf", "tf2"] and tfp is None:
+            logger.warning(
+                "You need `tensorflow_probability` in order to run SAC! "
+                "Install it via `pip install tensorflow_probability`. Your "
+                f"tf.__version__={tf.__version__ if tf else None}."
+                "Trying to import tfp results in the following error:"
+            )
+            try_import_tfp(error=True)
+
 
 class SAC(DQN):
     """Soft Actor Critic (SAC) Algorithm class.
@@ -306,43 +330,6 @@ class SAC(DQN):
     @override(DQN)
     def get_default_config(cls) -> AlgorithmConfig:
         return SACConfig()
-
-    @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-            deprecation_warning(old="config['use_state_preprocessor']", error=False)
-            config["use_state_preprocessor"] = DEPRECATED_VALUE
-
-        if config.get("policy_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['policy_model']",
-                new="config['policy_model_config']",
-                error=True,
-            )
-            config["policy_model_config"] = config["policy_model"]
-
-        if config.get("Q_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['Q_model']",
-                new="config['q_model_config']",
-                error=True,
-            )
-            config["q_model_config"] = config["Q_model"]
-
-        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-            raise ValueError("`grad_clip` value must be > 0.0!")
-
-        if config["framework"] in ["tf", "tf2"] and tfp is None:
-            logger.warning(
-                "You need `tensorflow_probability` in order to run SAC! "
-                "Install it via `pip install tensorflow_probability`. Your "
-                f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:"
-            )
-            try_import_tfp(error=True)
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

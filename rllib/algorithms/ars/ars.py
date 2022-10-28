@@ -171,6 +171,33 @@ class ARSConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for ARS!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("`num_rollout_workers` must be > 0 for ARS!")
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("num_envs_per_worker") != 1
+        ):
+            raise ValueError(
+                "`evaluation_config.num_envs_per_worker` must always be 1 for "
+                "ARS! To parallelize evaluation, increase "
+                "`evaluation_num_workers` to > 1."
+            )
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("observation_filter") != "NoFilter"
+        ):
+            raise ValueError(
+                "`evaluation_config.observation_filter` must always be "
+                "`NoFilter` for ARS!"
+            )
+
 
 @ray.remote
 def create_shared_noise(count):
@@ -327,27 +354,6 @@ class ARS(Algorithm):
         return ARSConfig()
 
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for ARS!")
-        if config["num_workers"] <= 0:
-            raise ValueError("`num_workers` must be > 0 for ARS!")
-        if config["evaluation_config"]["num_envs_per_worker"] != 1:
-            raise ValueError(
-                "`evaluation_config.num_envs_per_worker` must always be 1 for "
-                "ARS! To parallelize evaluation, increase "
-                "`evaluation_num_workers` to > 1."
-            )
-        if config["evaluation_config"]["observation_filter"] != "NoFilter":
-            raise ValueError(
-                "`evaluation_config.observation_filter` must always be "
-                "`NoFilter` for ARS!"
-            )
-
-    @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
@@ -359,7 +365,7 @@ class ARS(Algorithm):
             self.config = config.to_dict()
 
         # Validate our config dict.
-        self.validate_config(self.config)
+        self.config.validate()
 
         # Generate the local env.
         env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)

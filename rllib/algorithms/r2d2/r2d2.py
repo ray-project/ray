@@ -170,6 +170,29 @@ class R2D2Config(DQNConfig):
 
         return self
 
+    @override(DQNConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if (
+            not self.in_evaluation
+            and self.replay_buffer_config.get("replay_sequence_length", -1) != -1
+        ):
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "model->max_seq_len + burn_in!"
+            )
+        # Add the `burn_in` to the Model's max_seq_len.
+        # Set the replay sequence length to the max_seq_len of the model.
+        self.replay_buffer_config["replay_sequence_length"] = (
+            self.replay_buffer_config["replay_burn_in"]
+            + self.model["max_seq_len"]
+        )
+
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("`batch_mode` must be 'complete_episodes'!")
+
 
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
@@ -197,34 +220,6 @@ class R2D2(DQN):
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
-
-    @override(DQN)
-    def validate_config(self, config: AlgorithmConfig) -> None:
-        """Checks and updates the config based on settings.
-
-        Rewrites rollout_fragment_length to take into account burn-in and
-        max_seq_len truncation.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if (
-            not config.get("in_evaluation")
-            and config["replay_buffer_config"].get("replay_sequence_length", -1) != -1
-        ):
-            raise ValueError(
-                "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!"
-            )
-        # Add the `burn_in` to the Model's max_seq_len.
-        # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_buffer_config"]["replay_sequence_length"] = (
-            config["replay_buffer_config"]["replay_burn_in"]
-            + config["model"]["max_seq_len"]
-        )
-
-        if config.get("batch_mode") != "complete_episodes":
-            raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
 # Deprecated: Use ray.rllib.algorithms.r2d2.r2d2.R2D2Config instead!

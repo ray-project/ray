@@ -17,6 +17,9 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended
+)
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
@@ -68,6 +71,30 @@ class AlgorithmConfig:
         >>> # for usage with `tune.Tuner().fit()`.
         >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
     """
+
+    @classmethod
+    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
+        """Creates an AlgorithmConfig from a legacy python config dict.
+
+        Examples:
+            >>> from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG, PPOConfig
+            >>> ppo_config = PPOConfig.from_dict(DEFAULT_CONFIG)
+            >>> ppo = ppo_config.build(env="Pendulum-v1")
+
+        Args:
+            config_dict: The legacy formatted python config dict for some algorithm.
+
+        Returns:
+             A new AlgorithmConfig object that matches the given python config dict.
+        """
+        # Create a default config object of this class.
+        config_obj = cls()
+        # Remove `_is_frozen` flag from config dict in case the AlgorithmConfig that
+        # the dict was derived from was already frozen (we don't want to copy the
+        # frozenness).
+        config_dict.pop("_is_frozen", None)
+        config_obj.update_from_dict(config_dict)
+        return config_obj
 
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
@@ -327,30 +354,6 @@ class AlgorithmConfig:
 
         return config
 
-    @classmethod
-    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
-        """Creates an AlgorithmConfig from a legacy python config dict.
-
-        Examples:
-            >>> from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG, PPOConfig
-            >>> ppo_config = PPOConfig.from_dict(DEFAULT_CONFIG)
-            >>> ppo = ppo_config.build(env="Pendulum-v1")
-
-        Args:
-            config_dict: The legacy formatted python config dict for some algorithm.
-
-        Returns:
-             A new AlgorithmConfig object that matches the given python config dict.
-        """
-        # Create a default config object of this class.
-        config_obj = cls()
-        # Remove `_is_frozen` flag from config dict in case the AlgorithmConfig that
-        # the dict was derived from was already frozen (we don't want to copy the
-        # frozenness).
-        config_dict.pop("_is_frozen", None)
-        config_obj.update_from_dict(config_dict)
-        return config_obj
-
     def update_from_dict(
         self,
         config_dict: PartialAlgorithmConfigDict,
@@ -439,18 +442,163 @@ class AlgorithmConfig:
                 cp.evaluation_config._is_frozen = False
         return cp
 
-    def freeze(self) -> None:
+    def freeze(self, validate: bool = False) -> None:
         """Freezes this config object, such that no attributes can be set anymore.
 
         Algorithms should use this method to make sure that their config objects
         remain read-only after this.
+
+        Args:
+            validate: Whether to also validate the frozen config object.
         """
         if self._is_frozen:
             return
         self._is_frozen = True
+
         # Also freeze underlying eval config, if applicable.
         if isinstance(self.evaluation_config, AlgorithmConfig):
             self.evaluation_config.freeze()
+
+        # TODO: Flip out all set/dict/list values into frozen versions
+        #  of themselves? This way, users won't even be able to alter those values
+        #  directly anymore.
+
+        if validate:
+            self.validate()
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def validate(self) -> None:
+        """Validates all values in this config.
+
+        Note: This should NOT include immediate checks on single value
+        correctness, e.g. "batch_mode" = [complete_episodes|truncate_episodes]
+        """
+        # Check `policies_to_train` for invalid entries.
+        if isinstance(self.policies_to_train, (list, set, tuple)):
+            for pid in self.policies_to_train:
+                if pid not in self.policies:
+                    raise ValueError(
+                        "`config.multi_agent(policies_to_train=..)` contains "
+                        f"policy ID ({pid}) that was not defined in "
+                        f"`config.multi_agent(policies=..)`!"
+                    )
+
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None.
+        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
+            logger.warning(
+                f"You have specified {self.evaluation_num_workers} "
+                "evaluation workers, but your `evaluation_interval` is None! "
+                "Therefore, evaluation will not occur automatically with each"
+                " call to `Algorithm.train()`. Instead, you will have to call "
+                "`Algorithm.evaluate()` manually in order to trigger an "
+                "evaluation run."
+            )
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
+        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+            raise ValueError(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Try setting "
+                "`config.evaluation_parallel_to_training` to False."
+            )
+
+        # If `evaluation_duration=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if self.evaluation_duration == "auto":
+            if not self.evaluation_parallel_to_training:
+                raise ValueError(
+                    "`evaluation_duration=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!"
+                )
+        # Make sure, it's an int otherwise.
+        elif (
+            not isinstance(self.evaluation_duration, int)
+            or self.evaluation_duration <= 0
+        ):
+            raise ValueError(
+                f"`evaluation_duration` ({self.evaluation_duration}) must be an "
+                f"int and >0!"
+            )
+
+        # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if self._disable_preprocessor_api is True:
+            self.model["_disable_preprocessor_api"] = True
+        # If no action flattening, propagate into model's config as well
+        # (so model will know, whether action inputs are already flattened or
+        # not).
+        if self._disable_action_flattening is True:
+            self.model["_disable_action_flattening"] = True
+
+        # TODO: Deprecate self.simple_optimizer!
+        # Multi-GPU settings.
+        if self.simple_optimizer is True:
+            pass
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
+        elif self.num_gpus > 1:
+            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+            #  ok for tf2 here.
+            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
+                raise ValueError(
+                    "`num_gpus` > 1 not supported yet for "
+                    f"framework={self.framework_str}!"
+                )
+            elif self.simple_optimizer is True:
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider not setting `simple_optimizer` in your config."
+                )
+            self.simple_optimizer = False
+        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
+        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # plan).
+        elif self.simple_optimizer == DEPRECATED_VALUE:
+            # tf-eager: Must use simple optimizer.
+            if self.framework_str not in ["tf", "torch"]:
+                self.simple_optimizer = True
+            # Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies or TorchPolicies).
+            elif self.is_multi_agent():
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                from ray.rllib.policy.torch_policy import TorchPolicy
+
+                default_policy_cls = self.algo_class.get_default_policy_class(self)
+                policies = self.policies
+                policy_specs = (
+                    [
+                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
+                        for spec in policies.values()
+                    ]
+                    if isinstance(policies, dict)
+                    else [PolicySpec() for _ in policies]
+                )
+
+                if any(
+                    (spec.policy_class or default_policy_cls) is None
+                    or not issubclass(
+                        spec.policy_class or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy),
+                    )
+                    for spec in policy_specs
+                ):
+                    self.simple_optimizer = True
+                else:
+                    self.simple_optimizer = False
+            else:
+                self.simple_optimizer = False
+
+        # User manually set simple-optimizer to False -> Error if tf-eager.
+        elif self.simple_optimizer is False:
+            if self.framework_str == "tf2":
+                raise ValueError(
+                    "`simple_optimizer=False` not supported for "
+                    f"config.framework({self.framework_str})!"
+                )
 
     def build(
         self,
@@ -618,7 +766,7 @@ class AlgorithmConfig:
         """
         if framework is not None:
             if framework == "tfe":
-                raise deprecation_warning(
+                deprecation_warning(
                     old="AlgorithmConfig.framework('tfe')",
                     new="AlgorithmConfig.framework('tf2')",
                     error=True,
@@ -969,6 +1117,14 @@ class AlgorithmConfig:
         if train_batch_size is not None:
             self.train_batch_size = train_batch_size
         if model is not None:
+            # Validate prev_a/r settings.
+            prev_a_r = model.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
+            if prev_a_r != DEPRECATED_VALUE:
+                deprecation_warning(
+                    "model.lstm_use_prev_action_reward",
+                    "model.lstm_use_prev_action and model.lstm_use_prev_reward",
+                    error=True,
+                )
             self.model.update(model)
         if optimizer is not None:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
@@ -1172,46 +1328,6 @@ class AlgorithmConfig:
         if ope_split_batch_by_episode is not None:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
-        # None (also set `evaluation_interval` to 1).
-        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
-            logger.warning(
-                f"You have specified {self.evaluation_num_workers} "
-                "evaluation workers, but your `evaluation_interval` is None! "
-                "Therefore, evaluation will not occur automatically with each"
-                " call to `Algorithm.train()`. Instead, you will have to call "
-                "`Algorithm.evaluate()` manually in order to trigger an "
-                "evaluation run."
-            )
-        # If `evaluation_num_workers=0` and
-        # `evaluation_parallel_to_training=True`, warn that you need
-        # at least one remote eval worker for parallel training and
-        # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
-            raise ValueError(
-                "`evaluation_parallel_to_training` can only be done if "
-                "`evaluation_num_workers` > 0! Try setting "
-                "`config.evaluation_parallel_to_training` to False."
-            )
-
-        # If `evaluation_duration=auto`, error if
-        # `evaluation_parallel_to_training=False`.
-        if self.evaluation_duration == "auto":
-            if not self.evaluation_parallel_to_training:
-                raise ValueError(
-                    "`evaluation_duration=auto` not supported for "
-                    "`evaluation_parallel_to_training=False`!"
-                )
-        # Make sure, it's an int otherwise.
-        elif (
-            not isinstance(self.evaluation_duration, int)
-            or self.evaluation_duration <= 0
-        ):
-            raise ValueError(
-                f"`evaluation_duration` ({self.evaluation_duration}) must be an "
-                f"int and >0!"
-            )
-
         return self
 
     def offline_data(
@@ -1382,12 +1498,8 @@ class AlgorithmConfig:
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
-                validate_policy_id(pid, error=False)
-                # Policy IDs must be strings.
-                if not isinstance(pid, str):
-                    raise KeyError(
-                        f"Policy IDs must always be of type `str`, got {type(pid)}"
-                    )
+                validate_policy_id(pid, error=True)
+
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
                 for pid, spec in policies.items():
@@ -1459,13 +1571,6 @@ class AlgorithmConfig:
                         "Make sure - if you would like to learn at least one policy - "
                         "to add its ID to that list."
                     )
-                for pid in policies_to_train:
-                    if pid not in self.policies:
-                        raise ValueError(
-                            "`config.multi_agent(policies_to_train=..)` contains "
-                            f"policy ID ({pid}) that was not defined in "
-                            f"`config.multi_agent(policies=..)`!"
-                        )
             self.policies_to_train = policies_to_train
 
         # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
@@ -1738,7 +1843,11 @@ class AlgorithmConfig:
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
-        """Infers the observation- and action spaces in a multi-agent policy dict.
+        """Compiles complete multi-agent config (dict) from the information in `self`.
+
+        Infers the observation- and action spaces, the policy classes, and the policy's
+        configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
+        maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
 
         Args:
             policies: The multi-agent `policies` dict mapping policy IDs
@@ -1750,7 +1859,7 @@ class AlgorithmConfig:
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                worker.
+                RolloutWorker.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
@@ -1912,6 +2021,9 @@ class AlgorithmConfig:
         return policies, is_policy_to_train
 
     def __setattr__(self, key, value):
+        """Gatekeeper in case we are in frozen state and need to error."""
+
+        # If we are frozen, do not allow to set any attributes anymore.
         if hasattr(self, "_is_frozen") and self._is_frozen:
             # TODO: Remove `simple_optimizer` entirely.
             #  Remove need to set `worker_index` in RolloutWorker's c'tor.
@@ -1923,6 +2035,17 @@ class AlgorithmConfig:
         super().__setattr__(key, value)
 
     def __getitem__(self, item):
+        """Shim method to still support accessing properties by key lookup.
+
+        This way, an AlgorithmConfig object can still be used as if a dict, e.g.
+        by Ray Tune.
+
+        Examples:
+            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            >>> config = AlgorithmConfig()
+            >>> print(config["lr"])
+            ... 0.001
+        """
         # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
         #  hood (as well as Ray Tune).
         # if log_once("algo_config_getitem"):
@@ -1930,6 +2053,8 @@ class AlgorithmConfig:
         #        "AlgorithmConfig objects should NOT be used as dict! "
         #        f"Try accessing `{item}` directly as a property."
         #    )
+        # In case user accesses "old" keys, e.g. "num_workers", which need to
+        # be translated to their correct property names.
         item = self._translate_special_keys(item)
         return getattr(self, item)
 
@@ -1952,23 +2077,29 @@ class AlgorithmConfig:
         super().__setattr__(key, value)
 
     def __contains__(self, item) -> bool:
+        """Shim method to help pretend we are a dict."""
         prop = self._translate_special_keys(item, warn_deprecated=False)
         return hasattr(self, prop)
 
     def get(self, key, default=None):
+        """Shim method to help pretend we are a dict."""
         prop = self._translate_special_keys(key, warn_deprecated=False)
         return getattr(self, prop, default)
 
     def pop(self, key, default=None):
+        """Shim method to help pretend we are a dict."""
         return self.get(key, default)
 
     def keys(self):
+        """Shim method to help pretend we are a dict."""
         return self.to_dict().keys()
 
     def values(self):
+        """Shim method to help pretend we are a dict."""
         return self.to_dict().values()
 
     def items(self):
+        """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
 
     @staticmethod
@@ -2048,6 +2179,7 @@ class AlgorithmConfig:
 
     @property
     def multiagent(self):
+        """Shim method to help pretend we are a dict with 'multiagent' key."""
         return {
             "policies": self.policies,
             "policy_mapping_fn": self.policy_mapping_fn,

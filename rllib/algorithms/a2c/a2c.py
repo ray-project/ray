@@ -106,46 +106,39 @@ class A2CConfig(A3CConfig):
 
         return self
 
-
-class A2C(A3C):
-    @classmethod
-    @override(A3C)
-    def get_default_config(cls) -> AlgorithmConfig:
-        return A2CConfig()
-
-    @override(A3C)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    @override(A3CConfig)
+    def validate(self) -> None:
         # Call super's validation method.
-        super().validate_config(config)
+        super().validate()
 
-        if config["microbatch_size"]:
+        if self.microbatch_size:
             # Train batch size needs to be significantly larger than microbatch_size.
-            if config["train_batch_size"] / config["microbatch_size"] < 3:
+            if self.train_batch_size / self.microbatch_size < 3:
                 logger.warning(
                     "`train_batch_size` should be considerably larger (at least 3x) "
                     "than `microbatch_size` for a microbatching setup to make sense!"
                 )
             # Rollout fragment length needs to be less than microbatch_size.
-            if config["rollout_fragment_length"] > config["microbatch_size"]:
+            if self.rollout_fragment_length > self.microbatch_size:
                 logger.warning(
                     "`rollout_fragment_length` should not be larger than "
                     "`microbatch_size` (try setting them to the same value)! "
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
-            if config["num_gpus"] > 1:
+            if self.num_gpus > 1:
                 raise AttributeError(
                     "A2C does not support multiple GPUs when micro-batching is set."
                 )
         else:
             sample_batch_size = (
-                config["rollout_fragment_length"]
-                * config["num_workers"]
-                * config["num_envs_per_worker"]
+                self.rollout_fragment_length
+                * self.num_rollout_workers
+                * self.num_envs_per_worker
             )
-            if config["train_batch_size"] < sample_batch_size:
-                logger.warning(
-                    f"`train_batch_size` ({config['train_batch_size']}) "
+            if self.train_batch_size < sample_batch_size:
+                raise ValueError(
+                    f"`train_batch_size` ({self.train_batch_size}) "
                     "cannot be smaller than sample_batch_size "
                     "(`rollout_fragment_length` x `num_workers` x "
                     f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
@@ -155,15 +148,15 @@ class A2C(A3C):
                     " change the policy too much before we sample again and stay on"
                     " policy as much as possible. This will help the learning"
                     " stability."
-                    f" Setting train_batch_size = {sample_batch_size}."
+                    f" Try setting `train_batch_size` to {sample_batch_size}."
                 )
-                config["train_batch_size"] = sample_batch_size
 
-            if "sgd_minibatch_size" in config:
-                raise AttributeError(
-                    "A2C does not support sgd mini batching as it will instabilize the"
-                    " training. Use `train_batch_size` instead."
-                )
+
+class A2C(A3C):
+    @classmethod
+    @override(A3C)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A2CConfig()
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -193,7 +186,7 @@ class A2C(A3C):
         # apply the averaged gradient in one SGD step. This conserves GPU
         # memory, allowing for extremely large experience batches to be
         # used.
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_agent_steps=self.config["microbatch_size"]
             )

@@ -151,6 +151,16 @@ class A3CConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
+        if self.num_rollout_workers <= 0 and self.sample_async:
+            raise ValueError("`num_workers` for A3C must be >= 1!")
+
 
 class A3C(Algorithm):
     @classmethod
@@ -164,16 +174,6 @@ class A3C(Algorithm):
         self._worker_manager = AsyncRequestsManager(
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
-        if config["num_workers"] <= 0 and config["sample_async"]:
-            raise ValueError("`num_workers` for A3C must be >= 1!")
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

@@ -254,6 +254,24 @@ class MADDPGConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        """Adds the `before_learn_on_batch` hook to the config.
+
+        This hook is called explicitly prior to TrainOneStep() in the execution
+        setups for DQN and APEX.
+        """
+        # Call super's validation method.
+        super().validate()
+
+        def f(batch, workers, config):
+            policies = dict(
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
+            )
+            return before_learn_on_batch(batch, policies, config["train_batch_size"])
+
+        self.before_learn_on_batch = f
+
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     samples = {}
@@ -287,24 +305,6 @@ class MADDPG(DQN):
     @override(DQN)
     def get_default_config(cls) -> AlgorithmConfig:
         return MADDPGConfig()
-
-    @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Adds the `before_learn_on_batch` hook to the config.
-
-        This hook is called explicitly prior to TrainOneStep() in the execution
-        setups for DQN and APEX.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        def f(batch, workers, config):
-            policies = dict(
-                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
-            )
-            return before_learn_on_batch(batch, policies, config["train_batch_size"])
-
-        config["before_learn_on_batch"] = f
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

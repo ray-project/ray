@@ -259,6 +259,7 @@ class AlphaZeroConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
     def update_from_dict(self, config_dict) -> "AlphaZeroConfig":
         config_dict = config_dict.copy()
 
@@ -267,6 +268,13 @@ class AlphaZeroConfig(AlgorithmConfig):
             self.training(ranked_rewards=value)
 
         return super().update_from_dict(config_dict)
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        """Checks and updates the config based on settings."""
+        # Call super's validation method.
+        super().validate()
+        validate_buffer_config(self)
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
@@ -332,12 +340,6 @@ class AlphaZero(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return AlphaZeroConfig()
 
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Checks and updates the config based on settings."""
-        # Call super's validation method.
-        super().validate_config(config)
-        validate_buffer_config(config)
-
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return AlphaZeroPolicyWrapperClass
@@ -367,7 +369,7 @@ class AlphaZero(Algorithm):
             # Update target network every `target_network_update_freq` sample steps.
             cur_ts = self._counters[
                 NUM_AGENT_STEPS_SAMPLED
-                if self._by_agent_steps
+                if self.config.count_steps_by == "agent_steps"
                 else NUM_ENV_STEPS_SAMPLED
             ]
 

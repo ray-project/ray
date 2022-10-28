@@ -209,20 +209,22 @@ class QMixConfig(SimpleQConfig):
 
         return self
 
+    @override(SimpleQConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.framework_str != "torch":
+            raise ValueError(
+                "Only `config.framework('torch')` supported so far for QMix!"
+            )
+
 
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
     def get_default_config(cls) -> AlgorithmConfig:
         return QMixConfig()
-
-    @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfig) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["framework"] != "torch":
-            raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
     def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
@@ -256,7 +258,7 @@ class QMix(SimpleQ):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED if self.config.count_steps_by == "agent_steps" else NUM_ENV_STEPS_SAMPLED
         ]
 
         train_results = {}
@@ -267,7 +269,7 @@ class QMix(SimpleQ):
             train_batch = sample_min_n_steps_from_buffer(
                 replay_buffer=self.local_replay_buffer,
                 min_steps=self.config["train_batch_size"],
-                count_by_agent_steps=self._by_agent_steps,
+                count_by_agent_steps=self.config.count_steps_by == "agent_steps",
             )
 
             # Learn on the training batch.
