@@ -199,7 +199,7 @@ class _MLflowLoggerUtil:
             return self._start_active_run(run_name=run_name, tags=tags)
 
         client = self._get_client()
-        # If `mlflow==1.30.0` and we don't use `run_name`, then MLFlow might error. For
+        # If `mlflow==1.30.0` and we don't use `run_name`, then MLflow might error. For
         # more information, see #29749.
         if version.parse(mlflow.__version__) >= version.parse("1.30.0"):
             run = client.create_run(
