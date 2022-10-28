@@ -46,6 +46,7 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    experiment_name: Optional[str] = None
 
 
 @dataclass

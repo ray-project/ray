@@ -24,6 +24,7 @@ def setup_wandb(config: Dict):
         trial_id=session.get_trial_id(),
         trial_name=session.get_trial_name(),
         config=config,
+        group=session.get_experiment_name(),
     )
 
 

@@ -60,6 +60,11 @@ class Session(abc.ABC):
         raise NotImplementedError
 
     @property
+    def experiment_name(self) -> str:
+        """Experiment name for the corresponding trial."""
+        raise NotImplementedError
+
+    @property
     def trial_name(self) -> str:
         """Trial name for the corresponding trial."""
         raise NotImplementedError

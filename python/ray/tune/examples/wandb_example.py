@@ -7,15 +7,13 @@ import wandb
 
 from ray import air, tune
 from ray.air import session
+from ray.air.integrations.wandb import setup_wandb
 from ray.tune import Trainable
 from ray.air.callbacks.wandb import WandbLoggerCallback
-from ray.tune.integration.wandb import (
-    WandbTrainableMixin,
-    wandb_mixin,
-)
+from ray.tune.integration.wandb import WandbTrainableMixin
 
 
-def train_function(config, checkpoint_dir=None):
+def train_function(config):
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
         session.report({"loss": loss})
@@ -42,18 +40,19 @@ def tune_function(api_key_file):
     tuner.fit()
 
 
-@wandb_mixin
-def decorated_train_function(config, checkpoint_dir=None):
+def train_function_wandb(config):
+    wandb = setup_wandb(config)
+
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
         session.report({"loss": loss})
         wandb.log(dict(loss=loss))
 
 
-def tune_decorated(api_key_file):
+def tune_setup(api_key_file):
     """Example for using the @wandb_mixin decorator with the function API"""
     tuner = tune.Tuner(
-        decorated_train_function,
+        train_function_wandb,
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
@@ -101,7 +100,6 @@ if __name__ == "__main__":
 
     if args.mock_api:
         WandbLoggerCallback._logger_process_cls = MagicMock
-        decorated_train_function.__mixins__ = tuple()
         WandbTrainable._wandb = MagicMock()
         wandb = MagicMock()  # noqa: F811
         temp_file = tempfile.NamedTemporaryFile()
@@ -109,9 +107,9 @@ if __name__ == "__main__":
         temp_file.flush()
         api_key_file = temp_file.name
 
-    tune_function(api_key_file)
-    tune_decorated(api_key_file)
-    tune_trainable(api_key_file)
+    # tune_function(api_key_file)
+    tune_setup(api_key_file)
+    # tune_trainable(api_key_file)
 
     if args.mock_api:
         temp_file.close()
