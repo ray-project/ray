@@ -20,6 +20,11 @@ except ImportError:
     logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
 
+if wandb:
+    from wandb.util import json_dumps_safer
+else:
+    json_dumps_safer = None
+
 
 _MockWandb = MagicMock
 
@@ -49,7 +54,7 @@ def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kw
     - api_key: API key to authenticate with W&B
 
     If no API information is found in the config, wandb will try to authenticate
-    using locally stored credentials, created for instance by running ``wanbd login``.
+    using locally stored credentials, created for instance by running ``wandb login``.
 
     All other keys found in the ``wandb`` config parameter will be passed to
     ``wandb.init()``. If the same keys are present in multiple locations, the
@@ -80,7 +85,7 @@ def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kw
         # Do a try-catch here if we are not in a train session
         if rank_zero_only and session.get_local_rank() != 0:
             return _MockWandb()
-    except Exception:
+    except RuntimeError:
         pass
 
     default_kwargs = {
@@ -137,11 +142,6 @@ def _setup_wandb(
 
     return _wandb.init(**wandb_init_kwargs)
 
-
-if wandb:
-    from wandb.util import json_dumps_safer
-else:
-    json_dumps_safer = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"

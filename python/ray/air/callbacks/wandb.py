@@ -252,7 +252,7 @@ class WandbLoggerCallback(LoggerCallback):
         wandb_project = self.project
 
         # Grouping
-        wandb_group = self.group or trial.trainable_name if trial else None
+        wandb_group = self.group or trial.experiment_dir_name if trial else None
 
         # remove unpickleable items!
         config = _clean_log(config)
