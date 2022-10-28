@@ -14,13 +14,16 @@ from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
-import yaml
-
 try:
     import wandb
 except ImportError:
     logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
+
+if wandb:
+    from wandb.util import json_dumps_safer
+else:
+    json_dumps_safer = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
@@ -79,7 +82,7 @@ def _clean_log(obj: Any):
     # Fixes https://github.com/ray-project/ray/issues/10631
     if isinstance(obj, dict):
         return {k: _clean_log(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    elif isinstance(obj, (list, set)):
         return [_clean_log(v) for v in obj]
     elif isinstance(obj, tuple):
         return tuple(_clean_log(v) for v in obj)
@@ -87,15 +90,15 @@ def _clean_log(obj: Any):
         return obj
 
     # Else
+
     try:
+        # This is what wandb uses internally. If we cannot dump
+        # an object using this method, wandb will raise an exception.
+        json_dumps_safer(obj)
+
+        # This is probably unnecessary, but left here to be extra sure.
         pickle.dumps(obj)
-        yaml.dump(
-            obj,
-            Dumper=yaml.SafeDumper,
-            default_flow_style=False,
-            allow_unicode=True,
-            encoding="utf-8",
-        )
+
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder

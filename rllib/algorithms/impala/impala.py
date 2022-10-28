@@ -65,8 +65,8 @@ class ImpalaConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
@@ -104,8 +104,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = ((1 / self.replay_proportion)
-                             if self.replay_proportion > 0 else 0.0)
+        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -131,7 +130,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
@@ -205,8 +204,7 @@ class ImpalaConfig(AlgorithmConfig):
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
-                be replayed with a p:1 proportion to new data samples. Used in the
-                execution plan API.
+                be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
                 The number of transitions saved total will be
                 (replay_buffer_num_slots * rollout_fragment_length).
@@ -288,6 +286,9 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not None:
             self.replay_proportion = replay_proportion
+            self.replay_ratio = (
+                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
+            )
         if replay_buffer_num_slots is not None:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not None:
@@ -523,7 +524,7 @@ class Impala(Algorithm):
             # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
             #  models to return separate sets of weights in order to create
             #  the different torch optimizers).
-            if config["framework"] not in ["tf", "tf2", "tfe"]:
+            if config["framework"] not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
                 )
