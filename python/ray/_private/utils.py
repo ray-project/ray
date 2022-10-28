@@ -643,7 +643,7 @@ def get_cgroupv1_used_memory(filename):
 def get_cgroupv2_used_memory(stat_file, usage_file):
     # Uses same calculation as libcontainer, that is:
     # memory.current - memory.stat[total_inactive_file]
-    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
     inactive_file_bytes = -1
     current_usage = -1
     with open(usage_file, "r") as f:
