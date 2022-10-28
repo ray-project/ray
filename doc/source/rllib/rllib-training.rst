@@ -83,6 +83,7 @@ You can run these with the ``rllib train file`` command as follows:
 Note that this works with any local YAML file in the correct format, or with remote URLs
 pointing to such files.
 
+
 Using the Python API
 --------------------
 
@@ -367,6 +368,8 @@ Then for the code:
 
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
+
+.. _rllib-algo-configuration:
 
 Configuring RLlib Algorithms
 ----------------------------
