@@ -71,6 +71,22 @@ class TestDistributions(unittest.TestCase):
         np.random.seed(42)
         torch.manual_seed(42)
 
+    def _check_to_from_dict(self, dist_class, *, sample_input=None):
+
+        sample_input = sample_input or {}
+        dist = dist_class(**sample_input)
+        dist_repr = dist.to_dict()
+
+        dist2 = dist_class.from_dict(dist_repr)
+
+        if not isinstance(dist, TorchDeterministic):
+            # Deterministic distributions do not support logp.
+            samples = dist.sample()
+            check(dist.logp(samples), dist2.logp(samples))
+
+        self.assertIsInstance(dist2, dist_class)
+        self.assertIsNot(dist, dist2)
+
     def test_categorical(self):
         batch_size = 10000
         num_categories = 4
@@ -80,6 +96,9 @@ class TestDistributions(unittest.TestCase):
         logits = np.random.randn(batch_size, num_categories)
         probs = torch.from_numpy(softmax(logits)).float()
         logits = torch.from_numpy(logits).float()
+
+        self._check_to_from_dict(TorchCategorical, sample_input={"logits": logits})
+        self._check_to_from_dict(TorchCategorical, sample_input={"probs": probs})
 
         # check stability against skewed inputs
         check_stability(TorchCategorical, sample_input={"logits": logits})
@@ -150,6 +169,10 @@ class TestDistributions(unittest.TestCase):
         loc_tens = torch.from_numpy(loc).float()
         scale_tens = torch.from_numpy(scale).float()
 
+        self._check_to_from_dict(
+            TorchDiagGaussian, sample_input={"loc": loc_tens, "scale": scale_tens}
+        )
+
         dist = TorchDiagGaussian(loc=loc_tens, scale=scale_tens)
         sample = dist.sample(sample_shape=(sample_shape,))
 
@@ -214,6 +237,8 @@ class TestDistributions(unittest.TestCase):
         loc = np.random.randn(batch_size, ndim)
 
         loc_tens = torch.from_numpy(loc).float()
+
+        self._check_to_from_dict(TorchDeterministic, sample_input={"loc": loc_tens})
 
         dist = TorchDeterministic(loc=loc_tens)
         sample = dist.sample(sample_shape=(sample_shape,))

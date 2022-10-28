@@ -22,6 +22,10 @@ class Distribution(abc.ABC):
 
     """
 
+    def __init__(self, *args, **kwargs) -> None:
+        # save the args and kwargs in a state dict for later use
+        self._state_dict = {"args": args, "kwargs": kwargs}
+
     @abc.abstractmethod
     def sample(
         self,
@@ -122,3 +126,41 @@ class Distribution(abc.ABC):
         Returns:
             size of the required input vector (minus leading batch dimension).
         """
+
+    @abc.abstractmethod
+    def get_state(self) -> dict:
+        """Returns the state of the distribution.
+
+        The output of this method is used in set_state.
+
+        Returns:
+            The state of the distribution.
+        """
+
+    @abc.abstractmethod
+    def set_state(self, state: dict) -> None:
+        """Sets the state of the distribution.
+
+        Args:
+            state: The state of the distribution. This is the output of get_state.
+        """
+
+    def to_dict(self) -> dict:
+        """Returns a dict representation of the distribution.
+
+        Returns:
+            A dict representation of the distribution.
+        """
+        return self._state_dict
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Distribution":
+        """Creates a distribution from a dict representation.
+
+        Args:
+            data: The dict representation of the distribution.
+
+        Returns:
+            A distribution.
+        """
+        return cls(*data["args"], **data["kwargs"])

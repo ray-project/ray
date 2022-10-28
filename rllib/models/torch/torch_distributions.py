@@ -22,8 +22,8 @@ class TorchDistribution(Distribution, abc.ABC):
     """Wrapper class for torch.distributions."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.dist = self._get_torch_distribution(*args, **kwargs)
+        super().__init__(*args, **kwargs)
+        self._dist = self._get_torch_distribution(*args, **kwargs)
 
     @abc.abstractmethod
     def _get_torch_distribution(
@@ -33,21 +33,21 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        return self.dist.log_prob(value, **kwargs)
+        return self._dist.log_prob(value, **kwargs)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
-        return self.dist.entropy()
+        return self._dist.entropy()
 
     @override(Distribution)
     def kl(self, other: "Distribution") -> TensorType:
-        return torch.distributions.kl.kl_divergence(self.dist, other.dist)
+        return torch.distributions.kl.kl_divergence(self._dist, other._dist)
 
     @override(Distribution)
     def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        sample = self.dist.sample(sample_shape)
+        sample = self._dist.sample(sample_shape)
         if return_logp:
             return sample, self.logp(sample)
         return sample
@@ -56,10 +56,19 @@ class TorchDistribution(Distribution, abc.ABC):
     def rsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self.dist.rsample(sample_shape)
+        rsample = self._dist.rsample(sample_shape)
         if return_logp:
             return rsample, self.logp(rsample)
         return rsample
+
+    @override(Distribution)
+    def get_state(self) -> dict:
+        return self._state_dict
+
+    @override(Distribution)
+    def set_state(self, state: dict) -> None:
+        new_dist = self.__class__(*state["args"], **state["kwargs"])
+        self._dist = new_dist._dist
 
 
 @DeveloperAPI
@@ -203,7 +212,7 @@ class TorchDeterministic(Distribution):
     """
 
     def __init__(self, loc: torch.Tensor) -> None:
-        super().__init__()
+        super().__init__(loc)
         self.loc = loc
 
     @override(Distribution)
@@ -253,3 +262,11 @@ class TorchDeterministic(Distribution):
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
         return tuple(np.prod(space.shape, dtype=np.int32))
+
+    @override(Distribution)
+    def get_state(self) -> dict:
+        return {"loc": self.loc}
+
+    @override(Distribution)
+    def set_state(self, state: dict) -> None:
+        self.loc = state["loc"]
