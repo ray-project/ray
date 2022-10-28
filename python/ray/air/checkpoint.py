@@ -551,15 +551,16 @@ class Checkpoint:
                     pickle.dump(data_dict, f)
         else:
             # This is either a local fs, remote node fs, or external fs
-            local_path = Path(self._local_path)
+            local_path = self._local_path
             path_pathlib = Path(path)
             external_path = _get_external_path(self._uri)
             if local_path:
-                if local_path != path_pathlib:
+                local_path_pathlib = Path(local_path)
+                if local_path_pathlib != path_pathlib:
                     # If this exists on the local path, just copy over
                     if move_instead_of_copy:
                         self._local_path = str(path_pathlib.absolute())
-                        for inner in local_path.iterdir():
+                        for inner in local_path_pathlib.iterdir():
                             shutil.move(
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )
@@ -567,7 +568,8 @@ class Checkpoint:
                         if path_pathlib.exists():
                             shutil.rmtree(str(path_pathlib.absolute()))
                         shutil.copytree(
-                            str(local_path.absolute()), str(path_pathlib.absolute())
+                            str(local_path_pathlib.absolute()),
+                            str(path_pathlib.absolute()),
                         )
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
