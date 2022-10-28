@@ -172,7 +172,7 @@ def get_register_agents_number(webui_url):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
+    "ray_start_cluster_head_with_env_vars",
     [
         {
             "include_dashboard": True,
@@ -294,7 +294,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
+    "ray_start_cluster_head_with_env_vars",
     [
         {
             "include_dashboard": True,
