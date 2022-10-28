@@ -619,6 +619,25 @@
     type: sdk_command
     file_manager: sdk
 
+- name: ray-data-bulk-ingest-out-of-core-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: true
+  env: staging
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_cpu_16.yaml
+
+  run:
+    timeout: 1800
+    script: bash out_of_core_benchmark.sh
+    type: sdk_command
+    file_manager: sdk
+
 #######################
 # XGBoost release tests
 #######################
