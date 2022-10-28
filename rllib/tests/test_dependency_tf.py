@@ -21,7 +21,7 @@ if __name__ == "__main__":
     ), "`tensorflow` initially present, when it shouldn't!"
 
     # Note: No ray.init(), to test it works without Ray
-    trainer = A2C(env="CartPole-v0", config={"framework": "torch", "num_workers": 0})
+    trainer = A2C(env="CartPole-v1", config={"framework": "torch", "num_workers": 0})
     trainer.train()
 
     assert (

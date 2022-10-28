@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 from pickle import PicklingError
+import pprint as pp
 import traceback
 from typing import (
     Any,
@@ -304,8 +305,14 @@ class Experiment:
         run_value = spec.pop("run")
         try:
             exp = cls(name, run_value, **spec)
-        except TypeError:
-            raise TuneError("Improper argument from JSON: {}.".format(spec))
+        except TypeError as e:
+            raise TuneError(
+                f"Failed to load the following Tune experiment "
+                f"specification:\n\n {pp.pformat(spec)}.\n\n"
+                f"Please check that the arguments are valid. "
+                f"Experiment creation failed with the following "
+                f"error:\n {e}"
+            )
         return exp
 
     @classmethod

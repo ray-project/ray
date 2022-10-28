@@ -5,7 +5,7 @@ from ray.air import session
 
 
 def objective(x, a, b):  # Define an objective function.
-    return a * (x ** 0.5) + b
+    return a * (x**0.5) + b
 
 
 def trainable(config):  # Pass a "config" dictionary into your trainable.
@@ -24,7 +24,7 @@ from ray import tune
 
 
 def objective(x, a, b):
-    return a * (x ** 2) + b
+    return a * (x**2) + b
 
 
 class Trainable(tune.Trainable):

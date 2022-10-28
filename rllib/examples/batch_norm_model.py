@@ -13,6 +13,7 @@ from ray.rllib.examples.models.batch_norm_model import (
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -22,7 +23,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -55,17 +56,16 @@ if __name__ == "__main__":
         else BatchNormModel,
     )
 
-    config = {
-        "env": "Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
-        "model": {
-            "custom_model": "bn_model",
-        },
-        "lr": 0.0003,
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v1")
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0)
+        .training(model={"custom_model": "bn_model"}, lr=0.0003)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             verbose=2,
             stop=stop,

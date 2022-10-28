@@ -55,14 +55,6 @@ export type JobDetail = {
   jobWorkers: Worker[];
 };
 
-export type JobDetailRsp = {
-  data: {
-    detail: JobDetail;
-  };
-  msg: string;
-  result: boolean;
-};
-
 export type JobListRsp = UnifiedJob[];
 
 export type UnifiedJob = {

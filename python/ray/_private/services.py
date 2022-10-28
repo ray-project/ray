@@ -67,6 +67,17 @@ RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
 RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
 RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
+# Comma separated name of components that will run memory profiler.
+# Ray uses `memray` to memory profile internal components.
+# The name of the component must be one of ray_constants.PROCESS_TYPE*.
+RAY_MEMRAY_PROFILE_COMPONENT_ENV = "RAY_INTERNAL_MEM_PROFILE_COMPONENTS"
+# Options to specify for `memray run` command. See
+# `memray run --help` for more details.
+# Example:
+# RAY_INTERNAL_MEM_PROFILE_OPTIONS="--live,--live-port,3456,-q,"
+# -> `memray run --live --live-port 3456 -q`
+RAY_MEMRAY_PROFILE_OPTIONS_ENV = "RAY_INTERNAL_MEM_PROFILE_OPTIONS"
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -87,7 +98,53 @@ ProcessInfo = collections.namedtuple(
 )
 
 
-def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
+def _build_python_executable_command_memory_profileable(
+    component: str, session_dir: str, unbuffered: bool = True
+):
+    """Build the Python executable command.
+
+    It runs a memory profiler if env var is configured.
+
+    Args:
+        component: Name of the component. It must be one of
+            ray_constants.PROCESS_TYPE*.
+        session_dir: The directory name of the Ray session.
+        unbuffered: If true, Python executable is started with unbuffered option.
+            e.g., `-u`.
+            It means the logs are flushed immediately (good when there's a failure),
+            but writing to a log file can be slower.
+    """
+    command = [
+        sys.executable,
+    ]
+    if unbuffered:
+        command.append("-u")
+    components_to_memory_profile = os.getenv(RAY_MEMRAY_PROFILE_COMPONENT_ENV, "")
+    if not components_to_memory_profile:
+        return command
+
+    components_to_memory_profile = set(components_to_memory_profile.split(","))
+    try:
+        import memray  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "Memray is required to memory profiler on components "
+            f"{components_to_memory_profile}. Run `pip install memray`."
+        )
+    if component in components_to_memory_profile:
+        session_dir = Path(session_dir)
+        session_name = session_dir.name
+        profile_dir = session_dir / "profile"
+        profile_dir.mkdir(exist_ok=True)
+        output_file_path = profile_dir / f"{session_name}_memory_{component}.bin"
+        options = os.getenv(RAY_MEMRAY_PROFILE_OPTIONS_ENV, None)
+        options = options.split(",") if options else []
+        command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
+
+    return command
+
+
+def _get_gcs_client_options(gcs_server_address):
     return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
@@ -344,20 +401,16 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
 
 
 def wait_for_node(
-    redis_address: str,
     gcs_address: str,
     node_plasma_store_socket_name: str,
-    redis_password: Optional[str] = None,
     timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
 
     Args:
-        redis_address: The redis address.
         gcs_address: The gcs address
         node_plasma_store_socket_name: The
             plasma_store_socket_name for the given node which we wait for.
-        redis_password: the redis password.
         timeout: The amount of time in seconds to wait before raising an
             exception.
 
@@ -381,12 +434,10 @@ def wait_for_node(
     raise TimeoutError("Timed out while waiting for node to startup.")
 
 
-def get_node_to_connect_for_driver(
-    redis_address, gcs_address, node_ip_address, redis_password=None
-):
+def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     # Get node table from global state accessor.
     global_state = ray._private.state.GlobalState()
-    gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
+    gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -1029,8 +1080,9 @@ def start_api_server(
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
 
         command = [
-            sys.executable,
-            "-u",
+            *_build_python_executable_command_memory_profileable(
+                ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
+            ),
             dashboard_filepath,
             f"--host={host}",
             f"--port={port}",
@@ -1146,6 +1198,7 @@ def start_api_server(
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
+    session_name: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1160,6 +1213,7 @@ def start_gcs_server(
     Args:
         redis_address: The address that the Redis server is listening on.
         log_dir: The path of the dir where log files are created.
+        session_name: The session name (cluster id) of this cluster.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1183,6 +1237,7 @@ def start_gcs_server(
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
+        f"--session-name={session_name}",
     ]
     if redis_address:
         parts = redis_address.split("://", 1)
@@ -1230,6 +1285,7 @@ def start_raylet(
     resource_spec,
     plasma_directory: str,
     object_store_memory: int,
+    session_name: str,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1274,6 +1330,7 @@ def start_raylet(
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
+        session_name: The session name (cluster id) of this cluster.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
         min_worker_port: The lowest port number that workers will bind
@@ -1402,8 +1459,9 @@ def start_raylet(
         max_worker_port = 0
 
     agent_command = [
-        sys.executable,
-        "-u",
+        *_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
+        ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
@@ -1418,6 +1476,7 @@ def start_raylet(
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
+        f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
     ]
     if stdout_file is None and stderr_file is None:
@@ -1451,7 +1510,6 @@ def start_raylet(
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
-        f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
@@ -1462,6 +1520,7 @@ def start_raylet(
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
+        f"--session-name={session_name}",
     ]
 
     if worker_port_list is not None:
@@ -1679,7 +1738,7 @@ def determine_plasma_store_config(
                     "sure to set this to more than 30% of available RAM.".format(
                         ray._private.utils.get_user_temp_dir(),
                         shm_avail,
-                        object_store_memory * (1.1) / (2 ** 30),
+                        object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
@@ -1729,29 +1788,27 @@ def determine_plasma_store_config(
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
             "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
-                object_store_memory / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+                object_store_memory / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
             )
         )
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(round(object_store_memory / 10 ** 9, 2), plasma_directory)
+        "using {}.".format(round(object_store_memory / 10**9, 2), plasma_directory)
     )
 
     return plasma_directory, object_store_memory
 
 
 def start_monitor(
-    redis_address: str,
     gcs_address: str,
     logs_dir: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
-    redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1760,7 +1817,6 @@ def start_monitor(
     """Run a process to monitor the other processes.
 
     Args:
-        redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -1768,7 +1824,6 @@ def start_monitor(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
-        redis_password: The password of the redis server.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1788,8 +1843,6 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if redis_address is not None:
-        command.append(f"--redis-address={redis_address}")
     if gcs_address is not None:
         command.append(f"--gcs-address={gcs_address}")
     if stdout_file is None and stderr_file is None:
@@ -1803,8 +1856,6 @@ def start_monitor(
         command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
-    if redis_password:
-        command.append("--redis-password=" + redis_password)
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
     process_info = start_ray_process(

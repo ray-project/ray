@@ -84,7 +84,7 @@ py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
     args = ["--yaml-dir=tuned_examples/a2c"]
@@ -758,6 +758,13 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_algorithm.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_algorithm_config",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
 py_test(
@@ -1591,7 +1598,7 @@ py_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole", "8810"],
@@ -1600,7 +1607,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_lstm",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole_lstm", "8820"],
@@ -1609,7 +1616,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
@@ -1618,7 +1625,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env"],
+    tags = ["team:rllib", "env", "exclusive"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "unity3d", "8860"],
@@ -1737,6 +1744,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -1748,6 +1769,13 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
+)
+
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -1773,6 +1801,13 @@ py_test(
 )
 
 py_test(
+    name = "test_distributions_v2",
+    tags = ["team:rllib", "models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions_v2.py"]
+)
+
+py_test(
     name = "test_lstms",
     tags = ["team:rllib", "models"],
     size = "large",
@@ -1795,10 +1830,10 @@ py_test(
 
 # Test Tensor specs
 py_test(
-    name = "test_tensor_specs",
+    name = "test_tensor_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs.py"]
+    srcs = ["models/specs/tests/test_tensor_spec.py"]
 )
 
 # test abstract base models
@@ -1817,12 +1852,12 @@ py_test(
     srcs = ["models/tests/test_torch_model.py"]
 )
 
-# test ModelSpecDict
+# test ModelSpec
 py_test(
-    name = "test_tensor_specs_dict",
+    name = "test_model_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
+    srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
 
@@ -2652,7 +2687,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(
@@ -3580,19 +3615,27 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "examples/documentation/replay_buffer_demo",
-    main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
-
-py_test(
     name = "examples/documentation/custom_gym_env",
     main = "examples/documentation/custom_gym_env.py",
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/custom_gym_env.py"],
+)
+
+py_test(
+    name = "examples/documentation/saving_and_loading_algos_and_policies",
+    main = "examples/documentation/saving_and_loading_algos_and_policies.py",
+    tags = ["team:rllib", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
+)
+
+py_test(
+    name = "examples/documentation/replay_buffer_demo",
+    main = "examples/documentation/replay_buffer_demo.py",
+    tags = ["team:rllib", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/documentation/replay_buffer_demo.py"],
 )
 
 py_test(
