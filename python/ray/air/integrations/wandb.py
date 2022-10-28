@@ -24,7 +24,58 @@ except ImportError:
 _MockWandb = MagicMock
 
 
-def setup_wandb(config: Dict, rank_zero_only: bool = True):
+def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs):
+    """Setup a Weights & Biases session.
+
+    This function can be used to initialize a Weights & Biases session in a
+    (distributed) training or tuning run.
+
+    Per default, the run ID is the trial ID, the run name is the trial name, and
+    the run group is the experiment name. These settings can be overwritten by
+    passing the respective arguments as ``kwargs``, which will be passed to
+    ``wandb.init()``.
+
+    In distributed training with Ray Train, only the zero-rank worker will initialize
+    wandb. All other workers will return a mock object, so that logging is not
+    duplicated in a distributed run. This can be disabled by passing
+    ``rank_zero_only=False`, which will then initialize wandb in every training
+    worker.
+
+    The ``config`` argument will be passed to Weights and Biases and will be logged
+    as the run configuration. If wandb-specific settings are found, they will
+    be used to initialize the session. These settings can be
+
+    - api_key_file: Path to locally available file containing a W&B API key
+    - api_key: API key to authenticate with W&B
+
+    If no API information is found in the config, wandb will try to authenticate
+    using locally stored credentials, created for instance by running ``wanbd login``.
+
+    All other keys found in the ``wandb`` config parameter will be passed to
+    ``wandb.init()``. If the same keys are present in multiple locations, the
+    ``kwargs`` passed to ``setup_wandb()`` will take precedence over those passed
+    as config keys.
+
+    Args:
+        config: Configuration dict to be logged to weights and biases. Can contain
+            arguments for ``wandb.init()`` as well as authentication information.
+        rank_zero_only: If True, will return an initialized session only for the
+            rank 0 worker in distributed training. If False, will initialize a
+            session for all workers.
+        kwargs: Passed to ``wandb.init()``.
+
+    Example:
+
+        .. code-block: python
+
+            from ray.air.integrations.wandb import wandb_setup
+
+            def training_loop(config):
+                wandb = wandb_setup(config)
+                # ...
+                wandb.log({"loss": 0.123})
+
+    """
     try:
         # Do a try-catch here if we are not in a train session
         if rank_zero_only and session.get_local_rank() != 0:
@@ -32,22 +83,24 @@ def setup_wandb(config: Dict, rank_zero_only: bool = True):
     except Exception:
         pass
 
-    return _setup_wandb(
-        trial_id=session.get_trial_id(),
-        trial_name=session.get_trial_name(),
-        config=config,
-        group=session.get_experiment_name(),
-    )
+    default_kwargs = {
+        "trial_id": session.get_trial_id(),
+        "trial_name": session.get_trial_name(),
+        "group": session.get_experiment_name(),
+    }
+    default_kwargs.update(kwargs)
+
+    return _setup_wandb(config=config, **default_kwargs)
 
 
 def _setup_wandb(
     trial_id: str,
     trial_name: str,
-    config: Dict,
+    config: Optional[Dict] = None,
     _wandb: Optional[ModuleType] = None,
     **kwargs,
 ):
-    _config = config.copy()
+    _config = config.copy() if config else {}
 
     wandb_config = _config.pop("wandb", {}).copy()
 
