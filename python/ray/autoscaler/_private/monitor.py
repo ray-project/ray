@@ -377,10 +377,18 @@ class Monitor:
                         )
 
                         for resource_name in ["CPU", "GPU"]:
-                            _, total = load_metrics_summary.usage.get(resource_name, (0, 0))
-                            pending = autoscaler_summary.pending_resources.get(resource_name, 0)
-                            self.prom_metrics.cluster_resources.labels(resource=resource_name).set(total)
-                            self.prom_metrics.pending_resources.labels(resource=resource_name).set(pending)
+                            _, total = load_metrics_summary.usage.get(
+                                resource_name, (0, 0)
+                            )
+                            pending = autoscaler_summary.pending_resources.get(
+                                resource_name, 0
+                            )
+                            self.prom_metrics.cluster_resources.labels(
+                                resource=resource_name
+                            ).set(total)
+                            self.prom_metrics.pending_resources.labels(
+                                resource=resource_name
+                            ).set(pending)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
