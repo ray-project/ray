@@ -283,7 +283,9 @@ class DynamicTFPolicy(TFPolicy):
                 tf.zeros((), dtype=tf.int64), (), name="timestep"
             )
             # Placeholder for `is_exploring` flag.
-            self._is_exploring = tf1.placeholder_with_default(True, (), name="is_exploring")
+            self._is_exploring = tf1.placeholder_with_default(
+                True, (), name="is_exploring"
+            )
 
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())

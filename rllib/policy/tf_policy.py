@@ -237,7 +237,9 @@ class TFPolicy(Policy):
             )
 
         if explore is None and not hasattr(self, "_is_exploring"):
-            self._is_exploring = tf1.placeholder_with_default(True, (), name="is_exploring")
+            self._is_exploring = tf1.placeholder_with_default(
+                True, (), name="is_exploring"
+            )
 
         self._optimizers: List[LocalOptimizer] = []
         # Backward compatibility and for some code shared with tf-eager Policy.

@@ -492,7 +492,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
-
     def _create_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
 
