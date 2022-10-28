@@ -16,7 +16,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#include <afunix.h>
+#else
 #include <sys/un.h>
 #endif
 
