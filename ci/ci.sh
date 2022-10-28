@@ -317,10 +317,8 @@ doctest_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      mv ./custom_directives.py _disabled_custom_directives.txt # Get rid of mocks
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 make doctest
-      mv ./_disabled_custom_directives.txt _disabled_custom_directives.txt
     fi
   )
 }
