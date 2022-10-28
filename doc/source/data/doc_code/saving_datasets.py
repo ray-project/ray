@@ -91,7 +91,7 @@ ds.repartition(3).write_numpy("/tmp/multi_numpy")
 # fmt: on
 
 # fmt: off
-# __write_tfrecord_begin__
+# __write_tfrecord_sbegin__
 import ray
 
 ds = ray.data.from_items(
@@ -118,7 +118,7 @@ ds.repartition(1).write_tfrecords("/tmp/one_tfrecord")
 ds.repartition(2).write_tfrecords("/tmp/multi_tfrecords")
 # -> /tmp/multi_tfrecords/1ba614cf75de47e184b7d8f4a1cdfc80_000000.tfrecords
 # -> /tmp/multi_tfrecords/1ba614cf75de47e184b7d8f4a1cdfc80_000001.tfrecords
-# __write_tfrecord_end__
+# __write_tfrecords_end__
 # fmt: on
 
 
