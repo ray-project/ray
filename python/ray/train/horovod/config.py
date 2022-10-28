@@ -16,6 +16,16 @@ from horovod.runner.common.util import secret, timeout
 
 from ray.util import PublicAPI
 
+try:
+    from ray.train.torch.torch_checkpoint import TorchCheckpoint
+except ImportError:
+    TorchCheckpoint = None
+
+try:
+    from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+except ImportError:
+    TensorflowCheckpoint = None
+
 
 @PublicAPI(stability="beta")
 @dataclass
@@ -140,16 +150,12 @@ class _HorovodBackend(Backend):
                     from ray.air._internal.tensorflow_utils import (
                         contains_tensorflow_object,
                     )
-                    from ray.train.tensorflow.tensorflow_checkpoint import (
-                        TensorflowCheckpoint,
-                    )
 
                     if contains_tensorflow_object(checkpoint.to_dict()):
                         _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
                         checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
                 if "torch" in sys.modules:
                     from ray.air._internal.torch_utils import contains_tensor
-                    from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
                     if contains_tensor(checkpoint.to_dict()):
                         _warn_about_bad_checkpoint_type(TorchCheckpoint)
