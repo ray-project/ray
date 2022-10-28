@@ -17,7 +17,7 @@ locust_id = "ray-locust-" + cluster_id
 
 if os.environ.get("RAY_IMAGE") is not None:
     ray_image = os.environ.get("RAY_IMAGE")
-elif ray.__version__ != "2.1.0rc0":
+elif ray.__version__ != "2.1.0":
     ray_image = f"rayproject/ray:{ray.__version__}"
 elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
     ray_image = "rayproject/ray:nightly"
