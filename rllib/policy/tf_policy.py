@@ -231,21 +231,13 @@ class TFPolicy(Policy):
         self._apply_op = None
         self._stats_fetches = {}
 
-        if timestep is None:
-            if hasattr(self, "timestep"):
-                timestep = self.timestep
-            else:
-                timestep = tf1.placeholder_with_default(
-                    tf.zeros((), dtype=tf.int64), (), name="timestep"
-                )
-        self._timestep = timestep
+        if timestep is None and not hasattr(self, "_timestep"):
+            self._timestep = tf1.placeholder_with_default(
+                tf.zeros((), dtype=tf.int64), (), name="timestep"
+            )
 
-        if explore is None:
-            if hasattr(self, "explore"):
-                explore = self.explore
-            else:
-                explore = tf1.placeholder_with_default(True, (), name="is_exploring")
-        self._is_exploring = explore
+        if explore is None and not hasattr(self, "_is_exploring"):
+            self._is_exploring = tf1.placeholder_with_default(True, (), name="is_exploring")
 
         self._optimizers: List[LocalOptimizer] = []
         # Backward compatibility and for some code shared with tf-eager Policy.
