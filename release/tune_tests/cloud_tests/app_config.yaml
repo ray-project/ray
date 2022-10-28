@@ -11,6 +11,7 @@ python:
     - gym>=0.21.0,<0.24.1
     - gcsfs<=2022.7.1
     - pyarrow>=6.0.1,<7.0.0
+    - tensorboardX
   conda_packages: []
 
 post_build_cmds:

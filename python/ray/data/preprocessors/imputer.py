@@ -7,8 +7,10 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SimpleImputer(Preprocessor):
     """Replace missing values with imputed values.
 

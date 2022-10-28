@@ -10,8 +10,8 @@ from ray.exceptions import RayActorError
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 num_redis_shards = 5
-redis_max_memory = 10 ** 8
-object_store_memory = 10 ** 8
+redis_max_memory = 10**8
+object_store_memory = 10**8
 num_nodes = 3
 
 assert (
@@ -56,7 +56,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -87,7 +87,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -121,7 +121,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -165,7 +165,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()

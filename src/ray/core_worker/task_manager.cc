@@ -814,6 +814,11 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
   reply->set_tasks_total(total);
 }
 
+void TaskManager::RecordMetrics() {
+  absl::MutexLock lock(&mu_);
+  task_counter_.FlushOnChangeCallbacks();
+}
+
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);

@@ -1,9 +1,10 @@
 import { CssBaseline } from "@material-ui/core";
 import { ThemeProvider } from "@material-ui/core/styles";
+import dayjs from "dayjs";
+import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { Provider } from "react-redux";
 import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
-import Dashboard from "./pages/dashboard/Dashboard";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { Metrics } from "./pages/metrics";
@@ -12,6 +13,8 @@ import { getNodeList } from "./service/node";
 import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
+
+dayjs.extend(duration);
 
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
@@ -121,7 +124,6 @@ const App = () => {
                   exact
                   path="/"
                 />
-                <Route component={Dashboard} exact path="/legacy" />
                 <Route
                   render={(props) => (
                     <BasicLayout {...props} setTheme={setTheme} theme={theme}>

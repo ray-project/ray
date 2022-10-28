@@ -5,6 +5,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -240,9 +241,9 @@ class SACConfig(AlgorithmConfig):
         if twin_q is not None:
             self.twin_q = twin_q
         if q_model_config is not None:
-            self.q_model_config = q_model_config
+            self.q_model_config.update(q_model_config)
         if policy_model_config is not None:
-            self.policy_model_config = policy_model_config
+            self.policy_model_config.update(policy_model_config)
         if tau is not None:
             self.tau = tau
         if initial_alpha is not None:
@@ -254,7 +255,16 @@ class SACConfig(AlgorithmConfig):
         if store_buffer_in_checkpoints is not None:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            # Override entire `replay_buffer_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_replay_buffer_config = deep_update(
+                {"replay_buffer_config": self.replay_buffer_config},
+                {"replay_buffer_config": replay_buffer_config},
+                False,
+                ["replay_buffer_config"],
+                ["replay_buffer_config"],
+            )
+            self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
         if training_intensity is not None:
             self.training_intensity = training_intensity
         if clip_actions is not None:
@@ -325,7 +335,7 @@ class SAC(DQN):
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
             raise ValueError("`grad_clip` value must be > 0.0!")
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if config["framework"] in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run SAC! "
                 "Install it via `pip install tensorflow_probability`. Your "

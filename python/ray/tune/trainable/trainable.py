@@ -80,16 +80,22 @@ class Trainable:
     Other implementation methods that may be helpful to override are
     ``log_result``, ``reset_config``, ``cleanup``, and ``_export_model``.
 
-    When using Tune, Tune will convert this class into a Ray actor, which
-    runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``. This is designed so that
-    different trials that run on the same physical node won't accidently
-    write to the same location and overstep each other.
+    Tune will convert this class into a Ray actor, which runs on a separate process.
+    By default, Tune will also change the current working directory of this process to
+    its corresponding trial-level log directory ``self.logdir``.
+    This is designed so that different trials that run on the same physical node won't
+    accidently write to the same location and overstep each other.
 
-    If you want to know the orginal working directory path on the driver node,
-    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
-    It is advised that you access this path for read only purposes and you
-    need to make sure that the path exists on the remote nodes.
+    The behavior of changing the working directory can be disabled by setting the
+    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    in the original working directory, but relative paths should be used for read only
+    purposes, and you must make sure that the directory is synced on all nodes if
+    running on multiple machines.
+
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -1115,9 +1121,10 @@ class Trainable:
 
         Returns:
             A dict or string. If string, the return value is expected to be
-            prefixed by `tmp_checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune and
-            passed to ``Trainable.load_checkpoint()``.
+            prefixed by `checkpoint_dir`. If dict, the return value will
+            be automatically serialized by Tune. In both cases, the return value
+            is exactly what will be passed to ``Trainable.load_checkpoint()``
+            upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1146,23 +1153,35 @@ class Trainable:
         The directory structure under the checkpoint_dir provided to
         ``Trainable.save_checkpoint`` is preserved.
 
-        See the example below.
+        See the examples below.
+
+        Example:
+            >>> import os
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        my_checkpoint_path = os.path.join(checkpoint_path, "my/path")
+            ...        return my_checkpoint_path
+            ...    def load_checkpoint(self, my_checkpoint_path):
+            ...        print(my_checkpoint_path)
+            >>> trainer = Example()
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
+            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/path
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
+            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/path
+
+        If `Trainable.save_checkpoint` returned a dict, then Tune will directly pass
+        the dict data as the argument to this method.
 
         Example:
             >>> from ray.tune.trainable import Trainable
             >>> class Example(Trainable):
             ...    def save_checkpoint(self, checkpoint_path):
-            ...        print(checkpoint_path)
-            ...        return os.path.join(checkpoint_path, "my/check/point")
-            ...    def load_checkpoint(self, checkpoint):
-            ...        print(checkpoint)
-            >>> trainer = Example()
-            >>> # This is used when PAUSED.
-            >>> obj = trainer.save_to_object() # doctest: +SKIP
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> # Note the different prefix.
-            >>> trainer.restore_from_object(obj) # doctest: +SKIP
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
+            ...        return {"my_data": 1}
+            ...    def load_checkpoint(self, checkpoint_dict):
+            ...        print(checkpoint_dict["my_data"])
 
         .. versionadded:: 0.8.7
 
@@ -1171,7 +1190,7 @@ class Trainable:
                 returned by `save_checkpoint`. If a string, then it is
                 a checkpoint path that may have a different prefix than that
                 returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` `save_checkpoint` is preserved.
+                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
         """
         raise NotImplementedError
 
