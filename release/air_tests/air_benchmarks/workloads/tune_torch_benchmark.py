@@ -32,7 +32,10 @@ def prepare_mnist():
 
 
 def get_trainer(
-    num_workers: int = 4, use_gpu: bool = False, config: Optional[Dict] = None
+    num_workers: int = 4,
+    use_gpu: bool = False,
+    strict_pack: bool = True,
+    config: Optional[Dict] = None,
 ):
     """Get the trainer to be used across train and tune to ensure consistency."""
     from torch_benchmark import train_func
@@ -57,7 +60,7 @@ def get_trainer(
             resources_per_worker={"CPU": 2},
             trainer_resources={"CPU": 0},
             use_gpu=use_gpu,
-            placement_strategy="STRICT_PACK",
+            placement_strategy="STRICT_PACK" if strict_pack else "PACK",
         ),
     )
     return trainer
@@ -72,6 +75,7 @@ def tune_torch(
     num_workers: int = 4,
     num_trials: int = 8,
     use_gpu: bool = False,
+    strict_pack: bool = True,
     config: Optional[Dict] = None,
 ):
     """Making sure that tuning multiple trials in parallel is not
@@ -90,7 +94,9 @@ def tune_torch(
         },
     }
 
-    trainer = get_trainer(num_workers=num_workers, use_gpu=use_gpu, config=config)
+    trainer = get_trainer(
+        num_workers=num_workers, use_gpu=use_gpu, strict_pack=strict_pack, config=config
+    )
     tuner = Tuner(
         trainable=trainer,
         param_space=param_space,
@@ -105,12 +111,14 @@ def tune_torch(
 @click.option("--num-workers", type=int, default=4)
 @click.option("--use-gpu", is_flag=True)
 @click.option("--smoke-test", is_flag=True, default=False)
+@click.option("--strict-pack", is_flag=True, default=True)
 def main(
     num_runs: int = 1,
     num_trials: int = 8,
     num_workers: int = 4,
     use_gpu: bool = False,
     smoke_test: bool = False,
+    strict_pack: bool = True,
 ):
     ray.init(
         runtime_env={
@@ -148,6 +156,7 @@ def main(
                 num_workers=num_workers,
                 num_trials=num_trials,
                 use_gpu=use_gpu,
+                strict_pack=strict_pack,
                 config=config,
             ),
             number=1,
