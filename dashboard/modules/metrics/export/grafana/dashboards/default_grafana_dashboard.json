@@ -143,7 +143,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
-      "description": "Current number of actors currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+      "description": "Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
