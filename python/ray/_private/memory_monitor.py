@@ -147,17 +147,18 @@ class MemoryMonitor:
             assert used_gb >= 0
         return used_gb, total_gb
 
-    def enabled(self) -> bool:
+    def disabled(self) -> bool:
         return (
-            ray._config.memory_monitor_interval_ms() == 0
+            ray._config.memory_monitor_interval_ms() > 0
             or "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ
             or "RAY_DISABLE_MEMORY_MONITOR" in os.environ
         )
 
     def raise_if_low_memory(self):
+        if self.disabled():
+            return
+
         if time.time() - self.last_checked > self.check_interval:
-            if not self.enabled():
-                return
             self.last_checked = time.time()
             used_gb, total_gb = self.get_memory_usage()
 
