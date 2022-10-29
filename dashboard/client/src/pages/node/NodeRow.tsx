@@ -102,13 +102,13 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
-        {raylet && raylet.objectStoreUsedMemory && (
+        {raylet && objectStoreTotalMemory && (
           <PercentageBar
             num={raylet.objectStoreUsedMemory}
             total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
+            {memoryConverter(objectStoreTotalMemory)}({(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}%)
           </PercentageBar>
         )}
       </TableCell>
