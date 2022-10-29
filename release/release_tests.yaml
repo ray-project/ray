@@ -4803,3 +4803,24 @@
     script: python run_gcs_ft_on_k8s.py
     type: sdk_command
     file_manager: sdk
+
+- name: aws_cluster_launcher
+  group: cluster-launcher-test
+  working_dir: cluster_tests 
+  legacy:
+    test_name: aws_cluster_launcher
+    test_suite: cluster-launcher-test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: aws_config.yaml
+    cluster_compute: aws_compute.yaml
+
+  run:
+    timeout: 1200
+    script: bash test_aws_cluster_launcher.sh
+    type: sdk_command
+    file_manager: sdk
