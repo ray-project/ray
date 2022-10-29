@@ -4820,7 +4820,7 @@
     cluster_compute: aws_compute.yaml
 
   run:
-    timeout: 1800
+    timeout: 1200
     script: bash test_aws_cluster_launcher.sh
     type: sdk_command
     file_manager: sdk
