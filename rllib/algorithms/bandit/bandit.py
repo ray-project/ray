@@ -27,7 +27,6 @@ class BanditConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.framework_str = "torch"
-        self.num_workers = 0
         self.rollout_fragment_length = 1
         self.train_batch_size = 1
         # Make sure, a `train()` call performs at least 100 env sampling
@@ -47,8 +46,8 @@ class BanditLinTSConfig(BanditConfig):
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=WheelBanditEnv)
-        >>> trainer.train()
+        >>> algo = config.build(env=WheelBanditEnv)
+        >>> algo.train()
     """
 
     def __init__(self):
@@ -70,8 +69,8 @@ class BanditLinUCBConfig(BanditConfig):
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=WheelBanditEnv)
-        >>> trainer.train()
+        >>> algo = config.build(env=WheelBanditEnv)
+        >>> algo.train()
     """
 
     def __init__(self):
@@ -90,7 +89,7 @@ class BanditLinTS(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinTSConfig:
-        return BanditLinTSConfig().to_dict()
+        return BanditLinTSConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -106,7 +105,7 @@ class BanditLinUCB(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
-        return BanditLinUCBConfig().to_dict()
+        return BanditLinUCBConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -126,7 +125,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.bandit.bandit.BanditLin[UCB|TS]Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

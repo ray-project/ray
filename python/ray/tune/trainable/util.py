@@ -102,7 +102,7 @@ class TrainableUtil:
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
@@ -339,6 +339,11 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
         _Inner.__name__ = trainable_name
         return _Inner
     else:
@@ -357,18 +362,27 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
-            trainable(config, **fn_kwargs)
+            return trainable(config, **fn_kwargs)
 
         inner.__name__ = trainable_name
+
+        # If the trainable has been wrapped with `tune.with_resources`, we should
+        # keep the `_resources` attribute around
+        if hasattr(trainable, "_resources"):
+            inner._resources = trainable._resources
 
         # Use correct function signature if no `checkpoint_dir` parameter
         # is set
         if not use_checkpoint:
 
             def _inner(config):
-                inner(config, checkpoint_dir=None)
+                return inner(config, checkpoint_dir=None)
 
             _inner.__name__ = trainable_name
+
+            # Again, pass along the resource specification if it exists
+            if hasattr(inner, "_resources"):
+                _inner._resources = inner._resources
 
             if hasattr(trainable, "__mixins__"):
                 _inner.__mixins__ = trainable.__mixins__

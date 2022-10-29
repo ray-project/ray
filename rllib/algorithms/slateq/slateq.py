@@ -35,8 +35,8 @@ class SlateQConfig(AlgorithmConfig):
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
@@ -112,7 +112,6 @@ class SlateQConfig(AlgorithmConfig):
         }
         # Switch to greedy actions in evaluation workers.
         self.evaluation_config = {"explore": False}
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
@@ -120,6 +119,8 @@ class SlateQConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation(evaluation_config={"explore": False})
         # __sphinx_doc_end__
         # fmt: on
 
@@ -183,7 +184,7 @@ class SlateQConfig(AlgorithmConfig):
         super().training(**kwargs)
 
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            self.replay_buffer_config.update(replay_buffer_config)
         if fcnet_hiddens_per_candidate is not None:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
         if target_network_update_freq is not None:
@@ -229,8 +230,8 @@ def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SlateQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SlateQConfig()
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -248,7 +249,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

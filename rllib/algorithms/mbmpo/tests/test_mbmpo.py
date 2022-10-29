@@ -30,15 +30,15 @@ class TestMBMPO(unittest.TestCase):
 
         # Test for torch framework (tf not implemented yet).
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build()
+            algo = config.build()
 
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer, include_prev_action_reward=False)
-            trainer.stop()
+            check_compute_single_action(algo, include_prev_action_reward=False)
+            algo.stop()
 
 
 if __name__ == "__main__":

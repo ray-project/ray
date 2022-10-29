@@ -93,6 +93,12 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 };
 
+struct PgFormattedResourceData {
+  std::string original_resource;
+  /// -1 if it is a wildcard resource.
+  int64_t bundle_index;
+};
+
 /// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
@@ -102,11 +108,6 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
 
-/// Return whether a formatted resource is a bundle of the given index.
-bool IsBundleIndex(const std::string &resource,
-                   const PlacementGroupID &group_id,
-                   const int bundle_index);
-
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);
 
@@ -114,6 +115,19 @@ std::string GetOriginalResourceName(const std::string &resource);
 // if the resource is the wildcard resource (resource without a bundle id).
 // Returns "" if the resource is not a wildcard resource.
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
+
+/// Parse the given resource and get the pg related information.
+///
+/// \param resource name of the resource.
+/// \param for_wildcard_resource if true, it parses wildcard pg resources.
+/// E.g., [resource]_group_[pg_id]
+/// \param for_indexed_resource if true, it parses indexed pg resources.
+/// E.g., [resource]_group_[index]_[pg_id]
+/// \return nullopt if it is not a pg resource. Otherwise, it returns the
+/// struct with pg information parsed from the resource.
+/// If a returned bundle index is -1, it means the resource is the wildcard resource.
+std::optional<PgFormattedResourceData> ParsePgFormattedResource(
+    const std::string &resource, bool for_wildcard_resource, bool for_indexed_resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(
@@ -129,5 +143,9 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     const rpc::SchedulingStrategy &scheduling_strategy);
+
+/// Get the group id (as in resources like `CPU_group_${group_id}`) of the placement group
+/// resource.
+std::string GetGroupIDFromResource(const std::string &resource);
 
 }  // namespace ray

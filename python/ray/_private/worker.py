@@ -683,8 +683,16 @@ class Worker:
             debugger_breakpoint,
         )
 
+    @Deprecated
     def run_function_on_all_workers(self, function: callable):
-        """Run arbitrary code on all of the workers.
+        """This function has been deprecated given the following issues:
+            - no guarantee that the function run before the remote function run.
+            - pubsub signal might be lost in some failure cases.
+
+        This API will be deleted once we move the working dir init away.
+        NO NEW CODE SHOULD USE THIS API.
+
+        Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
         exported to all of the workers to be run. It will also be run on any
@@ -1108,8 +1116,7 @@ def init(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
-        local_mode: If true, the code will be executed serially. This
-            is useful for debugging.
+        local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1252,6 +1259,8 @@ def init(
                 usage_lib.put_pre_init_usage_stats()
         else:
             usage_lib.put_pre_init_usage_stats()
+
+        usage_lib.record_library_usage("client")
         return ctx
 
     if kwargs:
@@ -1519,6 +1528,7 @@ def init(
 
     connect(
         _global_node,
+        _global_node.session_name,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
@@ -1844,6 +1854,7 @@ def is_initialized() -> bool:
 
 def connect(
     node,
+    session_name: str,
     mode=WORKER_MODE,
     log_to_driver: bool = False,
     worker=global_worker,
@@ -1859,6 +1870,7 @@ def connect(
 
     Args:
         node (ray._private.node.Node): The node to connect.
+        session_name: The session name (cluster id) of this cluster.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2016,6 +2028,7 @@ def connect(
         node.metrics_agent_port,
         runtime_env_hash,
         startup_token,
+        session_name,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2130,6 +2143,7 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+
         worker._session_index += 1
 
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
@@ -2311,11 +2325,12 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner: The actor that should own this object. This allows creating
-            objects with lifetimes decoupled from that of the creating process.
-            Note that the owner actor must be passed a reference to the object
-            prior to the object creator exiting, otherwise the reference will
-            still be lost.
+        _owner [Experimental]: The actor that should own this object. This
+            allows creating objects with lifetimes decoupled from that of the
+            creating process. The owner actor must be passed a reference to the
+            object prior to the object creator exiting, otherwise the reference
+            will still be lost. *Note that this argument is an experimental API
+            and should be avoided if possible.*
 
     Returns:
         The object ref assigned to this value.
@@ -2460,7 +2475,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,

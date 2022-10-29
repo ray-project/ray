@@ -183,6 +183,7 @@ linkcheck_ignore = [
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
+    r"^http:/$",  # Ignore incomplete links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -303,6 +304,8 @@ def setup(app):
     app.add_css_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
     )
+    # https://github.com/ines/termynal
+    app.add_css_file("css/termynal.css")
 
     # Custom JS
     app.add_js_file(
@@ -315,6 +318,10 @@ def setup(app):
     # to give thumbs up / down and feedback on existing docs pages.
     app.add_js_file("js/rate-the-docs.es.min.js")
 
+    # https://github.com/ines/termynal
+    app.add_js_file("js/termynal.js", defer="defer")
+    app.add_js_file("js/custom.js", defer="defer")
+
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
@@ -326,3 +333,6 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Create galleries on the fly
+    app.connect("builder-inited", build_gallery)

@@ -6,7 +6,6 @@ import pytest
 import time
 
 import ray
-import ray.train as train
 from ray.air._internal.util import StartTraceback
 from ray.air import session
 from ray.cluster_utils import Cluster
@@ -164,7 +163,7 @@ def test_local_ranks(ray_start_2_cpus):
     e.start()
 
     def train_func():
-        return train.local_rank()
+        return session.get_local_rank()
 
     e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert set(e.finish_training()) == {0, 1}
@@ -230,21 +229,6 @@ def test_worker_failure(ray_start_2_cpus):
             e.finish_training()
 
 
-def test_mismatch_checkpoint_report(ray_start_2_cpus):
-    def train_func():
-        if (train.world_rank()) == 0:
-            train.save_checkpoint(epoch=0)
-        else:
-            train.report(iter=0)
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-    with pytest.raises(RuntimeError):
-        e.get_next_results()
-
-
 def test_tensorflow_start(ray_start_2_cpus):
     num_workers = 2
     tensorflow_config = TensorflowConfig()
@@ -294,17 +278,28 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0"]),
-        (2, ["0,1", "0,1"]),
-        (3, ["0", "0,1", "0,1"]),
-        (4, ["0,1", "0,1", "0,1", "0,1"]),
+        (1, [[0]]),
+        (2, [[0, 1]] * 2),
+        (3, [[0]] + [[0, 1]] * 2),
+        (4, [[0, 1]] * 4),
     ],
 )
 def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
 
     num_workers, expected_results = worker_results
 
@@ -322,21 +317,35 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0"]),
-        (2, ["0", "0"]),
-        (3, ["0,1", "0,1", "0,1"]),
-        (4, ["0,1", "0,1", "0,1", "0,1"]),
-        (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
-        (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
-        (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
-        (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+        (1, [[0]]),
+        (
+            2,
+            [[0]] * 2,
+        ),
+        (3, [[0, 1]] * 3),
+        (4, [[0, 1]] * 4),
+        (5, [[0]] + [[0, 1]] * 4),
+        (6, [[0]] * 2 + [[0, 1]] * 4),
+        (7, [[0, 1]] * 7),
+        (8, [[0, 1]] * 8),
     ],
 )
 def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
 
     num_workers, expected_results = worker_results
 
@@ -354,17 +363,28 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0,1"]),
-        (2, ["0,1,2,3", "0,1,2,3"]),
-        (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
-        (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"]),
+        (1, [[0, 1]]),
+        (2, [[0, 1, 2, 3]] * 2),
+        (3, [[0, 1]] + [[0, 1, 2, 3]] * 2),
+        (4, [[0, 1, 2, 3]] * 4),
     ],
 )
 def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
+
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
 
     num_workers, expected_results = worker_results
 

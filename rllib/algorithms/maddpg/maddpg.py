@@ -89,9 +89,6 @@ class MADDPGConfig(AlgorithmConfig):
             "replay_mode": "lockstep",
         }
         self.training_intensity = None
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1024 * 25
         self.critic_lr = 1e-2
         self.actor_lr = 1e-2
@@ -103,7 +100,7 @@ class MADDPGConfig(AlgorithmConfig):
         # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
-        self.num_workers = 1
+        self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
         # fmt: on
         # __sphinx_doc_end__
@@ -124,6 +121,7 @@ class MADDPGConfig(AlgorithmConfig):
         adv_policy: Optional[str] = None,
         replay_buffer_config: Optional[dict] = None,
         training_intensity: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         critic_lr: Optional[float] = None,
         actor_lr: Optional[float] = None,
         target_network_update_freq: Optional[int] = None,
@@ -193,6 +191,10 @@ class MADDPGConfig(AlgorithmConfig):
                 stored in the replay buffer timesteps. Otherwise, the replay will
                 proceed at the native ratio determined by
                 `(train_batch_size / rollout_fragment_length)`.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
             critic_lr: Learning rate for the critic (Q-function) optimizer.
             actor_lr: Learning rate for the actor (policy) optimizer.
             target_network_update_freq: Update the target network every
@@ -233,6 +235,10 @@ class MADDPGConfig(AlgorithmConfig):
             self.replay_buffer_config = replay_buffer_config
         if training_intensity is not None:
             self.training_intensity = training_intensity
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
         if critic_lr is not None:
             self.critic_lr = critic_lr
         if actor_lr is not None:
@@ -279,8 +285,8 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
 class MADDPG(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MADDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MADDPGConfig()
 
     @override(DQN)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -313,7 +319,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

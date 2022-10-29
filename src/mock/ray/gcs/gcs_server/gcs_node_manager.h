@@ -20,25 +20,25 @@ class MockGcsNodeManager : public GcsNodeManager {
   MockGcsNodeManager() : GcsNodeManager(nullptr, nullptr, nullptr) {}
   MOCK_METHOD(void,
               HandleRegisterNode,
-              (const rpc::RegisterNodeRequest &request,
+              (rpc::RegisterNodeRequest request,
                rpc::RegisterNodeReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleDrainNode,
-              (const rpc::DrainNodeRequest &request,
+              (rpc::DrainNodeRequest request,
                rpc::DrainNodeReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetAllNodeInfo,
-              (const rpc::GetAllNodeInfoRequest &request,
+              (rpc::GetAllNodeInfoRequest request,
                rpc::GetAllNodeInfoReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetInternalConfig,
-              (const rpc::GetInternalConfigRequest &request,
+              (rpc::GetInternalConfigRequest request,
                rpc::GetInternalConfigReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));

@@ -1,9 +1,234 @@
+import itertools
+
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorArray,
+    ArrowTensorType,
+    ArrowVariableShapedTensorArray,
+    ArrowVariableShapedTensorType,
+)
+from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
+
+
+def test_tensor_array_validation():
+    # Test unknown input type raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(object())
+
+    # Test non-primitive element raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([object(), object()]))
+
+    with pytest.raises(TypeError):
+        TensorArray([object(), object()])
+
+
+def test_arrow_scalar_tensor_array_roundtrip():
+    arr = np.arange(10)
+    ata = ArrowTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+
+def test_arrow_scalar_tensor_array_roundtrip_boolean():
+    arr = np.array([True, False, False, True])
+    ata = ArrowTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    # Zero-copy is not possible since Arrow bitpacks boolean arrays while NumPy does
+    # not.
+    out = ata.to_numpy(zero_copy_only=False)
+    np.testing.assert_array_equal(out, arr)
+
+
+def test_scalar_tensor_array_roundtrip():
+    arr = np.arange(10)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    out = ta.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+    # Check Arrow conversion.
+    ata = ta.__arrow_array__()
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+
+def test_arrow_variable_shaped_tensor_array_validation():
+    # Test tensor elements with differing dimensions raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
+
+    # Test arbitrary object raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(object())
+
+    # Test empty array raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(np.array([]))
+
+    # Test deeply ragged tensor raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(
+            np.array(
+                [
+                    np.array(
+                        [
+                            np.array([1, 2]),
+                            np.array([3, 4, 5]),
+                        ],
+                        dtype=object,
+                    ),
+                    np.array(
+                        [
+                            np.array([5, 6, 7, 8]),
+                        ],
+                        dtype=object,
+                    ),
+                    np.array(
+                        [
+                            np.array([5, 6, 7, 8]),
+                            np.array([5, 6, 7, 8]),
+                            np.array([5, 6, 7, 8]),
+                        ],
+                        dtype=object,
+                    ),
+                ],
+                dtype=object,
+            )
+        )
+
+
+def test_arrow_variable_shaped_tensor_array_roundtrip():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
+    arr = np.array(
+        [[True, False], [False, False, True], [False], [True, True, False, True]],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
+    # Test that a roundtrip on slices of an already-contiguous 1D base array does not
+    # create any unnecessary copies.
+    base = np.arange(6)
+    base_address = base.__array_interface__["data"][0]
+    arr = np.array([base[:2], base[2:]], dtype=object)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    assert ata.storage.field("data").buffers()[3].address == base_address
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        assert o.base.address == base_address
+        np.testing.assert_array_equal(o, a)
+
+
+def test_arrow_variable_shaped_tensor_array_slice():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        for o, e in zip(ata[slice_], arr[slice_]):
+            np.testing.assert_array_equal(o, e)
+
+
+def test_variable_shaped_tensor_array_roundtrip():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    out = ta.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+    # Check Arrow conversion.
+    ata = ta.__arrow_array__()
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_variable_shaped_tensor_array_slice():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ta[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        for o, e in zip(ta[slice_], arr[slice_]):
+            np.testing.assert_array_equal(o, e)
 
 
 def test_tensor_array_ops():
@@ -158,6 +383,70 @@ def test_arrow_tensor_array_slice(test_arr, dtype):
     slice2 = ata.slice(2, 2)
     np.testing.assert_array_equal(slice2.to_numpy(), arr[2:4])
     np.testing.assert_array_equal(slice2[1], arr[3])
+
+
+pytest_tensor_array_concat_shapes = [(1, 2, 2), (3, 2, 2), (2, 3, 3)]
+pytest_tensor_array_concat_arrs = [
+    np.arange(np.prod(shape)).reshape(shape)
+    for shape in pytest_tensor_array_concat_shapes
+]
+pytest_tensor_array_concat_arrs += [
+    np.array([np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))])
+]
+pytest_tensor_array_concat_arr_combinations = list(
+    itertools.combinations(pytest_tensor_array_concat_arrs, 2)
+)
+
+
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_tensor_array_concat(a1, a2):
+    ta1 = TensorArray(a1)
+    ta2 = TensorArray(a2)
+    ta = TensorArray._concat_same_type([ta1, ta2])
+    assert len(ta) == a1.shape[0] + a2.shape[0]
+    assert ta.dtype.element_dtype == ta1.dtype.element_dtype
+    if a1.shape[1:] == a2.shape[1:]:
+        assert ta.dtype.element_shape == a1.shape[1:]
+        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+    else:
+        assert ta.dtype.element_shape == (None,) * (len(a1.shape) - 1)
+        for arr, expected in zip(
+            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+        ):
+            np.testing.assert_array_equal(arr, expected)
+
+
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_arrow_tensor_array_concat(a1, a2):
+    ta1 = ArrowTensorArray.from_numpy(a1)
+    ta2 = ArrowTensorArray.from_numpy(a2)
+    ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+    assert len(ta) == a1.shape[0] + a2.shape[0]
+    if a1.shape[1:] == a2.shape[1:]:
+        assert isinstance(ta.type, ArrowTensorType)
+        assert ta.type.storage_type == ta1.type.storage_type
+        assert ta.type.storage_type == ta2.type.storage_type
+        assert ta.type.shape == a1.shape[1:]
+        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+    else:
+        assert isinstance(ta.type, ArrowVariableShapedTensorType)
+        assert pa.types.is_struct(ta.type.storage_type)
+        for arr, expected in zip(
+            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+        ):
+            np.testing.assert_array_equal(arr, expected)
+
+
+def test_variable_shaped_tensor_array_uniform_dim():
+    shape1 = (3, 2, 2)
+    shape2 = (3, 4, 4)
+    a1 = np.arange(np.prod(shape1)).reshape(shape1)
+    a2 = np.arange(np.prod(shape2)).reshape(shape2)
+    ta = TensorArray([a1, a2])
+    assert len(ta) == 2
+    assert ta.is_variable_shaped
+    for a, expected in zip(ta.to_numpy(), [a1, a2]):
+        np.testing.assert_array_equal(a, expected)
 
 
 if __name__ == "__main__":

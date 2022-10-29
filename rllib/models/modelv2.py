@@ -22,7 +22,7 @@ torch, _ = try_import_torch()
 
 @PublicAPI
 class ModelV2:
-    """Defines an abstract neural network model for use with RLlib.
+    r"""Defines an abstract neural network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
     this class directly.
@@ -343,7 +343,7 @@ class ModelV2:
         """
         return self.time_major is True
 
-    @Deprecated(new="ModelV2.__call__()", error=False)
+    @Deprecated(new="ModelV2.__call__()", error=True)
     def from_batch(
         self, train_batch: SampleBatch, is_training: bool = True
     ) -> (TensorType, List[TensorType]):
@@ -367,7 +367,7 @@ class ModelV2:
 @DeveloperAPI
 def flatten(obs: TensorType, framework: str) -> TensorType:
     """Flatten the given tensor."""
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
@@ -398,7 +398,7 @@ def restore_original_dimensions(
         observation space.
     """
 
-    if tensorlib in ["tf", "tfe", "tf2"]:
+    if tensorlib in ["tf", "tf2"]:
         assert tf is not None
         tensorlib = tf
     elif tensorlib == "torch":

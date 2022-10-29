@@ -72,6 +72,15 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    void GetTaskFailureCause(
+        const TaskID &task_id,
+        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+        override {
+      ray::rpc::GetTaskFailureCauseReply reply;
+      callback(Status::OK(), reply);
+      num_get_task_failure_causes += 1;
+    }
+
     std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
 
     void ReportWorkerBacklog(
@@ -298,6 +307,7 @@ struct GcsServerMocker {
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
     int num_release_unused_workers = 0;
+    int num_get_task_failure_causes = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
@@ -346,6 +356,10 @@ struct GcsServerMocker {
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
 
     size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
+
+   protected:
+    friend class GcsPlacementGroupSchedulerTest;
+    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:

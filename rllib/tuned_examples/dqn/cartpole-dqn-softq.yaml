@@ -1,5 +1,5 @@
 cartpole-dqn:
-    env: CartPole-v0
+    env: CartPole-v1
     run: DQN
     stop:
         episode_reward_mean: 150

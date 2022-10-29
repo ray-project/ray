@@ -27,6 +27,8 @@ class TableBlockBuilder(BlockBuilder[T]):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The column names of uncompacted Python values buffered.
+        self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
         self._tables_size_bytes = 0
@@ -46,6 +48,20 @@ class TableBlockBuilder(BlockBuilder[T]):
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
             )
+
+        item_column_names = item.keys()
+        if self._column_names is not None:
+            # Check all added rows have same columns.
+            if item_column_names != self._column_names:
+                raise ValueError(
+                    "Current row has different columns compared to previous rows. "
+                    f"Columns of current row: {sorted(item_column_names)}, "
+                    f"Columns of previous rows: {sorted(self._column_names)}."
+                )
+        else:
+            # Initialize column names with the first added row.
+            self._column_names = item_column_names
+
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
@@ -65,10 +81,12 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         raise NotImplementedError
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
         raise NotImplementedError
 
     @staticmethod

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from ray.data.preprocessor import Preprocessor
 
-_WARN_REPARTITION_THRESHOLD = 10 * 1024 ** 3
+_WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 
 
 def _convert_scaling_config_to_ray_params(
@@ -270,8 +270,8 @@ class GBDTTrainer(BaseTrainer):
         if checkpoint_at_end:
             self._checkpoint_at_end(model, evals_result)
 
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        trainable_cls = super()._generate_trainable_cls()
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
         ray_params_cls = self._ray_params_cls
