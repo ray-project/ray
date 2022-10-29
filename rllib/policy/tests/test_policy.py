@@ -52,10 +52,10 @@ class TestPolicy(unittest.TestCase):
                 if fw != "tf":
                     check(state3["weights"], state4["weights"])
 
-    def test_tf_policy_from_checkpoint_twice(self):
+    def test_policy_from_checkpoint_twice(self):
         # Checks if we can load a policy from a checkpoint twice
         config = PPOConfig()
-        for fw in framework_iterator(config, frameworks=["tf"]):
+        for fw in framework_iterator(config, frameworks=["tf, tf2, torch"]):
             algo = config.build(env="CartPole-v1")
             algo.train()
             policy = algo.get_policy()
