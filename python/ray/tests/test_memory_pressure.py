@@ -452,11 +452,8 @@ def test_legacy_memory_monitor_disabled_by_oom_killer():
         },
     ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
-        ray.get(
-            allocate_memory.options(max_retries=0).remote(
-                allocate_bytes=bytes_to_alloc,
-            ),
-        )
+        leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
+        ray.get(leaker.allocate.remote(bytes_to_alloc))
 
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
         ray.get(
