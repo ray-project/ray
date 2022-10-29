@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import Union, Optional, TYPE_CHECKING
+from typing import List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -24,6 +24,7 @@ MIN_PYARROW_VERSION = "6.0.1"
 MAX_PYARROW_VERSION = "7.0.0"
 RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
+_LOCAL_SCHEME = "local://"
 
 
 LazyModule = Union[None, bool, ModuleType]
@@ -206,3 +207,32 @@ def _check_import(obj, *, module: str, package: str) -> None:
             f"couldn't be imported. You can install '{package}' by running `pip "
             f"install {package}`."
         )
+
+
+def _resolve_local_scheme(path: str) -> str:
+    """Returns the resolved path if the given path following the local protocol.
+    Othewise, returns the path unchanged."""
+    if path.startswith(_LOCAL_SCHEME):
+        path = path[len(_LOCAL_SCHEME) :]
+    return path
+
+
+def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
+    """Returns True if the given paths are in local scheme.
+    Note: The paths must be in same scheme, i.e. it's invalid and
+    will raise error if paths are mixed with different schemes.
+    """
+    inputs = paths
+    if isinstance(paths, str):
+        inputs = [paths]
+    is_local = None
+    for path in inputs:
+        current = path.startswith(_LOCAL_SCHEME)
+        if not is_local:
+            is_local = current
+        elif is_local != current:
+            raise ValueError(
+                "The paths must all be local-scheme or not local-scheme, "
+                f"but found mixed {paths}"
+            )
+    return is_local

@@ -23,7 +23,7 @@ from ray.data._internal.arrow_serialization import (
 from ray.data._internal.block_list import BlockMetadata
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _resolve_local_scheme
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
@@ -644,6 +644,7 @@ def _resolve_paths_and_filesystem(
     resolved_paths = []
     for path in paths:
         path = _resolve_example_path(path)
+        path = _resolve_local_scheme(path)
         try:
             resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
                 path, filesystem

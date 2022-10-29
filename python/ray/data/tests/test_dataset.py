@@ -4884,23 +4884,37 @@ def test_read_write_local_node(ray_start_cluster):
             locations.extend(location_data[block]["node_ids"])
         assert set(locations) == {ray.get_runtime_context().node_id.hex()}
 
+    local_path = "local://" + data_path
     # Plain read.
-    ds = ray.data.read_parquet(data_path).fully_executed()
+    ds = ray.data.read_parquet(local_path).fully_executed()
     check_dataset_is_local(ds)
     assert "1 nodes used" in ds.stats(), ds.stats()
-    # SPREAD scheduling got overridden when read local fs.
+
+    # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
-        data_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
+        local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
     ).fully_executed()
     check_dataset_is_local(ds)
     assert "1 nodes used" in ds.stats(), ds.stats()
+
     # With fusion.
-    ds = ray.data.read_parquet(data_path).map(lambda x: x).fully_executed()
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
     check_dataset_is_local(ds)
     assert "1 nodes used" in ds.stats(), ds.stats()
-    # Write back.
-    ds.write_parquet(os.path.join(data_path, "output.parquet"))
+
+    # Write back to local scheme.
+    ds.write_parquet(os.path.join(local_path, "output.parquet"))
     assert "1 nodes used" in ds.stats(), ds.stats()
+
+    # Mixing paths of local and non-local scheme is invalid.
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", data_path + "/test2.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", "example://iris.parquet"]
+        ).fully_executed()
 
 
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):

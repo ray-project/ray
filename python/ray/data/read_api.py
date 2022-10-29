@@ -16,6 +16,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
+    _is_local_scheme,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -313,8 +314,7 @@ def read_datasource(
 
     if not ray.util.client.ray.is_connected():
         paths = read_args.get("paths", None)
-        fs = read_args.get("filesystem", None)
-        if paths and _is_local_fs(paths, fs):
+        if paths and _is_local_scheme(paths):
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
@@ -1334,19 +1334,6 @@ def from_huggingface(
             "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
             f"got {type(dataset)}"
         )
-
-
-def _is_local_fs(
-    paths: Union[str, List[str]], filesystem: "pyarrow.fs.FileSystem"
-) -> bool:
-    from pyarrow.fs import _resolve_filesystem_and_path
-
-    if isinstance(paths, str):
-        path = paths
-    else:
-        path = paths[0]
-    fs, _ = _resolve_filesystem_and_path(path, filesystem)
-    return fs.type_name == "local"
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
