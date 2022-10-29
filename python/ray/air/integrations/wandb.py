@@ -87,7 +87,7 @@ def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kw
     In distributed training with Ray Train, only the zero-rank worker will initialize
     wandb. All other workers will return a mock object, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
-    ``rank_zero_only=False`, which will then initialize wandb in every training
+    ``rank_zero_only=False``, which will then initialize wandb in every training
     worker.
 
     The ``config`` argument will be passed to Weights and Biases and will be logged
