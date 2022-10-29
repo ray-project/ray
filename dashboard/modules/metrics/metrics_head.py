@@ -299,7 +299,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # For non-terminal states, we assume that if a worker has at least
         # one task in one of these states, the worker has not exited. Therefore,
         # we fetch the current count.
-        query_for_non_terminal_states = f"clamp_min(sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by ({sum_by_str}), 0)"
+        query_for_non_terminal_states = (
+            f"clamp_min(sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) "
+            f"by ({sum_by_str}), 0)"
+        )
         return f"{query_for_terminal_states} or {query_for_non_terminal_states}"
 
     async def _query_prometheus(self, query):
