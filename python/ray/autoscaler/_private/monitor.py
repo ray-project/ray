@@ -136,7 +136,6 @@ class Monitor:
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
         log_dir: str = None,
-        redis_password: Optional[str] = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
         stop_event: Optional[Event] = None,
@@ -152,9 +151,6 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-        if redis_password is not None:
-            logger.warning("redis_password has been deprecated.")
-        # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray._private.worker.global_worker
         gcs_client = GcsClient(address=self.gcs_address)
 
@@ -526,26 +522,26 @@ def log_resource_batch_data_if_desired(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the monitor to connect to.")
+        description=("Parse GCS server for the monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--redis-address", required=False, type=str, help="the address to use for Redis"
-    )
-    parser.add_argument(
-        "--autoscaling-config",
-        required=False,
-        type=str,
-        help="the path to the autoscaling config file",
+        "--redis-address", required=False, type=str, help="This is deprecated"
     )
     parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
         default=None,
-        help="the password to use for Redis",
+        help="This is deprecated",
+    )
+    parser.add_argument(
+        "--autoscaling-config",
+        required=False,
+        type=str,
+        help="the path to the autoscaling config file",
     )
     parser.add_argument(
         "--logging-level",
@@ -601,6 +597,7 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
@@ -623,13 +620,12 @@ if __name__ == "__main__":
 
     bootstrap_address = args.gcs_address
     if bootstrap_address is None:
-        raise ValueError("One of --gcs-address or --redis-address must be set!")
+        raise ValueError("--gcs-address must be set!")
 
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
-        args.logs_dir,
-        redis_password=args.redis_password,
+        log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )
 

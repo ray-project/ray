@@ -24,10 +24,7 @@ import ray.util.client.server.server as ray_client_server
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
-from ray._private.services import (
-    REDIS_EXECUTABLE,
-    _start_redis_instance,
-)
+
 from ray._private.test_utils import (
     get_and_run_node_killer,
     init_error_pubsub,
@@ -35,6 +32,7 @@ from ray._private.test_utils import (
     setup_tls,
     teardown_tls,
     enable_external_redis,
+    start_redis_instance,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -155,8 +153,7 @@ def _setup_redis(request):
     enable_tls = "RAY_REDIS_CA_CERT" in os.environ
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        port, proc = _start_redis_instance(
-            REDIS_EXECUTABLE,
+        port, proc = start_redis_instance(
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
@@ -365,6 +362,16 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
+def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+    param = getattr(request, "param", {})
+    env_vars = param.pop("env_vars", {})
+    for k, v in env_vars.items():
+        monkeypatch.setenv(k, v)
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_2_nodes(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
@@ -439,7 +446,7 @@ def call_ray_start_with_external_redis(request):
     port_list = ports.split(",")
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
+        start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))

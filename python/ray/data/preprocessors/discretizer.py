@@ -6,6 +6,7 @@ import numpy as np
 from ray.data import Dataset
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
 class _AbstractKBinsDiscretizer(Preprocessor):
@@ -62,6 +63,7 @@ class _AbstractKBinsDiscretizer(Preprocessor):
         return f"{self.__class__.__name__}({attr_str})"
 
 
+@PublicAPI(stability="alpha")
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
 
@@ -161,6 +163,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         return super()._transform(dataset)
 
 
+@PublicAPI(stability="alpha")
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
 

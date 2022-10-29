@@ -526,7 +526,6 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
   }
-  last_resource_report_at_ms_ = now_ms;
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -538,6 +537,7 @@ ray::Status NodeManager::RegisterGcs() {
                     << io_service_.stats().StatsString() << "\n\n"
                     << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
+          ReportWorkerOOMKillStats();
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -610,6 +610,11 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
+  if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+    number_workers_killed_++;
+  } else if (disconnect_type == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    number_workers_killed_by_oom_++;
+  }
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -1181,17 +1186,17 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
 
 bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
+  // Trigger local GC at the next heartbeat interval.
+  if (resource_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
     return false;
-  }
-
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
   }
 
   return true;
@@ -2823,6 +2828,7 @@ void NodeManager::RecordMetrics() {
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
   object_directory_->RecordMetrics(duration_ms);
+  dependency_manager_.RecordMetrics();
 }
 
 void NodeManager::ConsumeSyncMessage(
@@ -2939,55 +2945,36 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         } else {
           high_memory_eviction_target_ = worker_to_kill;
 
-          float usage_fraction =
-              static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-          std::string used_bytes_gb = FormatFloat(
-              static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
-          std::string total_bytes_gb = FormatFloat(
-              static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
-          std::stringstream id_ss;
-          if (worker_to_kill->GetActorId().IsNil()) {
-            id_ss << "task ID " << worker_to_kill->GetAssignedTaskId();
-          } else {
-            id_ss << "actor ID " << worker_to_kill->GetActorId();
-          }
+          /// TODO: (clarng) expose these strings in the frontend python error as well.
+          static std::string oom_kill_title =
+              "Task was killed due to the node running low on memory. ";
+          std::string oom_kill_details = this->CreateOomKillMessageDetails(
+              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          std::string oom_kill_suggestions =
+              this->CreateOomKillMessageSuggestions(worker_to_kill);
 
-          /// TODO: (clarng) expose this string in the frontend python error as well.
+          RAY_LOG(INFO)
+              << "Killing worker with task "
+              << worker_to_kill->GetAssignedTask().GetTaskSpecification().DebugString()
+              << "\n\n"
+              << oom_kill_details << "\n\n"
+              << oom_kill_suggestions;
+
           std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss
-              << "Task was killed due to the node running low on memory.\n\n"
-              << "Memory on the node (IP: " << worker_to_kill->IpAddress()
-              << ", ID: " << this->self_node_id_ << ") where the task was running was "
-              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
-              << "), which exceeds the memory usage threshold of " << usage_threshold
-              << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
-              << ") because it was the most recently scheduled task; to see more "
-                 "information about memory usage on this node, use `ray logs raylet.out "
-                 "-ip "
-              << worker_to_kill->IpAddress()
-              << "`. To see the logs of the worker, use `ray logs worker-"
-              << worker_to_kill->WorkerId() << "*out -ip " << worker_to_kill->IpAddress()
-              << "`.\n\n"
-              << "Consider provisioning more memory on this node or reducing task "
-                 "parallelism by requesting more CPUs per task. To adjust the eviction "
-                 "threshold, set the environment variable "
-                 "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
-                 "worker eviction, set the environment variable "
-                 "`RAY_memory_monitor_interval_ms` to zero.";
+          worker_exit_message_ss << oom_kill_title << oom_kill_details
+                                 << oom_kill_suggestions;
           std::string worker_exit_message = worker_exit_message_ss.str();
-          /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
 
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
                                std::move(task_failure_reason));
-          /// TODO: (clarng) right now destroy is called after the messages are created
+
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
-                        rpc::WorkerExitType::SYSTEM_ERROR,
+                        rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
                         worker_exit_message,
                         true /* force */);
 
@@ -3002,6 +2989,62 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       }
     }
   };
+}
+
+const std::string NodeManager::CreateOomKillMessageDetails(
+    const std::shared_ptr<WorkerInterface> &worker,
+    const NodeID &node_id,
+    const MemorySnapshot &system_memory,
+    float usage_threshold) const {
+  float usage_fraction =
+      static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
+  std::string used_bytes_gb =
+      FormatFloat(static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
+  std::string total_bytes_gb =
+      FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+  std::stringstream oom_kill_details_ss;
+
+  oom_kill_details_ss
+      << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
+      << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
+      << ", name= " << worker->GetAssignedTask().GetTaskSpecification().GetName()
+      << ") was running was " << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
+      << usage_fraction << "), which exceeds the memory usage threshold of "
+      << usage_threshold << ". Ray killed this worker (ID: " << worker->WorkerId()
+      << ") because it was the most recently scheduled task; to see more "
+         "information about memory usage on this node, use `ray logs raylet.out "
+         "-ip "
+      << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
+      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << ". ";
+  return oom_kill_details_ss.str();
+}
+
+const std::string NodeManager::CreateOomKillMessageSuggestions(
+    const std::shared_ptr<WorkerInterface> &worker) const {
+  std::stringstream not_retriable_recommendation_ss;
+  if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+    not_retriable_recommendation_ss << "Set ";
+    if (worker->GetAssignedTask().GetTaskSpecification().IsNormalTask()) {
+      not_retriable_recommendation_ss << "max_retries";
+    } else {
+      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
+    }
+    not_retriable_recommendation_ss
+        << " to enable retry when the task crashes due to OOM. ";
+  }
+  std::stringstream oom_kill_suggestions_ss;
+  oom_kill_suggestions_ss
+      << "Refer to the documentation on how to address the out of memory issue: "
+         "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
+         "Consider provisioning more memory on this node or reducing task "
+         "parallelism by requesting more CPUs per task. "
+      << not_retriable_recommendation_ss.str()
+      << "To adjust the kill "
+         "threshold, set the environment variable "
+         "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+         "worker killing, set the environment variable "
+         "`RAY_memory_monitor_interval_ms` to zero.";
+  return oom_kill_suggestions_ss.str();
 }
 
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
@@ -3027,6 +3070,23 @@ void NodeManager::GCTaskFailureReason() {
       task_failure_reasons_.erase(entry.first);
     }
   }
+}
+
+void NodeManager::ReportWorkerOOMKillStats() {
+  if (number_workers_killed_by_oom_ > 0) {
+    RAY_LOG(ERROR) << number_workers_killed_by_oom_
+                   << " Workers (tasks / actors) killed due to memory pressure (OOM), "
+                   << number_workers_killed_
+                   << " Workers crashed due to other reasons at node (ID: "
+                   << self_node_id_ << ", IP: " << initial_config_.node_manager_address
+                   << ") over the last time period. "
+                   << "To see more information about the Workers killed on this node, "
+                   << "use `ray logs raylet.out -ip "
+                   << initial_config_.node_manager_address << "`\n\n"
+                   << CreateOomKillMessageSuggestions({});
+  }
+  number_workers_killed_by_oom_ = 0;
+  number_workers_killed_ = 0;
 }
 
 }  // namespace raylet

@@ -25,6 +25,7 @@ parts:
       sections:
         - file: ray-air/examples/torch_image_example
         - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        - file: ray-air/examples/convert_existing_tf_code_to_ray_air
         - file: ray-air/examples/tfx_tabular_train_to_serve
         - file: ray-air/examples/huggingface_text_classification
         - file: ray-air/examples/sklearn_example
@@ -38,6 +39,7 @@ parts:
         - file: ray-air/examples/upload_to_comet_ml
         - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
+        - file: ray-air/examples/automl_with_ray_air
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
@@ -99,7 +101,8 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
-              - file: tune/tutorials/tune-advanced-tutorial
+              - file: tune/examples/tune_analyze_results
+              - file: tune/examples/pbt_guide
                 sections:
                   - file: tune/examples/pbt_visualization/pbt_visualization
                     title: "Visualizing and Understanding PBT"
@@ -194,6 +197,7 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
               - file: serve/migration
+              - file: serve/direct-ingress
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -214,12 +218,14 @@ parts:
           - file: rllib/user-guides
             sections:
               - file: rllib/rllib-models
+              - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-connector
               - file: rllib/rllib-dev
+              - file: rllib/rllib-cli
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 
@@ -296,7 +302,6 @@ parts:
           title: User Guides
           sections:
           - file: cluster/vms/user-guides/launching-clusters/index
-            title: Launching Clusters
           - file: cluster/vms/user-guides/large-cluster-best-practices
           - file: cluster/vms/user-guides/configuring-autoscaling
           - file: cluster/vms/user-guides/community/index
@@ -312,7 +317,14 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
 
+  - caption: Monitoring and Debugging
+    chapters:
+      - file: ray-observability/monitoring-debugging/monitoring-debugging
+        title: User Guides
+      - file: ray-observability/index
+        title: Tools
 
   - caption: References
     chapters:
@@ -329,6 +341,5 @@ parts:
           - file: ray-contribute/fake-autoscaler
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
-      - file: ray-observability/index
       - file: ray-contribute/whitepaper
       - file: ray-use-cases/overview
