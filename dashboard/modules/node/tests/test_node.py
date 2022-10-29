@@ -108,7 +108,6 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
             assert len(detail["actors"]) == 2, detail["actors"]
-            assert len(detail["raylet"]["viewData"]) > 0
 
             actor_worker_pids = set()
             for worker in detail["workers"]:
@@ -127,7 +126,6 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "raylet" in summary["cmdline"][0]
             assert "workers" not in summary
             assert "actors" not in summary
-            assert "viewData" not in summary["raylet"]
             assert "objectStoreAvailableMemory" in summary["raylet"]
             assert "objectStoreUsedMemory" in summary["raylet"]
             break
@@ -178,59 +176,6 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_succeeded_without_exception(
         check_mem_table, (AssertionError,), timeout_ms=10000
     )
-
-
-def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-
-    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-
-    @ray.remote
-    class ActorWithObjs:
-        def __init__(self):
-            print("I also log a line")
-            self.obj_ref = ray.put([1, 2, 3])
-
-        def get_obj(self):
-            return ray.get(self.obj_ref)
-
-    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
-    timeout_seconds = 20
-    start_time = time.time()
-    last_ex = None
-
-    def check_node_details():
-        resp = requests.get(f"{webui_url}/nodes?view=details")
-        resp_json = resp.json()
-        resp_data = resp_json["data"]
-        clients = resp_data["clients"]
-        node = clients[0]
-        assert len(clients) == 1
-        assert len(node.get("actors")) == 2
-        # Workers information should be in the detailed payload
-        assert "workers" in node
-        # Two lines printed by ActorWithObjs
-        print(node["workers"])
-        assert len(node["workers"]) == 2
-
-    while True:
-        time.sleep(1)
-        try:
-            check_node_details()
-            break
-        except (AssertionError, KeyError, IndexError) as ex:
-            last_ex = ex
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                ex_stack = (
-                    traceback.format_exception(
-                        type(last_ex), last_ex, last_ex.__traceback__
-                    )
-                    if last_ex
-                    else []
-                )
-                ex_stack = "".join(ex_stack)
-                raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 @pytest.mark.parametrize(
