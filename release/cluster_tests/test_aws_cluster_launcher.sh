@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test Ray Data bulk ingestion performance as the size of input files change.
+# Test basics of Ray Cluster Launcher.
 
 set -e
 
