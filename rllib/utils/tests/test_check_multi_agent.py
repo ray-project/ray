@@ -15,7 +15,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             KeyError,
             "You have invalid keys in your",
-            lambda: PG(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v1"),
         )
 
     def test_multi_agent_dict_bad_policy_ids(self):
@@ -28,7 +28,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             KeyError,
             "Policy IDs must always be of type",
-            lambda: PG(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v1"),
         )
 
     def test_multi_agent_dict_invalid_sub_values(self):
@@ -36,7 +36,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "config.multiagent.count_steps_by must be",
-            lambda: PG(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v1"),
         )
 
 

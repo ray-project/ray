@@ -1,10 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 debian_packages: []
-# Test fails due to actor killed by memory monitor. Re-enable when we address non-retrieable task / actor.
-# Tests this would address:
-# dask_on_ray_large_scale_test_no_spilling
-# dask_on_ray_large_scale_test_spilling
-env_vars: {"RAY_memory_monitor_interval_ms": "0"}
 
 python:
   pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, boto, s3fs, pyarrow, pytest]

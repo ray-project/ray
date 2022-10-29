@@ -284,13 +284,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)
         sum_by_str = ",".join(sum_by)
 
+
         # Ray does not currently permanently track worker task metrics.
         # The metric is cleared after a worker exits. We need to work around
         # these restrictions when we query metrics.
 
         # For terminal states (Finished, Failed), we know that the count can
-        # never decrease. We therefore use the get the latest count of tasks
-        # by fetching the max value over the past 14 days.
+        # never decrease. Therefore, we get the latest count of tasks by
+        # fetching the max value over the past 14 days.
         query_for_terminal_states = (
             "sum(max_over_time("
             f"ray_tasks{{{filter_for_terminal_states_str}}}[14d])) by ({sum_by_str})"
@@ -300,7 +301,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # one task in one of these states, the worker has not exited. Therefore,
         # we fetch the current count.
         query_for_non_terminal_states = (
-            f"sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by ({sum_by_str})"
+            f"clamp_min(sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) by ({sum_by_str}), 0)"
         )
         return f"{query_for_terminal_states} or {query_for_non_terminal_states}"
 

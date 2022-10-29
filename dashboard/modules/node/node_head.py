@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import re
 import time
 
 import aiohttp.web
@@ -21,8 +20,6 @@ from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
-    LOG_PRUNE_THREASHOLD,
-    MAX_LOGS_TO_CACHE,
     FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
     FREQUENT_UPDATE_TIMEOUT_SECONDS,
 )
@@ -164,6 +161,16 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
                         )
+                        # Put head node ID in the internal KV to be read by JobAgent.
+                        # TODO(architkulkarni): Remove once State API exposes which
+                        # node is the head node.
+                        await self._gcs_aio_client.internal_kv_put(
+                            "head_node_id".encode(),
+                            node_id.encode(),
+                            overwrite=True,
+                            namespace=ray_constants.KV_NAMESPACE_JOB,
+                            timeout=2,
+                        )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
@@ -295,17 +302,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message=f"Successfully set fetching to {should_fetch}"
         )
 
-    @routes.get("/node_errors")
-    async def get_errors(self, req) -> aiohttp.web.Response:
-        ip = req.query["ip"]
-        pid = str(req.query.get("pid", ""))
-        node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
-        if pid:
-            node_errors = {str(pid): node_errors.get(pid, [])}
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Fetched errors.", errors=node_errors
-        )
-
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
@@ -336,72 +332,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         except Exception:
             logger.exception("Error updating gcs stats.")
 
-    async def _update_log_info(self):
-        if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
-            return
-
-        def process_log_batch(log_batch):
-            ip = log_batch["ip"]
-            pid = str(log_batch["pid"])
-            if pid != "autoscaler":
-                log_counts_for_ip = dict(
-                    DataSource.ip_and_pid_to_log_counts.get(ip, {})
-                )
-                log_counts_for_pid = log_counts_for_ip.get(pid, 0)
-                log_counts_for_pid += len(log_batch["lines"])
-                log_counts_for_ip[pid] = log_counts_for_pid
-                DataSource.ip_and_pid_to_log_counts[ip] = log_counts_for_ip
-            logger.debug(f"Received a log for {ip} and {pid}")
-
-        while True:
-            try:
-                log_batch = await self._dashboard_head.gcs_log_subscriber.poll()
-                if log_batch is None:
-                    continue
-                process_log_batch(log_batch)
-            except Exception:
-                logger.exception("Error receiving log from GCS.")
-
-    async def _update_error_info(self):
-        def process_error(error_data):
-            message = error_data.error_message
-            message = re.sub(r"\x1b\[\d+m", "", message)
-            match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
-            if match:
-                pid = match.group(1)
-                ip = match.group(2)
-                errs_for_ip = dict(DataSource.ip_and_pid_to_errors.get(ip, {}))
-                pid_errors = list(errs_for_ip.get(pid, []))
-                pid_errors.append(
-                    {
-                        "message": message,
-                        "timestamp": error_data.timestamp,
-                        "type": error_data.type,
-                    }
-                )
-
-                # Only cache up to MAX_LOGS_TO_CACHE
-                pid_errors_length = len(pid_errors)
-                if pid_errors_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
-                    offset = pid_errors_length - MAX_LOGS_TO_CACHE
-                    del pid_errors[:offset]
-
-                errs_for_ip[pid] = pid_errors
-                DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
-                logger.info(f"Received error entry for {ip} {pid}")
-
-        while True:
-            try:
-                (
-                    _,
-                    error_data,
-                ) = await self._dashboard_head.gcs_error_subscriber.poll()
-                if error_data is None:
-                    continue
-                process_error(error_data)
-            except Exception:
-                logger.exception("Error receiving error info from GCS.")
-
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
@@ -414,8 +344,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
-            self._update_log_info(),
-            self._update_error_info(),
         )
 
     @staticmethod

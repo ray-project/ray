@@ -355,6 +355,10 @@ bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
   return false;
 }
 
+void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message) {
+  BroadcastMessage(std::move(message));
+}
+
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
   io_context_.dispatch(
       [this, message] {

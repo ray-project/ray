@@ -1,21 +1,20 @@
 from dataclasses import dataclass
-import io
 import logging
 import os
 from datetime import timedelta
-from typing import Dict, Optional
+from typing import Optional
 
 import ray
-import ray.cloudpickle
-from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.air.checkpoint import Checkpoint
+from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.util import PublicAPI
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
 
 try:
     from torch.profiler import profile
@@ -178,32 +177,10 @@ class _TorchBackend(Backend):
             _shutdown_torch, destroy_process_group=len(worker_group) > 1
         )
 
-    @staticmethod
-    def encode_data(data_dict: Dict) -> EncodedData:
-        """Special handling for moving model from worker to driver."""
-
-        # If model is being checkpointed and is wrapped in DDP, then extract
-        # out the underlying module. If not, then deserialization will fail
-        # since the torch process group is not initialized on the driver.
-
-        for k, v in data_dict.items():
-            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
-                data_dict[k] = v.module
-
-        # Convert the checkpoint dict to bytes, so that any GPU tensors that
-        # are in the checkpoint dict can be properly deserialized on the
-        # driver side, even if the driver does not have access to a GPU device.
-        _buffer = io.BytesIO()
-        # If a custom torch model contains a function that cannot be pickled normally,
-        # we need to use ray.cloudpickle. This is also consistent with how Ray
-        # serialization works in general and has no downsides
-        # (this can still be unpickled without ray using normal pickle).
-        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
-        return _buffer.getvalue()
-
-    @staticmethod
-    def decode_data(encoded_data: EncodedData) -> Dict:
-        # When decoding the bytes on the driver side, always map to CPU.
-        _buffer = io.BytesIO(encoded_data)
-        checkpoint_dict = torch.load(_buffer, map_location="cpu")
-        return checkpoint_dict
+    @classmethod
+    def _encode_data(cls, checkpoint: Checkpoint):
+        checkpoint = super()._encode_data(checkpoint)
+        if type(checkpoint) is Checkpoint:
+            _warn_about_bad_checkpoint_type(TorchCheckpoint)
+            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint
