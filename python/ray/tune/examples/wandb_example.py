@@ -3,14 +3,11 @@ import tempfile
 from unittest.mock import MagicMock
 
 import numpy as np
-import wandb
 
 from ray import air, tune
 from ray.air import session
 from ray.air.integrations.wandb import setup_wandb
-from ray.tune import Trainable
 from ray.air.callbacks.wandb import WandbLoggerCallback
-from ray.tune.integration.wandb import WandbTrainableMixin
 
 
 def train_function(config):
@@ -19,7 +16,7 @@ def train_function(config):
         session.report({"loss": loss})
 
 
-def tune_function(api_key_file):
+def tune_with_callback(api_key_file):
     """Example for using a WandbLoggerCallback with the function API"""
     tuner = tune.Tuner(
         train_function,
@@ -52,7 +49,7 @@ def train_function_wandb(config):
         wandb.log(dict(loss=loss))
 
 
-def tune_setup(api_key_file, mock_wandb=False):
+def tune_with_setup(api_key_file, mock_wandb=False):
     """Example for using the @wandb_mixin decorator with the function API"""
     tuner = tune.Tuner(
         train_function_wandb,
@@ -70,31 +67,6 @@ def tune_setup(api_key_file, mock_wandb=False):
     tuner.fit()
 
 
-class WandbTrainable(WandbTrainableMixin, Trainable):
-    def step(self):
-        for i in range(30):
-            loss = self.config["mean"] + self.config["sd"] * np.random.randn()
-            wandb.log({"loss": loss})
-        return {"loss": loss, "done": True}
-
-
-def tune_trainable(api_key_file):
-    """Example for using a WandTrainableMixin with the class API"""
-    tuner = tune.Tuner(
-        WandbTrainable,
-        tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
-        ),
-        param_space={
-            "mean": tune.grid_search([1, 2, 3, 4, 5]),
-            "sd": tune.uniform(0.2, 0.8),
-            "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
-        },
-    )
-    tuner.fit()
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mock-api", action="store_true", help="Mock Wandb API access")
@@ -104,16 +76,14 @@ if __name__ == "__main__":
 
     if args.mock_api:
         WandbLoggerCallback._logger_process_cls = MagicMock
-        WandbTrainable._wandb = MagicMock()
         wandb = MagicMock()  # noqa: F811
         temp_file = tempfile.NamedTemporaryFile()
         temp_file.write(b"1234")
         temp_file.flush()
         api_key_file = temp_file.name
 
-    tune_function(api_key_file)
-    tune_setup(api_key_file, mock_wandb=args.mock_api)
-    tune_trainable(api_key_file)
+    tune_with_callback(api_key_file)
+    tune_with_setup(api_key_file, mock_wandb=args.mock_api)
 
     if args.mock_api:
         temp_file.close()
