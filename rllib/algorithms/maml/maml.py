@@ -257,8 +257,8 @@ def inner_adaptation(workers, samples):
 class MAML(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MAMLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MAMLConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

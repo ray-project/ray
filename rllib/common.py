@@ -173,6 +173,7 @@ class CLIArguments:
     of common arguments, like "run" or "env" that would otherwise be duplicated."""
 
     # Common arguments
+    # __cli_common_start__
     Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
     AlgoRequired = typer.Option(
         ..., "--algo", "--run", "-a", "-r", help=get_help("run")
@@ -181,14 +182,20 @@ class CLIArguments:
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
     Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
     ConfigRequired = typer.Option(..., "--config", "-c", help=get_help("config"))
+    # __cli_common_end__
 
-    # Train arguments
+    # Train file arguments
+    # __cli_file_start__
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
     )
     FileType = typer.Option(
         SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
     )
+    # __cli_file_end__
+
+    # Train arguments
+    # __cli_train_start__
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
@@ -198,7 +205,7 @@ class CLIArguments:
     Resume = typer.Option(False, help=train_help.get("resume"))
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
-    CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
+    CheckpointAtEnd = typer.Option(True, help=get_help("checkpoint_at_end"))
     LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
@@ -220,8 +227,10 @@ class CLIArguments:
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
     )
+    # __cli_train_end__
 
     # Eval arguments
+    # __cli_eval_start__
     Checkpoint = typer.Argument(None, help=eval_help.get("checkpoint"))
     Render = typer.Option(False, help=eval_help.get("render"))
     Steps = typer.Option(10000, help=eval_help.get("steps"))
@@ -230,6 +239,7 @@ class CLIArguments:
     SaveInfo = typer.Option(False, help=eval_help.get("save_info"))
     UseShelve = typer.Option(False, help=eval_help.get("use_shelve"))
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
+    # __cli_eval_end__
 
 
 # Note that the IDs of these examples are lexicographically sorted by environment,
