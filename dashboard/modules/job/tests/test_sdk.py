@@ -172,13 +172,20 @@ def get_register_agents_number(webui_url):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "include_dashboard": True,
+            "env_vars": {
+                "CANDIDATE_AGENT_NUMBER": "2",
+                RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
+            },
+        }
+    ],
+    indirect=True,
 )
-def test_job_head_choose_job_agent_E2E(
-    mock_candidate_number, ray_start_cluster_head, monkeypatch
-):
-    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    cluster = ray_start_cluster_head
+def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
+    cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
@@ -287,21 +294,25 @@ def test_job_head_choose_job_agent_E2E(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "include_dashboard": True,
+            "env_vars": {RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1"},
+        },
+        {
+            "include_dashboard": True,
+            "env_vars": {RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "0"},
+        },
+    ],
+    indirect=True,
 )
-@pytest.mark.parametrize("allow_driver_on_worker_nodes", [True, False])
-def test_jobs_run_on_head_by_default_E2E(
-    ray_start_cluster_head, monkeypatch, allow_driver_on_worker_nodes
-):
-    """This test makes sure that the job will be run on the head node by default,
-    unless the environment variable `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES` is set
-    to `1`.
-    """
-    if allow_driver_on_worker_nodes:
-        monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-
+def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
+    allow_driver_on_worker_nodes = (
+        os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR) == "1"
+    )
     # Cluster setup
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     cluster.add_node(dashboard_agent_listen_port=52366)
     cluster.add_node(dashboard_agent_listen_port=52367)
     assert wait_until_server_available(cluster.webui_url) is True

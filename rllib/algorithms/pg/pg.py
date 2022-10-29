@@ -110,7 +110,7 @@ class PG(Algorithm):
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 
             return PGTorchPolicy
-        elif config["framework"] == "tf":
+        elif config.framework_str == "tf":
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
             return PGTF1Policy

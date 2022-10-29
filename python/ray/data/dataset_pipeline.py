@@ -965,7 +965,7 @@ class DatasetPipeline(Generic[T]):
         output batches from the pipeline"""
         return Dataset.take(self, limit)
 
-    def take_all(self, limit: int = 100000) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Call :py:meth:`Dataset.take_all <ray.data.Dataset.take_all>` over the stream
         of output batches from the pipeline"""
         return Dataset.take_all(self, limit)
