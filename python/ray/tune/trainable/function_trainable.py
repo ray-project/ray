@@ -309,7 +309,9 @@ class FunctionTrainable(Trainable):
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
-            experiment_name=self._trial_info.experiment_name,
+            experiment_name=(
+                self._trial_info.experiment_name if self._trial_info else None
+            ),
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir,
