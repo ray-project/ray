@@ -41,7 +41,10 @@ def tune_function(api_key_file):
 
 
 def train_function_wandb(config):
-    wandb = setup_wandb(config)
+    if config["mock_wandb"]:
+        wandb = setup_wandb(config, _wandb=MagicMock())
+    else:
+        wandb = setup_wandb(config)
 
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
@@ -49,7 +52,7 @@ def train_function_wandb(config):
         wandb.log(dict(loss=loss))
 
 
-def tune_setup(api_key_file):
+def tune_setup(api_key_file, mock_wandb=False):
     """Example for using the @wandb_mixin decorator with the function API"""
     tuner = tune.Tuner(
         train_function_wandb,
@@ -61,6 +64,7 @@ def tune_setup(api_key_file):
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
+            "mock_wandb": mock_wandb,
         },
     )
     tuner.fit()
@@ -108,7 +112,7 @@ if __name__ == "__main__":
         api_key_file = temp_file.name
 
     tune_function(api_key_file)
-    tune_setup(api_key_file)
+    tune_setup(api_key_file, mock_wandb=args.mock_api)
     tune_trainable(api_key_file)
 
     if args.mock_api:

@@ -228,7 +228,7 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertEqual(logger.trial_processes[trial].kwargs["id"], trial.trial_id)
         self.assertEqual(logger.trial_processes[trial].kwargs["name"], trial.trial_name)
         self.assertEqual(
-            logger.trial_processes[trial].kwargs["group"], trial.trainable_name
+            logger.trial_processes[trial].kwargs["group"], trial.experiment_dir_name
         )
         self.assertIn("config", logger.trial_processes[trial]._exclude)
 
