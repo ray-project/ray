@@ -1,3 +1,21 @@
+/* Styling the "Try Anyscale" button */
+.topbar-main {
+  overflow: hidden;
+}
+.topbar-main > button.try-anyscale {
+  float: right;
+  border-radius: 6px;
+  background-color: #e7f2fa;
+  padding-left: 12px;
+  padding-right: 12px;
+  margin-left: 12px;
+  height: 40px;
+  border: none;
+}
+.topbar-main > button.try-anyscale > span {
+  margin-right: 12px;
+}
+
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
