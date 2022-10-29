@@ -1,15 +1,22 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, Container
+import os
 
 import gym
 import numpy as np
+import pickle
 import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
+from packaging import version
+from ray.air.checkpoint import Checkpoint
+from ray.rllib.utils.typing import (
+    PolicyID,
+)
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import Policy, PolicyState, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -22,6 +29,7 @@ from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -65,6 +73,15 @@ class TFPolicy(Policy):
         >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
+
+    tf_var_creation_scope_counter = 0
+
+    @staticmethod
+    def next_tf_var_scope_name():
+        # Tracks multiple instaces that are spawned from this policy via .from_state()
+        scope_name = "tf_policy_var_scope"
+        TFPolicy.tf_var_creation_scope_counter += 1
+        return scope_name + str(TFPolicy.tf_var_creation_scope_counter)
 
     @DeveloperAPI
     def __init__(
@@ -452,6 +469,45 @@ class TFPolicy(Policy):
         builder = _TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
+
+    @staticmethod
+    def tf1_from_state_helper(state: PolicyState) -> "Policy":
+        """Recovers a TFPolicy from a state object.
+
+        The `state` of an instantiated TFPolicy can be retrieved by calling its
+        `get_state` method.
+
+        Args:
+            state: The state to recover a new TFPolicy instance from.
+
+        Returns:
+            A new TFPolicy instance.
+        """
+        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
+        if serialized_pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! "
+                "Cannot create new Policy."
+            )
+        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+
+        with tf1.variable_scope(TFPolicy.next_tf_var_scope_name()):
+            # Create the new policy.
+            new_policy = pol_spec.policy_class(
+                # Note(jungong) : we are intentionally not using keyward arguments here
+                # because some policies name the observation space parameter obs_space,
+                # and some others name it observation_space.
+                pol_spec.observation_space,
+                pol_spec.action_space,
+                pol_spec.config,
+            )
+
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+
+        # Return the new policy.
+        return new_policy
 
     @override(Policy)
     @DeveloperAPI

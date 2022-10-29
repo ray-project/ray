@@ -287,6 +287,10 @@ class Policy(metaclass=ABCMeta):
             )
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
 
+        if pol_spec.config["framework"] == "tf":
+            from ray.rllib.policy.tf_policy import TFPolicy
+            return TFPolicy.tf1_from_state_helper(state)
+
         # Create the new policy.
         new_policy = pol_spec.policy_class(
             # Note(jungong) : we are intentionally not using keyward arguments here
