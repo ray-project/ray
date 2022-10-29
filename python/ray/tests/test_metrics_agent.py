@@ -226,59 +226,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-def test_metrics_export_node_metrics(shutdown_only):
-    # Verify node metrics are available.
-    addr = ray.init()
-    dashboard_export_addr = "{}:{}".format(
-        addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
-    )
-
-    def verify_node_metrics():
-        avail_metrics = raw_metrics(addr)
-
-        components = set()
-        for metric in _NODE_COMPONENT_METRICS:
-            samples = avail_metrics[metric]
-            for sample in samples:
-                components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "workers"}
-
-        avail_metrics = set(avail_metrics)
-
-        for node_metric in _NODE_METRICS:
-            assert node_metric in avail_metrics
-        for node_metric in _NODE_COMPONENT_METRICS:
-            assert node_metric in avail_metrics
-        return True
-
-    def verify_dashboard_metrics():
-        avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
-        # Run list nodes to trigger dashboard API.
-        ray.experimental.state.api.list_nodes()
-
-        # Verify components
-        components = set()
-        for metric in _DASHBOARD_METRICS:
-            samples = avail_metrics[metric]
-            for sample in samples:
-                components.add(sample.labels["Component"])
-        assert components == {"dashboard"}
-
-        # Verify metrics exist.
-        avail_metrics = set(avail_metrics)
-        for metric in _DASHBOARD_METRICS:
-            # Metric name should appear with some suffix (_count, _total,
-            # etc...) in the list of all names
-            assert any(
-                name.startswith(metric) for name in avail_metrics
-            ), f"{metric} not in {avail_metrics}"
-        return True
-
-    wait_for_condition(verify_node_metrics)
-    wait_for_condition(verify_dashboard_metrics)
-
-
-@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
@@ -392,6 +339,59 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     except RuntimeError:
         print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+def test_metrics_export_node_metrics(shutdown_only):
+    # Verify node metrics are available.
+    addr = ray.init()
+    dashboard_export_addr = "{}:{}".format(
+        addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
+    )
+
+    def verify_node_metrics():
+        avail_metrics = raw_metrics(addr)
+
+        components = set()
+        for metric in _NODE_COMPONENT_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"raylet", "agent", "workers"}
+
+        avail_metrics = set(avail_metrics)
+
+        for node_metric in _NODE_METRICS:
+            assert node_metric in avail_metrics
+        for node_metric in _NODE_COMPONENT_METRICS:
+            assert node_metric in avail_metrics
+        return True
+
+    def verify_dashboard_metrics():
+        avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
+        # Run list nodes to trigger dashboard API.
+        ray.experimental.state.api.list_nodes()
+
+        # Verify components
+        components = set()
+        for metric in _DASHBOARD_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"dashboard"}
+
+        # Verify metrics exist.
+        avail_metrics = set(avail_metrics)
+        for metric in _DASHBOARD_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(
+                name.startswith(metric) for name in avail_metrics
+            ), f"{metric} not in {avail_metrics}"
+        return True
+
+    wait_for_condition(verify_node_metrics)
+    wait_for_condition(verify_dashboard_metrics)
 
 
 def test_operation_stats(monkeypatch, shutdown_only):
