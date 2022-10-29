@@ -1067,6 +1067,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
   // so that the actor will never be rescheduled.
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
+
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
@@ -1203,6 +1204,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
   auto worker_id = actor->GetWorkerID();
   auto node_id = actor->GetNodeID();
+  mutable_actor_table_data->set_node_id(node_id.Binary());
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
