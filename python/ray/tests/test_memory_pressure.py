@@ -438,6 +438,7 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
             timeout=90,
         )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
