@@ -222,11 +222,18 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    inputs = paths
+    import pathlib
+
     if isinstance(paths, str):
-        inputs = [paths]
+        paths = [paths]
+    if isinstance(paths, pathlib.Path):
+        paths = [str(paths)]
+    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
+        raise ValueError("paths must be a path string or a list of path strings.")
+    elif len(paths) == 0:
+        raise ValueError("Must provide at least one path.")
     is_local = None
-    for path in inputs:
+    for path in paths:
         current = path.startswith(_LOCAL_SCHEME)
         if not is_local:
             is_local = current
