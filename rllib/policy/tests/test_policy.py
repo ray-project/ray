@@ -7,12 +7,15 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, tf, tfv = try_import_tf()
 
 
 class TestPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -48,6 +51,19 @@ class TestPolicy(unittest.TestCase):
                 # (as it gets written into the same graph as the old one).
                 if fw != "tf":
                     check(state3["weights"], state4["weights"])
+
+    def test_tf_policy_from_checkpoint_twice(self):
+        # Checks if we can load a policy from a checkpoint twice
+        config = PPOConfig()
+        for fw in framework_iterator(config, frameworks=["tf"]):
+            algo = config.build(env="CartPole-v1")
+            algo.train()
+            policy = algo.get_policy()
+            policy.export_checkpoint("/tmp/my_policy_checkpoint_")
+            algo.stop()
+            Policy.from_checkpoint("/tmp/my_policy_checkpoint_")
+            Policy.from_checkpoint("/tmp/my_policy_checkpoint_")
+            algo.stop()
 
 
 if __name__ == "__main__":
