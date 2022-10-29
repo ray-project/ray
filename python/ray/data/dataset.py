@@ -40,7 +40,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -2395,11 +2395,14 @@ class Dataset(Generic[T]):
         ctx = DatasetContext.get_current()
         if ray_remote_args is None:
             ray_remote_args = {}
-        if ctx.read_write_local_node:
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
+        if not ray.util.client.ray.is_connected():
+            paths = write_args.get("path", None)
+            if paths and _is_local_scheme(paths):
+                ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(),
+                    soft=False,
+                )
+
         blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.

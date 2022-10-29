@@ -210,7 +210,7 @@ def _check_import(obj, *, module: str, package: str) -> None:
 
 
 def _resolve_local_scheme(path: str) -> str:
-    """Returns the resolved path if the given path following the local protocol.
+    """Returns the resolved path if the given path following the local scheme.
     Othewise, returns the path unchanged."""
     if path.startswith(_LOCAL_SCHEME):
         path = path[len(_LOCAL_SCHEME) :]
