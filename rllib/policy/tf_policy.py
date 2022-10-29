@@ -1,20 +1,13 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, Container
-import os
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gym
 import numpy as np
-import pickle
 import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
-from packaging import version
-from ray.air.checkpoint import Checkpoint
-from ray.rllib.utils.typing import (
-    PolicyID,
-)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy, PolicyState, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -29,7 +22,6 @@ from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -471,7 +463,7 @@ class TFPolicy(Policy):
         return builder.get(fetches)
 
     @staticmethod
-    def tf1_from_state_helper(state: PolicyState) -> "Policy":
+    def _tf1_from_state_helper(state: PolicyState) -> "Policy":
         """Recovers a TFPolicy from a state object.
 
         The `state` of an instantiated TFPolicy can be retrieved by calling its
