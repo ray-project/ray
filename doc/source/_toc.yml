@@ -39,6 +39,7 @@ parts:
         - file: ray-air/examples/upload_to_comet_ml
         - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
+        - file: ray-air/examples/automl_with_ray_air
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
