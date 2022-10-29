@@ -51,8 +51,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         uint64_t object_manager_default_chunk_size() const
 
-        int object_manager_num_rpc_threads() const
-
         uint32_t maximum_gcs_deletion_batch_size() const
 
         int64_t max_direct_call_object_size() const

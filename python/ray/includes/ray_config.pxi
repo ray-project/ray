@@ -90,10 +90,6 @@ cdef class Config:
         return RayConfig.instance().object_manager_default_chunk_size()
 
     @staticmethod
-    def object_manager_num_rpc_threads():
-        return RayConfig.instance().object_manager_num_rpc_threads()
-
-    @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
