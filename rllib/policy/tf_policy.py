@@ -206,6 +206,11 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._sampled_action = sampled_action
         self._is_training = self._get_is_training_placeholder()
+        self._is_exploring = (
+            explore
+            if explore is not None
+            else tf1.placeholder_with_default(True, (), name="is_exploring")
+        )
         self._sampled_action_logp = sampled_action_logp
         self._sampled_action_prob = (
             tf.math.exp(self._sampled_action_logp)
@@ -230,16 +235,13 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._apply_op = None
         self._stats_fetches = {}
-
-        if timestep is None and not hasattr(self, "_timestep"):
-            self._timestep = tf1.placeholder_with_default(
+        self._timestep = (
+            timestep
+            if timestep is not None
+            else tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep"
             )
-
-        if explore is None and not hasattr(self, "_is_exploring"):
-            self._is_exploring = tf1.placeholder_with_default(
-                True, (), name="is_exploring"
-            )
+        )
 
         self._optimizers: List[LocalOptimizer] = []
         # Backward compatibility and for some code shared with tf-eager Policy.
@@ -515,7 +517,7 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore global timestep.
+        # Restore glbal timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
