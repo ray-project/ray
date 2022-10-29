@@ -126,12 +126,15 @@ class HttpServerDashboardHead:
             raise
         finally:
             resp_time = time.monotonic() - start_time
-            request.app["metrics"].metrics_request_duration.labels(
-                endpoint=request.path, http_status=status_tag
-            ).observe(resp_time)
-            request.app["metrics"].metrics_request_count.labels(
-                method=request.method, endpoint=request.path, http_status=status_tag
-            ).inc()
+            try:
+                request.app["metrics"].metrics_request_duration.labels(
+                    endpoint=request.path, http_status=status_tag
+                ).observe(resp_time)
+                request.app["metrics"].metrics_request_count.labels(
+                    method=request.method, endpoint=request.path, http_status=status_tag
+                ).inc()
+            except Exception as e:
+                logger.warning(f"Error emitting api metrics: {e}")
 
     async def run(self, modules):
         # Bind http routes of each module.

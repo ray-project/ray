@@ -10,40 +10,23 @@ import TitleCard from "../../components/TitleCard";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
+import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
   },
-  paper: {
-    padding: theme.spacing(2),
+  taskProgressTable: {
     marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  },
-  label: {
-    fontWeight: "bold",
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  tab: {
-    marginBottom: theme.spacing(2),
-  },
-  dependenciesChip: {
-    margin: theme.spacing(0.5),
-    wordBreak: "break-all",
-  },
-  alert: {
-    color: theme.palette.error.main,
   },
 }));
 
 const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail(props);
-  const { progress } = useJobProgress(props.match.params.id);
+  const jobId = props.match.params.id;
+  const { progress } = useJobProgress(jobId);
 
   if (!job) {
     return (
@@ -121,6 +104,10 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
         <TaskProgressBar
           {...progress}
           showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
+        />
+        <JobTaskNameProgressTable
+          className={classes.taskProgressTable}
+          jobId={jobId}
         />
       </TitleCard>
     </div>
