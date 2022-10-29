@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 import threading
 from concurrent.futures import Future
 from queue import Queue
@@ -103,6 +104,7 @@ class DashboardHead:
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
+        self.session_name = Path(session_dir).name
         self.aiogrpc_gcs_channel = None
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None

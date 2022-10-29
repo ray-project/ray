@@ -7,6 +7,7 @@ type GrafanaHealthcheckRsp = {
   msg: string;
   data: {
     grafanaHost: string;
+    sessionName: string;
   };
 };
 
@@ -14,12 +15,15 @@ const fetchGrafanaHealthcheck = async () => {
   return await get<GrafanaHealthcheckRsp>(GRAFANA_HEALTHCHECK_URL);
 };
 
-export const getGrafanaHost = async () => {
+export const getMetricsInfo = async () => {
   try {
     const resp = await fetchGrafanaHealthcheck();
     if (resp.data.result) {
-      return resp.data.data.grafanaHost;
+      return {
+        grafanaHost: resp.data.data.grafanaHost,
+        sessionName: resp.data.data.sessionName,
+      };
     }
   } catch (e) {}
-  return undefined;
+  return { grafanaHost: undefined, sessionName: undefined };
 };

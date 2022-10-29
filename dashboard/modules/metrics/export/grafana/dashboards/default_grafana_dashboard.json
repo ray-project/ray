@@ -15,8 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 3,
-  "iteration": 1666137227787,
+  "id": 11,
+  "iteration": 1667004257045,
   "links": [],
   "panels": [
     {
@@ -39,11 +39,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -87,7 +87,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(max_over_time(ray_tasks{State=~\"FINISHED|FAILED\"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~\"FINISHED|FAILED\"}) by (State), 0)",
+          "expr": "sum(max_over_time(ray_tasks{State=~\"FINISHED|FAILED\",SessionName=\"$SessionName\"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~\"FINISHED|FAILED\",SessionName=\"$SessionName\"}) by (State), 0)",
           "interval": "",
           "legendFormat": "{{State}}",
           "queryType": "randomWalk",
@@ -146,12 +146,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
       "fill": 10,
-      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
@@ -201,7 +201,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
+          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "format": "time_series",
           "instant": false,
           "interval": "",
@@ -211,7 +211,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"CPU\"})",
+          "expr": "sum(ray_resources{Name=\"CPU\",SessionName=\"$SessionName\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "MAX",
@@ -267,11 +267,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -322,7 +322,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_object_store_memory / 1e9) by (Location)",
+          "expr": "sum(ray_object_store_memory{SessionName=\"$SessionName\"} / 1e9) by (Location)",
           "interval": "",
           "legendFormat": "{{Location}}",
           "queryType": "randomWalk",
@@ -330,7 +330,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9)",
+          "expr": "sum(ray_resources{Name=\"object_store_memory\",SessionName=\"$SessionName\"} / 1e9)",
           "hide": false,
           "interval": "",
           "legendFormat": "MAX",
@@ -388,11 +388,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -443,7 +443,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_resources{Name=\"GPU\",State=\"USED\"}",
+          "expr": "ray_resources{Name=\"GPU\",State=\"USED\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
@@ -451,7 +451,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"GPU\"})",
+          "expr": "sum(ray_resources{Name=\"GPU\",SessionName=\"$SessionName\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "MAX",
@@ -523,11 +523,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -577,7 +577,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
+          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\",SessionName=\"$SessionName\"} * ray_node_cpu_count{instance=~\"$Instance\",SessionName=\"$SessionName\"} / 100",
           "instant": false,
           "interval": "",
           "legendFormat": "CPU Usage: {{instance}}",
@@ -586,7 +586,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_cpu_count{cluster_id=\"$cluster_id\"})",
+          "expr": "sum(ray_node_cpu_count{SessionName=\"$SessionName\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "MAX",
@@ -642,11 +642,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -697,7 +697,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",SessionName=\"$SessionName\"} / 100",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
@@ -705,7 +705,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_gpus_available{cluster_id=\"$cluster_id\"})",
+          "expr": "sum(ray_node_gpus_available{SessionName=\"$SessionName\"})",
           "interval": "",
           "legendFormat": "MAX",
           "refId": "B"
@@ -763,13 +763,13 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -822,7 +822,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_disk_usage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_disk_usage{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Disk Used: {{instance}}",
           "queryType": "randomWalk",
@@ -830,7 +830,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_disk_free{cluster_id=\"$cluster_id\"}) + sum(ray_node_disk_usage{cluster_id=\"$cluster_id\"})",
+          "expr": "sum(ray_node_disk_free{SessionName=\"$SessionName\"}) + sum(ray_node_disk_usage{SessionName=\"$SessionName\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "MAX",
@@ -888,13 +888,13 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -944,7 +944,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_mem_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_mem_used{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Memory Used: {{instance}}",
           "queryType": "randomWalk",
@@ -952,7 +952,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_mem_total{cluster_id=\"$cluster_id\"})",
+          "expr": "sum(ray_node_mem_total{SessionName=\"$SessionName\"})",
           "interval": "",
           "legendFormat": "MAX",
           "refId": "C"
@@ -1007,13 +1007,13 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -1064,7 +1064,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * 1024 * 1024",
+          "expr": "ray_node_gram_used{instance=~\"$Instance\",SessionName=\"$SessionName\"} * 1024 * 1024",
           "interval": "",
           "legendFormat": "Used GRAM: {{instance}}",
           "queryType": "randomWalk",
@@ -1072,7 +1072,7 @@
         },
         {
           "exemplar": true,
-          "expr": "(sum(ray_node_gram_available{cluster_id=\"$cluster_id\"}) + sum(ray_node_gram_used{cluster_id=\"$cluster_id\"})) * 1024 * 1024",
+          "expr": "(sum(ray_node_gram_available{SessionName=\"$SessionName\"}) + sum(ray_node_gram_used{SessionName=\"$SessionName\"})) * 1024 * 1024",
           "interval": "",
           "legendFormat": "MAX",
           "refId": "B"
@@ -1128,13 +1128,13 @@
       "dashes": false,
       "datasource": "Prometheus",
       "decimals": 2,
+      "description": "Network speed per node.",
       "fieldConfig": {
         "defaults": {
           "unit": "binBps"
         },
         "overrides": []
       },
-      "description": "Network speed per node.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -1177,7 +1177,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Recv: {{instance}}",
           "queryType": "randomWalk",
@@ -1185,7 +1185,7 @@
         },
         {
           "exemplar": true,
-          "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_network_send_speed{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Send: {{instance}}",
           "refId": "B"
@@ -1240,11 +1240,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -1286,7 +1286,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_cluster_active_nodes{cluster_id=\"$cluster_id\"}",
+          "expr": "ray_cluster_active_nodes{SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Active Nodes ({{node_type}})",
           "queryType": "randomWalk",
@@ -1294,14 +1294,14 @@
         },
         {
           "exemplar": true,
-          "expr": "ray_cluster_failed_nodes{cluster_id=\"$cluster_id\"}",
+          "expr": "ray_cluster_failed_nodes{SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Failed Nodes {{node_type}}",
           "refId": "B"
         },
         {
           "exemplar": true,
-          "expr": "ray_cluster_pending_nodes{cluster_id=\"$cluster_id\"}",
+          "expr": "ray_cluster_pending_nodes{SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Pending Nodes ({{node_type}})",
           "refId": "C"
@@ -1404,7 +1404,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_disk_io_write_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_disk_io_write_speed{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Write: {{instance}}",
           "queryType": "randomWalk",
@@ -1412,7 +1412,7 @@
         },
         {
           "exemplar": true,
-          "expr": "ray_node_disk_io_read_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_disk_io_read_speed{instance=~\"$Instance\",SessionName=\"$SessionName\"}",
           "interval": "",
           "legendFormat": "Read: {{instance}}",
           "refId": "B"
@@ -1471,13 +1471,38 @@
       {
         "allValue": null,
         "current": {
+          "selected": false
+        },
+        "datasource": null,
+        "definition": "label_values(SessionName)",
+        "description": "Filter queries to specific ray sessions.",
+        "error": null,
+        "hide": 0,
+        "includeAll": false,
+        "label": null,
+        "multi": false,
+        "name": "SessionName",
+        "options": [],
+        "query": {
+          "query": "label_values(SessionName)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": null,
+        "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "datasource": "Prometheus",
         "definition": "label_values(instance)",
@@ -1502,28 +1527,6 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
-        },
-        "description": "Optional id that identifies the ray cluster. Useful if this dashboard is used in a grafana instance that is monitoring multiple ray clusters.",
-        "error": null,
-        "hide": 0,
-        "label": "ClusterId",
-        "name": "cluster_id",
-        "options": [
-          {
-            "selected": true,
-            "text": "",
-            "value": ""
-          }
-        ],
-        "query": "",
-        "skipUrlSync": false,
-        "type": "textbox"
       }
     ]
   },
@@ -1535,5 +1538,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 1
 }

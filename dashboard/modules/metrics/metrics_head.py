@@ -78,6 +78,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
         )
         self._session = aiohttp.ClientSession()
+        self._session_name = dashboard_head.session_name
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -118,6 +119,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     success=True,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
+                    session_name=self._session_name,
                 )
 
         except Exception as e:
@@ -138,8 +140,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         job_id = req.query.get("job_id")
 
         job_id_filter = f'JobId="{job_id}"' if job_id else None
-        filter_for_terminal_states = ['State=~"FINISHED|FAILED"']
-        filter_for_non_terminal_states = ['State!~"FINISHED|FAILED"']
+        filter_for_terminal_states = [
+            'State=~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ]
+        filter_for_non_terminal_states = [
+            'State!~"FINISHED|FAILED"',
+            f'SessionName="{self._session_name}"',
+        ]
         if job_id_filter:
             filter_for_terminal_states.append(job_id_filter)
             filter_for_non_terminal_states.append(job_id_filter)
