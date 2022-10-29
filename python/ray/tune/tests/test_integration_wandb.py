@@ -40,7 +40,7 @@ class Trial(
             "config",
             "trial_id",
             "trial_name",
-            "trainable_name",
+            "experiment_dir_name",
             "placement_group_factory",
             "logdir",
         ],
