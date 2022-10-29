@@ -429,7 +429,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu
+    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --strict-pack False
 
     wait_for_nodes:
       num_nodes: 8
@@ -610,11 +610,11 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 900
+    timeout: 3600
     script: bash file_size_benchmark.sh
     type: sdk_command
     file_manager: sdk
