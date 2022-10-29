@@ -12,7 +12,6 @@ import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
 from ray.core.generated.common_pb2 import TaskStatus
-from ray._raylet import NodeID
 from ray.experimental.state.common import (
     ActorState,
     ListApiOptions,
