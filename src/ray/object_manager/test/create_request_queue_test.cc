@@ -503,10 +503,10 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
   auto return_status = PlasmaError::OutOfMemory;
   size_t num_calls = 0;
   auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) -> PlasmaError {
-    if (num_calls == 0) {
-      // ASSERT_FALSE(fallback);
+    if (num_calls <= 1) {
+      EXPECT_FALSE(fallback);
     } else {
-      // ASSERT_TRUE(fallback);
+      EXPECT_TRUE(fallback);
     }
     num_calls++;
     return return_status;
@@ -516,10 +516,11 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
   auto client = std::make_shared<MockClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
+  ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
   ASSERT_TRUE(queue.ProcessRequests().ok());
-  // Should fail with out of disk.
   ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfDisk);
-  ASSERT_EQ(num_calls, 2);
+  ASSERT_EQ(num_calls, 3);
   AssertNoLeaks();
 }
 

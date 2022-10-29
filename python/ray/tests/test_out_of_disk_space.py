@@ -26,11 +26,6 @@ def get_current_usage():
     return 1.0 - 1.0 * usage.free / usage.total
 
 
-def get_free_space():
-    usage = shutil.disk_usage("/tmp")
-    return usage.free
-
-
 @contextmanager
 def create_tmp_file(bytes):
     tmp_dir = tempfile.mkdtemp(dir="/tmp")
@@ -218,30 +213,6 @@ def test_actor(shutdown_only):
     ray.get(a.foo.remote())
     try:
         ray.get(a.return_ood.remote())
-    except ray.exceptions.RayTaskError as e:
-        assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
-
-
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_fallback_allocation_failed(shutdown_only):
-    cluster = Cluster()
-    cluster.add_node(
-        num_cpus=1,
-        object_store_memory=80 * 1024 * 1024,
-        _system_config={
-            "local_fs_capacity_threshold": 1,
-        },
-    )
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-
-    free_space = get_free_space()
-    # ensure the allocation size is greater than both memory store and
-    # fallback allocation capacity
-    allocation_size = min(free_space * 2, 100 * 1024 * 1024)
-
-    try:
-        ray.put(np.random.rand(allocation_size // 8))
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
