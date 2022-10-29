@@ -502,7 +502,8 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
 
   auto return_status = PlasmaError::OutOfMemory;
   size_t num_calls = 0;
-  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) -> PlasmaError {
+  auto oom_request =
+      [&](bool fallback, PlasmaObject *result, bool *spill_requested) -> PlasmaError {
     if (num_calls <= 1) {
       EXPECT_FALSE(fallback);
     } else {
@@ -511,7 +512,6 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
     num_calls++;
     return return_status;
   };
-
 
   auto client = std::make_shared<MockClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
