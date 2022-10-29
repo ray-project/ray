@@ -13,4 +13,4 @@ available_node_types:
     ray.head.default:
         resources: {}
         node_config:
-            InstanceType: i3.8xlarge
+            InstanceType: t3.large
