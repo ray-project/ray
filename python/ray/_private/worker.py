@@ -1263,6 +1263,15 @@ def init(
         usage_lib.record_library_usage("client")
         return ctx
 
+    if kwargs.get("allow_multiple"):
+        raise RuntimeError(
+            "`allow_multiple` argument is passed to `ray.init` when the "
+            "ray client is not used ("
+            "https://docs.ray.io/en/master/cluster/running-applications/job-submission"
+            "/ray-client.html#connect-to-multiple-ray-clusters-experimental). "
+            "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
+        )
+
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
         # ray client. Raise an error, since most likely a typo in keyword
