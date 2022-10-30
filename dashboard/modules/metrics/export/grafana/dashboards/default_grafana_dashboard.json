@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1666137227787,
+  "iteration": 1666983138154,
   "links": [],
   "panels": [
     {
@@ -39,11 +39,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -138,20 +138,17 @@
       }
     },
     {
-      "aliasColors": {
-        "{State=\"AVAILABLE\"}": "green",
-        "{State=\"USED\"}": "semi-dark-green"
-      },
+      "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
       "fill": 10,
-      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
@@ -160,14 +157,16 @@
         "y": 1
       },
       "hiddenSeries": false,
-      "id": 27,
+      "id": 33,
       "legend": {
         "alignAsTable": true,
         "avg": false,
         "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
         "max": false,
         "min": false,
-        "rightSide": true,
+        "rightSide": false,
         "show": true,
         "sort": "current",
         "sortDesc": true,
@@ -185,44 +184,25 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [
-        {
-          "$$hashKey": "object:251",
-          "alias": "MAX",
-          "color": "#1F60C4",
-          "dashes": true,
-          "fill": 0,
-          "stack": false
-        }
-      ],
+      "seriesOverrides": [],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
-          "format": "time_series",
-          "instant": false,
+          "expr": "sum(ray_actors) by (State)",
           "interval": "",
-          "legendFormat": "CPU Usage: {{instance}}",
+          "legendFormat": "{{State}}",
           "queryType": "randomWalk",
           "refId": "A"
-        },
-        {
-          "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"CPU\"})",
-          "hide": false,
-          "interval": "",
-          "legendFormat": "MAX",
-          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Scheduler CPUs (logical slots)",
+      "title": "Scheduler Actor State",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -238,8 +218,8 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:563",
-          "format": "cores",
+          "$$hashKey": "object:628",
+          "format": "actors",
           "label": "",
           "logBase": 1,
           "max": null,
@@ -247,7 +227,7 @@
           "show": true
         },
         {
-          "$$hashKey": "object:564",
+          "$$hashKey": "object:629",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -267,11 +247,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -382,17 +362,18 @@
     },
     {
       "aliasColors": {
-        "MAX": "dark-blue"
+        "{State=\"AVAILABLE\"}": "green",
+        "{State=\"USED\"}": "semi-dark-green"
       },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
@@ -400,6 +381,129 @@
         "w": 12,
         "x": 12,
         "y": 9
+      },
+      "hiddenSeries": false,
+      "id": 27,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "max": false,
+        "min": false,
+        "rightSide": true,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:251",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
+          "format": "time_series",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "CPU Usage: {{instance}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"CPU\"})",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Scheduler CPUs (logical slots)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:563",
+          "format": "cores",
+          "label": "",
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "$$hashKey": "object:564",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "MAX": "dark-blue"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
+      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 28,
@@ -508,7 +612,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "id": 14,
       "panels": [],
@@ -523,18 +627,18 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "hiddenSeries": false,
       "id": 2,
@@ -642,18 +746,18 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 26
       },
       "hiddenSeries": false,
       "id": 8,
@@ -763,20 +867,20 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 6,
@@ -888,20 +992,20 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 4,
@@ -1007,20 +1111,20 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         },
         "overrides": []
       },
-      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 40
       },
       "hiddenSeries": false,
       "id": 18,
@@ -1128,20 +1232,20 @@
       "dashes": false,
       "datasource": "Prometheus",
       "decimals": 2,
+      "description": "Network speed per node.",
       "fieldConfig": {
         "defaults": {
           "unit": "binBps"
         },
         "overrides": []
       },
-      "description": "Network speed per node.",
       "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 40
       },
       "hiddenSeries": false,
       "id": 20,
@@ -1240,18 +1344,18 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 47
       },
       "hiddenSeries": false,
       "id": 24,
@@ -1368,7 +1472,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 47
       },
       "hiddenSeries": false,
       "id": 32,
@@ -1535,5 +1639,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 4
 }
