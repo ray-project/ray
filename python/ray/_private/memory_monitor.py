@@ -129,6 +129,10 @@ class MemoryMonitor:
                 "`pip install psutil` to enable "
                 "debugging of memory-related crashes."
             )
+        self.disabled = (
+            "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ
+            or "RAY_DISABLE_MEMORY_MONITOR" in os.environ
+        )
 
     def get_memory_usage(self):
         psutil_mem = psutil.virtual_memory()
@@ -147,15 +151,8 @@ class MemoryMonitor:
             assert used_gb >= 0
         return used_gb, total_gb
 
-    def disabled(self) -> bool:
-        return (
-            ray._config.memory_monitor_interval_ms() > 0
-            or "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ
-            or "RAY_DISABLE_MEMORY_MONITOR" in os.environ
-        )
-
     def raise_if_low_memory(self):
-        if self.disabled():
+        if self.disabled:
             return
 
         if time.time() - self.last_checked > self.check_interval:
