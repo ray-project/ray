@@ -624,7 +624,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: true
-  env: staging
+  # env: staging
 
   frequency: nightly
   team: core
