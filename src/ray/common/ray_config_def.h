@@ -330,7 +330,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// Number of threads for the RPC service. These threads are used for
 /// sending and receiving objects. -1 means to automatically decide.
-RAY_CONFIG(int, object_manager_num_rpc_threads, 15)
+RAY_CONFIG(int, object_manager_num_rpc_threads, 16)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
