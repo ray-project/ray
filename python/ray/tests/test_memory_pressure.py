@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray._private import test_utils
-from ray._private.test_utils import get_node_stats, wait_for_condition
+from ray._private.test_utils import wait_for_condition, raw_metrics
 
 import numpy as np
 from ray._private.utils import get_system_memory
@@ -34,8 +34,8 @@ def ray_with_memory_monitor(shutdown_only):
             "task_oom_retries": task_oom_retries,
             "min_memory_free_bytes": -1,
         },
-    ):
-        yield
+    ) as addr:
+        yield addr
 
 
 @pytest.fixture
@@ -51,8 +51,8 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
             "task_oom_retries": 0,
             "min_memory_free_bytes": -1,
         },
-    ):
-        yield
+    ) as addr:
+        yield addr
 
 
 @ray.remote
@@ -101,18 +101,12 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
     return bytes_needed
 
 
-def has_metric_tagged_with_value(tag, value) -> bool:
-    raylet = ray.nodes()[0]
-    reply = get_node_stats(raylet)
-    for view in reply.view_data:
-        for measure in view.measures:
-            if tag in measure.tags:
-                if hasattr(measure, "int_value"):
-                    if measure.int_value == value:
-                        return True
-                if hasattr(measure, "double_value"):
-                    if measure.double_value == value:
-                        return True
+def has_metric_tagged_with_value(addr, tag, value) -> bool:
+    metrics = raw_metrics(addr)
+    for name, samples in metrics.items():
+        for sample in samples:
+            if tag in set(sample.labels.values()) and sample.value == value:
+                return True
     return False
 
 
@@ -121,6 +115,7 @@ def has_metric_tagged_with_value(tag, value) -> bool:
     reason="memory monitor only on linux currently",
 )
 def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+    addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
@@ -138,6 +133,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.ActorEviction.Total",
         value=1.0,
     )
@@ -150,6 +146,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
 def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
     ray_with_memory_monitor,
 ):
+    addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
@@ -162,6 +159,7 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.ActorEviction.Total",
         value=2.0,
     )
@@ -174,6 +172,7 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
 def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     ray_with_memory_monitor,
 ):
+    addr = ray_with_memory_monitor
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))
@@ -182,6 +181,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
     )
@@ -194,6 +194,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
 def test_retryable_task_killed_by_memory_monitor_with_oom_error(
     ray_with_memory_monitor,
 ):
+    addr = ray_with_memory_monitor
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
@@ -202,6 +203,7 @@ def test_retryable_task_killed_by_memory_monitor_with_oom_error(
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=2.0,
     )
@@ -336,6 +338,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
 def test_task_oom_no_oom_retry_fails_immediately(
     ray_with_memory_monitor_no_oom_retry,
 ):
+    addr = ray_with_memory_monitor_no_oom_retry
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -349,6 +352,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
     )
@@ -361,6 +365,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
 def test_task_oom_only_uses_oom_retry(
     ray_with_memory_monitor,
 ):
+    addr = ray_with_memory_monitor
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -374,6 +379,7 @@ def test_task_oom_only_uses_oom_retry(
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
+        addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=task_oom_retries + 1,
     )
