@@ -1,8 +1,10 @@
 import json
 import os
 import pathlib
-from pprint import pformat
+import sys
 import requests
+
+from pprint import pformat
 from unittest.mock import MagicMock
 
 import pytest
@@ -341,6 +343,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
