@@ -243,7 +243,8 @@ int main(int argc, char *argv[]) {
         object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
 
-        object_manager_config.rpc_service_threads_number = 20;
+        object_manager_config.rpc_service_threads_number =
+            RayConfig::instance().object_manager_num_rpc_threads();
         // object_manager_config.rpc_service_threads_number =
         //     RayConfig::instance().object_manager_num_rpc_threads() == -1
         //         ? std::min(std::max(2, num_cpus / 4), 8)
@@ -253,9 +254,9 @@ int main(int argc, char *argv[]) {
 
         RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                        << "rpc_service_threads_number = "
-                       << object_manager_config.rpc_service_threads_number << " "
+                       << object_manager_config.rpc_service_threads_number << " ("
                        << RayConfig::instance().object_manager_num_rpc_threads()
-                       << ", object_chunk_size = "
+                       << "), object_chunk_size = "
                        << object_manager_config.object_chunk_size;
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
