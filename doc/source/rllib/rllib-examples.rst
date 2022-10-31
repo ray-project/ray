@@ -202,7 +202,7 @@ Community Examples
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.   
 - `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
-   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication)   `code <https://github.com/proroklab/adversarial_comms>`__. 
+   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).
 - `Flatland <https://flatland.aicrowd.com/intro.html>`__:
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
