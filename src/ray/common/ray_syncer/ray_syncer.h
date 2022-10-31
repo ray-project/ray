@@ -183,6 +183,16 @@ class RaySyncer {
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
 
+  /// Context of a rpc call.
+  struct StartSyncCall {
+    StartSyncRequest request;
+    StartSyncResponse response;
+    grpc::ClientContext context;
+    std::promise<void> promise;
+  };
+
+  absl::flat_hash_set<std::unique_ptr<StartSyncCall>> inflight_requests_;
+
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;
 
