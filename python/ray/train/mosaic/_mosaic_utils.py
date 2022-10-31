@@ -20,11 +20,10 @@ class RayLogger(LoggerDestination):
     by the Composer library. All the logged information is saved in the data dictionary
     every time a new information is logged, but to reduce unnecessary reporting, the
     most up-to-date logged information is reported as metrics every epoch checkpoint
-    (see Composer's Event module for more details). Along with the metrics, model
-    weights are reported with Ray``Checkpoint``. The model weights saved in each
-    checkpoint has already removed the ``module`` wrapper added by Composer models and
-    Ray distributed training. As such the checkpointed weights can be directly loaded
-    via PyTorch ``load_state_dict`` call.
+    (see Composer's Event module for more details). Along with the metrics, the state
+    dict produced by composer's native checkpoint saving logic is reported as the
+    checkpoint. Note that only the checkpoint of the rank 0 node will contain actual
+    data.
 
     Because ray's metric dataframe will not include new keys that is reported after the
     very first report call, any logged information with the keys not included in the

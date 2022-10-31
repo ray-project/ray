@@ -3,6 +3,13 @@ import torch
 
 
 class MosaicCheckpoint(Checkpoint):
+    """A subclass of AIR Checkpoint for Composer models.
+    When reporting checkpoint in the Composer model training loop, a native composer
+    checkpoint file is loaded and converted to a ``MosaicCheckpoint`` object, which is
+    then reported via Ray.
+    Loading the saved model via ``MosaicCheckpoint`` involves removing the ``module``
+    prefix added via PyTorch DDP.
+    """
     def get_model(
         self,
         model: torch.nn.Module,
