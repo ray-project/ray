@@ -41,7 +41,7 @@ class TestMemoryLeaks(unittest.TestCase):
         # Make sure we have an env to test on the local worker.
         # Otherwise, `check_memory_leaks` will complain.
         config["create_env_on_driver"] = True
-        config["env"] = "CartPole-v0"
+        config["env"] = "CartPole-v1"
         config["multiagent"]["policies"] = {
             "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
         }

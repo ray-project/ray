@@ -612,19 +612,21 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
   return node_bundle_resources_map;
 }
 
-/// Help function to check if the resource_name is like
-/// {original_resource_name}_group_{placement_group_id}.
-bool IsPlacementGroupWildcardResource(const std::string &resource_name) {
+/// Help function to check if the resource_name has the pattern
+/// {original_resource_name}_group_{placement_group_id}, which means
+/// wildcard resource.
+bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
+    const std::string &resource_name) {
   std::string_view resource_name_view(resource_name);
   std::string_view pattern("_group_");
 
   // The length of {placement_group_id} is fixed, so we just need to check that if the
   // length and the pos of `_group_` match.
-  if (resource_name_view.size() > pattern.size() + 2 * PlacementGroupID::Size()) {
+  if (resource_name_view.size() < pattern.size() + 2 * PlacementGroupID::Size()) {
     return false;
   }
 
-  auto idx = resource_name_view.size() - (pattern.size() + PlacementGroupID::Size());
+  auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
   return resource_name_view.substr(idx, pattern.size()) == pattern;
 }
 

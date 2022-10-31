@@ -722,7 +722,7 @@ message MetricPoint {
 
 // Type of a worker exit.
 enum WorkerExitType {
-  // Worker exit due to system level failures (i.e. worker crash).
+  // Worker exits due to system level failures (i.e. worker crash).
   SYSTEM_ERROR = 0;
   // System-level exit that is intended. E.g.,
   // Workers that are killed because they are idle for a long time.
@@ -733,6 +733,8 @@ enum WorkerExitType {
   // Intended exit from users (e.g., users exit workers with exit code 0
   // or exit initated by Ray API such as ray.kill).
   INTENDED_USER_EXIT = 3;
+  // Worker exits due to node running out of memory.
+  NODE_OUT_OF_MEMORY = 4;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
