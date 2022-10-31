@@ -465,11 +465,9 @@ class ReporterAgent(
             return []
         else:
             workers = set(raylet_proc.children())
-            # Must keep the original self._workers in case of psutil.cpu_percent is 0
             # We should keep `raylet_proc.children()` in `self` because when `cpu_percent` 
             # is first called, and it returns the meaningless 0. 
             # See more: https://github.com/ray-project/ray/issues/29848
-            # self._workers.intersection_update(workers)
             for worker in self._workers:
                 if worker not in workers:
                     self._workers.remove(worker)
