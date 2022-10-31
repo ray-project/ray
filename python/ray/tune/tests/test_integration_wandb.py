@@ -71,7 +71,12 @@ class _MockWandbAPI:
         return mock
 
     def log(self, data):
-        self.logs.put(data)
+        try:
+            json_dumps_safer(data)
+        except Exception:
+            self.logs.put("serialization error")
+        else:
+            self.logs.put(data)
 
     def finish(self):
         pass
@@ -86,31 +91,7 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
         super(_MockWandbLoggingProcess, self).__init__(
             logdir, queue, exclude, to_config, *args, **kwargs
         )
-<<<<<<< HEAD
         self._wandb = _MockWandbAPI()
-=======
-
-        self.logs = Queue()
-        self.config_updates = Queue()
-
-    def run(self):
-        while True:
-            result_type, result_content = self.queue.get()
-            if result_type == _QueueItem.END:
-                break
-            try:
-                # check if wandb can actually serialize
-                # we check that before _handle_result as we do not
-                # call that for wandb.init
-                json_dumps_safer(result_content)
-            except Exception:
-                self.logs.put("error")
-                break
-
-            log, config_update = self._handle_result(result_content)
-            self.config_updates.put(config_update)
-            self.logs.put(log)
->>>>>>> 41a3aa3c325070f0b81a16446d670b1ee1e30b2a
 
 
 class WandbTestExperimentLogger(WandbLoggerCallback):
@@ -268,6 +249,26 @@ def test_wandb_logger_reporting(wandb_env):
     assert "const" not in logged
     assert "config" not in logged
 
+    del logger
+
+
+def test_set_serializability_result(wandb_env):
+    """Tests that objects that contain sets can be serialized by wandb."""
+    trial_config = {"par1": 4, "par2": 9.12345678}
+    trial = Trial(
+        trial_config,
+        0,
+        "trial_0",
+        "trainable",
+        PlacementGroupFactory([{"CPU": 1}]),
+        "/tmp",
+    )
+
+    logger = WandbTestExperimentLogger(
+        project="test_project", api_key="1234", excludes=["metric2"]
+    )
+    logger.on_trial_start(0, [], trial)
+
     # Testing for https://github.com/ray-project/ray/issues/28541
     rllib_result = {
         "env": "simple_spread",
@@ -289,8 +290,8 @@ def test_wandb_logger_reporting(wandb_env):
         },
     }
     logger.on_trial_result(0, [], trial, rllib_result)
-    logged = logger.trial_processes[trial].logs.get(timeout=10)
-    self.assertNotEqual(logged, "error")
+    logged = logger.trial_processes[trial]._wandb.logs.get(timeout=10)
+    assert logged != "serialization error"
 
     del logger
 
