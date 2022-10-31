@@ -207,11 +207,11 @@ def validate_buffer_config(config: dict) -> None:
 
     replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
     if replay_burn_in != DEPRECATED_VALUE:
+        config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
         deprecation_warning(
             old="config['burn_in']",
             help="config['replay_buffer_config']['replay_burn_in']",
         )
-        config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
 
     replay_batch_size = config.get("replay_batch_size", DEPRECATED_VALUE)
     if replay_batch_size == DEPRECATED_VALUE:

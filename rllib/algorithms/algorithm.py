@@ -2308,10 +2308,6 @@ class Algorithm(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    def validate_config(self, config) -> None:
-        # TODO: Deprecate.
-        pass
-
     @staticmethod
     @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
@@ -2979,6 +2975,10 @@ class Algorithm(Trainable):
             local_worker=local_worker,
             logdir=self.logdir,
         )
+
+    def validate_config(self, config) -> None:
+        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+        pass
 
     @staticmethod
     @Deprecated(new="AlgorithmConfig.validate()", error=True)
