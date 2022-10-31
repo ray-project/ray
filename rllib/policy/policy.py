@@ -693,7 +693,10 @@ class Policy(metaclass=ABCMeta):
         # Set interceptors for every batch
         if self.config["framework"] == "torch":
             # Actually convert to torch tensors.
-            [self._lazy_tensor_dict(step_out.data.sample_batch) for step_out in processed]
+            [
+                self._lazy_tensor_dict(step_out.data.sample_batch)
+                for step_out in processed
+            ]
 
         action_connector_input_data = [
             self._compute_action_connectors_input_from_agent_connectors_output(

@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 from gym.spaces import Box
 
-from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig, PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector

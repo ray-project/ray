@@ -1958,7 +1958,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
             new_policy = self.policy_map[name]
             if merged_conf.enable_connectors:
-                create_connectors_for_policy(new_policy, merged_conf)
+                new_policy.init_connectors(merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:
                 filter_shape = tree.map_structure(
