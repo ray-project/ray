@@ -302,7 +302,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
             config.offline_data(output=self.test_dir + fw)
             algo = config.build()
-            agent.train()
+            algo.train()
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
             reader = JsonReader(self.test_dir + fw + "/*.json")
             reader.next()

@@ -183,7 +183,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 str(Path("./").absolute() / "enormous.json"),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     def test_absolute_zip(self):
@@ -202,7 +202,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 str(Path("./").absolute() / "enormous.json"),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     # @TODO: unskip when this is fixed
@@ -244,7 +244,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 ),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     def test_absolute_json(self):
@@ -263,7 +263,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 ),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
 
