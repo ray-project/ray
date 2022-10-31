@@ -26,6 +26,6 @@ class MosaicCheckpoint(Checkpoint):
         return model
 
     @classmethod
-    def from_directory(cls, path: str):
+    def from_path(cls, path: str):
         composer_state_dict = torch.load(path)
         return super().from_dict(composer_state_dict)

@@ -83,7 +83,7 @@ class RayLogger(LoggerDestination):
         mosaic_checkpoint = MosaicCheckpoint.from_dict({"state": None})
         if saved_path:
             saved_path = os.path.join(os.getcwd(), saved_path)
-            mosaic_checkpoint = MosaicCheckpoint.from_directory(saved_path)
+            mosaic_checkpoint = MosaicCheckpoint.from_path(saved_path)
 
         session.report(self.data, checkpoint=mosaic_checkpoint)
 
