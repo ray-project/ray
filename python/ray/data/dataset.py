@@ -79,6 +79,7 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
+    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -320,7 +321,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -3098,7 +3099,6 @@ class Dataset(Generic[T]):
             A Pandas DataFrame created from this dataset, containing a limited
             number of records.
         """
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         count = self.count()
         if count > limit:
@@ -3112,11 +3112,7 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        df = BlockAccessor.for_block(output.build()).to_pandas()
-        ctx = DatasetContext.get_current()
-        if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df)
-        return df
+        return BlockAccessor.for_block(output.build()).to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

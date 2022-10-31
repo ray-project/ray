@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.context import DEFAULT_BATCH_SIZE
 
 if TYPE_CHECKING:
     import pandas
@@ -50,11 +51,13 @@ class BatchMapper(Preprocessor):
 
     Args:
         fn: The function to apply to data batches.
-        batch_size: The desired number of rows in each data batch provided to ``fn``,
-            or ``None`` to use the entire underlying blocks as batches (blocks may
-            contain different number of rows). The actual size of the batch provided to
-            ``fn`` may be smaller than ``batch_size`` if ``batch_size`` doesn't evenly
-            divide the block(s) sent to a given map task. Defaults to 4096.
+        batch_size: The desired number of rows in each data batch provided to ``fn``.
+            Semantics are the same as in ```dataset.map_batches()``: specifying
+            ``None`` wil use the entire underlying blocks as batches (blocks may
+            contain different number of rows) and the actual size of the batch provided
+            to ``fn`` may be smaller than ``batch_size`` if ``batch_size`` doesn't
+            evenly divide the block(s) sent to a given map task. Defaults to 4096,
+            which is the same default value as ``dataset.map_batches()``.
         batch_format: The preferred batch format to use in UDF. If not given,
             we will infer based on the input dataset data format.
     """
@@ -71,7 +74,7 @@ class BatchMapper(Preprocessor):
             ],
         ],
         batch_format: Optional[str] = None,
-        batch_size: int = 4096,
+        batch_size: int = DEFAULT_BATCH_SIZE,
         # TODO: Make batch_format required from user
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
