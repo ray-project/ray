@@ -413,8 +413,8 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         loss = torch.mean(loss_fn(torch.cat((td_error_q1, td_error_q2), dim=0)))
 
         # logging
-        self.log("td_error_q1", (td_error_q1 ** 2).mean())
-        self.log("td_error_q2", (td_error_q2 ** 2).mean())
+        self.log("td_error_q1", (td_error_q1**2).mean())
+        self.log("td_error_q2", (td_error_q2**2).mean())
         self.log("td_error", loss)
         self.log("targets_avg", target.mean())
         self.log("targets_max", target.max())

@@ -12,11 +12,11 @@ from ray.autoscaler._private._kubernetes import auth_api, core_api, log_prefix
 logger = logging.getLogger(__name__)
 
 MEMORY_SIZE_UNITS = {
-    "K": 2 ** 10,
-    "M": 2 ** 20,
-    "G": 2 ** 30,
-    "T": 2 ** 40,
-    "P": 2 ** 50,
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
+    "T": 2**40,
+    "P": 2**50,
 }
 
 

@@ -109,10 +109,10 @@ class ESTFPolicy(Policy):
             self.sess = self.inputs = None
             if config.get("seed") is not None:
                 # Tf2.x.
-                if config.get("framework") == "tf2":
+                if tfv == 2:
                     tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
+                # Tf1.x.
+                else:
                     tf1.set_random_seed(config["seed"])
 
         # Policy network.

@@ -368,13 +368,16 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .rollouts(create_env_on_local_worker=True)
         )
-        algo = PPO(config)
-        rollout_worker = algo.workers.local_worker()
-        policy = rollout_worker.get_policy()
-        env = rollout_worker.env
+
+        env = gym.make("CartPole-v1")
+        policy = PPOTorchPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            config=config.to_dict(),
+        )
 
         # create a connector context
         ctx = ConnectorContext(
