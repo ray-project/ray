@@ -688,22 +688,18 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
+    @classmethod
     def get_default_policy_class(
-        self,
-        config: Union[AlgorithmConfig, AlgorithmConfigDict],
-    ) -> Type[Policy]:
+        cls,
+        config: AlgorithmConfig,
+    ) -> Optional[Type[Policy]]:
         """Returns a default Policy class to use, given a config.
 
-        This class will be used inside RolloutWorkers' PolicyMaps in case
+        This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
-
-        This method is experimental and currently only used, iff the Trainer
-        class was not created using the `build_trainer` utility and if
-        the Trainer sub-class does not override `_init()` and create it's
-        own WorkerSet in `_init()`.
         """
-        return getattr(self, "_policy_class", None)
+        return None
 
     @override(Trainable)
     def step(self) -> ResultDict:

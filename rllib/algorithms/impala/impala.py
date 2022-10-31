@@ -498,9 +498,10 @@ class Impala(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return ImpalaConfig()
 
+    @classmethod
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:

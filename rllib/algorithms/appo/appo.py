@@ -285,9 +285,10 @@ class APPO(Impala):
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
+    @classmethod
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

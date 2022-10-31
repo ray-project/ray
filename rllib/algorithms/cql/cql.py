@@ -160,8 +160,9 @@ class CQL(SAC):
     def get_default_config(cls) -> AlgorithmConfig:
         return CQLConfig()
 
+    @classmethod
     @override(SAC)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:

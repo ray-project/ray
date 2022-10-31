@@ -359,9 +359,10 @@ class DQN(SimpleQ):
     def get_default_config(cls) -> AlgorithmConfig:
         return DQNConfig()
 
+    @classmethod
     @override(SimpleQ)
     def get_default_policy_class(
-        self, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy

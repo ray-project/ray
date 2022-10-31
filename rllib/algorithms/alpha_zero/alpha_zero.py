@@ -340,8 +340,9 @@ class AlphaZero(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return AlphaZeroConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         return AlphaZeroPolicyWrapperClass
 
     @override(Algorithm)

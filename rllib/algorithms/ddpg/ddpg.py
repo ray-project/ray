@@ -284,8 +284,9 @@ class DDPG(SimpleQ):
     def get_default_config(cls) -> AlgorithmConfig:
         return DDPGConfig()
 
+    @classmethod
     @override(SimpleQ)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 

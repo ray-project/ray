@@ -284,8 +284,9 @@ class DT(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return DTConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 

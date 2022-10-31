@@ -1,12 +1,13 @@
 import logging
 import numpy as np
 import random
-from typing import Optional
+from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
@@ -326,8 +327,9 @@ class Dreamer(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return DreamerConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict):
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         return DreamerTorchPolicy
 
     @override(Algorithm)

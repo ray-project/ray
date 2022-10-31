@@ -283,9 +283,10 @@ class SimpleQ(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return SimpleQConfig()
 
+    @classmethod
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy

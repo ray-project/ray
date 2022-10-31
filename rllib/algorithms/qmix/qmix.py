@@ -226,8 +226,9 @@ class QMix(SimpleQ):
     def get_default_config(cls) -> AlgorithmConfig:
         return QMixConfig()
 
+    @classmethod
     @override(SimpleQ)
-    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         return QMixTorchPolicy
 
     @override(SimpleQ)

@@ -220,8 +220,9 @@ class MARWIL(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return MARWILConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.marwil.marwil_torch_policy import (
                 MARWILTorchPolicy,

@@ -306,8 +306,9 @@ class MADDPG(DQN):
     def get_default_config(cls) -> AlgorithmConfig:
         return MADDPGConfig()
 
+    @classmethod
     @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
         return MADDPGTFPolicy
 
 
