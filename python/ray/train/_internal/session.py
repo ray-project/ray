@@ -76,6 +76,10 @@ class _TrainSession:
         # Deprecated
         encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
+        # If True and the worker is on the same node as driver,
+        # will send over checkpoint path and metadata instead of
+        # the whole checkpoint to avoid unnecessary serialization.
+        enable_lazy_checkpointing: bool = True,
     ):
 
         self.dataset_shard = dataset_shard
@@ -86,6 +90,7 @@ class _TrainSession:
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         self.loaded_checkpoint = checkpoint
+        self.enable_lazy_checkpointing = enable_lazy_checkpointing
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -293,6 +298,7 @@ class _TrainSession:
 
         if (
             checkpoint
+            and self.enable_lazy_checkpointing
             and checkpoint._local_path
             and self.get_current_ip() == self.trial_info.driver_ip
         ):

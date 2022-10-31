@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 from unittest.mock import patch
 import pytest
@@ -11,7 +12,11 @@ from ray.data.preprocessor import Preprocessor
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
-from ray.train.constants import PREPROCESSOR_KEY
+from ray.train.constants import (
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+    PREPROCESSOR_KEY,
+)
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, CheckpointConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
@@ -145,36 +150,88 @@ def test_datasets(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_checkpoint(ray_start_4_cpus):
-    def train_func():
+def get_checkpoint_train_func(checkpoint_type):
+    def checkpoint_train_func():
         for i in range(3):
-            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"model": i}))
+            checkpoint = Checkpoint.from_dict({"model": i})
+            path = None
+            if checkpoint_type != "dict":
+                checkpoint = Checkpoint.from_directory(checkpoint.to_directory())
+                path = checkpoint._local_path
+            session.report({"epoch": i, "path": path}, checkpoint=checkpoint)
 
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func, scaling_config=scale_config
-    )
-    result = trainer.fit()
+    return checkpoint_train_func
+
+
+checkpoint_type_and_should_copy = (
+    ("dict", True),
+    ("dir", True),
+    ("lazy_dir", True),
+    ("dir", False),
+    ("lazy_dir", False),
+)
+
+
+@pytest.mark.parametrize(
+    "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
+)
+def test_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
+    checkpoint_type, should_copy = checkpoint_type_and_should_copy
+    with patch.dict(
+        os.environ,
+        {
+            DISABLE_LAZY_CHECKPOINTING_ENV: str(int(checkpoint_type != "lazy_dir")),
+            COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV: str(int(should_copy)),
+        },
+    ):
+        trainer = DataParallelTrainer(
+            train_loop_per_worker=get_checkpoint_train_func(checkpoint_type),
+            scaling_config=scale_config,
+        )
+        result = trainer.fit()
     assert result.checkpoint.to_dict()["model"] == 2
 
+    path = result.metrics["path"]
+    if path:
+        if should_copy:
+            assert list(Path(path).glob("*"))
+        else:
+            assert not list(Path(path).glob("*"))
 
-def test_preprocessor_in_checkpoint(ray_start_4_cpus):
+
+@pytest.mark.parametrize(
+    "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
+)
+def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
+    checkpoint_type, should_copy = checkpoint_type_and_should_copy
+
     class DummyPreprocessor(Preprocessor):
         def __init__(self):
             super().__init__()
             self.is_same = True
 
-    def train_func():
-        for i in range(3):
-            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"model": i}))
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scale_config,
-        preprocessor=DummyPreprocessor(),
-    )
-    result = trainer.fit()
+    with patch.dict(
+        os.environ,
+        {
+            DISABLE_LAZY_CHECKPOINTING_ENV: str(int(checkpoint_type != "lazy_dir")),
+            COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV: str(int(should_copy)),
+        },
+    ):
+        trainer = DataParallelTrainer(
+            train_loop_per_worker=get_checkpoint_train_func(checkpoint_type),
+            scaling_config=scale_config,
+            preprocessor=DummyPreprocessor(),
+        )
+        result = trainer.fit()
     assert result.checkpoint.to_dict()["model"] == 2
     assert result.checkpoint.to_dict()[PREPROCESSOR_KEY].is_same
+
+    path = result.metrics["path"]
+    if path:
+        if should_copy:
+            assert list(Path(path).glob("*"))
+        else:
+            assert not list(Path(path).glob("*"))
 
 
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):

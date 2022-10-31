@@ -53,6 +53,9 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
+        move_instead_of_copy: If True, and the checkpoint is an
+            AIR Checkpoint backed by a local directory, will
+            move files to ``path`` instead of copying them when commiting to disk.
     """
 
     def __init__(
@@ -62,6 +65,7 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
+        move_instead_of_copy: bool = True,
     ):
         from ray.tune.result import NODE_IP
 
@@ -71,6 +75,7 @@ class _TrackedCheckpoint:
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
+        self.move_instead_of_copy = move_instead_of_copy
 
         if (
             dir_or_data is not None
@@ -98,7 +103,7 @@ class _TrackedCheckpoint:
 
         if isinstance(self.dir_or_data, Checkpoint):
             self.dir_or_data = self.dir_or_data.to_directory(
-                str(path), move_instead_of_copy=True
+                str(path), move_instead_of_copy=self.move_instead_of_copy
             )
             return
 

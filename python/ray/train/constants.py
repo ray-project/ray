@@ -62,6 +62,17 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
+# Integer value which if set will disable lazy checkpointing
+# (avoiding unnecessary serialization if worker is on the same node
+# as Trainable)
+DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
+
+# Integer value which if set will copy files in reported AIR directory
+# checkpoints instead of moving them (if worker is on the same node as Trainable)
+COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
+    "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
+)
+
 # Default NCCL_SOCKET_IFNAME.
 # Use ethernet when possible.
 # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with

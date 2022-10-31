@@ -1,6 +1,7 @@
 import abc
 import inspect
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
@@ -8,7 +9,10 @@ from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.constants import (
+    TRAIN_DATASET_KEY,
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+)
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
@@ -140,6 +144,9 @@ class BaseTrainer(abc.ABC):
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
+    _env_vars_to_copy_to_trainable: List[str] = [
+        COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
+    ]
 
     def __init__(
         self,
@@ -374,8 +381,15 @@ class BaseTrainer(abc.ABC):
 
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
+        env_vars_to_set = {
+            key: os.environ[key]
+            for key in self._env_vars_to_copy_to_trainable
+            if key in os.environ
+        }
 
         def train_func(config, checkpoint_dir=None):
+            os.environ.update(env_vars_to_set)
+
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)

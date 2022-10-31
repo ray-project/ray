@@ -36,4 +36,6 @@ _ERROR_FETCH_TIMEOUT = 1
 # functions being used outside of the session
 SESSION_MISUSE_LOG_ONCE_KEY = "air_warn_session_misuse"
 
+# Name of attribute in Checkpoint storing current Tune ID for restoring
+# training with Ray Train
 CHECKPOINT_ID_ATTR = "_current_checkpoint_id"

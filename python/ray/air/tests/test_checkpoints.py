@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import pickle
 import re
 import shutil
@@ -126,6 +127,19 @@ class TestCheckpointSerializedAttrs:
         recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
 
         assert recovered_checkpoint.foo == "bar"
+
+    def test_directory_move_instead_of_copy(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        path = checkpoint.to_directory()
+        recovered_checkpoint = StubCheckpoint.from_directory(path)
+        new_path = recovered_checkpoint.to_directory(move_instead_of_copy=True)
+        new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
+
+        assert new_recovered_checkpoint.foo == "bar"
+        assert not list(Path(path).glob("*"))
 
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})

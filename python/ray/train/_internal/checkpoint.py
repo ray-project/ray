@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
+from ray._private.ray_constants import env_integer
 
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
@@ -11,6 +12,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
@@ -71,6 +73,12 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.run_dir = run_dir
+        # If True, and the checkpoint is an AIR Checkpoint backed by
+        # a local directory, will move files instead of copying them
+        # when commiting to disk.
+        self.move_instead_of_copy = not bool(
+            env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
+        )
 
         super().__init__(checkpoint_strategy=checkpoint_strategy)
 
@@ -134,6 +142,7 @@ class CheckpointManager(CommonCheckpointManager):
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
+            move_instead_of_copy=self.move_instead_of_copy,
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
 
