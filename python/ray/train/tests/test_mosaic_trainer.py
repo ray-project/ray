@@ -6,7 +6,6 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
