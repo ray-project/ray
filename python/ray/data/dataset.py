@@ -536,11 +536,8 @@ class Dataset(Generic[T]):
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
-            for block in blocks:
-                batcher.add(block)
-            batcher.done_adding()
-            while batcher.has_any():
-                batch = batcher.next_batch()
+
+            def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
@@ -566,6 +563,20 @@ class Dataset(Generic[T]):
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
+            # Process batches for each block.
+            for block in blocks:
+                batcher.add(block)
+                while batcher.has_batch():
+                    batch = batcher.next_batch()
+                    yield from process_next_batch(batch)
+
+            # Process any last remainder batch.
+            batcher.done_adding()
+            if batcher.has_any():
+                batch = batcher.next_batch()
+                yield from process_next_batch(batch)
+
+            # Yield remainder block from output buffer.
             output_buffer.finalize()
             if output_buffer.has_next():
                 yield output_buffer.next()
@@ -689,7 +700,7 @@ class Dataset(Generic[T]):
             >>> # Select only "col1" and "col2" columns.
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
+            Dataset(num_blocks=1, num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -1987,7 +1998,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
-    def take_all(self, limit: int = 100000) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
         This will move the entire dataset to the caller's machine; if the
@@ -2005,7 +2016,7 @@ class Dataset(Generic[T]):
         output = []
         for row in self.iter_rows():
             output.append(row)
-            if len(output) > limit:
+            if limit is not None and len(output) > limit:
                 raise ValueError(
                     "The dataset has more than the given limit of {} records.".format(
                         limit

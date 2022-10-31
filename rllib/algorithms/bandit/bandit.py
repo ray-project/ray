@@ -27,7 +27,6 @@ class BanditConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.framework_str = "torch"
-        self.num_workers = 0
         self.rollout_fragment_length = 1
         self.train_batch_size = 1
         # Make sure, a `train()` call performs at least 100 env sampling
@@ -90,7 +89,7 @@ class BanditLinTS(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinTSConfig:
-        return BanditLinTSConfig().to_dict()
+        return BanditLinTSConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -106,7 +105,7 @@ class BanditLinUCB(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
-        return BanditLinUCBConfig().to_dict()
+        return BanditLinUCBConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

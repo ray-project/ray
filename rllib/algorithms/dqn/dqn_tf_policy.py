@@ -339,7 +339,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
 def adam_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         return tf.keras.optimizers.Adam(
             learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"]
         )

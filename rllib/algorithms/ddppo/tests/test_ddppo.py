@@ -29,7 +29,7 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="torch"):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)
@@ -51,7 +51,7 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 10
 
         for _ in framework_iterator(config, "torch"):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             lr = -100.0
             for _ in range(num_iterations):
                 result = algo.train()
@@ -67,11 +67,11 @@ class TestDDPPO(unittest.TestCase):
         config = ddppo.DDPPOConfig().training(kl_coeff=1.0)
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         with pytest.raises(ValueError, match=msg):
-            config.build(env="CartPole-v0")
+            config.build(env="CartPole-v1")
         config.kl_coeff = 0.0
         config.kl_target = 1.0
         with pytest.raises(ValueError, match=msg):
-            config.build(env="CartPole-v0")
+            config.build(env="CartPole-v1")
 
 
 if __name__ == "__main__":
