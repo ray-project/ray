@@ -119,6 +119,8 @@ class Concatenator(Preprocessor):
         dtype: Optional[np.dtype] = None,
         raise_if_missing: bool = False,
     ):
+        if isinstance(include, str):
+            include = [include]
         if isinstance(exclude, str):
             exclude = [exclude]
 
