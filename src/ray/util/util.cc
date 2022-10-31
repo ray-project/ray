@@ -16,7 +16,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
++#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <afunix.h>
+#else
 #include <sys/un.h>
 #endif
 
@@ -25,18 +30,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
-#endif
 #include <boost/asio/ip/tcp.hpp>
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
-
-#define PRINT_MACRO_HELPER(x) #x
-#define PRINT_MACRO(x) #x "=" PRINT_MACRO_HELPER(x)
-
-#pragma message(PRINT_MACRO(BOOST_ASIO_HAS_LOCAL_SOCKETS))
 
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
