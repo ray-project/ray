@@ -1,13 +1,13 @@
 (serve-cpus-gpus)=
 
-# CPU & GPU support and Customized resource
+# CPU and GPU support and custom resource
 
 This guide helps you to:
 - allocate hardware resources for each deployment
 - allocate fractional CPU & GPU resources
-- allocate customized resources
+- allocate custom resources
 
-## Allocate resources
+## Allocating resources
 
 You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs.  To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
