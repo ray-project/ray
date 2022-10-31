@@ -1,10 +1,5 @@
 from typing import TYPE_CHECKING, List, Union
 
-from ray.air.util.transform_pyarrow import (
-    _is_column_extension_type,
-    _concatenate_extension_column,
-)
-
 try:
     import pyarrow
 except ImportError:
@@ -18,7 +13,7 @@ def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.
     import pyarrow.compute as pac
 
     indices = pac.sort_indices(table, sort_keys=key)
-    return table.take(indices)
+    return take_table(table, indices)
 
 
 def take_table(
@@ -31,6 +26,11 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
+    from ray.air.util.transform_pyarrow import (
+        _is_column_extension_type,
+        _concatenate_extension_column,
+    )
+
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:

@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -150,7 +150,7 @@ if __name__ == "__main__":
             },
         ),
         param_space={
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
             "framework": args.framework,

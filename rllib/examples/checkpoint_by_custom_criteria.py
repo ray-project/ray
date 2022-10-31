@@ -3,6 +3,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -11,30 +12,38 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    # Simple PPO config.
-    config = {
-        "env": "CartPole-v0",
+    # Simple generic config.
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("CartPole-v1")
+        # Run with tracing enabled for tf2.
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
         # Run 3 trials.
-        "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+        .training(
+            lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341
+        )  # TEST
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -45,7 +54,7 @@ if __name__ == "__main__":
     # Run tune for some iterations and generate checkpoints.
     tuner = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop, checkpoint_config=air.CheckpointConfig(checkpoint_frequency=1)
         ),

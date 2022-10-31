@@ -96,3 +96,15 @@ export type JobProgressRsp = {
   msg: string;
   result: boolean;
 };
+
+export type JobProgressByTaskName = {
+  tasks: { name: string; progress: TaskProgress }[];
+};
+
+export type JobProgressByTaskNameRsp = {
+  data: {
+    detail: JobProgressByTaskName;
+  };
+  msg: string;
+  result: boolean;
+};
