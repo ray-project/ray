@@ -1,7 +1,7 @@
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class BCConfig(MARWILConfig):
@@ -50,6 +50,7 @@ class BCConfig(MARWILConfig):
         self.postprocess_inputs = False
         # __sphinx_doc_end__
         # fmt: on
+
         # TODO: Remove this when the off_polciy_estimation_methods
         # default config is removed from MARWIL
         # No off-policy estimation.
@@ -64,11 +65,11 @@ class BC(MARWIL):
 
     @classmethod
     @override(MARWIL)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return BCConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return BCConfig()
 
     @override(MARWIL)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfig) -> None:
         # Call super's validation method.
         super().validate_config(config)
 

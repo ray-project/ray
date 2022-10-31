@@ -101,7 +101,7 @@ class TestAlgorithm(unittest.TestCase):
                 else:
                     new_pol = algo.add_policy(
                         pid,
-                        algo.get_default_policy_class(config.to_dict()),
+                        algo.get_default_policy_class(config),
                         # Test changing the mapping fn.
                         policy_mapping_fn=new_mapping_fn,
                         # Change the list of policies to train.
@@ -386,14 +386,14 @@ class TestAlgorithm(unittest.TestCase):
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
-        config.num_workers = 1
+        config.num_rollout_workers = 1
         t0 = time.time()
         algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         algo.stop()
 
-        config.num_workers = 5
+        config.num_rollout_workers = 5
         t0 = time.time()
         algo = config.build()
         total_time_5 = time.time() - t0

@@ -60,8 +60,6 @@ struct Allocation {
   int device_num;
   /// the total size of this mapped memory.
   int64_t mmap_size;
-  /// if it was fallback allocated.
-  bool fallback_allocated;
 
   // only allow moves.
   RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
@@ -75,25 +73,17 @@ struct Allocation {
              MEMFD_TYPE fd,
              ptrdiff_t offset,
              int device_num,
-             int64_t mmap_size,
-             bool fallback_allocated)
+             int64_t mmap_size)
       : address(address),
         size(size),
         fd(std::move(fd)),
         offset(offset),
         device_num(device_num),
-        mmap_size(mmap_size),
-        fallback_allocated(fallback_allocated) {}
+        mmap_size(mmap_size) {}
 
   // Test only
   Allocation()
-      : address(nullptr),
-        size(0),
-        fd(),
-        offset(0),
-        device_num(0),
-        mmap_size(0),
-        fallback_allocated(false) {}
+      : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
 
   friend class PlasmaAllocator;
   friend class DummyAllocator;

@@ -101,6 +101,7 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
@@ -291,8 +292,8 @@ class PPO(Algorithm):
     #  instead.
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return PPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return PPOConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
