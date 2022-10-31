@@ -349,7 +349,7 @@ class TupleSpyModel(TFModelV2):
         return output, []
 
 
-class NestedObservationSpacesTest(unittest.TestCase):
+class TestNestedObservationSpaces(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=5)
@@ -484,7 +484,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         act_space = spaces.Discrete(2)
         config = (
             PGConfig()
-            .environment("nested-ma", disable_env_checking=True)
+            .environment("nested_ma", disable_env_checking=True)
             .framework("tf")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
             .training(train_batch_size=5)
