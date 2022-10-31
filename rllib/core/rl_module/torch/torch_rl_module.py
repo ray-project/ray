@@ -2,14 +2,15 @@ from typing import Any, Mapping, Type
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.core.rl_module import RLModule, MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import ModuleID
 
 
 torch, nn = try_import_torch()
 
 
 class TorchRLModule(RLModule, nn.Module):
-    def __init__(self, config) -> None:
-        RLModule.__init__(self, config)
+    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
+        RLModule.__init__(self, rl_modules)
         nn.Module.__init__(self)
 
     @override(nn.Module)

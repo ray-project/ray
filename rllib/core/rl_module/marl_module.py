@@ -259,9 +259,7 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
 
     @classmethod
     @override(MultiAgentRLModule)
-    def from_multi_agent_config(
-        self, config: Mapping[str, Any]
-    ) -> "MultiAgentRLModule":
+    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
         """Creates a MultiAgentRLModule from a multi-agent config.
 
         # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
@@ -276,10 +274,10 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
             Returns:
                 The MultiAgentRLModule.
         """
-        ma_module = MultiAgentRLModule()
+        ma_module = cls()
 
         for module_id, module_spec in config.items():
-            module = self._build_module_from_spec(module_spec)
+            module = cls._build_module_from_spec(module_spec)
             ma_module.add_module(module_id, module)
 
         return ma_module
@@ -314,24 +312,24 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    @classmethod
     def _build_module_from_spec(
-        self, module_spec: Union[RLModule, Mapping[str, Any]]
+        cls, module_spec: Union[RLModule, Mapping[str, Any]]
     ) -> RLModule:
         """Builds a module from the given module spec.
 
         Args:
-            module_spec: A dict with keys "module_class" and "module_config".
+            module_spec: a tuple "module_class" and "module_config".
         Returns:
             The built module.
         Raises:
             ValueError: If the module spec is invalid.
         """
-        mod_class = module_spec.get("module_class")
+        mod_class, mod_config = module_spec
         if mod_class is None:
             raise ValueError(
-                "key `module_class` is missing in the module " "specfication of module"
+                "`module_class` is missing in the module spec of the module"
             )
-        mod_config = module_spec.get("module_config", {})
         module = mod_class(config=mod_config)
         return module
 
