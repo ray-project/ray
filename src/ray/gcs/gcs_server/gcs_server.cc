@@ -181,6 +181,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   if (gcs_heartbeat_manager_) {
     gcs_heartbeat_manager_->Start();
   }
+  RAY_CHECK(int(gcs_heartbeat_manager_ != nullptr) +
+                int(gcs_healthcheck_manager_ != nullptr) ==
+            1);
 
   RecordMetrics();
 
