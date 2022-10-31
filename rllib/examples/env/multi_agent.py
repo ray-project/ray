@@ -227,7 +227,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
-MultiAgentCartPole = make_multi_agent("CartPole-v0")
+MultiAgentCartPole = make_multi_agent("CartPole-v1")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
 MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

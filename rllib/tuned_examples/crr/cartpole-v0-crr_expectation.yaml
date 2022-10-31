@@ -1,5 +1,5 @@
 cartpole_crr:
-    env: 'CartPole-v0'
+    env: 'CartPole-v1'
     run: CRR
     stop:
       evaluation/episode_reward_mean: 200

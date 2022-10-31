@@ -224,10 +224,8 @@ class Node:
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.redis_address,
                     self.gcs_address,
                     self._raylet_ip_address,
-                    redis_password=self.redis_password,
                 )
                 self._plasma_store_socket_name = node_info.object_store_socket_name
                 self._raylet_socket_name = node_info.raylet_socket_name
@@ -310,10 +308,8 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address,
                     self.gcs_address,
                     self._plasma_store_socket_name,
-                    self.redis_password,
                 )
             except TimeoutError:
                 raise Exception(
@@ -322,10 +318,8 @@ class Node:
                     "the Ray processes failed to startup."
                 )
             node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.redis_address,
                 self.gcs_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info.node_manager_port
@@ -1004,13 +998,11 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
-            self.redis_address,
             self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,

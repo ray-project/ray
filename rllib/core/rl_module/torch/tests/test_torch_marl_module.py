@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.rllib.core.examples.simple_ppo_rl_module import (
     SimplePPOModule,
+    get_separate_encoder_config,
     get_shared_encoder_config,
     get_ppo_loss,
 )
@@ -89,6 +90,24 @@ def get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map_fn):
 
 
 class TestMARLModule(unittest.TestCase):
+    def test_from_config(self):
+
+        env_class = make_multi_agent("CartPole-v0")
+        env = env_class({"num_agents": 2})
+
+        config1 = get_shared_encoder_config(env)
+        config2 = get_separate_encoder_config(env)
+
+        multi_agent_dict = {
+            "module1": (SimplePPOModule, config1),
+            "module2": (SimplePPOModule, config2),
+        }
+        marl_module = TorchMultiAgentRLModule.from_multi_agent_config(multi_agent_dict)
+
+        self.assertEqual(set(marl_module.keys()), {"module1", "module2"})
+        self.assertIsInstance(marl_module["module1"], SimplePPOModule)
+        self.assertIsInstance(marl_module["module2"], SimplePPOModule)
+
     def test_as_multi_agent(self):
 
         env_class = make_multi_agent("CartPole-v0")
@@ -262,7 +281,7 @@ class TestMARLModule(unittest.TestCase):
 
         # compute loss per each module and then sum them up to get the total loss
         loss = {}
-        for module_id in module.get_trainable_module_ids():
+        for module_id in module.keys():
             loss[module_id] = get_ppo_loss(fwd_in[module_id], fwd_out[module_id])
         loss_total = sum(loss.values())
         loss_total.backward()

@@ -81,7 +81,7 @@ class TestPG(unittest.TestCase):
                 "random_dict_env",
                 "random_tuple_env",
                 "MsPacmanNoFrameskip-v4",
-                "CartPole-v0",
+                "CartPole-v1",
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
@@ -125,7 +125,7 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = Categorical if fw != "torch" else TorchCategorical
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             policy = algo.get_policy()
             vars = policy.model.trainable_variables()
             if sess:
@@ -213,7 +213,7 @@ class TestPG(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             lr = _step_n_times(algo, 1)  # 50 timesteps
             # Close to 0.2

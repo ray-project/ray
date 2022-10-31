@@ -29,7 +29,7 @@ def to_tensor(array, device=None):
 class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
-        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             env = gym.make(env_name)
             obs_dim = env.observation_space.shape[0]
             action_dim = (
@@ -67,7 +67,7 @@ class TestRLModule(unittest.TestCase):
 
     def test_get_set_state(self):
 
-        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             env = gym.make(env_name)
             config = get_shared_encoder_config(env)
             module = SimplePPOModule(config)
@@ -85,7 +85,7 @@ class TestRLModule(unittest.TestCase):
 
     def test_rollouts(self):
 
-        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for fwd_fn in ["forward_exploration", "forward_inference"]:
                 for shared_encoder in [False, True]:
                     print(
@@ -131,7 +131,7 @@ class TestRLModule(unittest.TestCase):
                         tstep += 1
 
     def test_forward_train(self):
-        for env_name in ["CartPole-v0", "Pendulum-v1"]:
+        for env_name in ["CartPole-v1", "Pendulum-v1"]:
             for shared_encoder in [False, True]:
                 print("-" * 80)
                 print(f"[ENV={env_name}] | [SHARED={shared_encoder}]")

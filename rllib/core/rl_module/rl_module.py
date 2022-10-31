@@ -77,8 +77,8 @@ class RLModule(abc.ABC):
     """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: Mapping[str, Any]) -> None:
-        self.config = config
+    def __init__(self, config: Mapping[str, Any] = None) -> None:
+        self.config = config or {}
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -201,15 +201,15 @@ class RLModule(abc.ABC):
 
     @abc.abstractmethod
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
+        """Reserved API, Makes the module distributed."""
 
     @abc.abstractmethod
     def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
+        """Reserved API, Returns True if the module is distributed."""
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""
-        return self.get_multi_agent_class()({"modules": {DEFAULT_POLICY_ID: self}})
+        return self.get_multi_agent_class()({DEFAULT_POLICY_ID: self})
 
     @classmethod
     @OverrideToImplementCustomLogic

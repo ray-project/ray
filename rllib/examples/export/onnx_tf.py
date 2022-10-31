@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     # Start Ray and initialize a PPO Algorithm
     ray.init()
-    algo = config.build(env="CartPole-v0")
+    algo = config.build(env="CartPole-v1")
 
     # You could train the model here via:
     # algo.train()
