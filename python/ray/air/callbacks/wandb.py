@@ -264,6 +264,9 @@ class _WandbLoggingProcess(Process):
         config_update.pop("callbacks", None)  # Remove callbacks
         return log, config_update
 
+    def __reduce__(self):
+        raise RuntimeError("_WandbLoggingProcess is not pickleable.")
+
 
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
