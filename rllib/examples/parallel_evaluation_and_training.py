@@ -3,6 +3,7 @@ import os
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 
@@ -41,7 +42,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -120,35 +121,39 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    config = {
-        "env": "CartPole-v0",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
-        # Parallel evaluation+training config.
-        # Switch on evaluation in parallel with training.
-        "evaluation_parallel_to_training": True,
-        # Use two evaluation workers. Must be >0, otherwise,
-        # evaluation will run on a local worker and block (no parallelism).
-        "evaluation_num_workers": args.evaluation_num_workers,
-        # Evaluate every other training iteration (together
-        # with every other call to Algorithm.train()).
-        "evaluation_interval": args.evaluation_interval,
-        # Run for n episodes/timesteps (properly distribute load amongst
-        # all eval workers). The longer it takes to evaluate, the more sense
-        # it makes to use `evaluation_parallel_to_training=True`.
-        # Use "auto" to run evaluation for roughly as long as the training
-        # step takes.
-        "evaluation_duration": args.evaluation_duration,
-        # "episodes" or "timesteps".
-        "evaluation_duration_unit": args.evaluation_duration_unit,
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("CartPole-v1")
+        # Run with tracing enabled for tf2.
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .training()
+        .evaluation(
+            # Parallel evaluation+training config.
+            # Switch on evaluation in parallel with training.
+            evaluation_parallel_to_training=True,
+            # Use two evaluation workers. Must be >0, otherwise,
+            # evaluation will run on a local worker and block (no parallelism).
+            evaluation_num_workers=args.evaluation_num_workers,
+            # Evaluate every other training iteration (together
+            # with every other call to Algorithm.train()).
+            evaluation_interval=args.evaluation_interval,
+            # Run for n episodes/timesteps (properly distribute load amongst
+            # all eval workers). The longer it takes to evaluate, the more sense
+            # it makes to use `evaluation_parallel_to_training=True`.
+            # Use "auto" to run evaluation for roughly as long as the training
+            # step takes.
+            evaluation_duration=args.evaluation_duration,
+            # "episodes" or "timesteps".
+            evaluation_duration_unit=args.evaluation_duration_unit,
+        )
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation OR - in auto
         # mode - run at least as many episodes as we have eval workers.
-        "callbacks": AssertEvalCallback,
-    }
+        .callbacks(AssertEvalCallback)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,

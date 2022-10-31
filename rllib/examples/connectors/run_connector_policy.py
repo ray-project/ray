@@ -36,7 +36,7 @@ def run(checkpoint_path):
     policy = policies[args.policy_id]
 
     # Run CartPole.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     obs = env.reset()
     done = False
     step = 0

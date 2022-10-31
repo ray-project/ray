@@ -242,12 +242,12 @@ class TrainingIterator:
             raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
-        """Fetch next results produced by ``train.report()`` from each worker.
+        """Fetch next results produced by ``session.report()`` from each worker.
 
         Assumes ``start_training`` has already been called.
 
         Returns:
-            A list of dictionaries of values passed to ``train.report()`` from
+            A list of dictionaries of values passed to ``session.report()`` from
                 each worker. Each item corresponds to an intermediate result
                 a single worker. If there are no more items to fetch,
                 returns None.
@@ -260,11 +260,11 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [self._backend.decode_data(r.data) for r in results]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
                 # Iterate until next REPORT call or training has finished.
             else:
@@ -284,7 +284,7 @@ class TrainingIterator:
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
 
     def _finish_training(self):
