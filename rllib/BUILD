@@ -2205,6 +2205,33 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_policy_checkpoint_restore_twice_tf",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestPolicyFromCheckpointTwiceTF"]
+)
+
+py_test(
+    name = "tests/test_policy_checkpoint_restore_twice_tf2",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestPolicyFromCheckpointTwiceT2"]
+)
+
+py_test(
+    name = "tests/test_policy_checkpoint_restore_twice_torch",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestPolicyFromCheckpointTwiceTorch"]
+)
+
+py_test(
     name = "tests/test_custom_resource",
     tags = ["team:rllib", "tests_dir"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
