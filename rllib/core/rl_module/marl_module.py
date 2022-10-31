@@ -266,7 +266,7 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
 
         Args:
             config: A Mapping from module_id to each RLModule config. Each RLModule
-                config value should be a dict with the following keys:
+                config value should be a tuple in the following order:
                 `module_class`: The RLModule class Type or full path separate by `.`.
                     (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
                 `module_config`: The config object for the RLModule.
