@@ -1,11 +1,9 @@
-from typing import Iterator, Mapping, Any, Union, Dict, Set
+import abc
 import pprint
+from typing import Iterator, Mapping, Any, Union, Dict
 
 
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic,
-    override,
-)
+from ray.rllib.utils.annotations import override
 
 from ray.rllib.models.specs.specs_dict import ModelSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -22,71 +20,269 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one api call.
+    them with only one api call. Whether or not a given module is trainable is
+    determined by the caller of this class (not the instance of this class itself).
 
-    The default implementation assumes the data communicated as input and output of
-    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
-    loops throught each `module_id`, and runs the forward pass of the corresponding
-    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
-    It also assumes that the underlying RLModules do not share any parameters or
-    communication with one another. The behavior of modules with such advanced
-    communication would be undefined by default. To share parameters or communication
-    between the underlying RLModules, you should implement your own MultiAgentRLModule.
-
-    # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
-
-    Input config keys:
-        `modules`: Mapping from module_id to each RLModule config.
-        `trainable_modules`: Set of module_ids that are trainable. If not specified,
-            all modules are trainable. For those modules that are specified after the
-            construction of the class, whether they are trainable or not is determined
-            by the `is_trainable` argument of `add_module`.
-
-    Each RLModule config values can be of the following forms:
-        1. The RLModule instance itself.
-        2. A dict with the following keys:
-            `module_class`: The RLModule class Type or full path separate by `.`.
-                (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
-            `module_config`: The config object for the RLModule.
-
-
-    Args:
-        config: The config dict for the multi-agent RLModule (see above).
+    The extension of this class can include any arbitrary neural networks as part of
+    the multi-agent module. For example, a multi-agent module can include a shared
+    encoder network that is used by all the individual RLModules. It is up to the user
+    to decide how to implement this class.
     """
 
-    def __init__(self, config: Mapping[str, Any], **kwargs) -> None:
-        super().__init__(config, **kwargs)
+    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
+        super().__init__()
+        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
 
-        # TODO (Kourosh): Also make it possible that trainable_modules in config can
-        # accept a Callable[[ModuleID, MultiAgentBatch], bool]
-        self._trainable_rl_modules: Set[ModuleID] = set()
-        self._rl_modules: Mapping[ModuleID, RLModule] = {}
-        self._make_modules()
+    @abc.abstractclassmethod
+    def from_multi_agent_config(
+        self, config: Mapping[str, Any]
+    ) -> "MultiAgentRLModule":
+        """Creates a MultiAgentRLModule from a multi-agent config.
+
+        No assumption on the config format is made in this base class. The user is
+        responsible for implementing this method.
+        """
 
     def keys(self) -> Iterator[ModuleID]:
         """Returns an iteratable of module ids."""
         return self._rl_modules.keys()
 
-    def get_trainable_module_ids(self) -> Set[ModuleID]:
-        """Returns the set of ids of the trainable modules."""
-        return self._trainable_rl_modules
+    @override(RLModule)
+    def as_multi_agent(self) -> "MultiAgentRLModule":
+        """Returns a multi-agent wrapper around this module.
+
+        This method is overridden to avoid double wrapping.
+
+        Returns:
+            The instance itself.
+        """
+        return self
+
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module: RLModule,
+        *,
+        override: bool = False,
+    ) -> None:
+        """Adds a module at run time to the multi-agent module.
+
+        Args:
+            module_id: The module ID to add. If the module ID already exists and
+                override is False, an error is raised. If override is True, the module
+                is replaced.
+            module: The module to add.
+            override: Whether to override the module if it already exists.
+
+        Raises:
+            ValueError: If the module ID already exists and override is False.
+            Warnings are raised if the module id is not valid according to the logic of
+            validate_policy_id().
+        """
+        validate_policy_id(module_id)
+        if module_id in self._rl_modules and not override:
+            raise ValueError(
+                f"Module ID {module_id} already exists. If your intention is to "
+                "override, set override=True."
+            )
+
+        self._rl_modules[module_id] = module
+
+    def remove_module(
+        self, module_id: ModuleID, *, raise_err_if_not_found: bool = True
+    ) -> None:
+        """Removes a module at run time from the multi-agent module.
+
+        Args:
+            module_id: The module ID to remove.
+            raise_err_if_not_found: Whether to raise an error if the module ID is not
+                found.
+        Raises:
+            ValueError: If the module ID does not exist and raise_err_if_not_found is
+                True.
+        """
+        if raise_err_if_not_found:
+            self._check_module_exists(module_id)
+        del self._rl_modules[module_id]
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed.
-
-        Args:
-            dist_config: The optional distributed configuration to use for all make
-                distributed calls.
-        """
         # TODO (Avnish) Implement this.
         pass
 
     @override(RLModule)
     def is_distributed(self) -> bool:
-        """Returns True if all sub-modules are distributed."""
         # TODO (Avnish) Implement this.
         return False
+
+    def __getitem__(self, module_id: ModuleID) -> RLModule:
+        """Returns the module with the given module ID.
+
+        Args:
+            module_id: The module ID to get.
+
+        Returns:
+            The module with the given module ID.
+        """
+        self._check_module_exists(module_id)
+        return self._rl_modules[module_id]
+
+    @override(RLModule)
+    def output_specs_train(self) -> ModelSpec:
+        return self._get_specs_for_modules("output_specs_train")
+
+    @override(RLModule)
+    def output_specs_inference(self) -> ModelSpec:
+        return self._get_specs_for_modules("output_specs_inference")
+
+    @override(RLModule)
+    def output_specs_exploration(self) -> ModelSpec:
+        return self._get_specs_for_modules("output_specs_exploration")
+
+    @override(RLModule)
+    def input_specs_train(self) -> ModelSpec:
+        return self._get_specs_for_modules("input_specs_train")
+
+    @override(RLModule)
+    def input_specs_inference(self) -> ModelSpec:
+        return self._get_specs_for_modules("input_specs_inference")
+
+    @override(RLModule)
+    def input_specs_exploration(self) -> ModelSpec:
+        return self._get_specs_for_modules("input_specs_exploration")
+
+    def _get_specs_for_modules(self, method_name: str) -> ModelSpec:
+        """Returns a ModelSpec from the given method_name for all modules."""
+        return ModelSpec(
+            {
+                module_id: getattr(module, method_name)()
+                for module_id, module in self._rl_modules.items()
+            }
+        )
+
+    @override(RLModule)
+    def _forward_train(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        """Runs the forward_train pass.
+
+        Args:
+            batch: The batch of multi-agent data (i.e. mapping from module ids to
+                SampleBaches).
+            module_id: The module ID to run the forward pass for. If not specified, all
+                modules are run.
+
+        Returns:
+            The output of the forward_train pass the specified modules.
+        """
+        return self._run_forward_pass("forward_train", batch, module_id, **kwargs)
+
+    @override(RLModule)
+    def _forward_inference(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        """Runs the forward_inference pass.
+
+        Args:
+            batch: The batch of multi-agent data (i.e. mapping from module ids to
+                SampleBaches).
+            module_id: The module ID to run the forward pass for. If not specified, all
+                modules are run.
+
+        Returns:
+            The output of the forward_inference pass the specified modules.
+        """
+        return self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
+
+    @override(RLModule)
+    def _forward_exploration(
+        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+        """Runs the forward_exploration pass.
+
+        Args:
+            batch: The batch of multi-agent data (i.e. mapping from module ids to
+                SampleBaches).
+            module_id: The module ID to run the forward pass for. If not specified, all
+                modules are run.
+
+        Returns:
+            The output of the forward_exploration pass the specified modules.
+        """
+        return self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
+
+    def _run_forward_pass(
+        self,
+        forward_fn_name: str,
+        batch: MultiAgentBatch,
+        module_id: ModuleID = "",
+        **kwargs,
+    ) -> Dict[ModuleID, Mapping[str, Any]]:
+        if module_id:
+            self._check_module_exists(module_id)
+            module_ids = [module_id]
+        else:
+            module_ids = self.keys()
+
+        outputs = {}
+        for module_id in module_ids:
+            rl_module = self._rl_modules[module_id]
+            forward_fn = getattr(rl_module, forward_fn_name)
+            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
+
+        return outputs
+
+    def _check_module_exists(self, module_id: ModuleID) -> None:
+        if module_id not in self._rl_modules:
+            raise ValueError(
+                f"Module with module_id {module_id} not found. "
+                f"Available modules: {set(self.keys())}"
+            )
+
+
+class DefaultMultiAgentRLModule(MultiAgentRLModule):
+    """The default implementation for multi-agent RLModules.
+
+    The default implementation assumes the data communicated as input and output of
+    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
+    loops through each `module_id`, and runs the forward pass of the corresponding
+    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
+    It also assumes that the underlying RLModules do not share any parameters or
+    communication with one another. The behavior of modules with such advanced
+    communication would be undefined by default. To share parameters or communication
+    between the underlying RLModules, you should implement your own
+    `MultiAgentRLModule`.
+    """
+
+    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
+        super().__init__(rl_modules)
+
+    @classmethod
+    @override(MultiAgentRLModule)
+    def from_multi_agent_config(
+        self, config: Mapping[str, Any]
+    ) -> "MultiAgentRLModule":
+        """Creates a MultiAgentRLModule from a multi-agent config.
+
+        # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
+
+        Args:
+            config: A Mapping from module_id to each RLModule config. Each RLModule
+                config value should be a dict with the following keys:
+                `module_class`: The RLModule class Type or full path separate by `.`.
+                    (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
+                `module_config`: The config object for the RLModule.
+
+            Returns:
+                The MultiAgentRLModule.
+        """
+        ma_module = MultiAgentRLModule()
+
+        for module_id, module_spec in config.items():
+            module = self._build_module_from_spec(module_spec)
+            ma_module.add_module(module_id, module)
+
+        return ma_module
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -118,204 +314,25 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
-    @override(RLModule)
-    def as_multi_agent(self) -> "MultiAgentRLModule":
-        """Returns a multi-agent wrapper around this module.
-
-        This method is overridden to avoid double wrapping.
-
-        Returns:
-            The instance itself.
-        """
-        return self
-
-    def add_module(
-        self,
-        module_id: ModuleID,
-        module_spec: Union[RLModule, Mapping[str, Any]],
-        *,
-        dist_config=None,
-        override: bool = False,
-        is_trainable: bool = True,
-    ) -> None:
-        """Adds a module at run time to the multi-agent module.
-
-        Args:
-            module_id: The module ID to add. If the module ID already exists and
-                override is False, an error is raised. If override is True, the module
-                is replaced.
-            module: The module to add.
-            dist_config: The distributed configuration to use if module needs to be
-                distributed.
-            override: Whether to override the module if it already exists.
-            is_trainable: Whether the module is trainable.
-
-        Raises:
-            ValueError: If the module ID already exists and override is False.
-        """
-        validate_policy_id(module_id)
-        if module_id in self._rl_modules and not override:
-            raise ValueError(
-                f"Module ID {module_id} already exists. If your intention is to "
-                "override, set override=True."
-            )
-
-        module = self._build_module_from_spec(module_spec)
-
-        if self.is_distributed():
-            module.make_distributed(dist_config)
-
-        self._rl_modules[module_id] = module
-        if is_trainable:
-            self._trainable_rl_modules.add(module_id)
-
-    def remove_module(
-        self, module_id: ModuleID, *, raise_err_if_not_found: bool = True
-    ) -> None:
-        """Removes a module at run time from the multi-agent module.
-
-        Args:
-            module_id: The module ID to remove.
-            raise_err_if_not_found: Whether to raise an error if the module ID is not
-                found.
-        Raises:
-            ValueError: If the module ID does not exist and raise_err_if_not_found is
-                True.
-        """
-        if raise_err_if_not_found:
-            self._check_module_exists(module_id)
-        del self._rl_modules[module_id]
-        self._trainable_rl_modules.discard(module_id)
-
-    def __getitem__(self, module_id: ModuleID) -> RLModule:
-        """Returns the module with the given module ID.
-
-        Args:
-            module_id: The module ID to get.
-
-        Returns:
-            The module with the given module ID.
-        """
-        self._check_module_exists(module_id)
-        return self._rl_modules[module_id]
-
-    @OverrideToImplementCustomLogic
-    def _make_modules(self) -> None:
-        modules_info_dict = self.config["modules"]
-        trainables = self.config.get("trainable_modules", set())
-        for module_id, module_config in modules_info_dict.items():
-            # should be trainable if trainables is not specified or if module_id exists
-            # in the trainables
-            is_trainable = not trainables or module_id in trainables
-            self.add_module(module_id, module_config, is_trainable=is_trainable)
-
-    @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
-        return self._get_specs_for_modules("output_specs_train")
-
-    @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
-        return self._get_specs_for_modules("output_specs_inference")
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
-        return self._get_specs_for_modules("output_specs_exploration")
-
-    @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
-        return self._get_specs_for_modules("input_specs_train")
-
-    @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
-        return self._get_specs_for_modules("input_specs_inference")
-
-    @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpec:
-        return self._get_specs_for_modules("input_specs_exploration")
-
-    def _get_specs_for_modules(self, method_name: str) -> ModelSpec:
-        """Returns the specs for the given property name."""
-        return ModelSpec(
-            {
-                module_id: getattr(module, method_name)()
-                for module_id, module in self._rl_modules.items()
-            }
-        )
-
-    @override(RLModule)
-    def _forward_train(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        return self._run_forward_pass("forward_train", batch, module_id, **kwargs)
-
-    @override(RLModule)
-    def _forward_inference(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        return self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
-
-    @override(RLModule)
-    def _forward_exploration(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        return self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
-
-    def _run_forward_pass(
-        self,
-        forward_fn_name: str,
-        batch: MultiAgentBatch,
-        module_id: ModuleID = "",
-        **kwargs,
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
-        if module_id:
-            self._check_module_exists(module_id)
-            module_ids = [module_id]
-        else:
-            module_ids = self.keys()
-
-        outputs = {}
-        for module_id in module_ids:
-            rl_module = self._rl_modules[module_id]
-            forward_fn = getattr(rl_module, forward_fn_name)
-            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
-        return outputs
-
-    def _check_module_exists(self, module_id: ModuleID) -> None:
-        if module_id not in self._rl_modules:
-            raise ValueError(
-                f"Module with module_id {module_id} not found. "
-                f"Available modules: {set(self.keys())}"
-            )
-
     def _build_module_from_spec(
         self, module_spec: Union[RLModule, Mapping[str, Any]]
     ) -> RLModule:
         """Builds a module from the given module spec.
 
         Args:
-            module_spec: The module spec to build the module from.
-                module_spec can be one of the following:
-                    - An RLModule instance.
-                    - A dict with keys "module_class" and "module_config".
+            module_spec: A dict with keys "module_class" and "module_config".
         Returns:
             The built module.
         Raises:
             ValueError: If the module spec is invalid.
         """
-        if isinstance(module_spec, RLModule):
-            module = module_spec
-        elif isinstance(module_spec, Mapping):
-            mod_class = module_spec.get("module_class")
-            if mod_class is None:
-                raise ValueError(
-                    "key `module_class` is missing in the module "
-                    "specfication of module"
-                )
-            mod_config = module_spec.get("module_config", {})
-            module = mod_class(config=mod_config)
-        else:
-            raise ValueError(f"Invalid module spec for module: {module_spec}")
-
+        mod_class = module_spec.get("module_class")
+        if mod_class is None:
+            raise ValueError(
+                "key `module_class` is missing in the module " "specfication of module"
+            )
+        mod_config = module_spec.get("module_config", {})
+        module = mod_class(config=mod_config)
         return module
 
     def __repr__(self) -> str:

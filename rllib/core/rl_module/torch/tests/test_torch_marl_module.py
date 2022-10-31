@@ -258,7 +258,7 @@ class TestMARLModule(unittest.TestCase):
 
         # compute loss per each module and then sum them up to get the total loss
         loss = {}
-        for module_id in module.get_trainable_module_ids():
+        for module_id in module.keys():
             loss[module_id] = get_ppo_loss(fwd_in[module_id], fwd_out[module_id])
         loss_total = sum(loss.values())
         loss_total.backward()
