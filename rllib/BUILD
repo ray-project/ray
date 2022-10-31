@@ -2151,7 +2151,8 @@ py_test(
     name = "test_actor_manager",
     tags = ["team:rllib", "utils"],
     size = "medium",
-    srcs = ["utils/tests/test_actor_manager.py"]
+    srcs = ["utils/tests/test_actor_manager.py"],
+    data = ["utils/tests/random_numbers.pkl"],
 )
 
 # --------------------------------------------------------------------
