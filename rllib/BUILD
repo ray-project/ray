@@ -84,7 +84,7 @@ py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
     args = ["--yaml-dir=tuned_examples/a2c"]
@@ -758,6 +758,13 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_algorithm.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_algorithm_config",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
 py_test(
@@ -1748,6 +1755,13 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+py_test(
+    name = "test_torch_marl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
 )
 
 # --------------------------------------------------------------------
