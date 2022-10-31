@@ -134,6 +134,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
+        self._tf_policy_handles_more_than_one_loss = True
         # __sphinx_doc_end__
         # fmt: on
 
