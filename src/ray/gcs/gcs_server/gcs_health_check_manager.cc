@@ -14,6 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
+#include "ray/stats/metric.h"
+DEFINE_stats(health_check_rpc_latency_ms,
+             "Latency of rpc request for health check.",
+             (),
+             ({1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
+
 namespace ray {
 namespace gcs {
 
@@ -77,8 +84,11 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_.get(),
       &request_,
       &response_,
-      [this, stopped = this->stopped_, context = this->context_](::grpc::Status status) {
+      [this, stopped = this->stopped_, context = this->context_, now = absl::Now()](
+          ::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
+        STATS_health_check_rpc_latency_ms.Record(
+            absl::ToInt64Milliseconds(absl::Now() - now));
         if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
           return;
         }

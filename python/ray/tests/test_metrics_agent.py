@@ -77,7 +77,10 @@ _METRICS = [
 if not ray._raylet.Config.use_ray_syncer():
     _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
 
-if not ray._raylet.Config.pull_based_healthcheck():
+if ray._raylet.Config.pull_based_healthcheck():
+    print("???:")
+    _METRICS.append("ray_health_check_rpc_latency_ms")
+else:
     _METRICS.append("ray_heartbeat_report_ms_sum")
 
 # This list of metrics should be kept in sync with
