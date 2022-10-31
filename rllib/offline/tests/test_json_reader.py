@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.offline import IOContext
 from ray.rllib.offline.json_reader import JsonReader
 
@@ -23,7 +24,14 @@ class TestJsonReader(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "rllib/tests/data/pendulum/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
+        ioctx = IOContext(
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=1200)
+                .offline_data(actions_in_input_normalized=True)
+            ),
+            worker_index=0,
+        )
         reader = JsonReader([data_file], ioctx)
         assert len(reader.next()) == 1200
 

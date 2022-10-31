@@ -1,6 +1,6 @@
 # __quick_start_begin__
 import gym
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPOConfig
 
 
 # Define your problem using python and openAI's gym API:
@@ -48,20 +48,20 @@ class SimpleCorridor(gym.Env):
         return [self.cur_pos], reward, done, {}
 
 
-# Create an RLlib Algorithm instance.
-algo = PPO(
-    config={
+# Create an RLlib Algorithm instance from a PPOConfig object.
+config = (
+    PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
-        "env": SimpleCorridor,
+        env=SimpleCorridor,
         # Config dict to be passed to our custom env's constructor.
-        "env_config": {
-            # Use corridor with 20 fields (including S and G).
-            "corridor_length": 20
-        },
-        # Parallelize environment rollouts.
-        "num_workers": 3,
-    }
+        # Use corridor with 20 fields (including S and G).
+        env_config={"corridor_length": 28},
+    )
+    # Parallelize environment rollouts.
+    .rollouts(num_rollout_workers=3)
 )
+# Construct the actual (PPO) algorithm object from the config.
+algo = config.build()
 
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to move at least 19 times in the env to reach the goal and
