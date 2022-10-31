@@ -148,7 +148,7 @@ class Preprocessor(abc.ABC):
         """Transform a single batch of data.
 
         The data will be converted to the format supported by the Preprocessor,
-        based on which ``_transform_*` methods are implemented.
+        based on which ``_transform_*`` methods are implemented.
 
         Args:
             data: Input data batch.

@@ -12,7 +12,7 @@ from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize(
-    "ds_with_expected_pandas_numpy_df",
+    "ds,expected_df,expected_numpy_df",
     [
         (
             lazy_fixture("ds_pandas_single_column_format"),
@@ -47,7 +47,7 @@ from ray.tests.conftest import *  # noqa
     ],
 )
 def test_batch_mapper_pandas_data_format(
-    ray_start_regular_shared, ds_with_expected_pandas_numpy_df
+    ray_start_regular_shared, ds, expected_df, expected_numpy_df
 ):
     """Tests batch mapper functionality for pandas data format.
 
@@ -55,7 +55,6 @@ def test_batch_mapper_pandas_data_format(
         For single column pandas dataframes, we automatically convert it to
         single column tensor with column name as `__value__`.
     """
-    ds, expected_df, expected_numpy_df = ds_with_expected_pandas_numpy_df
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["column_1"] = df["column_1"] + 1
@@ -128,7 +127,7 @@ def test_batch_mapper_batch_size(ray_start_regular_shared, ds):
 
 
 @pytest.mark.parametrize(
-    "ds_with_expected_pandas_numpy_df",
+    "ds,expected_df,expected_numpy_df",
     [
         (
             lazy_fixture("ds_arrow_single_column_format"),
@@ -184,7 +183,7 @@ def test_batch_mapper_batch_size(ray_start_regular_shared, ds):
     ],
 )
 def test_batch_mapper_arrow_data_format(
-    ray_start_regular_shared, ds_with_expected_pandas_numpy_df
+    ray_start_regular_shared, ds, expected_df, expected_numpy_df
 ):
     """Tests batch mapper functionality for arrow data format.
 
@@ -192,7 +191,6 @@ def test_batch_mapper_arrow_data_format(
         For single column pandas dataframes, we automatically convert it to
         single column tensor with column name as `__value__`.
     """
-    ds, expected_df, expected_numpy_df = ds_with_expected_pandas_numpy_df
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         col_name = "column_1"
