@@ -114,7 +114,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         eps_id = episode[SampleBatch.EPS_ID][0]
         if eps_id in self.p:
             raise ValueError(
-                f"eps_id {eps_id} was already passed to the peek function."
+                f"eps_id {eps_id} was already passed to the peek function. "
                 f"Make sure dataset contains only unique episodes with unique ids."
             )
         self.p[eps_id] = episode_p

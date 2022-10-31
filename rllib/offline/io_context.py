@@ -44,7 +44,7 @@ class IOContext:
         # cases, though.
         self.config = config or AlgorithmConfig().offline_data(
             actions_in_input_normalized=worker is None
-        )
+        ).training(train_batch_size=1)
         self.worker_index = worker_index
         self.worker = worker
 
