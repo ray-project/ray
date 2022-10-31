@@ -38,7 +38,13 @@ class IOContext:
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         self.log_dir = log_dir or os.getcwd()
-        self.config = config or AlgorithmConfig()
+        # In case no config is provided, use the default one, but set
+        # `actions_in_input_normalized=True` if we don't have a worker.
+        # Not having a worker and/or a config should only be the case in some test
+        # cases, though.
+        self.config = config or AlgorithmConfig().offline_data(
+            actions_in_input_normalized=worker is None
+        )
         self.worker_index = worker_index
         self.worker = worker
 
