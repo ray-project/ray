@@ -102,7 +102,13 @@ class MosaicTrainer(TorchTrainer):
         ...     scaling_config=scaling_config,
         ... ) # doctest: +SKIP
         ...
-        >>> trainer.fit() # doctest: +SKIP
+        >>> result = trainer.fit() #doctest: +SKIP
+        >>> model = torchvision.models.resnet18(num_classes=10) #doctest: +SKIP
+        >>> # load checkpointed model weights
+        >>> model.load_state_dict(
+        ...     result.checkpoint.to_dict()["model"],
+        ...     strict=True
+        ... ) #doctest: +SKIP
 
 
     Args:
@@ -222,6 +228,7 @@ def _mosaic_train_loop_per_worker(config):
             filtered_callbacks.append(callback)
     filtered_callbacks.append(ray_logger)
     trainer.state.callbacks = filtered_callbacks
+    print(trainer.state.callbacks)
 
     # this prevents data to be routed to all the Composer Loggers
     trainer.logger.destinations = (ray_logger,)
