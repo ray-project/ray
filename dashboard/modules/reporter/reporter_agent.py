@@ -467,7 +467,10 @@ class ReporterAgent(
             workers = set(raylet_proc.children())
             # Must keep the original self._workers in case of psutil.cpu_percent is 0
             # See more: https://github.com/ray-project/ray/issues/29848
-            self._workers.intersection_update(workers)
+            # self._workers.intersection_update(workers)
+            for worker in self._workers:
+                if worker not in workers:
+                    self._workers.remove(worker)
             self._workers.update(workers)
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
