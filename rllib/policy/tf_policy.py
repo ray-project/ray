@@ -66,14 +66,17 @@ class TFPolicy(Policy):
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
+    # In order to create tf_policies from checkpoints, this class needs to separate
+    # variables into their own scopes. Normally, we would do this in the modul
+    # catalog, but since Policy.from_state() can be called anywhere, we need to
+    # keep track of it here to not break the from_state API.
     tf_var_creation_scope_counter = 0
 
     @staticmethod
     def next_tf_var_scope_name():
-        # Tracks multiple instaces that are spawned from this policy via .from_state()
-        scope_name = "tf_policy_var_scope"
+        # Tracks multiple instances that are spawned from this policy via .from_state()
         TFPolicy.tf_var_creation_scope_counter += 1
-        return scope_name + str(TFPolicy.tf_var_creation_scope_counter)
+        return "tf_policy_var_scope_" + str(TFPolicy.tf_var_creation_scope_counter)
 
     @DeveloperAPI
     def __init__(
@@ -467,7 +470,8 @@ class TFPolicy(Policy):
         """Recovers a TFPolicy from a state object.
 
         The `state` of an instantiated TFPolicy can be retrieved by calling its
-        `get_state` method.
+        `get_state` method. Is meant to be used by the Policy.from_state() method to
+        aid with tracking variable creation.
 
         Args:
             state: The state to recover a new TFPolicy instance from.
@@ -565,7 +569,7 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.

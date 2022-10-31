@@ -4,7 +4,6 @@ import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.test_utils import check, framework_iterator
@@ -56,15 +55,29 @@ class TestPolicy(unittest.TestCase):
     def test_policy_from_checkpoint_twice(self):
         # Checks if we can load a policy from a checkpoint twice
         config = PPOConfig()
-        for fw in framework_iterator(config, frameworks=["tf"]):
-            algo = config.build(env="CartPole-v1")
-            algo.train()
-            policy = algo.get_policy()
-            policy.export_checkpoint("/tmp/my_policy_checkpoint_")
-            algo.stop()
-            TFPolicy.from_checkpoint("/tmp/my_policy_checkpoint_")
-            TFPolicy.from_checkpoint("/tmp/my_policy_checkpoint_")
-            algo.stop()
+        for fw in framework_iterator(config, frameworks=["tf", "tf2", "torch"]):
+            algo1 = config.build(env="CartPole-v1")
+            algo2 = config.build(env="BreakoutNoFrameskip-v4")
+
+            algo1.train()
+            algo2.train()
+
+            policy1 = algo1.get_policy()
+            policy1.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_1")
+
+            policy2 = algo2.get_policy()
+            policy2.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
+
+            algo1.stop()
+            algo2.stop()
+
+            # Create two policies from different checkpoints
+            policy1 = Policy.from_checkpoint(
+                "/tmp/test_policy_from_checkpoint_twice_p_1"
+            )
+            policy2 = Policy.from_checkpoint(
+                "/tmp/test_policy_from_checkpoint_twice_p_2"
+            )
 
 
 if __name__ == "__main__":
