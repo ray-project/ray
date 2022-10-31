@@ -9,6 +9,7 @@ from freezegun import freeze_time
 from ray_release.config import Test
 from ray_release.template import load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
+from ray_release.util import url_exists
 from ray_release.wheels import (
     get_ray_version,
     DEFAULT_REPO,
@@ -241,6 +242,11 @@ class WheelsFinderTest(unittest.TestCase):
                 ray_wheels_url=f"https://some/{sha}/binary.whl",
             )
             assert sha in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
+
+
+def test_url_exist():
+    assert url_exists("https://github.com/")
+    assert not url_exists("invalid://somewhere")
 
 
 if __name__ == "__main__":
