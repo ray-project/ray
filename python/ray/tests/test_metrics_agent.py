@@ -152,6 +152,7 @@ if ray._raylet.Config.pull_based_healthcheck():
 else:
     _METRICS.append("ray_heartbeat_report_ms_sum")
 
+
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
     enable_metrics_collection = request.param
