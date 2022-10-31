@@ -22,10 +22,7 @@ def trainer_init_per_worker(config):
     import composer.optim
 
     BATCH_SIZE = 32
-    # prepare the model for distributed training and wrap with ComposerClassifier for
-    # Composer Trainer compatibility
-    model = config.pop("model", torchvision.models.resnet18(num_classes=10))
-    model = ComposerClassifier(ray.train.torch.prepare_model(model))
+    model = ComposerClassifier(config.pop("model", torchvision.models.resnet18(num_classes=10)))
 
     # prepare train/test dataset
     mean = (0.507, 0.487, 0.441)
@@ -88,10 +85,10 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     result = train_mosaic_cifar10().metrics_dataframe
 
     # check the max epoch value
-    assert result["epoch"][result.index[-1]] == 1
+    assert result["epoch"][result.index[-1]] == 4
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 2
+    assert result["_training_iteration"][result.index[-1]] == 5
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])
