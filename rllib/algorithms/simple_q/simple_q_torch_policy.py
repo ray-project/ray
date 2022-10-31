@@ -1,7 +1,6 @@
 """PyTorch policy class used for Simple Q-Learning"""
 
 import logging
-import numpy as np
 from typing import Any, Dict, List, Tuple, Type, Union, Optional
 
 import ray
@@ -86,7 +85,7 @@ class SimpleQTorchPolicy(
         )
         # Return (exploration) actions, state_outs (empty list), and extra outs.
         return (
-            np.array(actions),
+            convert_to_numpy(actions),
             [],
             {
                 "q_values": convert_to_numpy(q_vals),
