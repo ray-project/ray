@@ -298,6 +298,7 @@ class ExecutionPlan:
         """
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
+            context = DatasetContext.get_current()
             for stage_idx, stage in enumerate(stages):
                 if allow_clear_input_blocks:
                     clear_input_blocks = self._should_clear_input_blocks(
@@ -314,6 +315,8 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
+                if context.enable_auto_print_stats:
+                    print(self._snapshot_stats.summary_string())
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
