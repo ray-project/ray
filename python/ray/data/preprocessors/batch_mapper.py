@@ -76,7 +76,7 @@ class BatchMapper(Preprocessor):
             ],
         ],
         batch_format: Optional[str] = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         # TODO: Make batch_format required from user
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
