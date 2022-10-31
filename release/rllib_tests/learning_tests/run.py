@@ -54,4 +54,10 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
-    print("Ok.")
+    if len(results["not_passed"]) > 0:
+        raise ValueError(
+            "Not all learning tests successfully learned the tasks.\n"
+            f"Results=\n{results}"
+        )
+    else:
+        print("Ok.")
