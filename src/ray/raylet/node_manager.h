@@ -190,6 +190,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Record metrics.
   void RecordMetrics();
 
+  /// Report worker OOM kill stats
+  void ReportWorkerOOMKillStats();
+
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
@@ -727,9 +730,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
-  /// The time that the last resource report was sent at. Used to make sure we are
-  /// keeping up with resource reports.
-  uint64_t last_resource_report_at_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;
@@ -828,6 +828,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Last time metrics are recorded.
   uint64_t last_metrics_recorded_at_ms_;
+
+  /// The number of workers killed due to memory above threshold since last report.
+  uint64_t number_workers_killed_by_oom_ = 0;
+
+  /// The number of workers killed not by memory above threshold since last report.
+  uint64_t number_workers_killed_ = 0;
 
   /// Number of tasks that are received and scheduled.
   uint64_t metrics_num_task_scheduled_;
