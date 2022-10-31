@@ -9,8 +9,6 @@ from torchvision import transforms, datasets
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
-
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 

@@ -217,9 +217,7 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     # Replace Composer's Loggers with RayLogger
-    ray_logger = RayLogger(
-        keys=config.pop("log_keys", [])
-    )
+    ray_logger = RayLogger(keys=config.pop("log_keys", []))
 
     # initialize Composer trainer
     trainer: Trainer = trainer_init_per_worker(config)

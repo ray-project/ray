@@ -5,14 +5,11 @@ import os
 from composer.loggers import Logger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
-from composer.callbacks.checkpoint_saver import CheckpointSaver
-from composer.loggers.logger import LogLevel
 from composer.utils import checkpoint, is_model_deepspeed
 from composer.utils.checkpoint import PartialFilePath
 
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 
 
@@ -45,11 +42,9 @@ class RayLogger(LoggerDestination):
         keys: the key values that will be included in the reported metrics.
     """
 
-    def __init__(
-        self, keys: Optional[List[str]] = None
-    ) -> None:
+    def __init__(self, keys: Optional[List[str]] = None) -> None:
         self.data = {}
-        self.filename = PartialFilePath('ep{epoch}-ba{batch}-rank{rank}.pt', "ray_tmp")
+        self.filename = PartialFilePath("ep{epoch}-ba{batch}-rank{rank}.pt", "ray_tmp")
         # report at fit end only if there are additional training batches run after the
         # last epoch checkpoint report
         self.should_report_fit_end = False
@@ -86,17 +81,12 @@ class RayLogger(LoggerDestination):
             filename=filename,
             weights_only=False,
         )
-        mosaic_checkpoint = MosaicCheckpoint.from_dict({"state" : None})
+        mosaic_checkpoint = MosaicCheckpoint.from_dict({"state": None})
         if saved_path:
-            saved_path = os.path.join(
-                os.getcwd(), saved_path
-            )
-            mosaic_checkpoint=MosaicCheckpoint.from_directory(saved_path)
+            saved_path = os.path.join(os.getcwd(), saved_path)
+            mosaic_checkpoint = MosaicCheckpoint.from_directory(saved_path)
 
-
-        session.report(
-            self.data, checkpoint=mosaic_checkpoint
-        )
+        session.report(self.data, checkpoint=mosaic_checkpoint)
 
         # flush the data
         self.data = {}
