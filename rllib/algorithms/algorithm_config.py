@@ -465,7 +465,9 @@ class AlgorithmConfig:
         """Validates all values in this config.
 
         Note: This should NOT include immediate checks on single value
-        correctness, e.g. "batch_mode" = [complete_episodes|truncate_episodes]
+        correctness, e.g. "batch_mode" = [complete_episodes|truncate_episodes].
+        Those simgular, independent checks should instead go directly into their
+        respective methods.
         """
         # Check `policies_to_train` for invalid entries.
         if isinstance(self.policies_to_train, (list, set, tuple)):
@@ -1843,23 +1845,66 @@ class AlgorithmConfig:
         configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
         maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
 
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> config = (
+            ...   PPOConfig()
+            ...   .environment("CartPole-v1")
+            ...   .framework("torch")
+            ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
+            ... )
+            >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup()
+            >>> is_policy_to_train("pol1")
+            ... True
+            >>> is_policy_to_train("pol2")
+            ... False
+            >>> print(policy_dict)
+            ... {
+            ...   "pol1": PolicySpec(
+            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
+            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
+            ...     Discrete(2),  # infered from env
+            ...     {},  # not provided -> empty dict
+            ...   ),
+            ...   "pol2": PolicySpec(
+            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
+            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
+            ...     Discrete(2),  # infered from env
+            ...     {},  # not provided -> empty dict
+            ...   ),
+            ... }
+
         Args:
-            policies: The multi-agent `policies` dict mapping policy IDs
-                to PolicySpec objects. Note that the `policy_class`,
-                `observation_space`, and `action_space` properties in these PolicySpecs
-                may be None and must therefore be inferred here.
+            policies: An optional multi-agent `policies` dict, mapping policy IDs
+                to PolicySpec objects. If not provided, will use `self.policies`
+                instead. Note that the `policy_class`, `observation_space`, and
+                `action_space` properties in these PolicySpecs may be None and must
+                therefore be inferred here.
             env: An optional env instance, from which to infer the different spaces for
-                the different policies.
+                the different policies. If not provided, will try to infer from
+                `spaces`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be infered, will
+                raise an error.
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                RolloutWorker.
+                RolloutWorker. If not provided, will try to infer from
+                `env`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be infered, will
+                raise an error.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
         Returns:
             A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
             `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
+
+        Raises:
+            ValueError: In case, no spaces can be infered for the policy/ies.
+            ValueError: In case, two agents in the env map to the same PolicyID
+                (according to `self.policy_mapping_fn`), but have different action- or
+                observation spaces according to the infered space information.
         """
         policies = copy.deepcopy(policies or self.policies)
 
