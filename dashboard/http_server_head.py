@@ -12,21 +12,16 @@ try:
 except ImportError:
     from distutils.version import LooseVersion as Version
 
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray.experimental.internal_kv import _initialize_internal_kv, _internal_kv_put
-
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
+from ray._private.gcs_utils import GcsClient
 
 
 # Logger for this module. It should be configured at the entry point
@@ -61,7 +56,15 @@ def setup_static_dir():
 
 class HttpServerDashboardHead:
     def __init__(
-        self, ip, http_host, http_port, http_port_retries, gcs_address, gcs_client
+        self,
+        ip: str,
+        http_host: str,
+        http_port: int,
+        http_port_retries: int,
+        gcs_address: str,
+        gcs_client: GcsClient,
+        session_name: str,
+        metrics: DashboardPrometheusMetrics,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -69,6 +72,8 @@ class HttpServerDashboardHead:
         self.http_port_retries = http_port_retries
         self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
+        self.metrics = metrics
+        self._session_name = session_name
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -127,14 +132,21 @@ class HttpServerDashboardHead:
         finally:
             resp_time = time.monotonic() - start_time
             try:
-                request.app["metrics"].metrics_request_duration.labels(
-                    endpoint=request.path, http_status=status_tag
+                self.metrics.metrics_request_duration.labels(
+                    endpoint=request.path,
+                    http_status=status_tag,
+                    SessionName=self._session_name,
+                    Component="dashboard",
                 ).observe(resp_time)
-                request.app["metrics"].metrics_request_count.labels(
-                    method=request.method, endpoint=request.path, http_status=status_tag
+                self.metrics.metrics_request_count.labels(
+                    method=request.method,
+                    endpoint=request.path,
+                    http_status=status_tag,
+                    SessionName=self._session_name,
+                    Component="dashboard",
                 ).inc()
             except Exception as e:
-                logger.warning(f"Error emitting api metrics: {e}")
+                logger.exception(f"Error emitting api metrics: {e}")
 
     async def run(self, modules):
         # Bind http routes of each module.
@@ -145,7 +157,6 @@ class HttpServerDashboardHead:
         app = aiohttp.web.Application(
             client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
         )
-        app["metrics"] = self._setup_metrics()
         app.add_routes(routes=routes.bound_routes())
 
         self.runner = aiohttp.web.AppRunner(
@@ -184,39 +195,6 @@ class HttpServerDashboardHead:
         for r in dump_routes:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))
-
-    def _setup_metrics(self):
-        metrics = DashboardPrometheusMetrics()
-
-        # Setup prometheus metrics export server
-        _initialize_internal_kv(self.gcs_client)
-        address = f"{self.head_node_ip}:{DASHBOARD_METRIC_PORT}"
-        _internal_kv_put("DashboardMetricsAddress", address, True)
-        if prometheus_client:
-            try:
-                logger.info(
-                    "Starting dashboard metrics server on port {}".format(
-                        DASHBOARD_METRIC_PORT
-                    )
-                )
-                kwargs = (
-                    {"addr": "127.0.0.1"} if self.head_node_ip == "127.0.0.1" else {}
-                )
-                prometheus_client.start_http_server(
-                    port=DASHBOARD_METRIC_PORT,
-                    registry=metrics.registry,
-                    **kwargs,
-                )
-            except Exception:
-                logger.exception(
-                    "An exception occurred while starting the metrics server."
-                )
-        elif not prometheus_client:
-            logger.warning(
-                "`prometheus_client` not found, so metrics will not be exported."
-            )
-
-        return metrics
 
     async def cleanup(self):
         # Wait for finish signal.
