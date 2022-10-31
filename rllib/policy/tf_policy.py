@@ -67,7 +67,7 @@ class TFPolicy(Policy):
     """
 
     # In order to create tf_policies from checkpoints, this class needs to separate
-    # variables into their own scopes. Normally, we would do this in the modul
+    # variables into their own scopes. Normally, we would do this in the model
     # catalog, but since Policy.from_state() can be called anywhere, we need to
     # keep track of it here to not break the from_state API.
     tf_var_creation_scope_counter = 0
@@ -76,7 +76,7 @@ class TFPolicy(Policy):
     def next_tf_var_scope_name():
         # Tracks multiple instances that are spawned from this policy via .from_state()
         TFPolicy.tf_var_creation_scope_counter += 1
-        return "tf_policy_var_scope_" + str(TFPolicy.tf_var_creation_scope_counter)
+        return f"var_scope_{TFPolicy.tf_var_creation_scope_counter}"
 
     @DeveloperAPI
     def __init__(
