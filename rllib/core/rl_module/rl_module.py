@@ -1,15 +1,22 @@
 import abc
-from typing import Mapping, Any
+from typing import Mapping, Any, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
+    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
 from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
 from ray.rllib.models.distributions import Distribution
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
+
+ModuleID = str
 
 
 @ExperimentalAPI
@@ -70,8 +77,8 @@ class RLModule(abc.ABC):
     """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: Mapping[str, Any]) -> None:
-        self.config = config
+    def __init__(self, config: Mapping[str, Any] = None) -> None:
+        self.config = config or {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> ModelSpec:
@@ -187,8 +194,20 @@ class RLModule(abc.ABC):
 
     @abc.abstractmethod
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
+        """Reserved API, Makes the module distributed."""
 
     @abc.abstractmethod
     def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
+        """Reserved API, Returns True if the module is distributed."""
+
+    def as_multi_agent(self) -> "MultiAgentRLModule":
+        """Returns a multi-agent wrapper around this module."""
+        return self.get_multi_agent_class()({DEFAULT_POLICY_ID: self})
+
+    @classmethod
+    @OverrideToImplementCustomLogic
+    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
+        """Returns the multi-agent wrapper class for this module."""
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        return MultiAgentRLModule
