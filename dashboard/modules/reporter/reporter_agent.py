@@ -465,10 +465,13 @@ class ReporterAgent(
             return []
         else:
             workers = set(raylet_proc.children())
+            # Must keep the original self._workers in case of psutil.cpu_percent is 0
+            # See more: https://github.com/ray-project/ray/issues/29848
+            self._workers.intersection_update(workers)
+            self._workers.update(workers)
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
-            workers.discard(psutil.Process())
-            self._workers = workers
+            self._workers.discard(psutil.Process())
             return [
                 w.as_dict(
                     attrs=[
