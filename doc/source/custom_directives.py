@@ -118,6 +118,8 @@ MOCK_MODULES = [
     "composer.loggers.logger_destination",
     "composer.core",
     "composer.core.state",
+    "composer.callbacks",
+    "composer.callbacks.checkpoint_saver",
 ]
 
 
