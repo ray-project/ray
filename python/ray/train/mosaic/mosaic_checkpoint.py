@@ -10,6 +10,7 @@ class MosaicCheckpoint(Checkpoint):
     Loading the saved model via ``MosaicCheckpoint`` involves removing the ``module``
     prefix added via PyTorch DDP.
     """
+
     def get_model(
         self,
         model: torch.nn.Module,
