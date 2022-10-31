@@ -35,11 +35,12 @@ class SlateQConfig(AlgorithmConfig):
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
@@ -51,11 +52,11 @@ class SlateQConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "SlateQ",
-        ...     stop={"episode_reward_mean": 160.0},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 160.0}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -90,9 +91,11 @@ class SlateQConfig(AlgorithmConfig):
             "replay_sequence_length": 1,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 20000,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 20000
 
         # Override some of AlgorithmConfig's default values with SlateQ-specific values.
         self.exploration_config = {
@@ -109,7 +112,6 @@ class SlateQConfig(AlgorithmConfig):
         }
         # Switch to greedy actions in evaluation workers.
         self.evaluation_config = {"explore": False}
-        self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
@@ -117,6 +119,8 @@ class SlateQConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation(evaluation_config={"explore": False})
         # __sphinx_doc_end__
         # fmt: on
 
@@ -139,6 +143,7 @@ class SlateQConfig(AlgorithmConfig):
         rmsprop_epsilon: Optional[float] = None,
         grad_clip: Optional[float] = None,
         n_step: Optional[int] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SlateQConfig":
         """Sets the training related configuration.
@@ -179,7 +184,7 @@ class SlateQConfig(AlgorithmConfig):
         super().training(**kwargs)
 
         if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+            self.replay_buffer_config.update(replay_buffer_config)
         if fcnet_hiddens_per_candidate is not None:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
         if target_network_update_freq is not None:
@@ -202,6 +207,10 @@ class SlateQConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if n_step is not None:
             self.n_step = n_step
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 
@@ -221,8 +230,8 @@ def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SlateQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SlateQConfig()
 
     @override(DQN)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -240,7 +249,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

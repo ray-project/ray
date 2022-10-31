@@ -33,8 +33,8 @@ def gen_dataset_func() -> Dataset:
 
 
 def test_grid_search():
-    ds1 = gen_dataset_func().experimental_lazy().map(lambda x: x)
-    ds2 = gen_dataset_func().experimental_lazy().map(lambda x: x)
+    ds1 = gen_dataset_func().lazy().map(lambda x: x)
+    ds2 = gen_dataset_func().lazy().map(lambda x: x)
     assert not ds1._plan._has_final_stage_snapshot()
     assert not ds2._plan._has_final_stage_snapshot()
     param_space = {"train_dataset": tune.grid_search([ds1, ds2])}
@@ -46,8 +46,8 @@ def test_grid_search():
 
 
 def test_choice():
-    ds1 = gen_dataset_func().experimental_lazy().map(lambda x: x)
-    ds2 = gen_dataset_func().experimental_lazy().map(lambda x: x)
+    ds1 = gen_dataset_func().lazy().map(lambda x: x)
+    ds2 = gen_dataset_func().lazy().map(lambda x: x)
     assert not ds1._plan._has_final_stage_snapshot()
     assert not ds2._plan._has_final_stage_snapshot()
     param_space = {"train_dataset": tune.choice([ds1, ds2])}

@@ -7,6 +7,7 @@ import inspect
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -78,6 +79,48 @@ def get_user_temp_dir():
 
 def get_ray_temp_dir():
     return os.path.join(get_user_temp_dir(), "ray")
+
+
+def get_ray_address_file(temp_dir: Optional[str]):
+    if temp_dir is None:
+        temp_dir = get_ray_temp_dir()
+    return os.path.join(temp_dir, "ray_current_cluster")
+
+
+def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        with open(address_file, "r") as f:
+            prev_address = f.read()
+        if prev_address == ray_address:
+            return
+
+        logger.info(
+            f"Overwriting previous Ray address ({prev_address}). "
+            "Running ray.init() on this node will now connect to the new "
+            f"instance at {ray_address}. To override this behavior, pass "
+            f"address={prev_address} to ray.init()."
+        )
+
+    with open(address_file, "w+") as f:
+        f.write(ray_address)
+
+
+def reset_ray_address(temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        try:
+            os.remove(address_file)
+        except OSError:
+            pass
+
+
+def read_ray_address(temp_dir: Optional[str] = None) -> str:
+    address_file = get_ray_address_file(temp_dir)
+    if not os.path.exists(address_file):
+        return None
+    with open(address_file, "r") as f:
+        return f.read().strip()
 
 
 def _random_string():
@@ -352,11 +395,9 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = ray_constants.to_memory_units(memory, round_up=True)
+        resources["memory"] = memory
     if object_store_memory is not None:
-        resources["object_store_memory"] = ray_constants.to_memory_units(
-            object_store_memory, round_up=True
-        )
+        resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
         resources[
             f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
@@ -577,6 +618,48 @@ def get_num_cpus(
     return cpu_count
 
 
+# TODO(clarng): merge code with c++
+def get_cgroupv1_used_memory(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+        cache_bytes = -1
+        rss_bytes = -1
+        inactive_file_bytes = -1
+        working_set = -1
+        for line in lines:
+            if "total_rss " in line:
+                rss_bytes = int(line.split()[1])
+            elif "cache " in line:
+                cache_bytes = int(line.split()[1])
+            elif "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
+            working_set = rss_bytes + cache_bytes - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
+def get_cgroupv2_used_memory(stat_file, usage_file):
+    # Uses same calculation as libcontainer, that is:
+    # memory.current - memory.stat[inactive_file]
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+    inactive_file_bytes = -1
+    current_usage = -1
+    with open(usage_file, "r") as f:
+        current_usage = int(f.read().strip())
+    with open(stat_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if current_usage >= 0 and inactive_file_bytes >= 0:
+            working_set = current_usage - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
 def get_used_memory():
     """Return the currently used system memory in bytes
 
@@ -587,25 +670,22 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
+    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
-        with open(memory_usage_filename, "r") as f:
-            docker_usage = int(f.read())
-    elif os.path.exists(memory_usage_filename_v2):
-        with open(memory_usage_filename_v2, "r") as f:
-            docker_usage = int(f.read())
-
-    # Use psutil if it is available.
-    psutil_memory_in_bytes = psutil.virtual_memory().used
+        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_usage, psutil_memory_in_bytes)
-
-    return psutil_memory_in_bytes
+        return docker_usage
+    return psutil.virtual_memory().used
 
 
 def estimate_available_memory():
@@ -1005,6 +1085,18 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def get_ray_doc_version():
+    """Get the docs.ray.io version corresponding to the ray.__version__."""
+    # The ray.__version__ can be official Ray release (such as 1.12.0), or
+    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # to the master doc version at docs.ray.io.
+    if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
+        return "master"
+    # For the former (official Ray release), we have corresponding doc version
+    # released as well.
+    return f"releases-{ray.__version__}"
+
+
 # Used to only print a deprecation warning once for a given function if we
 # don't wish to spam the caller.
 _PRINTED_WARNING = set()
@@ -1017,6 +1109,7 @@ def deprecated(
     removal_release: Optional[str] = None,
     removal_date: Optional[str] = None,
     warn_once: bool = True,
+    stacklevel=2,
 ):
     """
     Creates a decorator for marking functions as deprecated. The decorator
@@ -1036,6 +1129,7 @@ def deprecated(
         warn_once: If true, the deprecation warning will only be logged
             on the first invocation. Otherwise, the deprecation warning will
             be logged on every invocation. Defaults to True.
+        stacklevel: adjust the warnings stacklevel to trace the source call
 
     Returns:
         A decorator to be used for wrapping deprecated functions.
@@ -1066,7 +1160,7 @@ def deprecated(
                     )
                     + (f" {instructions}" if instructions is not None else "")
                 )
-                warnings.warn(msg)
+                warnings.warn(msg, stacklevel=stacklevel)
             return func(*args, **kwargs)
 
         return new_func
@@ -1255,7 +1349,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
             time.sleep(2)
     if result is None:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1289,7 +1383,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1394,7 +1488,10 @@ def get_runtime_env_info(
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
-    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+    if runtime_env.working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.working_dir_uri()
+    if len(runtime_env.py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[:] = runtime_env.py_modules_uris()
 
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.
@@ -1454,3 +1551,30 @@ def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
         # if runtime_env is None to know whether or not to fall back to the
         # runtime_env specified in the @ray.remote decorator.
         return None
+
+
+def split_address(address: str) -> Tuple[str, str]:
+    """Splits address into a module string (scheme) and an inner_address.
+
+    We use a custom splitting function instead of urllib because
+    PEP allows "underscores" in a module names, while URL schemes do not
+    allow them.
+
+    Args:
+        address: The address to split.
+
+    Returns:
+        A tuple of (scheme, inner_address).
+
+    Raises:
+        ValueError: If the address does not contain '://'.
+
+    Examples:
+        >>> split_address("ray://my_cluster")
+        ("ray", "my_cluster")
+    """
+    if "://" not in address:
+        raise ValueError("Address must contain '://'")
+
+    module_string, inner_address = address.split("://", maxsplit=1)
+    return (module_string, inner_address)

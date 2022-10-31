@@ -7,41 +7,110 @@ import shutil
 import tarfile
 import tempfile
 import traceback
+import uuid
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
 
 import ray
 from ray import cloudpickle as pickle
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,
+    read_file_from_uri,
     upload_to_uri,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.ml_utils.filelock import TempFileLock
+from ray.air.constants import PREPROCESSOR_KEY
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
+
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_CHECKPOINT_METADATA_FILE_NAME = ".metadata.pkl"
 _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
-class Checkpoint:
-    """Ray ML Checkpoint.
+@dataclass
+class _CheckpointMetadata:
+    """Metadata about a checkpoint.
 
-    This implementation provides methods to translate between
-    different checkpoint storage locations: Local storage, external storage
-    (e.g. cloud storage), and data dict representations.
+    Attributes:
+        checkpoint_type: The checkpoint class. For example, ``TorchCheckpoint``.
+        checkpoint_state: A dictionary that maps object attributes to their values. When
+            you load a serialized checkpoint, restore these values.
+    """
+
+    checkpoint_type: Type["Checkpoint"]
+    checkpoint_state: Dict[str, Any]
+
+
+@PublicAPI(stability="beta")
+class Checkpoint:
+    """Ray AIR Checkpoint.
+
+    An AIR Checkpoint are a common interface for accessing models across
+    different AIR components and libraries. A Checkpoint can have its data
+    represented in one of three ways:
+
+    - as a directory on local (on-disk) storage
+    - as a directory on an external storage (e.g., cloud storage)
+    - as an in-memory dictionary
+
+    The Checkpoint object also has methods to translate between different checkpoint
+    storage locations. These storage representations provide flexibility in
+    distributed environments, where you may want to recreate an instance of
+    the same model on multiple nodes or across different Ray clusters.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray.air.checkpoint import Checkpoint
+
+        # Create checkpoint data dict
+        checkpoint_data = {"data": 123}
+
+        # Create checkpoint object from data
+        checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+        # Save checkpoint to a directory on the file system.
+        path = checkpoint.to_directory()
+
+        # This path can then be passed around,
+        # # e.g. to a different function or a different script.
+        # You can also use `checkpoint.to_uri/from_uri` to
+        # read from/write to cloud storage
+
+        # In another function or script, recover Checkpoint object from path
+        checkpoint = Checkpoint.from_directory(path)
+
+        # Convert into dictionary again
+        recovered_data = checkpoint.to_dict()
+
+        # It is guaranteed that the original data has been recovered
+        assert recovered_data == checkpoint_data
+
+    Checkpoints can be used to instantiate a :class:`Predictor`,
+    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
     (e.g. ``Checkpoint.from_directory()``).
+
+    **Other implementation notes:**
 
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
@@ -49,8 +118,9 @@ class Checkpoint:
     There are no guarantees made about compatibility of intermediate
     representations.
 
-    New data can be added to a Checkpoint during conversion. Consider the
-    following conversion: directory --> dict (adding dict["foo"] = "bar")
+    New data can be added to a Checkpoint
+    during conversion. Consider the following conversion:
+    directory --> dict (adding dict["foo"] = "bar")
     --> directory --> dict (expect to see dict["foo"] = "bar"). Note that
     the second directory will contain pickle files with the serialized additional
     field data in them.
@@ -60,85 +130,29 @@ class Checkpoint:
     dict representation will contain an extra field with the serialized additional
     files in it.
 
-    Examples:
+    Checkpoints can be pickled and sent to remote processes.
+    Please note that checkpoints pointing to local directories will be
+    pickled as data representations, so the full checkpoint data will be
+    contained in the checkpoint object. If you want to avoid this,
+    consider passing only the checkpoint directory to the remote task
+    and re-construct your checkpoint object in that function. Note that
+    this will only work if the "remote" task is scheduled on the
+    same node or a node that also has access to the local data path (e.g.
+    on a shared file system like NFS).
 
-        Example for an arbitrary data checkpoint:
-
-        .. code-block:: python
-
-            from ray.air.checkpoint import Checkpoint
-
-            # Create checkpoint data dict
-            checkpoint_data = {"data": 123}
-
-            # Create checkpoint object from data
-            checkpoint = Checkpoint.from_dict(checkpoint_data)
-
-            # Save checkpoint to temporary location
-            path = checkpoint.to_directory()
-
-            # This path can then be passed around, e.g. to a different function
-
-            # At some other location, recover Checkpoint object from path
-            checkpoint = Checkpoint.from_directory(path)
-
-            # Convert into dictionary again
-            recovered_data = checkpoint.to_dict()
-
-            # It is guaranteed that the original data has been recovered
-            assert recovered_data == checkpoint_data
-
-        Example using MLflow for saving and loading a classifier:
-
-        .. code-block:: python
-
-            from ray.air.checkpoint import Checkpoint
-            from sklearn.ensemble import RandomForestClassifier
-            import mlflow.sklearn
-
-            # Create an sklearn classifier
-            clf = RandomForestClassifier(max_depth=7, random_state=0)
-            # ... e.g. train model with clf.fit()
-            # Save model using MLflow
-            mlflow.sklearn.save_model(clf, "model_directory")
-
-            # Create checkpoint object from path
-            checkpoint = Checkpoint.from_directory("model_directory")
-
-            # Convert into dictionary
-            checkpoint_dict = checkpoint.to_dict()
-
-            # This dict can then be passed around, e.g. to a different function
-
-            # At some other location, recover checkpoint object from dict
-            checkpoint = Checkpoint.from_dict(checkpoint_dict)
-
-            # Convert into a directory again
-            checkpoint.to_directory("other_directory")
-
-            # We can now use MLflow to re-load the model
-            clf = mlflow.sklearn.load_model("other_directory")
-
-            # It is guaranteed that the original data was recovered
-            assert isinstance(clf, RandomForestClassifier)
-
-        Checkpoints can be pickled and sent to remote processes.
-        Please note that checkpoints pointing to local directories will be
-        pickled as data representations, so the full checkpoint data will be
-        contained in the checkpoint object. If you want to avoid this,
-        consider passing only the checkpoint directory to the remote task
-        and re-construct your checkpoint object in that function. Note that
-        this will only work if the "remote" task is scheduled on the
-        same node or a node that also has access to the local data path (e.g.
-        on a shared file system like NFS).
-
-        Checkpoints pointing to object store references will keep the
-        object reference in tact - this means that these checkpoints cannot
-        be properly deserialized on other Ray clusters or outside a Ray
-        cluster. If you need persistence across clusters, use the ``to_uri()``
-        or ``to_directory()`` methods to persist your checkpoints to disk.
+    Checkpoints pointing to object store references will keep the
+    object reference in tact - this means that these checkpoints cannot
+    be properly deserialized on other Ray clusters or outside a Ray
+    cluster. If you need persistence across clusters, use the ``to_uri()``
+    or ``to_directory()`` methods to persist your checkpoints to disk.
 
     """
+
+    # A list of object attributes to persist. For example, if
+    # `_SERIALIZED_ATTRS = ("spam",)`, then the value of `"spam"` is serialized with
+    # the checkpoint data. When a user constructs a checkpoint from the serialized data,
+    # the value of `"spam"` is restored.
+    _SERIALIZED_ATTRS = ()
 
     @DeveloperAPI
     def __init__(
@@ -202,6 +216,54 @@ class Checkpoint:
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
+        self._uuid = uuid.uuid4()
+
+    def __repr__(self):
+        parameter, argument = self.get_internal_representation()
+        return f"{self.__class__.__name__}({parameter}={argument})"
+
+    @property
+    def _metadata(self) -> _CheckpointMetadata:
+        return _CheckpointMetadata(
+            checkpoint_type=self.__class__,
+            checkpoint_state={
+                attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
+            },
+        )
+
+    @property
+    def uri(self) -> Optional[str]:
+        """Return checkpoint URI, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local ``file://`` URI if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None. Users can then choose to
+        persist to cloud with
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.uri == None
+
+        Returns:
+            Checkpoint URI if this URI is reachable from the current node (e.g.
+            cloud storage or locally available file URI).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path and Path(self._local_path).exists():
+            return "file://" + self._local_path
+
+        return None
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
@@ -241,7 +303,16 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return cls(data_dict=data)
+        state = {}
+        if _METADATA_KEY in data:
+            metadata = data[_METADATA_KEY]
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
+
+        checkpoint = cls(data_dict=data)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
@@ -251,10 +322,10 @@ class Checkpoint:
         """
         if self._data_dict:
             # If the checkpoint data is already a dict, return
-            return self._data_dict
+            checkpoint_data = self._data_dict
         elif self._obj_ref:
             # If the checkpoint data is an object reference, resolve
-            return ray.get(self._obj_ref)
+            checkpoint_data = ray.get(self._obj_ref)
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
             with self.as_directory() as local_path:
@@ -271,7 +342,12 @@ class Checkpoint:
                     # _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
                     additional_files = {}
                     for file_or_dir in os.listdir(local_path):
-                        if file_or_dir in [".", "..", _DICT_CHECKPOINT_FILE_NAME]:
+                        if file_or_dir in [
+                            ".",
+                            "..",
+                            _DICT_CHECKPOINT_FILE_NAME,
+                            _CHECKPOINT_METADATA_FILE_NAME,
+                        ]:
                             continue
 
                         additional_files[file_or_dir] = _pack(
@@ -303,11 +379,17 @@ class Checkpoint:
                         _FS_CHECKPOINT_KEY: data,
                     }
                     checkpoint_data.update(metadata)
-                return checkpoint_data
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
+        checkpoint_data[_METADATA_KEY] = self._metadata
+        return checkpoint_data
+
     @classmethod
+    @Deprecated(
+        message="To restore a checkpoint from a remote object ref, call "
+        "`ray.get(obj_ref)` instead."
+    )
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
 
@@ -317,14 +399,30 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        warnings.warn(
+            "`from_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To restore a Checkpoint from a remote object ref, call "
+            "`ray.get(obj_ref)` instead.",
+            DeprecationWarning,
+        )
         return cls(obj_ref=obj_ref)
 
+    @Deprecated(
+        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
+        "instead of `ckpt.to_object_ref()`."
+    )
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
 
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
+        warnings.warn(
+            "`to_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To store the checkpoint in the Ray object store, call "
+            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
+            DeprecationWarning,
+        )
         if self._obj_ref:
             return self._obj_ref
         else:
@@ -342,33 +440,71 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return cls(local_path=path)
+        state = {}
+
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        if os.path.exists(checkpoint_metadata_path):
+            with open(checkpoint_metadata_path, "rb") as file:
+                metadata = pickle.load(file)
+                cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+                state = metadata.checkpoint_state
+
+        checkpoint = cls(local_path=path)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
+
+    @classmethod
+    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+
+        This method can be used to create a framework-specific checkpoint from a
+        generic :py:class:`Checkpoint` object.
+
+        Examples:
+            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> model = checkpoint.get_model()  # doctest: +SKIP
+            Linear(in_features=1, out_features=1, bias=True)
+        """
+        if type(other) is cls:
+            return other
+
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
-        if self._obj_ref:
-            tmp_dir_path = tempfile.gettempdir()
-            checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._obj_ref.hex()
-            if platform.system() == "Windows":
-                # Max path on Windows is 260 chars, -1 for joining \
-                # Also leave a little for the del lock
-                del_lock_name = _get_del_lock_path("")
-                checkpoint_dir_name = (
-                    _CHECKPOINT_DIR_PREFIX
-                    + self._obj_ref.hex()[
-                        -259
-                        + len(_CHECKPOINT_DIR_PREFIX)
-                        + len(tmp_dir_path)
-                        + len(del_lock_name) :
-                    ]
+        tmp_dir_path = tempfile.gettempdir()
+        checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._uuid.hex
+        if platform.system() == "Windows":
+            # Max path on Windows is 260 chars, -1 for joining \
+            # Also leave a little for the del lock
+            del_lock_name = _get_del_lock_path("")
+            checkpoint_dir_name = (
+                _CHECKPOINT_DIR_PREFIX
+                + self._uuid.hex[
+                    -259
+                    + len(_CHECKPOINT_DIR_PREFIX)
+                    + len(tmp_dir_path)
+                    + len(del_lock_name) :
+                ]
+            )
+            if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+                raise RuntimeError(
+                    "Couldn't create checkpoint directory due to length "
+                    "constraints. Try specifing a shorter checkpoint path."
                 )
-                if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
-                    raise RuntimeError(
-                        "Couldn't create checkpoint directory due to length "
-                        "constraints. Try specifing a shorter checkpoint path."
-                    )
-            return os.path.join(tmp_dir_path, checkpoint_dir_name)
-        return _temporary_checkpoint_dir()
+        return os.path.join(tmp_dir_path, checkpoint_dir_name)
+
+    def _save_checkpoint_metadata_in_directory(self, path: str) -> None:
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        with open(checkpoint_metadata_path, "wb") as file:
+            pickle.dump(self._metadata, file)
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
@@ -415,6 +551,8 @@ class Checkpoint:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: {self._uri}"
                 )
+
+        self._save_checkpoint_metadata_in_directory(path)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -463,18 +601,12 @@ class Checkpoint:
         the existing path. If it is not, it will create a temporary directory,
         which will be deleted after the context is exited.
 
-        If the checkpoint has been created from an object reference, the directory name
-        will be constant and equal to the object reference ID. This allows for multiple
-        processes to use the same files for improved performance. The directory
-        will be deleted after exiting the context only if no other processes are using
-        it.
-        In any other case, a new temporary directory will be created with each call
-        to ``as_directory``.
-
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it might get deleted when exiting the context.
 
         Example:
+
+        .. code-block:: python
 
             with checkpoint.as_directory() as checkpoint_dir:
                 # Do some read-only processing of files within checkpoint_dir
@@ -531,7 +663,20 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return cls(uri=uri)
+        state = {}
+        try:
+            checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
+            metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
+        except Exception:
+            pass
+        else:
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
+
+        checkpoint = cls(uri=uri)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
 
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
@@ -554,6 +699,12 @@ class Checkpoint:
             )
 
         with self.as_directory() as local_path:
+            checkpoint_metadata_path = os.path.join(
+                local_path, _CHECKPOINT_METADATA_FILE_NAME
+            )
+            with open(checkpoint_metadata_path, "wb") as file:
+                pickle.dump(self._metadata, file)
+
             upload_to_uri(local_path=local_path, uri=uri)
 
         return uri
@@ -600,6 +751,47 @@ class Checkpoint:
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    def __fspath__(self):
+        raise TypeError(
+            "You cannot use `air.Checkpoint` objects directly as paths. "
+            "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
+        )
+
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
+        """Return the saved preprocessor, if one exists."""
+
+        # The preprocessor will either be stored in an in-memory dict or
+        # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
+
+        # First try converting to dictionary.
+        checkpoint_dict = self.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+
+        if preprocessor is None:
+            # Fallback to reading from directory.
+            with self.as_directory() as checkpoint_path:
+                preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+        return preprocessor
+
+    @classmethod
+    def _get_checkpoint_type(
+        cls, serialized_cls: Type["Checkpoint"]
+    ) -> Type["Checkpoint"]:
+        """Return the class that's a subclass of the other class, if one exists.
+
+        Raises:
+            ValueError: If neither class is a subclass of the other.
+        """
+        if issubclass(cls, serialized_cls):
+            return cls
+        if issubclass(serialized_cls, cls):
+            return serialized_cls
+        raise ValueError(
+            f"You're trying to load a serialized `{serialized_cls.__name__}`, but "
+            f"`{serialized_cls.__name__}` isn't compatible with `{cls.__name__}`."
+        )
+
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
@@ -617,11 +809,6 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
     if not isinstance(path, str) or not is_non_local_path_uri(path):
         return None
     return path
-
-
-def _temporary_checkpoint_dir() -> str:
-    """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix=_CHECKPOINT_DIR_PREFIX)
 
 
 def _pack(path: str) -> bytes:

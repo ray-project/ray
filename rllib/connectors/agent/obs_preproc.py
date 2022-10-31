@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -30,15 +30,23 @@ class ObsPreprocessorConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
 
-        self._preprocessor = get_preprocessor(ctx.observation_space)(
-            ctx.observation_space, ctx.config.get("model", {})
+        if hasattr(ctx.observation_space, "original_space"):
+            # ctx.observation_space is the space this Policy deals with.
+            # We need to preprocess data from the original observation space here.
+            obs_space = ctx.observation_space.original_space
+        else:
+            obs_space = ctx.observation_space
+
+        self._preprocessor = get_preprocessor(obs_space)(
+            obs_space, ctx.config.get("model", {})
         )
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
+        assert type(d) == dict, (
+            "Single agent data must be of type Dict[str, TensorStructType] but is of "
+            "type {}".format(type(d))
+        )
 
         if SampleBatch.OBS in d:
             d[SampleBatch.OBS] = self._preprocessor.transform(d[SampleBatch.OBS])
@@ -49,12 +57,12 @@ class ObsPreprocessorConnector(AgentConnector):
 
         return ac_data
 
-    def to_config(self):
-        return ObsPreprocessorConnector.__name__, {}
+    def to_state(self):
+        return ObsPreprocessorConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
-        return ObsPreprocessorConnector(ctx, **params)
+    def from_state(ctx: ConnectorContext, params: Any):
+        return ObsPreprocessorConnector(ctx)
 
 
 register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)

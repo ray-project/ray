@@ -218,6 +218,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
     cdef cppclass CBuffer "ray::Buffer":
         uint8_t *Data() const
         size_t Size() const
+        c_bool IsPlasmaBuffer() const
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
@@ -288,7 +289,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_string &name,
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            c_bool is_detached
+            c_bool is_detached,
+            double max_cpu_fraction_per_node
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

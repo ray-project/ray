@@ -85,6 +85,12 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
+    if algorithm.reward_estimators:
+        info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
+        for name, estimator in algorithm.reward_estimators.items():
+            info[DEFAULT_POLICY_ID]["off_policy_estimation"][name] = estimator.train(
+                train_batch
+            )
     return info
 
 
@@ -134,7 +140,10 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         num_loaded_samples = {}
         for policy_id, batch in train_batch.policy_batches.items():
             # Not a policy-to-train.
-            if not local_worker.is_policy_to_train(policy_id, train_batch):
+            if (
+                local_worker.is_policy_to_train is not None
+                and not local_worker.is_policy_to_train(policy_id, train_batch)
+            ):
                 continue
 
             # Decompress SampleBatch, in case some columns are compressed.
@@ -183,6 +192,13 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     #  better transparency.
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+
+    if algorithm.reward_estimators:
+        learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
+        for name, estimator in algorithm.reward_estimators.items():
+            learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"][
+                name
+            ] = estimator.train(train_batch)
 
     return learner_info
 
@@ -261,7 +277,7 @@ class MultiGPUTrainOneStep:
         if framework != DEPRECATED_VALUE or shuffle_sequences != DEPRECATED_VALUE:
             deprecation_warning(
                 old="MultiGPUTrainOneStep(framework=..., shuffle_sequences=...)",
-                error=False,
+                error=True,
             )
 
         self.workers = workers
@@ -302,7 +318,10 @@ class MultiGPUTrainOneStep:
             num_loaded_samples = {}
             for policy_id, batch in samples.policy_batches.items():
                 # Not a policy-to-train.
-                if not self.local_worker.is_policy_to_train(policy_id, samples):
+                if (
+                    self.local_worker.is_policy_to_train is not None
+                    and not self.local_worker.is_policy_to_train(policy_id, samples)
+                ):
                     continue
 
                 # Decompress SampleBatch, in case some columns are compressed.

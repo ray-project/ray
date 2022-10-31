@@ -7,7 +7,7 @@ import sys
 import time
 
 import numpy as np
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.search.sigopt import SigOptSearch
 
@@ -67,13 +67,19 @@ if __name__ == "__main__":
         mode=["max", "min", "obs"],
     )
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="my_exp",
-        search_alg=algo,
-        num_samples=4 if args.smoke_test else 100,
-        config={"total_weight": 1},
+        run_config=air.RunConfig(
+            name="my_exp",
+        ),
+        tune_config=tune.TuneConfig(
+            search_alg=algo,
+            num_samples=4 if args.smoke_test else 100,
+        ),
+        param_space={"total_weight": 1},
     )
+    results = tuner.fit()
     print(
-        "Best hyperparameters found were: ", analysis.get_best_config("average", "min")
+        "Best hyperparameters found were: ",
+        results.get_best_result("average", "min").config,
     )

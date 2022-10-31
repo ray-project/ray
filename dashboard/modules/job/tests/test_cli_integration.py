@@ -19,12 +19,13 @@ def set_env_var(key: str, val: Optional[str] = None):
     elif key in os.environ:
         del os.environ[key]
 
-    yield
-
-    if key in os.environ:
-        del os.environ[key]
-    if old_val is not None:
-        os.environ[key] = old_val
+    try:
+        yield
+    finally:
+        if key in os.environ:
+            del os.environ[key]
+        if old_val is not None:
+            os.environ[key] = old_val
 
 
 @pytest.fixture
@@ -130,6 +131,24 @@ class TestJobSubmit:
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
+    def test_submit_with_logs_instant_job(self, ray_start_stop):
+        """Should exit immediately and print logs even if job returns instantly."""
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
+        assert "hello" in stdout
+
+
+class TestRuntimeEnv:
+    def test_bad_runtime_env(self, ray_start_stop):
+        """Should fail with helpful error if runtime env setup fails."""
+        stdout, _ = _run_cmd(
+            'ray job submit --runtime-env-json=\'{"pip": '
+            '["does-not-exist"]}\' -- echo hi',
+        )
+        assert "Tailing logs until the job exits" in stdout
+        assert "runtime_env setup failed" in stdout
+        assert "No matching distribution found for does-not-exist" in stdout
+
 
 class TestJobStop:
     def test_basic_stop(self, ray_start_stop):
@@ -156,7 +175,7 @@ class TestJobStop:
 class TestJobList:
     def test_empty(self, ray_start_stop):
         stdout, _ = _run_cmd("ray job list")
-        assert "{}" in stdout
+        assert "[]" in stdout
 
     def test_list(self, ray_start_stop):
         _run_cmd("ray job submit --job-id='hello_id' -- echo hello")
@@ -167,7 +186,6 @@ class TestJobList:
             f"--runtime-env-json='{json.dumps(runtime_env)}' -- echo hi"
         )
         stdout, _ = _run_cmd("ray job list")
-        assert "JobInfo" in stdout
         assert "123" in stdout
         assert "hello_id" in stdout
         assert "hi_id" in stdout

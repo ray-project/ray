@@ -20,143 +20,6 @@ py_test(
     deps = [":ml_lib"]
 )
 
-
-py_test(
-    name = "distributed_sage_example",
-    size = "large",
-    main = "examples/pytorch_geometric/distributed_sage_example.py",
-    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
-    tags = ["team:ml", "exclusive", "gpu"],
-    deps = [":ml_lib"],
-    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
-)
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "medium",
-    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "horovod_pytorch_example",
-    size = "medium",
-    srcs = ["examples/horovod/horovod_pytorch_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--num-epochs=1"]
-)
-
-py_test(
-    name = "horovod_tune_example",
-    size = "medium",
-    srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test (
-    name = "huggingface_basic_language_modeling_example",
-    size = "medium",
-    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
-    args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "tensorflow_linear_dataset_example",
-    size = "medium",
-    main = "examples/tf/tensorflow_linear_dataset_example.py",
-    srcs = ["examples/tf/tensorflow_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tensorflow_mnist_example",
-    size = "medium",
-    main = "examples/tf/tensorflow_mnist_example.py",
-    srcs = ["examples/tf/tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-# py_test(
-#     name = "tensorflow_autoencoder_example", # REGRESSION
-#     size = "medium",
-#     main = "examples/tf/tensorflow_autoencoder_example.py",
-#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
-#     tags = ["team:ml", "exclusive"],
-#     deps = [":ml_lib"],
-#     args = ["--smoke-test"]
-# )
-
-py_test(
-    name = "torch_fashion_mnist_example",
-    size = "medium",
-    main = "examples/pytorch/torch_fashion_mnist_example.py",
-    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "torch_fashion_mnist_example_gpu",
-    size = "medium",
-    main = "examples/pytorch/torch_fashion_mnist_example.py",
-    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive", "gpu"],
-    deps = [":ml_lib"],
-    args = ["--use-gpu"]
-)
-
-py_test(
-    name = "torch_linear_dataset_example",
-    size = "medium",
-    main = "examples/pytorch/torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/torch_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "torch_linear_example",
-    size = "medium",
-    main = "examples/pytorch/torch_linear_example.py",
-    srcs = ["examples/pytorch/torch_linear_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_tensorflow_mnist_example",
-    size = "medium",
-    main = "examples/tf/tune_tensorflow_mnist_example.py",
-    srcs = ["examples/tf/tune_tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_torch_linear_dataset_example.py",
-    size = "medium",
-    main = "examples/pytorch/tune_torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/tune_torch_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/tests directory.
 # Covers all tests starting with `test_`.
@@ -180,6 +43,22 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_configs",
+    size = "small",
+    srcs = ["tests/test_configs.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
@@ -189,16 +68,8 @@ py_test(
 
 py_test(
     name = "test_dataset_config",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_dataset_config.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_dataset_utils",
-    size = "small",
-    srcs = ["tests/test_dataset_utils.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -212,9 +83,25 @@ py_test(
 )
 
 py_test(
+    name = "test_mlflow",
+    size = "small",
+    srcs = ["tests/test_mlflow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_remote_storage",
     size = "small",
     srcs = ["tests/test_remote_storage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_changing",
+    size = "large",
+    srcs = ["tests/test_resource_changing.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -227,9 +114,24 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_tracebacks",
+    size = "small",
+    srcs = ["tests/test_tracebacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
     name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+        "//release:__pkg__"
+    ],
 )

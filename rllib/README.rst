@@ -66,7 +66,7 @@ Offline RL:
 - `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
-Model-free On-policy RL (for Games):
+Model-free On-policy RL:
 
 - `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
 - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
@@ -105,7 +105,6 @@ Bandits:
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__
@@ -113,6 +112,7 @@ Multi-agent:
 
 Others:  
 
+- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
 - `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
@@ -126,7 +126,7 @@ Quick First Experiment
 .. code-block:: python
 
     import gym
-    from ray.rllib.algorithms.ppo import PPO
+    from ray.rllib.algorithms.ppo import PPOConfig
 
 
     # Define your problem using python and openAI's gym API:
@@ -177,19 +177,23 @@ Quick First Experiment
             return self.cur_obs, reward, done, {}
 
 
-    # Create an RLlib Algorithm instance to learn how to act in the above
-    # environment.
-    algo = PPO(
-        config={
+    # Create an RLlib Algorithm instance from a PPOConfig to learn how to
+    # act in the above environment.
+    config = (
+        PPOConfig()
+        .environment(
             # Env class to use (here: our gym.Env sub-class from above).
-            "env": ParrotEnv,
+            env=ParrotEnv,
             # Config dict to be passed to our custom env's constructor.
-            "env_config": {
+            env_config={
                 "parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1, ))
             },
-            # Parallelize environment rollouts.
-            "num_workers": 3,
-        })
+        )
+        # Parallelize environment rollouts.
+        .rollouts(num_rollout_workers=3)
+    )
+    # Use the config's `build()` method to construct a PPO object.
+    algo = config.build()
 
     # Train for n iterations and report results (mean episode rewards).
     # Since we have to guess 10 times and the optimal reward is 0.0

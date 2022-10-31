@@ -9,12 +9,16 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.util import (
+    _lazy_import_pyarrow_dataset,
+    _autodetect_parallelism,
+)
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -24,6 +28,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
+    ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -32,13 +37,17 @@ from ray.data.datasource import (
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
+    TextDatasource,
+    TFRecordDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_and_register_arrow_serialization_workaround,
 )
+from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
     import dask
@@ -56,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -75,7 +84,16 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
-    block_size = max(1, len(items) // parallelism)
+
+    detected_parallelism, _ = _autodetect_parallelism(
+        parallelism,
+        ray.util.get_current_placement_group(),
+        DatasetContext.get_current(),
+    )
+    block_size = max(
+        1,
+        len(items) // detected_parallelism,
+    )
 
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
@@ -96,8 +114,9 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_items": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -105,7 +124,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
+def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -130,7 +149,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Dataset[ArrowRow]:
     """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
@@ -164,7 +183,7 @@ def range_arrow(*args, **kwargs):
 
 @PublicAPI
 def range_tensor(
-    n: int, *, shape: Tuple = (1,), parallelism: int = 200
+    n: int, *, shape: Tuple = (1,), parallelism: int = -1
 ) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
@@ -208,7 +227,7 @@ def range_tensor(
 def read_datasource(
     datasource: Datasource[T],
     *,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -217,7 +236,9 @@ def read_datasource(
     Args:
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the available partitioning of the datasource.
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -227,6 +248,7 @@ def read_datasource(
     ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -238,30 +260,46 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        read_tasks = datasource.prepare_read(parallelism, **read_args)
+        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+            datasource, ctx, cur_pg, parallelism, read_args
+        )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        prepare_read = cached_remote_fn(
-            _prepare_read, retry_exceptions=False, num_cpus=0
+        get_read_tasks = cached_remote_fn(
+            _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
-        read_tasks = ray.get(
-            prepare_read.remote(
+
+        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+            get_read_tasks.remote(
                 datasource,
                 ctx,
+                cur_pg,
                 parallelism,
                 _wrap_and_register_arrow_serialization_workaround(read_args),
             )
         )
 
-    if len(read_tasks) < parallelism and (
+    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
+        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+        logger.warning(
+            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+            "larger than the target block size "
+            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+            "out-of-memory errors during processing. Consider reducing the size of "
+            "input files or using `.repartition(n)` to increase the number of "
+            "dataset blocks."
+        )
+    elif len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
-            "The number of blocks in this dataset ({}) limits its parallelism to {} "
-            "concurrent tasks. This is much less than the number of available "
-            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(len(read_tasks), len(read_tasks))
+            f"{WARN_PREFIX} The number of blocks in this dataset ({len(read_tasks)}) "
+            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
+            "This is much less than the number "
+            "of available CPU slots in the cluster. Use `.repartition(n)` to "
+            "increase the number of "
+            "dataset blocks."
         )
 
     if ray_remote_args is None:
@@ -272,12 +310,14 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
+    block_list = LazyBlockList(
+        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+    )
     block_list.compute_first_block()
     block_list.ensure_metadata_for_first_block()
 
     return Dataset(
-        ExecutionPlan(block_list, block_list.stats()),
+        ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         0,
         False,
     )
@@ -289,7 +329,7 @@ def read_parquet(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
@@ -305,10 +345,25 @@ def read_parquet(
         >>> # Read multiple local files.
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
+        >>> # Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float64()),
+        ...           ("sepal.width", pa.float64()),
+        ...           ("petal.length", pa.float64()),
+        ...           ("petal.width", pa.float64()),
+        ...           ("variety", pa.string())]
+        >>> ray.data.read_parquet("example://iris.parquet",
+        ...     schema=pa.schema(fields))
+        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+
+        For further arguments you can pass to pyarrow as a keyword argument, see
+        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
-        filesystem: The filesystem implementation to read from.
+        filesystem: The filesystem implementation to read from. These are specified in
+            https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
@@ -321,7 +376,8 @@ def read_parquet(
             `arr.tobytes()`).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        arrow_parquet_args: Other parquet read options to pass to pyarrow.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow, see
+            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -342,13 +398,98 @@ def read_parquet(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_images(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = ImageDatasource.file_extension_filter(),
+    partitioning: Partitioning = None,
+    size: Optional[Tuple[int, int]] = None,
+    mode: Optional[str] = None,
+):
+    """Read images from the specified paths.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
+        >>> ds = ray.data.read_images(path)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
+
+        If your images are arranged like:
+
+        .. code::
+
+            root/dog/xxx.png
+            root/dog/xxy.png
+
+            root/cat/123.png
+            root/cat/nsdf3.png
+
+        Then you can include the labels by specifying a
+        :class:`~ray.data.datasource.partitioning.Partitioning`.
+
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> root = "example://tiny-imagenet-200/train"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        size: The desired height and width of loaded images. If unspecified, images
+            retain their original shape.
+        mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
+            describing the desired type and depth of pixels. If unspecified, image
+            modes are inferred by
+            `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing tensors that represent the images at
+        the specified paths. For information on working with tensors, read the
+        :ref:`tensor data guide <datasets_tensor_support>`.
+
+    Raises:
+        ValueError: if ``size`` contains non-positive numbers.
+        ValueError: if ``mode`` is unsupported.
+    """  # noqa: E501
+    return read_datasource(
+        ImageDatasource(),
+        paths=paths,
+        filesystem=filesystem,
+        parallelism=parallelism,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        size=size,
+        mode=mode,
+    )
+
+
 @PublicAPI
 def read_parquet_bulk(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
@@ -443,13 +584,14 @@ def read_json(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[
         PathPartitionFilter
     ] = JSONDatasource.file_extension_filter(),
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -465,6 +607,15 @@ def read_json(
         >>> # Read multiple directories.
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        By default, ``read_json`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -482,10 +633,13 @@ def read_json(
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         JSONDatasource(),
         parallelism=parallelism,
@@ -495,6 +649,7 @@ def read_json(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_json_args,
     )
 
@@ -504,16 +659,15 @@ def read_csv(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = CSVDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    r"""Create an Arrow dataset from csv files.
 
     Examples:
         >>> import ray
@@ -526,6 +680,42 @@ def read_csv(
         >>> # Read multiple directories.
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        >>> # Read files that use a different delimiter. For more uses of ParseOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://iris.tsv",
+        ...     parse_options=parse_options)
+
+        >>> # Convert a date column with a custom format from a CSV file.
+        >>> # For more uses of ConvertOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> convert_options = csv.ConvertOptions(
+        ...     timestamp_parsers=["%m/%d/%Y"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://dow_jones_index.csv",
+        ...     convert_options=convert_options)
+
+        By default, ``read_csv`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+
+        By default, ``read_csv`` reads all files from file paths. If you want to filter
+        files by file extensions, set the ``partition_filter`` parameter.
+
+        >>> # Read only *.csv files from multiple directories.
+        >>> from ray.data.datasource import FileExtensionFilter
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"],
+        ...     partition_filter=FileExtensionFilter("csv"))
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -540,13 +730,17 @@ def read_csv(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
-            match "*.csv*".
+            By default, this does not filter out any files.
+            If wishing to filter out all file paths except those whose file extension
+            matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         CSVDatasource(),
         parallelism=parallelism,
@@ -556,6 +750,7 @@ def read_csv(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_csv_args,
     )
 
@@ -568,11 +763,12 @@ def read_text(
     errors: str = "ignore",
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -603,26 +799,25 @@ def read_text(
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
     """
-
-    def to_text(s):
-        lines = s.decode(encoding).split("\n")
-        if drop_empty_lines:
-            lines = [line for line in lines if line.strip() != ""]
-        return lines
-
-    return read_binary_files(
-        paths,
-        filesystem=filesystem,
+    return read_datasource(
+        TextDatasource(),
         parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
         ray_remote_args=ray_remote_args,
-        arrow_open_stream_args=arrow_open_stream_args,
+        open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text, **(ray_remote_args or {}))
+        partitioning=partitioning,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
+    )
 
 
 @PublicAPI
@@ -630,12 +825,13 @@ def read_numpy(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[
         PathPartitionFilter
     ] = NumpyDatasource.file_extension_filter(),
+    partitioning: Partitioning = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -667,6 +863,9 @@ def read_numpy(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.npy*".
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -678,7 +877,84 @@ def read_numpy(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **numpy_load_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_tfrecords(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+) -> Dataset[PandasRow]:
+    """Create a dataset from TFRecord files that contain
+    `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+    messages.
+
+    .. warning::
+        This function exclusively supports ``tf.train.Example`` messages. If a file
+        contains a message that isn't of type ``tf.train.Example``, then this function
+        errors.
+
+    Examples:
+        >>> import os
+        >>> import tempfile
+        >>> import tensorflow as tf
+        >>> features = tf.train.Features(
+        ...     feature={
+        ...         "length": tf.train.Feature(float_list=tf.train.FloatList(value=[5.1])),
+        ...         "width": tf.train.Feature(float_list=tf.train.FloatList(value=[3.5])),
+        ...         "species": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"setosa"])),
+        ...     }
+        ... )
+        >>> example = tf.train.Example(features=features)
+        >>> path = os.path.join(tempfile.gettempdir(), "data.tfrecords")
+        >>> with tf.io.TFRecordWriter(path=path) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        This function reads ``tf.train.Example`` messages into a tabular
+        :class:`~ray.data.Dataset`.
+
+        >>> import ray
+        >>> ds = ray.data.read_tfrecords(path)
+        >>> ds.to_pandas()  # doctest: +SKIP
+           length  width    species
+        0     5.1    3.5  b'setosa'
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files in the dataset.
+        arrow_open_stream_args: Key-word arguments passed to
+            ``pyarrow.fs.FileSystem.open_input_stream``.
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``"*.tfrecords*"``.
+
+    Returns:
+        A :class:`~ray.data.Dataset` that contains the example features.
+
+    Raises:
+        ValueError: If a file contains a message that isn't a ``tf.train.Example``.
+    """  # noqa: E501
+    return read_datasource(
+        TFRecordDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
     )
 
 
@@ -688,11 +964,12 @@ def read_binary_files(
     *,
     include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -721,6 +998,8 @@ def read_binary_files(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -733,9 +1012,9 @@ def read_binary_files(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
-        schema=bytes,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
     )
 
 
@@ -857,8 +1136,9 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
             ExecutionPlan(
-                BlockList(dfs, metadata),
+                BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+                run_by_consumer=False,
             ),
             0,
             False,
@@ -871,8 +1151,9 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -929,8 +1210,9 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -980,8 +1262,9 @@ def from_arrow_refs(
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     return Dataset(
         ExecutionPlan(
-            BlockList(tables, metadata),
+            BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -1072,12 +1355,37 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
     )
 
 
-def _prepare_read(
-    ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
-) -> List[ReadTask]:
+def _get_read_tasks(
+    ds: Datasource,
+    ctx: DatasetContext,
+    cur_pg: Optional[PlacementGroup],
+    parallelism: int,
+    kwargs: dict,
+) -> Tuple[int, int, List[ReadTask]]:
+    """Generates read tasks.
+
+    Args:
+        ds: Datasource to read from.
+        ctx: Dataset config to use.
+        cur_pg: The current placement group, if any.
+        parallelism: The user-requested parallelism, or -1 for autodetection.
+        kwargs: Additional kwargs to pass to the reader.
+
+    Returns:
+        Request parallelism from the datasource, the min safe parallelism to avoid
+        OOM, and the list of read tasks generated.
+    """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
-    return ds.prepare_read(parallelism, **kwargs)
+    reader = ds.create_reader(**kwargs)
+    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+        parallelism, cur_pg, DatasetContext.get_current(), reader
+    )
+    return (
+        requested_parallelism,
+        min_safe_parallelism,
+        reader.get_read_tasks(requested_parallelism),
+    )
 
 
 def _resolve_parquet_args(

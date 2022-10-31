@@ -38,21 +38,26 @@ Here's an example:
     # Add a custom metric column, in addition to the default metrics.
     # Note that this must be a metric that is returned in your training results.
     reporter.add_metric_column("custom_metric")
-    tune.run(my_trainable, progress_reporter=reporter)
+    tuner = tune.Tuner(my_trainable, run_config=air.RunConfig(progress_reporter=reporter))
+    results = tuner.fit()
 
 Extending ``CLIReporter`` lets you control reporting frequency. For example:
 
 .. code-block:: python
+
+    from ray.tune.experiment.trial import Trial
 
     class ExperimentTerminationReporter(CLIReporter):
         def should_report(self, trials, done=False):
             """Reports only on experiment termination."""
             return done
 
-    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
+    tuner = tune.Tuner(my_trainable, run_config=air.RunConfig(progress_reporter=ExperimentTerminationReporter()))
+    results = tuner.fit()
 
     class TrialTerminationReporter(CLIReporter):
         def __init__(self):
+            super(TrialTerminationReporter, self).__init__()
             self.num_terminated = 0
 
         def should_report(self, trials, done=False):
@@ -61,7 +66,8 @@ Extending ``CLIReporter`` lets you control reporting frequency. For example:
             self.num_terminated = len([t for t in trials if t.status == Trial.TERMINATED])
             return self.num_terminated > old_num_terminated
 
-    tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
+    tuner = tune.Tuner(my_trainable, run_config=air.RunConfig(progress_reporter=TrialTerminationReporter()))
+    results = tuner.fit()
 
 The default reporting style can also be overridden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
 
@@ -78,7 +84,8 @@ The default reporting style can also be overridden more broadly by extending the
             print(*sys_info)
             print("\n".join([str(trial) for trial in trials]))
 
-    tune.run(my_trainable, progress_reporter=CustomReporter())
+    tuner = tune.Tuner(my_trainable, run_config=air.RunConfig(progress_reporter=CustomReporter()))
+    results = tuner.fit()
 
 
 CLIReporter

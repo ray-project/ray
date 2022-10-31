@@ -25,7 +25,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
+from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -147,47 +147,84 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if (
-            current_job_config
-            and set(job_config.runtime_env_info.uris)
-            != set(current_job_config.runtime_env_info.uris)
-            and len(job_config.runtime_env_info.uris) > 0
-        ):
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env_info.uris} "
-                f"current one {current_job_config.runtime_env_info.uris}",
+        if current_job_config:
+            job_uris = set(job_config.runtime_env_info.uris.working_dir_uri)
+            job_uris.update(job_config.runtime_env_info.uris.py_modules_uris)
+            current_job_uris = set(
+                current_job_config.runtime_env_info.uris.working_dir_uri
             )
+            current_job_uris.update(
+                current_job_config.runtime_env_info.uris.py_modules_uris
+            )
+            if job_uris != current_job_uris and len(job_uris) > 0:
+                return ray_client_pb2.InitResponse(
+                    ok=False,
+                    msg="Runtime environment doesn't match "
+                    f"request one {job_config.runtime_env_info.uris} "
+                    f"current one {current_job_config.runtime_env_info.uris}",
+                )
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
-        with disable_client_hook():
-            already_exists = ray.experimental.internal_kv._internal_kv_put(
-                request.key, request.value, overwrite=request.overwrite
-            )
+        try:
+            with disable_client_hook():
+                already_exists = ray.experimental.internal_kv._internal_kv_put(
+                    request.key,
+                    request.value,
+                    overwrite=request.overwrite,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            already_exists = False
         return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
-        with disable_client_hook():
-            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        try:
+            with disable_client_hook():
+                value = ray.experimental.internal_kv._internal_kv_get(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            value = b""
         return ray_client_pb2.KVGetResponse(value=value)
 
     @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
-        with disable_client_hook():
-            ray.experimental.internal_kv._internal_kv_del(request.key)
-        return ray_client_pb2.KVDelResponse()
+        try:
+            with disable_client_hook():
+                deleted_num = ray.experimental.internal_kv._internal_kv_del(
+                    request.key,
+                    del_by_prefix=request.del_by_prefix,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            deleted_num = 0
+        return ray_client_pb2.KVDelResponse(deleted_num=deleted_num)
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
-        with disable_client_hook():
-            keys = ray.experimental.internal_kv._internal_kv_list(request.prefix)
+        try:
+            with disable_client_hook():
+                keys = ray.experimental.internal_kv._internal_kv_list(
+                    request.prefix, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            keys = []
         return ray_client_pb2.KVListResponse(keys=keys)
 
     def KVExists(self, request, context=None) -> ray_client_pb2.KVExistsResponse:
-        with disable_client_hook():
-            exists = ray.experimental.internal_kv._internal_kv_exists(request.key)
+        try:
+            with disable_client_hook():
+                exists = ray.experimental.internal_kv._internal_kv_exists(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            exists = False
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ListNamedActors(
@@ -470,13 +507,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(request.data, request.client_ref_id, "", context)
+        return self._put_object(
+            request.data, request.client_ref_id, "", request.owner_id, context
+        )
 
     def _put_object(
         self,
         data: Union[bytes, bytearray],
         client_ref_id: bytes,
         client_id: str,
+        owner_id: bytes,
         context=None,
     ):
         """Put an object in the cluster with ray.put() via gRPC.
@@ -487,12 +527,18 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.
+            owner_id: The owner id of the object.
             context: gRPC context.
         """
         try:
             obj = loads_from_client(data, self)
+
+            if owner_id:
+                owner = self.actor_refs[owner_id]
+            else:
+                owner = None
             with disable_client_hook():
-                objectref = ray.put(obj)
+                objectref = ray.put(obj, _owner=owner)
         except Exception as e:
             logger.exception("Put failed:")
             return ray_client_pb2.PutResponse(
@@ -788,14 +834,12 @@ def create_ray_handler(address, redis_password):
     return ray_connect_handler
 
 
-def try_create_gcs_client(
-    address: Optional[str], redis_password: Optional[str]
-) -> Optional[GcsClient]:
+def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     """
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 
@@ -855,9 +899,7 @@ def main():
 
             try:
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    gcs_client = try_create_gcs_client(
-                        args.address, args.redis_password
-                    )
+                    gcs_client = try_create_gcs_client(args.address)
                     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
                     "ray_client_server",

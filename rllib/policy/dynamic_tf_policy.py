@@ -171,7 +171,7 @@ class DynamicTFPolicy(TFPolicy):
                 assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward", error=True)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -650,7 +650,7 @@ class DynamicTFPolicy(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).
@@ -728,7 +728,10 @@ class DynamicTFPolicy(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
@@ -940,7 +943,7 @@ class TFMultiGPUTowerStack:
             deprecation_warning(
                 old="TFMultiGPUTowerStack(...)",
                 new="TFMultiGPUTowerStack(policy=[Policy])",
-                error=False,
+                error=True,
             )
             self.policy = None
             self.optimizers = optimizer

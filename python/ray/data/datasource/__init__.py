@@ -6,6 +6,7 @@ from ray.data.datasource.datasource import (
     RandomIntRowDatasource,
     RangeDatasource,
     ReadTask,
+    Reader,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -23,6 +24,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
+from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
@@ -32,9 +34,11 @@ from ray.data.datasource.partitioning import (
     PathPartitionEncoder,
     PathPartitionFilter,
     PathPartitionParser,
-    PathPartitionScheme,
+    Partitioning,
 )
+from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
+from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 
 __all__ = [
@@ -51,6 +55,7 @@ __all__ = [
     "FileBasedDatasource",
     "FileExtensionFilter",
     "FileMetadataProvider",
+    "ImageDatasource",
     "JSONDatasource",
     "NumpyDatasource",
     "ParquetBaseDatasource",
@@ -60,12 +65,15 @@ __all__ = [
     "PathPartitionEncoder",
     "PathPartitionFilter",
     "PathPartitionParser",
-    "PathPartitionScheme",
+    "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
     "ReadTask",
+    "Reader",
     "SimpleTensorFlowDatasource",
     "SimpleTorchDatasource",
+    "TextDatasource",
+    "TFRecordDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",
 ]

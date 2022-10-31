@@ -25,30 +25,25 @@ const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-const makeNodeLogs =
-  (
-    setLogDialog: (nodeIp: string, pid: number | null) => void,
-  ): NodeFeatureRenderFn =>
-  ({ node }) => {
-    const logCount = node.logCount ?? 0;
-    return logCount === 0 ? (
-      <Typography color="textSecondary" component="span" variant="inherit">
-        No logs
-      </Typography>
-    ) : (
-      <SpanButton onClick={() => setLogDialog(node.ip, null)}>
-        View all logs ({logCount.toLocaleString()}{" "}
-        {node.logCount === 1 ? "line" : "lines"})
-      </SpanButton>
-    );
-  };
+const makeNodeLogs: NodeFeatureRenderFn = ({ node }) => {
+  const logCount = node.logCount ?? 0;
+  return logCount === 0 ? (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No logs
+    </Typography>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      {logCount.toLocaleString()} {node.logCount === 1 ? "line" : "lines"}
+    </Typography>
+  );
+};
 
 const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.logCount ? sum(Object.values(node.logCount)) : 0;
 
 const makeWorkerLogs =
   (
-    setLogDialog: (nodeIp: string, pid: number | null) => void,
+    setLogDialog: (nodeIp: string, pid: number) => void,
   ): WorkerFeatureRenderFn =>
   ({ worker, node }) => {
     const logCount = worker.logCount ?? 0;
@@ -68,12 +63,12 @@ const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
   worker.logCount ?? 0;
 
 const makeLogsFeature = (
-  setLogDialog: (nodeIp: string, pid: number | null) => void,
+  setLogDialog: (nodeIp: string, pid: number) => void,
 ): NodeInfoFeature => ({
   id: "logs",
   ClusterFeatureRenderFn: ClusterLogs,
   WorkerFeatureRenderFn: makeWorkerLogs(setLogDialog),
-  NodeFeatureRenderFn: makeNodeLogs(setLogDialog),
+  NodeFeatureRenderFn: makeNodeLogs,
   workerAccessor: workerLogsAccessor,
   nodeAccessor: nodeLogsAccessor,
 });

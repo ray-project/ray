@@ -3,10 +3,11 @@ Ray decorated classes and functions defined at top of file, importable with
 fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
+import asyncio
 from typing import TypeVar
 
-import ray
 from ray import serve
+from ray.actor import ActorHandle
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -46,10 +47,15 @@ class Combine:
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
-    def __call__(self, req):
-        r1_ref = self.m1.forward.remote(req)
-        r2_ref = self.m2.forward.remote(req)
-        return sum(ray.get([r1_ref, r2_ref]))
+    async def __call__(self, req):
+        if isinstance(self.m1, ActorHandle) and isinstance(self.m2, ActorHandle):
+            r1_ref = self.m1.forward.remote(req)
+            r2_ref = self.m2.forward.remote(req)
+        else:
+            r1_ref = await self.m1.forward.remote(req)
+            r2_ref = await self.m2.forward.remote(req)
+
+        return sum(await asyncio.gather(r1_ref, r2_ref))
 
 
 @serve.deployment

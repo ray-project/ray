@@ -3,17 +3,17 @@ from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.utils import load_checkpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback
+from lightgbm_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.
 
@@ -24,19 +24,27 @@ class LightGBMTrainer(GBDTTrainer):
     for features with the categorical data type, consider using the
     :class:`Categorizer` preprocessor to set the dtypes in the dataset.
 
+    .. note::
+        ``LightGBMTrainer`` does not modify or otherwise alter the working
+        of the LightGBM distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on LightGBM distributed training, refer to
+        `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
+
     Example:
         .. code-block:: python
 
             import ray
 
             from ray.train.lightgbm import LightGBMTrainer
+            from ray.air.config import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
             trainer = LightGBMTrainer(
                 label_column="y",
                 params={"objective": "regression"},
-                scaling_config={"num_workers": 3},
+                scaling_config=ScalingConfig(num_workers=3),
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
@@ -69,10 +77,14 @@ class LightGBMTrainer(GBDTTrainer):
     # but it is explicitly set here for forward compatibility
     _dmatrix_cls: type = lightgbm_ray.RayDMatrix
     _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_cls: type = TuneReportCheckpointCallback
+    _tune_callback_report_cls: type = TuneReportCallback
+    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
+        "num_actors": 1,
+        "cpus_per_actor": 2,
+        "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "init_model"
 
@@ -82,4 +94,11 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
+
+    def _save_model(self, model: lightgbm.LGBMModel, path: str):
+        model.booster_.save_model(path)
+
+    def _model_iteration(self, model: lightgbm.LGBMModel) -> int:
+        return model.booster_.current_iteration()

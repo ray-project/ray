@@ -550,6 +550,8 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.state = self.dynamics.get_initial_state(1) + [
             torch.zeros(1, self.action_space.shape[0]).to(self.device)
         ]
+        # returned state should be of shape (state_dim, )
+        self.state = [s.squeeze(0) for s in self.state]
         return self.state
 
     def value_function(self) -> TensorType:

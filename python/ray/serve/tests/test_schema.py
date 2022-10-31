@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 import pytest
 import requests
 from pydantic import ValidationError
@@ -7,7 +8,7 @@ from typing import List, Dict
 
 import ray
 from ray import serve
-from ray.serve.common import (
+from ray.serve._private.common import (
     StatusOverview,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
@@ -204,27 +205,7 @@ class TestDeploymentSchema:
     def get_minimal_deployment_schema(self):
         # Generate a DeploymentSchema with the fewest possible attributes set
 
-        return {
-            "name": "deep",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": {},
-                "accelerator_type": None,
-            },
-        }
+        return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
@@ -362,6 +343,33 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "num_replicas",
+            "route_prefix",
+            "autoscaling_config",
+            "user_config",
+        ],
+    )
+    def test_nullable_options(self, option: str):
+        """Check that nullable options can be set to None."""
+
+        deployment_options = {"name": "test", option: None}
+
+        # One of "num_replicas" or "autoscaling_config" must be provided.
+        if option == "num_replicas":
+            deployment_options["autoscaling_config"] = {
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 5,
+            }
+        elif option == "autoscaling_config":
+            deployment_options["num_replicas"] = 5
+
+        # Schema should be created without error.
+        DeploymentSchema.parse_obj(deployment_options)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
@@ -403,24 +411,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "num_replicas": None,
-                    "route_prefix": None,
-                    "max_concurrent_queries": None,
-                    "user_config": None,
-                    "autoscaling_config": None,
-                    "graceful_shutdown_wait_loop_s": None,
-                    "graceful_shutdown_timeout_s": None,
-                    "health_check_period_s": None,
-                    "health_check_timeout_s": None,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "object_store_memory": None,
-                        "resources": {},
-                        "accelerator_type": None,
-                    },
                 },
             ],
         }
@@ -478,66 +468,70 @@ class TestServeApplicationSchema:
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
-    def test_serve_application_aliasing(self):
-        """Check aliasing behavior for schemas."""
+    def test_serve_application_kubernetes_config(self):
+        # Test kubernetes_dict() behavior
 
-        # Check that private options can optionally include underscore
-        app_dict = {
+        config = {
             "import_path": "module.graph",
-            "runtime_env": {},
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
             "deployments": [
                 {
-                    "name": "d1",
-                    "max_concurrent_queries": 3,
-                    "autoscaling_config": {},
-                    "_graceful_shutdown_wait_loop_s": 30,
-                    "graceful_shutdown_timeout_s": 10,
-                    "_health_check_period_s": 5,
-                    "health_check_timeout_s": 7,
+                    "name": "shallow",
+                    "num_replicas": 2,
+                    "route_prefix": "/shallow",
+                    "user_config": {"a": 1, "b": "c", 2: 3},
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "py_modules": ["gs://fake2/file2.zip"],
+                        },
+                        "num_cpus": 3,
+                        "memory": 5,
+                        "object_store_memory": 3,
+                        "resources": {"custom_asic": 8},
+                        "accelerator_type": NVIDIA_TESLA_P4,
+                    },
                 },
                 {
-                    "name": "d2",
-                    "max_concurrent_queries": 6,
-                    "_autoscaling_config": {},
-                    "graceful_shutdown_wait_loop_s": 50,
-                    "_graceful_shutdown_timeout_s": 15,
-                    "health_check_period_s": 53,
-                    "_health_check_timeout_s": 73,
+                    "name": "deep",
                 },
             ],
         }
 
-        schema = ServeApplicationSchema.parse_obj(app_dict)
+        kubernetes_config = ServeApplicationSchema.parse_obj(config).kubernetes_dict(
+            exclude_unset=True
+        )
 
-        # Check that schema dictionary can include private options with an
-        # underscore (using the aliases)
-
-        private_options = {
-            "_autoscaling_config",
-            "_graceful_shutdown_wait_loop_s",
-            "_graceful_shutdown_timeout_s",
-            "_health_check_period_s",
-            "_health_check_timeout_s",
+        assert kubernetes_config == {
+            "importPath": "module.graph",
+            "runtimeEnv": json.dumps({"working_dir": "s3://path/file.zip"}),
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "numReplicas": 2,
+                    "routePrefix": "/shallow",
+                    "userConfig": json.dumps({"a": 1, "b": "c", 2: 3}),
+                    "rayActorOptions": {
+                        "runtimeEnv": json.dumps(
+                            {
+                                "py_modules": ["gs://fake2/file2.zip"],
+                            }
+                        ),
+                        "numCpus": 3.0,
+                        "memory": 5.0,
+                        "objectStoreMemory": 3.0,
+                        "resources": json.dumps({"custom_asic": 8}),
+                        "acceleratorType": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
         }
-
-        for deployment in schema.dict(by_alias=True)["deployments"]:
-            for option in private_options:
-                # Option with leading underscore
-                assert option in deployment
-
-                # Option without leading underscore
-                assert option[1:] not in deployment
-
-        # Check that schema dictionary can include private options without an
-        # underscore (using the field names)
-
-        for deployment in schema.dict()["deployments"]:
-            for option in private_options:
-                # Option without leading underscore
-                assert option[1:] in deployment
-
-                # Option with leading underscore
-                assert option not in deployment
 
 
 class TestServeStatusSchema:

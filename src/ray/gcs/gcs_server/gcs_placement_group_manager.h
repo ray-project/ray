@@ -70,6 +70,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
+    placement_group_table_data_.set_max_cpu_fraction_per_node(
+        placement_group_spec.max_cpu_fraction_per_node());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     SetupStates();
   }
@@ -127,6 +129,9 @@ class GcsPlacementGroup {
   /// Returns whether or not this is a detached placement group.
   bool IsDetached() const;
 
+  /// Returns the maximum CPU fraction per node for this placement group.
+  double GetMaxCpuFractionPerNode() const;
+
   const rpc::PlacementGroupStats &GetStats() const;
 
   rpc::PlacementGroupStats *GetMutableStats();
@@ -183,27 +188,27 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   ~GcsPlacementGroupManager() = default;
 
-  void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
+  void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRemovePlacementGroup(const rpc::RemovePlacementGroupRequest &request,
+  void HandleRemovePlacementGroup(rpc::RemovePlacementGroupRequest request,
                                   rpc::RemovePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetPlacementGroup(const rpc::GetPlacementGroupRequest &request,
+  void HandleGetPlacementGroup(rpc::GetPlacementGroupRequest request,
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
+  void HandleGetNamedPlacementGroup(rpc::GetNamedPlacementGroupRequest request,
                                     rpc::GetNamedPlacementGroupReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
+  void HandleGetAllPlacementGroup(rpc::GetAllPlacementGroupRequest request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
   void HandleWaitPlacementGroupUntilReady(
-      const rpc::WaitPlacementGroupUntilReadyRequest &request,
+      rpc::WaitPlacementGroupUntilReadyRequest request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 

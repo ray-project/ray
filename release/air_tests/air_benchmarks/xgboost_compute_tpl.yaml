@@ -1,0 +1,32 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+max_workers: 10
+
+head_node_type:
+    name: head_node
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m5.4xlarge
+      max_workers: 10
+      min_workers: 10
+      use_spot: false
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Iops: 5000
+            Throughput: 1000
+            VolumeSize: 1000
+            VolumeType: gp3
+
+    IamInstanceProfile:
+        # Arn: arn:aws:iam::959243851260:instance-profile/ray-autoscaler-v1
+        Arn: arn:aws:iam::188439194153:instance-profile/ray-autoscaler-v1

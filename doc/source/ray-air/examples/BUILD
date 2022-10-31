@@ -1,10 +1,26 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 
 filegroup(
     name = "air_examples",
-    srcs = glob(["*.ipynb"]),
+    srcs = glob(["*.ipynb", "*.py"]),
     visibility = ["//doc:__subpackages__"]
 )
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/examples code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["*.py"],
+    exclude = [],
+    extra_srcs = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+)
+
 
 # --------------------------------------------------------------------
 # Test all doc/source/ray-air/examples notebooks.
@@ -14,30 +30,38 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
     exclude = [
+        "automl_with_ray_air.ipynb",  # Requires statsforecast
         "huggingface_text_classification.ipynb",
-        "torch_incremental_learning.ipynb",
         "feast_example.ipynb",  # REGRESSION
-        "rl_offline_example.ipynb",  # REGRESSION
-        "rl_online_example.ipynb",  # REGRESSION
-        "convert_existing_pytorch_code_to_ray_air.ipynb", # REGRESSION
-        "tfx_tabular_train_to_serve.ipynb", # REGRESSION
-        "torch_image_example.ipynb", # REGRESSION
+        "upload_to_comet_ml.ipynb",  # Needs credentials
+        "upload_to_wandb.ipynb",  # Needs credentials
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
 )
 
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["upload_to_*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
+)
+
+py_test_run_all_notebooks(
+    size = "medium",
+    include = ["automl_with_ray_air.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "statsforecast"],
+)
 
 # GPU Tests
 
 py_test_run_all_notebooks(
     size = "large",
-    include = [],
-    exclude = [
-        "huggingface_text_classification.ipynb", # REGRESSION!
-        "torch_incremental_learning.ipynb" # REGRESSION!
-    ],
+    include = ["huggingface_text_classification.ipynb"],
+    exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    allow_empty = True  # REGRESSION
 )

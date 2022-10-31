@@ -11,24 +11,30 @@ class Stopper(abc.ABC):
     default, this class does not stop any trials. Subclasses need to
     implement ``__call__`` and ``stop_all``.
 
-    .. code-block:: python
+    Examples:
 
-        import time
-        from ray import tune
-        from ray.tune import Stopper
-
-        class TimeStopper(Stopper):
-            def __init__(self):
-                self._start = time.time()
-                self._deadline = 300
-
-            def __call__(self, trial_id, result):
-                return False
-
-            def stop_all(self):
-                return time.time() - self._start > self.deadline
-
-        tune.run(Trainable, num_samples=200, stop=TimeStopper())
+        >>> import time
+        >>> from ray import air, tune
+        >>> from ray.tune import Stopper
+        >>>
+        >>> class TimeStopper(Stopper):
+        ...     def __init__(self):
+        ...         self._start = time.time()
+        ...         self._deadline = 5
+        ...
+        ...     def __call__(self, trial_id, result):
+        ...         return False
+        ...
+        ...     def stop_all(self):
+        ...         return time.time() - self._start > self._deadline
+        >>>
+        >>> tuner = tune.Tuner(
+        ...     tune.Trainable,
+        ...     tune_config=tune.TuneConfig(num_samples=200),
+        ...     run_config=air.RunConfig(stop=TimeStopper())
+        ... )
+        >>> tuner.fit()
+        == Status ==...
 
     """
 
@@ -48,19 +54,22 @@ class CombinedStopper(Stopper):
     Args:
         *stoppers: Stoppers to be combined.
 
-    Example:
+    Examples:
 
-    .. code-block:: python
-
-        from ray.tune.stopper import CombinedStopper, \
-            MaximumIterationStopper, TrialPlateauStopper
-
-        stopper = CombinedStopper(
-            MaximumIterationStopper(max_iter=20),
-            TrialPlateauStopper(metric="my_metric")
-        )
-
-        tune.run(train, stop=stopper)
+        >>> from ray.tune.stopper import (CombinedStopper,
+        ...     MaximumIterationStopper, TrialPlateauStopper)
+        >>>
+        >>> stopper = CombinedStopper(
+        ...     MaximumIterationStopper(max_iter=20),
+        ...     TrialPlateauStopper(metric="my_metric")
+        ... )
+        >>>
+        >>> tuner = tune.Tuner(
+        ...     tune.Trainable,
+        ...     run_config=air.RunConfig(stop=stopper)
+        ... )
+        >>> tuner.fit()
+        == Status ==...
 
     """
 

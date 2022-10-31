@@ -16,7 +16,9 @@
 
 #include <vector>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/scorer.h"
@@ -58,7 +60,15 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   /// \return Score of all nodes.
   std::pair<scheduling::NodeID, const Node *> GetBestNode(
       const ResourceRequest &required_resources,
-      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
+      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
+      const SchedulingOptions &options,
+      const absl::flat_hash_map<scheduling::NodeID, double>
+          &available_cpus_before_bundle_scheduling) const;
+
+  /// Return the map of node id -> available cpus before the current bundle scheduling.
+  /// It is used to calculate how many CPUs have been allocated for the current bundles.
+  const absl::flat_hash_map<scheduling::NodeID, double>
+  GetAvailableCpusBeforeBundleScheduling() const;
 
  protected:
   /// The cluster resource manager.

@@ -27,7 +27,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
@@ -70,14 +70,15 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
@@ -88,11 +89,11 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaZero",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -105,17 +106,18 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.sgd_minibatch_size = 128
         self.shuffle_sequences = True
         self.num_sgd_iter = 30
-        self.learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
-            # When to start returning samples (in batches, not timesteps!).
-            "learning_starts": 500,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
         self.mcts_config = {
@@ -142,16 +144,17 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.framework_str = "torch"
         self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"
         # Extra configuration that disables exploration.
-        self.evaluation_config = {
+        self.evaluation(evaluation_config={
             "mcts_config": {
                 "argmax_tree_policy": True,
                 "add_dirichlet_noise": False,
             },
-        }
+        })
         # __sphinx_doc_end__
         # fmt: on
 
@@ -169,6 +172,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         vf_share_layers: Optional[bool] = None,
         mcts_config: Optional[dict] = None,
         ranked_rewards: Optional[dict] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "AlphaZeroConfig":
         """Sets the training related configuration.
@@ -221,6 +225,10 @@ class AlphaZeroConfig(AlgorithmConfig):
             mcts_config: MCTS specific settings.
             ranked_rewards: Settings for the ranked reward (r2) algorithm
                 from: https://arxiv.org/pdf/1807.01672.pdf
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
             This updated AlgorithmConfig object.
@@ -243,9 +251,22 @@ class AlphaZeroConfig(AlgorithmConfig):
         if mcts_config is not None:
             self.mcts_config = mcts_config
         if ranked_rewards is not None:
-            self.ranked_rewards = ranked_rewards
+            self.ranked_rewards.update(ranked_rewards)
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
+
+    def update_from_dict(self, config_dict) -> "AlphaZeroConfig":
+        config_dict = config_dict.copy()
+
+        if "ranked_rewards" in config_dict:
+            value = config_dict.pop("ranked_rewards")
+            self.training(ranked_rewards=value)
+
+        return super().update_from_dict(config_dict)
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
@@ -308,8 +329,8 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlphaZeroConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaZeroConfig()
 
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings."""
@@ -339,16 +360,25 @@ class AlphaZero(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
-            # Use deprecated add_batch() to support old replay buffers for now
             if self.local_replay_buffer is not None:
                 self.local_replay_buffer.add(batch)
 
         if self.local_replay_buffer is not None:
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-            )
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+                train_batch = self.local_replay_buffer.sample(
+                    self.config["train_batch_size"]
+                )
+            else:
+                train_batch = None
         else:
-            train_batch = SampleBatch.concat_samples(new_sample_batches)
+            train_batch = concat_samples(new_sample_batches)
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -428,7 +458,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

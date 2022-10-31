@@ -158,6 +158,15 @@ class CoreWorkerDirectActorTaskSubmitter
   std::string DebugString(const ActorID &actor_id) const;
 
  private:
+  /// A helper function to get task finisher without holding mu_
+  /// We should use this function when access
+  ///    - FailOrRetryPendingTask
+  ///    - FailPendingTask
+  TaskFinisherInterface &GetTaskFinisherWithoutMu() {
+    mu_.AssertNotHeld();
+    return task_finisher_;
+  }
+
   struct ClientQueue {
     ClientQueue(ActorID actor_id,
                 bool execute_out_of_order,

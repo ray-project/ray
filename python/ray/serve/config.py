@@ -1,7 +1,7 @@
 import inspect
 import json
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -15,7 +15,7 @@ from pydantic import (
 )
 
 from ray import cloudpickle
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -23,6 +23,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -31,8 +32,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
@@ -84,7 +87,7 @@ class AutoscalingConfig(BaseModel):
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    """From Serve client API's perspective, decide whehter pickling is needed."""
+    """From Serve client API's perspective, decide whether pickling is needed."""
     if deployment_language == DeploymentLanguage.PYTHON and not is_cross_language:
         # Python client deploying Python replicas.
         return True
@@ -96,6 +99,7 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+@PublicAPI(stability="stable")
 class DeploymentConfig(BaseModel):
     """Configuration options for a deployment, to be set by the user.
 
@@ -107,7 +111,7 @@ class DeploymentConfig(BaseModel):
             a response. Defaults to 100.
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
-            user_config is not None.
+            user_config is not None. Must be json-serializable.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that deployment replicas will wait until there is no more work to
             be done before shutting down.
@@ -119,6 +123,8 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s (Optional[float]):
             Timeout that the controller will wait for a response from the
             replica's health check before marking it unhealthy.
+        user_configured_option_names (Set[str]):
+            The names of options manually configured by the user.
     """
 
     num_replicas: NonNegativeInt = 1
@@ -147,6 +153,9 @@ class DeploymentConfig(BaseModel):
 
     version: Optional[str] = None
 
+    # Contains the names of deployment options manually set by the user
+    user_configured_option_names: Set[str] = set()
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -162,18 +171,33 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
+
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
         data = self.dict()
-        if data.get("user_config"):
+        if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        data["user_configured_option_names"] = list(
+            data["user_configured_option_names"]
+        )
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -210,6 +234,10 @@ class DeploymentConfig(BaseModel):
         if "version" in data:
             if data["version"] == "":
                 data["version"] = None
+        if "user_configured_option_names" in data:
+            data["user_configured_option_names"] = set(
+                data["user_configured_option_names"]
+            )
         return cls(**data)
 
     @classmethod
@@ -218,16 +246,10 @@ class DeploymentConfig(BaseModel):
         return cls.from_proto(proto)
 
     @classmethod
-    def from_default(cls, ignore_none: bool = False, **kwargs):
+    def from_default(cls, **kwargs):
         """Creates a default DeploymentConfig and overrides it with kwargs.
 
-        Only accepts the same keywords as the class. Passing in any other
-        keyword raises a ValueError.
-
-        Args:
-            ignore_none: When True, any valid keywords with value None
-                are ignored, and their values stay default. Invalid keywords
-                still raise a TypeError.
+        Ignores any kwargs set to DEFAULT.VALUE.
 
         Raises:
             TypeError: when a keyword that's not an argument to the class is
@@ -247,8 +269,7 @@ class DeploymentConfig(BaseModel):
                     f"{list(valid_config_options)}."
                 )
 
-        if ignore_none:
-            kwargs = {key: val for key, val in kwargs.items() if val is not None}
+        kwargs = {key: val for key, val in kwargs.items() if val != DEFAULT.VALUE}
 
         for key, val in kwargs.items():
             config.__setattr__(key, val)
@@ -256,6 +277,7 @@ class DeploymentConfig(BaseModel):
         return config
 
 
+@DeveloperAPI
 class ReplicaConfig:
     """Configuration for a deployment's replicas.
 
@@ -374,7 +396,8 @@ class ReplicaConfig:
                 f'Got invalid type "{type(self.ray_actor_options)}" for '
                 "ray_actor_options. Expected a dictionary."
             )
-
+        # Please keep this in sync with the docstring for the ray_actor_options
+        # kwarg in api.py.
         allowed_ray_actor_options = {
             # Resource options
             "accelerator_type",
@@ -454,8 +477,8 @@ class ReplicaConfig:
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
-            proto.init_args,
-            proto.init_kwargs,
+            proto.init_args if proto.init_args != b"" else None,
+            proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
             needs_pickle,
         )
@@ -478,6 +501,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+@DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
@@ -485,6 +509,7 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
+@PublicAPI(stability="beta")
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
     host: Optional[str] = DEFAULT_HTTP_HOST

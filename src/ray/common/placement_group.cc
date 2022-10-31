@@ -44,4 +44,8 @@ BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {
 std::string PlacementGroupSpecification::GetName() const {
   return std::string(message_->name());
 }
+
+double PlacementGroupSpecification::GetMaxCpuFractionPerNode() const {
+  return message_->max_cpu_fraction_per_node();
+}
 }  // namespace ray

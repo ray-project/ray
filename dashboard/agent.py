@@ -14,6 +14,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
+from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -38,7 +39,7 @@ _RAYLET_LOG_MAX_PUBLISH_LINES = 20
 
 # Reads at most this amount of Raylet logs from the tail, for publishing and
 # checking if the Raylet was terminated gracefully.
-_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024**2
 
 try:
     create_task = asyncio.create_task
@@ -57,17 +58,20 @@ class DashboardAgent:
         dashboard_agent_port,
         gcs_address,
         minimal,
-        temp_dir=None,
-        session_dir=None,
-        runtime_env_dir=None,
-        log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
-        object_store_name=None,
-        raylet_name=None,
-        logging_params=None,
         disable_metrics_collection: bool = False,
+        *,  # the following are required kwargs
+        object_store_name: str,
+        raylet_name: str,
+        log_dir: str,
+        temp_dir: str,
+        session_dir: str,
+        runtime_env_dir: str,
+        logging_params: dict,
+        agent_id: int,
+        session_name: str,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -90,6 +94,8 @@ class DashboardAgent:
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
+        self.agent_id = agent_id
+        self.session_name = session_name
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -169,9 +175,33 @@ class DashboardAgent:
             """Check if raylet is dead and fate-share if it is."""
             try:
                 curr_proc = psutil.Process()
+                parent_death_cnt = 0
                 while True:
                     parent = curr_proc.parent()
-                    if parent is None or parent.pid == 1 or self.ppid != parent.pid:
+                    # If the parent is dead, it is None.
+                    parent_gone = parent is None
+                    # Sometimes, the parent is changed to the `init` process.
+                    # In this case, the parent.pid is 1.
+                    init_assigned_for_parent = parent.pid == 1
+                    # Sometimes, the parent is dead, and the pid is reused
+                    # by other processes. In this case, this condition is triggered.
+                    parent_changed = self.ppid != parent.pid
+                    if parent_gone or init_assigned_for_parent or parent_changed:
+                        parent_death_cnt += 1
+                        logger.warning(
+                            f"Raylet is considered dead {parent_death_cnt} X. "
+                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
+                            f"will kill itself. Parent: {parent}, "
+                            f"parent_gone: {parent_gone}, "
+                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
+                            f"parent_changed: {parent_changed}."
+                        )
+                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
+                            await asyncio.sleep(
+                                dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
+                            )
+                            continue
+
                         log_path = os.path.join(self.log_dir, "raylet.out")
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
@@ -221,11 +251,13 @@ class DashboardAgent:
                         else:
                             logger.info(msg)
                         sys.exit(0)
+                    else:
+                        parent_death_cnt = 0
                     await asyncio.sleep(
-                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
+                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:
@@ -272,7 +304,7 @@ class DashboardAgent:
 
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=os.getpid(),
+                agent_id=self.agent_id,
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip,
             )
@@ -423,6 +455,20 @@ if __name__ == "__main__":
         action="store_true",
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
+    parser.add_argument(
+        "--agent-id",
+        required=True,
+        type=int,
+        help="ID to report when registering with raylet",
+        default=os.getpid(),
+    )
+    parser.add_argument(
+        "--session-name",
+        required=False,
+        type=str,
+        default=None,
+        help="The session name (cluster id) of this cluster.",
+    )
 
     args = parser.parse_args()
     try:
@@ -452,9 +498,9 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
+            agent_id=args.agent_id,
+            session_name=args.session_name,
         )
-        if os.environ.get("_RAY_AGENT_FAILING"):
-            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

@@ -72,7 +72,7 @@ def wandb_mixin(func: Callable):
 
 
     Wandb configuration is done by passing a ``wandb`` key to
-    the ``config`` parameter of ``tune.run()`` (see example below).
+    the ``param_space`` parameter of ``tune.Tuner()`` (see example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
@@ -104,9 +104,9 @@ def wandb_mixin(func: Callable):
                 wandb.log({"loss": loss})
             tune.report(loss=loss, done=True)
 
-        tune.run(
+        tuner = tune.Tuner(
             train_fn,
-            config={
+            param_space={
                 # define search space here
                 "a": tune.choice([1, 2, 3]),
                 "b": tune.choice([4, 5, 6]),
@@ -116,6 +116,7 @@ def wandb_mixin(func: Callable):
                     "api_key_file": "/path/to/file"
                 }
             })
+        tuner.fit()
 
     """
     if hasattr(func, "__mixins__"):

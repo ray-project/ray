@@ -50,15 +50,16 @@ class MADDPGConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
         >>> config.training(n_step=tune.grid_search([3, 5]))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "MADDPG",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -84,12 +85,11 @@ class MADDPGConfig(AlgorithmConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": int(1e6),
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
             "replay_mode": "lockstep",
         }
         self.training_intensity = None
+        self.num_steps_sampled_before_learning_starts = 1024 * 25
         self.critic_lr = 1e-2
         self.actor_lr = 1e-2
         self.target_network_update_freq = 0
@@ -100,7 +100,7 @@ class MADDPGConfig(AlgorithmConfig):
         # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
-        self.num_workers = 1
+        self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
         # fmt: on
         # __sphinx_doc_end__
@@ -121,6 +121,7 @@ class MADDPGConfig(AlgorithmConfig):
         adv_policy: Optional[str] = None,
         replay_buffer_config: Optional[dict] = None,
         training_intensity: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         critic_lr: Optional[float] = None,
         actor_lr: Optional[float] = None,
         target_network_update_freq: Optional[int] = None,
@@ -157,7 +158,6 @@ class MADDPGConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -191,6 +191,10 @@ class MADDPGConfig(AlgorithmConfig):
                 stored in the replay buffer timesteps. Otherwise, the replay will
                 proceed at the native ratio determined by
                 `(train_batch_size / rollout_fragment_length)`.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
             critic_lr: Learning rate for the critic (Q-function) optimizer.
             actor_lr: Learning rate for the actor (policy) optimizer.
             target_network_update_freq: Update the target network every
@@ -231,6 +235,10 @@ class MADDPGConfig(AlgorithmConfig):
             self.replay_buffer_config = replay_buffer_config
         if training_intensity is not None:
             self.training_intensity = training_intensity
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
         if critic_lr is not None:
             self.critic_lr = critic_lr
         if actor_lr is not None:
@@ -277,8 +285,8 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
 class MADDPG(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MADDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MADDPGConfig()
 
     @override(DQN)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -311,7 +319,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

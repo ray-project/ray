@@ -1,10 +1,10 @@
 from typing import List, Callable, Any
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
@@ -25,6 +25,8 @@ class ActorPool:
     """
 
     def __init__(self, actors: list):
+        ray._private.usage.usage_lib.record_library_usage("util.ActorPool")
+
         # actors to be used
         self._idle_actors = list(actors)
 

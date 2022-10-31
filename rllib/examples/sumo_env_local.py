@@ -17,7 +17,7 @@ import pathlib
 from pprint import pformat
 
 import ray
-from ray import tune
+from ray import air, tune
 
 from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
@@ -161,14 +161,17 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
+    results = tune.Tuner(
         "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=10,
-        restore=args.from_checkpoint,
-    )
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=10,
+            ),
+        ),
+    ).fit()
 
     # And check the results.
     if args.as_test:

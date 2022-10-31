@@ -117,6 +117,10 @@ bool GcsPlacementGroup::IsDetached() const {
   return placement_group_table_data_.is_detached();
 }
 
+double GcsPlacementGroup::GetMaxCpuFractionPerNode() const {
+  return placement_group_table_data_.max_cpu_fraction_per_node();
+}
+
 const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
   return placement_group_table_data_.stats();
 }
@@ -373,7 +377,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
-    const ray::rpc::CreatePlacementGroupRequest &request,
+    ray::rpc::CreatePlacementGroupRequest request,
     ray::rpc::CreatePlacementGroupReply *reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
   const JobID &job_id =
@@ -397,7 +401,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleRemovePlacementGroup(
-    const rpc::RemovePlacementGroupRequest &request,
+    rpc::RemovePlacementGroupRequest request,
     rpc::RemovePlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto placement_group_id =
@@ -492,7 +496,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleGetPlacementGroup(
-    const rpc::GetPlacementGroupRequest &request,
+    rpc::GetPlacementGroupRequest request,
     rpc::GetPlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PlacementGroupID placement_group_id =
@@ -525,7 +529,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
-    const rpc::GetNamedPlacementGroupRequest &request,
+    rpc::GetNamedPlacementGroupRequest request,
     rpc::GetNamedPlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
@@ -550,7 +554,7 @@ void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
-    const rpc::GetAllPlacementGroupRequest &request,
+    rpc::GetAllPlacementGroupRequest request,
     rpc::GetAllPlacementGroupReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto limit = request.has_limit() ? request.limit() : -1;
@@ -594,7 +598,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
-    const rpc::WaitPlacementGroupUntilReadyRequest &request,
+    rpc::WaitPlacementGroupUntilReadyRequest request,
     rpc::WaitPlacementGroupUntilReadyReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PlacementGroupID placement_group_id =

@@ -48,4 +48,7 @@ if __name__ == "__main__":
         )
 
     for service in services:
-        SERVICES[service]()
+        try:
+            SERVICES[service]()
+        except Exception as e:
+            print(f"Could not cleanup service test state for {service}: {e}")

@@ -83,13 +83,16 @@ def check_memory_leaks(
         action_sample = action_space.sample()
 
         def code():
+            horizon = algorithm.config["horizon"] or float("inf")
+            ts = 0
             env.reset()
             while True:
                 # If masking is used, try something like this:
                 # np.random.choice(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
                 _, _, done, _ = env.step(action_sample)
-                if done:
+                ts += 1
+                if done or ts >= horizon:
                     break
 
         test = _test_some_code_for_memory_leaks(
@@ -186,7 +189,7 @@ def check_memory_leaks(
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=repeats or 200,
+            repeats=repeats or 100,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,

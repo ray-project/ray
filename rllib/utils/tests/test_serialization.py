@@ -3,7 +3,12 @@ import unittest
 import gym
 import numpy as np
 
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.serialization import (
+    gym_space_from_dict,
+    gym_space_to_dict,
+    space_from_dict,
+    space_to_dict,
+)
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -16,7 +21,7 @@ def _assert_array_equal(eq, a1, a2, margin=None):
 
 class TestGymCheckEnv(unittest.TestCase):
     def test_box_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.observation_space)
         sp = gym_space_from_dict(d)
 
@@ -31,7 +36,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.dtype, obs_space.dtype)
 
     def test_discrete_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.action_space)
         sp = gym_space_from_dict(d)
 
@@ -47,7 +52,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(md_space.dtype, sp.dtype)
 
     def test_tuple_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Tuple(spaces=[env.observation_space, env.action_space])
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)
@@ -72,7 +77,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.spaces[1].n, space.spaces[1].n)
 
     def test_dict_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Dict(
             spaces={"obs": env.observation_space, "action": env.action_space}
         )
@@ -134,6 +139,23 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["box"], gym.spaces.Box))
         self.assertTrue(isinstance(sp["discrete"], gym.spaces.Discrete))
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
+
+    def test_original_space(self):
+        space = gym.spaces.Box(low=0.0, high=1.0, shape=(10,))
+        space.original_space = gym.spaces.Dict(
+            {
+                "obs1": gym.spaces.Box(low=0.0, high=1.0, shape=(3,)),
+                "obs2": gym.spaces.Box(low=0.0, high=1.0, shape=(7,)),
+            }
+        )
+
+        d = space_to_dict(space)
+        sp = space_from_dict(d)
+
+        self.assertTrue(isinstance(sp, gym.spaces.Box))
+        self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
+        self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
+        self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
 
 
 if __name__ == "__main__":

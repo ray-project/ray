@@ -21,7 +21,6 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 namespace asio {
@@ -65,7 +64,7 @@ class DelayManager {
     if (delay_env.empty()) {
       return;
     }
-    RAY_LOG(ERROR) << "RAY_testing_asio_delay_us is set to " << delay_env;
+    std::cerr << "RAY_testing_asio_delay_us is set to " << delay_env << std::endl;
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
     for (const auto &item : items) {
       ParseItem(item);
@@ -77,8 +76,9 @@ class DelayManager {
   void ParseItem(std::string_view val) {
     std::vector<std::string_view> item_val = absl::StrSplit(val, "=");
     if (item_val.size() != 2) {
-      RAY_LOG(FATAL) << "Error in syntax: " << val
-                     << ", expected method=min_us:max:ms. Skip this entry.";
+      std::cerr << "Error in syntax: " << val
+                << ", expected method=min_us:max:ms. Skip this entry." << std::endl;
+      _Exit(1);
     }
     auto delay_us = ParseVal(item_val[1]);
     if (item_val[0] == "*") {
@@ -91,18 +91,21 @@ class DelayManager {
   std::pair<int64_t, int64_t> ParseVal(std::string_view val) {
     std::vector<std::string_view> delay_str_us = absl::StrSplit(val, ":");
     if (delay_str_us.size() != 2) {
-      RAY_LOG(FATAL) << "Error in syntax: " << val
-                     << ", expected method=min_us:max:ms. Skip this entry";
+      std::cerr << "Error in syntax: " << val
+                << ", expected method=min_us:max:ms. Skip this entry" << std::endl;
+      _Exit(1);
     }
     std::pair<int64_t, int64_t> delay_us;
     if (!absl::SimpleAtoi(delay_str_us[0], &delay_us.first) ||
         !absl::SimpleAtoi(delay_str_us[1], &delay_us.second)) {
-      RAY_LOG(FATAL) << "Error in syntax: " << val
-                     << ", expected method=min_us:max:ms. Skip this entry";
+      std::cerr << "Error in syntax: " << val
+                << ", expected method=min_us:max:ms. Skip this entry" << std::endl;
+      _Exit(1);
     }
     if (delay_us.first > delay_us.second) {
-      RAY_LOG(FATAL) << delay_us.first << " is bigger than " << delay_us.second
-                     << ". Skip this entry.";
+      std::cerr << delay_us.first << " is bigger than " << delay_us.second
+                << ". Skip this entry." << std::endl;
+      _Exit(1);
     }
     return delay_us;
   }

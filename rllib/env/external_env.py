@@ -202,6 +202,7 @@ class ExternalEnv(threading.Thread):
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 

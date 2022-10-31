@@ -67,11 +67,23 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
         return view
+
+    def take(self, indices: List[int]) -> List[T]:
+        return [self._items[i] for i in indices]
+
+    def select(self, columns: List[KeyFn]) -> List[T]:
+        if len(columns) != 1 or not callable(columns[0]):
+            raise ValueError(
+                "Column must be a single callable when selecting on Simple blocks, "
+                f"but got: {columns}."
+            )
+        callable_col = columns[0]
+        return [callable_col(row) for row in self.iter_rows()]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)

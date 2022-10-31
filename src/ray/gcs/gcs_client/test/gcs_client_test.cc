@@ -138,8 +138,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
@@ -226,6 +225,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
     // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
@@ -470,7 +470,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
 
   auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
-  auto stub = rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
   *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";

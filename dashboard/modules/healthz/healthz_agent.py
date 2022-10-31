@@ -1,7 +1,7 @@
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
-from aiohttp.web import Request, Response, HTTPServiceUnavailable
+from aiohttp.web import Request, Response
 import grpc
 
 routes = optional_utils.ClassMethodRouteTable
@@ -26,7 +26,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         try:
             alive = await self._health_checker.check_local_raylet_liveness()
             if alive is False:
-                return HTTPServiceUnavailable(reason="Local Raylet failed")
+                return Response(status=503, text="Local Raylet failed")
         except grpc.RpcError as e:
             # We only consider the error other than GCS unreachable as raylet failure
             # to avoid false positive.
@@ -38,7 +38,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
                 grpc.StatusCode.UNKNOWN,
                 grpc.StatusCode.DEADLINE_EXCEEDED,
             ):
-                return HTTPServiceUnavailable(reason=e.message())
+                return Response(status=503, text=f"Health check failed due to: {e}")
 
         return Response(
             text="success",

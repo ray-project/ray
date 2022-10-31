@@ -18,7 +18,7 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -392,7 +392,6 @@ def test_epoch(dataset, model, device, criterion):
 
 
 def train_func(config):
-    use_gpu = config["use_gpu"]
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_layers = config["num_layers"]
@@ -404,11 +403,7 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
-    device = torch.device(
-        f"cuda:{session.get_local_rank()}"
-        if use_gpu and torch.cuda.is_available()
-        else "cpu"
-    )
+    device = train.torch.get_device()
     print(f"Device: {device}")
 
     # Setup data.
@@ -601,7 +596,6 @@ if __name__ == "__main__":
     datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
-        "use_gpu": use_gpu,
         "num_epochs": NUM_EPOCHS,
         "batch_size": BATCH_SIZE,
         "num_hidden": NUM_HIDDEN,
@@ -625,7 +619,7 @@ if __name__ == "__main__":
         train_func,
         train_loop_config=config,
         datasets=datasets,
-        scaling_config=dict(
+        scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,

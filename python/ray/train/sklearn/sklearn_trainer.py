@@ -62,24 +62,25 @@ class SklearnTrainer(BaseTrainer):
     in the future.
 
     Example:
-        .. code-block:: python
 
-            import ray
+    .. code-block:: python
 
-            from ray.train.sklearn import SklearnTrainer
-            from sklearn.ensemble import RandomForestRegressor
+        import ray
 
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = SklearnTrainer(
-                sklearn_estimator=RandomForestRegressor,
-                label_column="y",
-                scaling_config={
-                    "trainer_resources": {"CPU": 4}
-                },
-                datasets={"train": train_dataset}
-            )
-            result = trainer.fit()
+        from ray.train.sklearn import SklearnTrainer
+        from sklearn.ensemble import RandomForestRegressor
+
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = SklearnTrainer(
+            estimator=RandomForestRegressor(),
+            label_column="y",
+            scaling_config=ray.air.config.ScalingConfig(
+                trainer_resources={"CPU": 4}
+            ),
+            datasets={"train": train_dataset}
+        )
+        result = trainer.fit()
 
     Args:
         estimator: A scikit-learn compatible estimator to use.
@@ -232,9 +233,7 @@ class SklearnTrainer(BaseTrainer):
                 "`parallelize_cv` must be a bool or None, got "
                 f"'{self.parallelize_cv}'"
             )
-        scaling_config = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
         if (
             self.cv
             and self.parallelize_cv
@@ -361,6 +360,17 @@ class SklearnTrainer(BaseTrainer):
             parallelize_cv = True
         return parallelize_cv
 
+    def _save_checkpoint(self) -> None:
+        with tune.checkpoint_dir(step=1) as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, MODEL_KEY), "wb") as f:
+                cpickle.dump(self.estimator, f)
+
+            if self.preprocessor:
+                save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
+
+    def _report(self, results: dict) -> None:
+        tune.report(**results)
+
     def training_loop(self) -> None:
         register_ray()
 
@@ -373,14 +383,12 @@ class SklearnTrainer(BaseTrainer):
             groups = X_train["cv_groups"]
             X_train = X_train.drop("cv_groups", axis=1)
 
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
 
-        num_workers = scaling_config_dataclass.num_workers or 0
+        num_workers = scaling_config.num_workers or 0
         assert num_workers == 0  # num_workers is not in scaling config allowed_keys
 
-        trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
+        trainer_resources = scaling_config.trainer_resources or {"CPU": 1}
         has_gpus = bool(trainer_resources.get("GPU", 0))
         num_cpus = int(trainer_resources.get("CPU", 1))
 
@@ -400,12 +408,7 @@ class SklearnTrainer(BaseTrainer):
             self.estimator.fit(X_train, y_train, **self.fit_params)
             fit_time = time() - start_time
 
-            with tune.checkpoint_dir(step=1) as checkpoint_dir:
-                with open(os.path.join(checkpoint_dir, MODEL_KEY), "wb") as f:
-                    cpickle.dump(self.estimator, f)
-
-                if self.preprocessor:
-                    save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
+            self._save_checkpoint()
 
             if self.label_column:
                 validation_set_scores = self._score_on_validation_sets(
@@ -431,4 +434,4 @@ class SklearnTrainer(BaseTrainer):
             **cv_scores,
             "fit_time": fit_time,
         }
-        tune.report(**results)
+        self._report(results)

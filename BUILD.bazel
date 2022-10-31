@@ -676,7 +676,6 @@ cc_library(
         ":stats_lib",
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
-        "@boost//:filesystem",
         "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -738,7 +737,6 @@ cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
-        "@boost//:filesystem",
         "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -818,6 +816,7 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@nlohmann_json",
     ],
 )
 
@@ -915,6 +914,30 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_heartbeat_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "dependency_resolver_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1073,6 +1096,21 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "local_resource_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/local_resource_manager_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1250,7 +1288,6 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@boost//:filesystem",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1401,7 +1438,11 @@ cc_test(
     name = "logging_test",
     size = "small",
     srcs = ["src/ray/util/logging_test.cc"],
-    args = ["--gtest_filter=PrintLogTest*"],
+    args = [
+        "--gtest_filter=PrintLogTest*",
+        # Disable so we can test terminate handler.
+        "--gtest_catch_exceptions=0",
+    ],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -1420,8 +1461,19 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_util",
-        "@boost//:filesystem",
         "@boost//:range",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "counter_test",
+    size = "small",
+    srcs = ["src/ray/util/counter_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1538,6 +1590,41 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_monitor_test",
+    size = "small",
+    srcs = [
+        "src/ray/common/test/memory_monitor_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "worker_killing_policy_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2184,9 +2271,9 @@ cc_library(
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
-        "@boost//:filesystem",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",

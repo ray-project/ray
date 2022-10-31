@@ -3,6 +3,7 @@ import signal
 import subprocess
 import sys
 import time
+import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -12,10 +13,14 @@ import yaml
 
 import ray
 from ray import serve
+from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.constants import SERVE_NAMESPACE
+from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.scripts import remove_ansi_escape_sequences
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -30,9 +35,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
 def assert_deployments_live(names: List[str]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
-    running_actor_names = [
-        actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)
-    ]
+    running_actor_names = [actor["name"] for actor in list_actors()]
 
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
@@ -44,19 +47,6 @@ def assert_deployments_live(names: List[str]):
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
 
 
-@pytest.fixture
-def ray_start_stop():
-    subprocess.check_output(["ray", "stop", "--force"])
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-        == 200,
-        timeout=15,
-    )
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
-
-
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(["serve", "shutdown", "-y"])
@@ -65,7 +55,6 @@ def test_start_shutdown(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    ray.shutdown()
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
@@ -138,8 +127,57 @@ def test_deploy(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_with_http_options(ray_start_stop):
+    """Deploys config with host and port options specified"""
+
+    f1 = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    f2 = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    success_message_fragment = b"Sent deploy request successfully!"
+
+    with open(f1, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    assert success_message_fragment in deploy_response
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+    # Config should contain matching host and port options
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert config == info
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(["serve", "deploy", f2])
+
+    assert requests.post("http://localhost:8005/").text == "wonderful world"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    assert success_message_fragment in deploy_response
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
+
+    # Check that `serve config` works even if no Serve app is running
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert ServeApplicationSchema.get_empty_schema_dict() == info
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -162,6 +200,12 @@ def test_config(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
+
+    # Check that `serve status` works even if no Serve app is running
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+
+    assert ServeStatusSchema.get_empty_schema_dict() == status
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
@@ -201,8 +245,39 @@ def test_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_error_msg_format(ray_start_stop):
+    """Deploys a faulty config file and checks its status."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_status = yaml.safe_load(status_response)
+    print("serve_status", serve_status)
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            len(serve_status["deployment_statuses"]) == 0
+            and serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and remove_ansi_escape_sequences(app_status["app_status"]["message"])
+            in serve_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=2)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_shutdown(ray_start_stop):
     """Deploys a config file and shuts down the Serve application."""
+
+    # Check that `serve shutdown` works even if no Serve app is running
+    subprocess.check_output(["serve", "shutdown", "-y"])
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
@@ -223,10 +298,30 @@ def test_shutdown(ray_start_stop):
         wait_for_condition(lambda: num_live_deployments() == 2, timeout=15)
         print("Deployment successful. Deployments are live.")
 
+        # `serve config` and `serve status` should print non-empty schemas
+        config_response = subprocess.check_output(["serve", "config"])
+        config = yaml.safe_load(config_response)
+        assert ServeApplicationSchema.get_empty_schema_dict() != config
+
+        status_response = subprocess.check_output(["serve", "status"])
+        status = yaml.safe_load(status_response)
+        assert ServeStatusSchema.get_empty_schema_dict() != status
+        print("`serve config` and `serve status` print non-empty responses.\n")
+
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
         wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
-        print("Deletion successful. All deployments have shut down.\n")
+        print("Deletion successful. All deployments have shut down.")
+
+        # `serve config` and `serve status` should print empty schemas
+        config_response = subprocess.check_output(["serve", "config"])
+        config = yaml.safe_load(config_response)
+        assert ServeApplicationSchema.get_empty_schema_dict() == config
+
+        status_response = subprocess.check_output(["serve", "status"])
+        status = yaml.safe_load(status_response)
+        assert ServeStatusSchema.get_empty_schema_dict() == status
+        print("`serve config` and `serve status` print empty responses.\n")
 
 
 @serve.deployment
@@ -366,7 +461,7 @@ def test_run_runtime_env(ray_start_stop):
             "--working-dir",
             (
                 "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
+                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
             ),
         ]
     )
@@ -386,7 +481,7 @@ class NoArgDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await self.dag.remote()
+        return await (await self.dag.remote())
 
 
 TestBuildFNode = global_f.bind()
@@ -422,12 +517,51 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
+k8sFNode = global_f.options(
+    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
+).bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_kubernetes_flag():
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        print("Building k8sFNode.")
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "ray.serve.tests.test_cli.k8sFNode",
+                "-o",
+                tmp.name,
+                "-k",
+            ]
+        )
+        print("Build succeeded!")
+
+        tmp.seek(0)
+        config = yaml.safe_load(tmp.read())
+        assert config == {
+            "importPath": "ray.serve.tests.test_cli.k8sFNode",
+            "runtimeEnv": json.dumps({}),
+            "host": "0.0.0.0",
+            "port": 8000,
+            "deployments": [
+                {
+                    "name": "global_f",
+                    "numReplicas": 2,
+                    "rayActorOptions": {
+                        "numCpus": 2.0,
+                        "numGpus": 1.0,
+                    },
+                },
+            ],
+        }
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
-    ray.shutdown()
-
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
@@ -438,7 +572,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        timeout=15,
     )
 
     # Kill controller
@@ -458,7 +593,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        timeout=15,
     )
     serve.shutdown()
     ray.shutdown()

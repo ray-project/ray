@@ -10,7 +10,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -25,6 +24,7 @@ import TitleCard from "../../components/TitleCard";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { useNodeList } from "./hook/useNodeList";
+import { NodeRows } from "./NodeRow";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -35,12 +35,15 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const columns = [
+  "", // Expand button
+  "Host / Cmd Line",
   "State",
   "ID",
-  "Host",
-  "IP",
+  "IP / PID",
   "CPU Usage",
   "Memory",
+  "GPU",
+  "GRAM",
   "Object Store Memory",
   "Disk(root)",
   "Sent",
@@ -72,6 +75,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
   const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
     raylet;
+
+  const objectStoreTotalMemory =
+    objectStoreUsedMemory + objectStoreAvailableMemory;
 
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
@@ -119,10 +125,10 @@ export const NodeCard = (props: { node: NodeDetail }) => {
             Object Store Memory
             <PercentageBar
               num={objectStoreUsedMemory}
-              total={objectStoreAvailableMemory}
+              total={objectStoreTotalMemory}
             >
               {memoryConverter(objectStoreUsedMemory)}/
-              {memoryConverter(objectStoreAvailableMemory)}
+              {memoryConverter(objectStoreTotalMemory)}
             </PercentageBar>
           </Grid>
         )}
@@ -177,7 +183,7 @@ const Nodes = () => {
         <br />
         Request Status: {msg}
       </TitleCard>
-      <TitleCard title="Statistics">
+      <TitleCard title="Node Statistics">
         <StateCounter type="node" list={nodeList} />
       </TitleCard>
       <TitleCard title="Node List">
@@ -272,86 +278,14 @@ const Nodes = () => {
                     (page.pageNo - 1) * page.pageSize,
                     page.pageNo * page.pageSize,
                   )
-                  .map(
-                    (
-                      {
-                        hostname = "",
-                        ip = "",
-                        cpu = 0,
-                        mem = [],
-                        disk,
-                        networkSpeed = [0, 0],
-                        raylet,
-                        logUrl,
-                      }: NodeDetail,
-                      i,
-                    ) => (
-                      <TableRow key={hostname + i}>
-                        <TableCell>
-                          <StatusChip type="node" status={raylet.state} />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={raylet.nodeId} arrow interactive>
-                            <Link to={`/node/${raylet.nodeId}`}>
-                              {raylet.nodeId.slice(0, 5)}
-                            </Link>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell align="center">{hostname}</TableCell>
-                        <TableCell align="center">{ip}</TableCell>
-                        <TableCell>
-                          <PercentageBar num={Number(cpu)} total={100}>
-                            {cpu}%
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          <PercentageBar
-                            num={Number(mem[0] - mem[1])}
-                            total={mem[0]}
-                          >
-                            {memoryConverter(mem[0] - mem[1])}/
-                            {memoryConverter(mem[0])}({mem[2]}%)
-                          </PercentageBar>
-                        </TableCell>
-                        <TableCell>
-                          {raylet && (
-                            <PercentageBar
-                              num={raylet.objectStoreUsedMemory}
-                              total={raylet.objectStoreAvailableMemory}
-                            >
-                              {memoryConverter(raylet.objectStoreUsedMemory)}/
-                              {memoryConverter(
-                                raylet.objectStoreAvailableMemory,
-                              )}
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {disk && disk["/"] && (
-                            <PercentageBar
-                              num={Number(disk["/"].used)}
-                              total={disk["/"].total}
-                            >
-                              {memoryConverter(disk["/"].used)}/
-                              {memoryConverter(disk["/"].total)}(
-                              {disk["/"].percent}%)
-                            </PercentageBar>
-                          )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[0])}/s
-                        </TableCell>
-                        <TableCell align="center">
-                          {memoryConverter(networkSpeed[1])}/s
-                        </TableCell>
-                        <TableCell>
-                          <Link to={`/log/${encodeURIComponent(logUrl)}`}>
-                            Log
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  )}
+                  .map((node, i) => (
+                    <NodeRows
+                      key={node.raylet.nodeId}
+                      node={node}
+                      isRefreshing={isRefreshing}
+                      startExpanded={nodeList.length === 1}
+                    />
+                  ))}
               </TableBody>
             </Table>
           </TableContainer>

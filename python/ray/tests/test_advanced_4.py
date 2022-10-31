@@ -1,3 +1,4 @@
+import mock
 import subprocess
 import sys
 
@@ -5,7 +6,12 @@ import pytest
 
 import ray
 from ray._private.gcs_utils import check_health
-from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
+from ray._private.test_utils import (
+    Semaphore,
+    client_test_enabled,
+    wait_for_condition,
+    get_gcs_memory_used,
+)
 from ray.experimental.internal_kv import _internal_kv_list
 
 
@@ -112,6 +118,15 @@ def test_check_health(shutdown_only):
     assert check_health(addr)
 
 
+def test_check_health_version_check(shutdown_only):
+    with mock.patch("ray.__version__", "FOO-VERSION"):
+        conn = ray.init()
+        addr = conn.address_info["address"]
+        assert check_health(addr, skip_version_check=True)
+        with pytest.raises(RuntimeError):
+            check_health(addr)
+
+
 def test_back_pressure(shutdown_only_with_initialization_check):
     ray.init()
 
@@ -170,19 +185,6 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     bar = Bar.remote()
     # Expect ping_actor call returns normally without deadlock.
     assert ray.get(foo.ping_actor.remote(bar)) == 3
-
-
-def get_gcs_memory_used():
-    import psutil
-
-    m = sum(
-        [
-            process.memory_info().rss
-            for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
-        ]
-    )
-    return m
 
 
 def function_entry_num(job_id):

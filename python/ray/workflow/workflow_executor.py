@@ -15,7 +15,7 @@ from ray.workflow.common import (
     TaskID,
 )
 from ray.workflow.exceptions import WorkflowCancellationError, WorkflowExecutionError
-from ray.workflow.step_executor import get_step_executor, _BakedWorkflowInputs
+from ray.workflow.task_executor import get_task_executor, _BakedWorkflowInputs
 from ray.workflow.workflow_state import (
     WorkflowExecutionState,
     TaskExecutionMetadata,
@@ -23,7 +23,7 @@ from ray.workflow.workflow_state import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.workflow_context import WorkflowStepContext
+    from ray.workflow.workflow_context import WorkflowTaskContext
     from ray.workflow.workflow_storage import WorkflowStorage
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class WorkflowExecutor:
         return self._state.output_task_id
 
     async def run_until_complete(
-        self, job_id: str, context: "WorkflowStepContext", wf_store: "WorkflowStorage"
+        self, job_id: str, context: "WorkflowTaskContext", wf_store: "WorkflowStorage"
     ):
         """Drive the state util it completes.
 
@@ -159,7 +159,7 @@ class WorkflowExecutor:
             ],
         )
         task = state.tasks[task_id]
-        executor = get_step_executor(task.options)
+        executor = get_task_executor(task.options)
         metadata_ref, output_ref = executor(
             task.func_body,
             state.task_context[task_id],
@@ -223,12 +223,53 @@ class WorkflowExecutor:
 
     def _iter_callstack(self, task_id: TaskID) -> Iterator[Tuple[TaskID, Task]]:
         state = self._state
-        while task_id in state.task_context:
+        while task_id in state.task_context and task_id in state.tasks:
+            yield task_id, state.tasks[task_id]
             task_id = state.task_context[task_id].creator_task_id
-            if task_id in state.tasks:
-                yield task_id, state.tasks[task_id]
-            else:
-                break
+
+    def _retry_failed_task(
+        self, workflow_id: str, failed_task_id: TaskID, exc: Exception
+    ) -> bool:
+        state = self._state
+        is_application_error = isinstance(exc, RayTaskError)
+        options = state.tasks[failed_task_id].options
+        if not is_application_error or options.retry_exceptions:
+            if state.task_retries[failed_task_id] < options.max_retries:
+                state.task_retries[failed_task_id] += 1
+                logger.info(
+                    f"Retry [{workflow_id}@{failed_task_id}] "
+                    f"({state.task_retries[failed_task_id]}/{options.max_retries})"
+                )
+                state.construct_scheduling_plan(failed_task_id)
+                return True
+        return False
+
+    async def _catch_failed_task(
+        self, workflow_id: str, failed_task_id: TaskID, exc: Exception
+    ) -> bool:
+        # lookup a creator task that catches the exception
+        is_application_error = isinstance(exc, RayTaskError)
+        exception_catcher = None
+        if is_application_error:
+            for t, task in self._iter_callstack(failed_task_id):
+                if task.options.catch_exceptions:
+                    exception_catcher = t
+                    break
+        if exception_catcher is not None:
+            logger.info(
+                f"Exception raised by '{workflow_id}@{failed_task_id}' is caught by "
+                f"'{workflow_id}@{exception_catcher}'"
+            )
+            # assign output to exception catching task;
+            # compose output with caught exception
+            await self._post_process_ready_task(
+                exception_catcher,
+                metadata=WorkflowExecutionMetadata(),
+                output_ref=WorkflowRef(failed_task_id, ray.put((None, exc))),
+            )
+            # TODO(suquark): cancel other running tasks?
+            return True
+        return False
 
     async def _handle_ready_task(
         self, fut: asyncio.Future, workflow_id: str, wf_store: "WorkflowStorage"
@@ -256,10 +297,8 @@ class WorkflowExecutor:
             self._broadcast_exception(err)
             raise err from None
         except Exception as e:
-            is_application_error = False
             if isinstance(e, RayTaskError):
                 reason = "an exception raised by the task"
-                is_application_error = True
             elif isinstance(e, RayError):
                 reason = "a system error"
             else:
@@ -269,38 +308,52 @@ class WorkflowExecutor:
                 f"[{workflow_id}@{task_id}]"
             )
 
-            # on error, the error is caught by this task
-            exception_catching_task_id = None
-            # lookup a creator task that catches the exception
+            is_application_error = isinstance(e, RayTaskError)
+            options = state.tasks[task_id].options
+
+            # ---------------------- retry the task ----------------------
+            if not is_application_error or options.retry_exceptions:
+                if state.task_retries[task_id] < options.max_retries:
+                    state.task_retries[task_id] += 1
+                    logger.info(
+                        f"Retry [{workflow_id}@{task_id}] "
+                        f"({state.task_retries[task_id]}/{options.max_retries})"
+                    )
+                    state.construct_scheduling_plan(task_id)
+                    return
+
+            # ----------- retry used up, handle the task error -----------
+            exception_catcher = None
             if is_application_error:
                 for t, task in self._iter_callstack(task_id):
                     if task.options.catch_exceptions:
-                        exception_catching_task_id = t
+                        exception_catcher = t
                         break
+            if exception_catcher is not None:
+                logger.info(
+                    f"Exception raised by '{workflow_id}@{task_id}' is caught by "
+                    f"'{workflow_id}@{exception_catcher}'"
+                )
+                # assign output to exception catching task;
+                # compose output with caught exception
+                await self._post_process_ready_task(
+                    exception_catcher,
+                    metadata=WorkflowExecutionMetadata(),
+                    output_ref=WorkflowRef(task_id, ray.put((None, e))),
+                )
+                # TODO(suquark): cancel other running tasks?
+                return
 
-            if exception_catching_task_id is None:
-                # NOTE: We must update the workflow status before broadcasting
-                # the exception. Otherwise, the workflow status would still be
-                # 'RUNNING' if check the status immediately after the exception.
-                wf_store.update_workflow_status(WorkflowStatus.FAILED)
-                logger.error(f"Workflow '{workflow_id}' failed due to {e}")
-                err = WorkflowExecutionError(workflow_id)
-                err.__cause__ = e  # chain exceptions
-                self._broadcast_exception(err)
-                raise err
-
-            logger.info(
-                f"Exception raised by '{workflow_id}@{task_id}' is caught by "
-                f"'{workflow_id}@{exception_catching_task_id}'"
-            )
-            # assign output to exception catching task;
-            # compose output with caught exception
-            await self._post_process_ready_task(
-                exception_catching_task_id,
-                metadata=WorkflowExecutionMetadata(),
-                output_ref=WorkflowRef(task_id, ray.put((None, e))),
-            )
-            # TODO(suquark): cancel other running tasks?
+            # ------------------- raise the task error -------------------
+            # NOTE: We must update the workflow status before broadcasting
+            # the exception. Otherwise, the workflow status would still be
+            # 'RUNNING' if check the status immediately after the exception.
+            wf_store.update_workflow_status(WorkflowStatus.FAILED)
+            logger.error(f"Workflow '{workflow_id}' failed due to {e}")
+            err = WorkflowExecutionError(workflow_id)
+            err.__cause__ = e  # chain exceptions
+            self._broadcast_exception(err)
+            raise err
 
     async def _post_process_ready_task(
         self,
@@ -309,6 +362,7 @@ class WorkflowExecutor:
         output_ref: WorkflowRef,
     ) -> None:
         state = self._state
+        state.task_retries.pop(task_id, None)
         if metadata.is_output_workflow:  # The task returns a continuation
             sub_workflow_state: WorkflowExecutionState = await output_ref.ref
             # init the context just for "sub_workflow_state"

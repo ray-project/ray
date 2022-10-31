@@ -32,6 +32,8 @@ from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
+    GradStatsMixin,
+    TargetNetworkMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -39,7 +41,7 @@ from ray.rllib.utils.annotations import (
     override,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -47,44 +49,9 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TargetNetworkMixin:
-    """Target NN is updated by master learner via the `update_target` method.
-
-    Updates happen every `trainer.update_target_frequency` steps. All worker
-    batches are importance sampled wrt the target network to ensure a more
-    stable pi_old in PPO.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        @make_tf_callable(self.get_session())
-        def do_update():
-            assign_ops = []
-            assert len(self.model_vars) == len(self.target_model_vars)
-            for var, var_target in zip(self.model_vars, self.target_model_vars):
-                assign_ops.append(var_target.assign(var))
-            return tf.group(*assign_ops)
-
-        self.update_target = do_update
-
-    @property
-    def model_vars(self):
-        if not hasattr(self, "_model_vars"):
-            self._model_vars = self.model.variables()
-        return self._model_vars
-
-    @property
-    def target_model_vars(self):
-        if not hasattr(self, "_target_model_vars"):
-            self._target_model_vars = self.target_model.variables()
-        return self._target_model_vars
-
-    def variables(self):
-        return self.model_vars + self.target_model_vars
-
-
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_appo_tf_policy(base: type) -> type:
+def get_appo_tf_policy(name: str, base: type) -> type:
     """Construct an APPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -102,11 +69,12 @@ def get_appo_tf_policy(base: type) -> type:
         EntropyCoeffSchedule,
         ValueNetworkMixin,
         TargetNetworkMixin,
+        GradStatsMixin,
         base,
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -123,30 +91,33 @@ def get_appo_tf_policy(base: type) -> type:
             # that base.__init__ will use the make_model() call.
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
             )
 
+            # TF LearningRateSchedule depends on self.framework, so initialize
+            # after base.__init__() is called.
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
             self.maybe_initialize_optimizer_and_loss()
 
             # Initiate TargetNetwork ops after loss initialization.
-            TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+            TargetNetworkMixin.__init__(self)
 
         @override(base)
         def make_model(self) -> ModelV2:
@@ -434,8 +405,11 @@ def get_appo_tf_policy(base: type) -> type:
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
 
+    APPOTFPolicy.__name__ = name
+    APPOTFPolicy.__qualname__ = name
+
     return APPOTFPolicy
 
 
-APPOTF1Policy = get_appo_tf_policy(DynamicTFPolicyV2)
-APPOTF2Policy = get_appo_tf_policy(EagerTFPolicyV2)
+APPOTF1Policy = get_appo_tf_policy("APPOTF1Policy", DynamicTFPolicyV2)
+APPOTF2Policy = get_appo_tf_policy("APPOTF2Policy", EagerTFPolicyV2)

@@ -148,6 +148,11 @@ const liveNodesSelector = (state: StoreState) =>
 
 type DialogState = {
   nodeIp: string;
+  pid: number;
+} | null;
+
+type ErrorDialogState = {
+  nodeIp: string;
   pid: number | null;
 } | null;
 
@@ -169,7 +174,7 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
 
 const NodeInfo: React.FC<{}> = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
-  const [errorDialog, setErrorDialog] = useState<DialogState>(null);
+  const [errorDialog, setErrorDialog] = useState<ErrorDialogState>(null);
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");

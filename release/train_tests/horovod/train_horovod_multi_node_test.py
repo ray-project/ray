@@ -3,10 +3,12 @@ import os
 import time
 
 import ray
-from ray.train import Trainer
+from ray.air import ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
+from ray.train.constants import TRAINING_ITERATION
+from ray.train.horovod.horovod_trainer import HorovodTrainer
 
 if __name__ == "__main__":
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"))
@@ -14,17 +16,21 @@ if __name__ == "__main__":
 
     num_workers = 8
     num_epochs = 10
-    trainer = Trainer("horovod", num_workers)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    trainer = HorovodTrainer(
+        horovod_torch_train_func,
+        train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            trainer_resources={"CPU": 0},
+        ),
     )
-    trainer.shutdown()
+    results = trainer.fit()
+    result = results.metrics
+    assert result[TRAINING_ITERATION] == num_epochs
 
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
+    loss = list(results.metrics_dataframe["loss"])
+    assert len(loss) == num_epochs
+    assert loss[-1] < loss[0]
 
     delta = time.time() - start_time
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:

@@ -1,114 +1,235 @@
-from collections import namedtuple
+import gym
+import numpy as np
+import tree
+from typing import Dict, Any, List
+
 import logging
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import (
+    MultiAgentBatch,
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+)
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.offline.io_context import IOContext
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic,
+)
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 
 logger = logging.getLogger(__name__)
 
-OffPolicyEstimate = ExperimentalAPI(
-    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
-)
 
+@DeveloperAPI
+class OffPolicyEstimator(OfflineEvaluator):
+    """Interface for an off policy estimator for counterfactual evaluation."""
 
-@ExperimentalAPI
-class OffPolicyEstimator:
-    """Interface for an off policy reward estimator."""
-
-    @ExperimentalAPI
-    def __init__(self, name: str, policy: Policy, gamma: float):
+    @DeveloperAPI
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float = 0.0,
+        epsilon_greedy: float = 0.0,
+    ):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
-            name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
+            epsilon_greedy: The probability by which we act acording to a fully random
+            policy during deployment. With 1-epsilon_greedy we act according the target
+            policy.
+            # TODO (kourosh): convert the input parameters to a config dict.
         """
-        self.name = name
-        self.policy = policy
+        super().__init__(policy)
         self.gamma = gamma
-        self.new_estimates = []
+        self.epsilon_greedy = epsilon_greedy
 
-    @ExperimentalAPI
-    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
-        """Returns a list of off policy estimates for the given batch of episodes.
+    @DeveloperAPI
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
+        """Returns off-policy estimates for the given one episode.
 
         Args:
-            batch: The batch to calculate the off policy estimates (OPE) on.
+            batch: The episode to calculate the off-policy estimates (OPE) on. The
+            episode must be a sample batch type that contains the fields "obs",
+            "actions", and "action_prob" and it needs to represent a
+            complete trajectory.
 
         Returns:
-            The off-policy estimates (OPE) calculated on the given batch.
+            The off-policy estimates (OPE) calculated on the given episode. The returned
+            dict can be any arbitrary mapping of strings to metrics.
         """
         raise NotImplementedError
 
-    @ExperimentalAPI
-    def train(self, batch: SampleBatchType) -> TensorType:
-        """Trains an Off-Policy Estimator on a batch of experiences.
-        A model-based estimator should override this and train
-        a transition, value, or reward model.
+    @DeveloperAPI
+    def estimate_on_single_step_samples(
+        self,
+        batch: SampleBatch,
+    ) -> Dict[str, List[float]]:
+        """Returns off-policy estimates for the batch of single timesteps. This is
+        highly optimized for bandits assuming each episode is a single timestep.
 
         Args:
-            batch: The batch to train the model on
+            batch: The batch to calculate the off-policy estimates (OPE) on. The
+            batch must be a sample batch type that contains the fields "obs",
+            "actions", and "action_prob".
 
         Returns:
-            any optional training/loss metrics from the model
+            The off-policy estimates (OPE) calculated on the given batch of single time
+            step samples. The returned dict can be any arbitrary mapping of strings to
+            a list of floats capturing the values per each record.
+        """
+        raise NotImplementedError
+
+    def on_before_split_batch_by_episode(
+        self, sample_batch: SampleBatch
+    ) -> SampleBatch:
+        """Called before the batch is split by episode. You can perform any
+        preprocessing on the batch that you want here.
+        e.g. adding done flags to the batch, or reseting some stats that you want to
+        track per episode later during estimation, .etc.
+
+        Args:
+            sample_batch: The batch to split by episode. This contains multiple
+            episodes.
+
+        Returns:
+            The modified batch before calling split_by_episode().
+        """
+        return sample_batch
+
+    @OverrideToImplementCustomLogic
+    def on_after_split_batch_by_episode(
+        self, all_episodes: List[SampleBatch]
+    ) -> List[SampleBatch]:
+        """Called after the batch is split by episode. You can perform any
+        postprocessing on each episode that you want here.
+        e.g. computing advantage per episode, .etc.
+
+        Args:
+            all_episodes: The list of episodes in the original batch. Each element is a
+            sample batch type that is a single episode.
+        """
+
+        return all_episodes
+
+    @OverrideToImplementCustomLogic
+    def peek_on_single_episode(self, episode: SampleBatch) -> None:
+        """This is called on each episode before it is passed to
+        estimate_on_single_episode(). Using this method, you can get a peek at the
+        entire validation dataset before runnining the estimation. For examlpe if you
+        need to perform any normalizations of any sorts on the dataset, you can compute
+        the normalization parameters here.
+
+        Args:
+            episode: The episode that is split from the original batch. This is a
+            sample batch type that is a single episode.
         """
         pass
 
-    @ExperimentalAPI
-    def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
-        """Returns log likelihood for actions in given batch for policy.
-
-        Computes likelihoods by passing the observations through the current
-        policy's `compute_log_likelihoods()` method
+    @DeveloperAPI
+    def estimate(
+        self, batch: SampleBatchType, split_batch_by_episode: bool = True
+    ) -> Dict[str, Any]:
+        """Compute off-policy estimates.
 
         Args:
-            batch: The SampleBatch or MultiAgentBatch to calculate action
-                log likelihoods from. This batch/batches must contain OBS
-                and ACTIONS keys.
+            batch: The batch to calculate the off-policy estimates (OPE) on. The
+            batch must contain the fields "obs", "actions", and "action_prob".
+            split_batch_by_episode: Whether to split the batch by episode.
 
         Returns:
-            The probabilities of the actions in the batch, given the
-            observations and the policy.
+            The off-policy estimates (OPE) calculated on the given batch. The returned
+            dict can be any arbitrary mapping of strings to metrics.
+            The dict consists of the following metrics:
+            - v_behavior: The discounted return averaged over episodes in the batch
+            - v_behavior_std: The standard deviation corresponding to v_behavior
+            - v_target: The estimated discounted return for `self.policy`,
+            averaged over episodes in the batch
+            - v_target_std: The standard deviation corresponding to v_target
+            - v_gain: v_target / max(v_behavior, 1e-8)
+            - v_delta: The difference between v_target and v_behavior.
         """
-        num_state_inputs = 0
-        for k in batch.keys():
-            if k.startswith("state_in_"):
-                num_state_inputs += 1
-        state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-        log_likelihoods: TensorType = self.policy.compute_log_likelihoods(
-            actions=batch[SampleBatch.ACTIONS],
-            obs_batch=batch[SampleBatch.OBS],
-            state_batches=[batch[k] for k in state_keys],
-            prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
-            actions_normalized=True,
-        )
-        log_likelihoods = convert_to_numpy(log_likelihoods)
-        return log_likelihoods
+        batch = self.convert_ma_batch_to_sample_batch(batch)
+        self.check_action_prob_in_batch(batch)
+        estimates_per_epsiode = []
+        if split_batch_by_episode:
+            batch = self.on_before_split_batch_by_episode(batch)
+            all_episodes = batch.split_by_episode()
+            all_episodes = self.on_after_split_batch_by_episode(all_episodes)
+            for episode in all_episodes:
+                assert len(set(episode[SampleBatch.EPS_ID])) == 1, (
+                    "The episode must contain only one episode id. For some reason "
+                    "the split_by_episode() method could not successfully split "
+                    "the batch by episodes. Each row in the dataset should be "
+                    "one episode. Check your evaluation dataset for errors."
+                )
+                self.peek_on_single_episode(episode)
 
-    @ExperimentalAPI
-    def check_can_estimate_for(self, batch: SampleBatchType) -> None:
+            for episode in all_episodes:
+                estimate_step_results = self.estimate_on_single_episode(episode)
+                estimates_per_epsiode.append(estimate_step_results)
+
+            # turn a list of identical dicts into a dict of lists
+            estimates_per_epsiode = tree.map_structure(
+                lambda *x: list(x), *estimates_per_epsiode
+            )
+        else:
+            # the returned dict is a mapping of strings to a list of floats
+            estimates_per_epsiode = self.estimate_on_single_step_samples(batch)
+
+        estimates = {
+            "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),
+            "v_behavior_std": np.std(estimates_per_epsiode["v_behavior"]),
+            "v_target": np.mean(estimates_per_epsiode["v_target"]),
+            "v_target_std": np.std(estimates_per_epsiode["v_target"]),
+        }
+        estimates["v_gain"] = estimates["v_target"] / max(estimates["v_behavior"], 1e-8)
+        estimates["v_delta"] = estimates["v_target"] - estimates["v_behavior"]
+
+        return estimates
+
+    @DeveloperAPI
+    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> SampleBatch:
+        """Converts a MultiAgentBatch to a SampleBatch if neccessary.
+
+        Args:
+            batch: The SampleBatchType to convert.
+
+        Returns:
+            batch: the converted SampleBatch
+
+        Raises:
+            ValueError if the MultiAgentBatch has more than one policy_id
+            or if the policy_id is not `DEFAULT_POLICY_ID`
+        """
+        # TODO: Make this a util to sample_batch.py
+        if isinstance(batch, MultiAgentBatch):
+            policy_keys = batch.policy_batches.keys()
+            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
+                batch = batch.policy_batches[DEFAULT_POLICY_ID]
+            else:
+                raise ValueError(
+                    "Off-Policy Estimation is not implemented for "
+                    "multi-agent batches. You can set "
+                    "`off_policy_estimation_methods: {}` to resolve this."
+                )
+        return batch
+
+    @DeveloperAPI
+    def check_action_prob_in_batch(self, batch: SampleBatchType) -> None:
         """Checks if we support off policy estimation (OPE) on given batch.
 
         Args:
             batch: The batch to check.
 
         Raises:
-            ValueError: In case `action_prob` key is not in batch OR batch
-            is a MultiAgentBatch.
+            ValueError: In case `action_prob` key is not in batch
         """
-
-        if isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                "Off-Policy Estimation is not implemented for multi-agent batches. "
-                "You can set `off_policy_estimation_methods: {}` to resolve this."
-            )
 
         if "action_prob" not in batch:
             raise ValueError(
@@ -120,69 +241,38 @@ class OffPolicyEstimator:
             )
 
     @ExperimentalAPI
-    def process(self, batch: SampleBatchType) -> None:
-        """Computes off policy estimates (OPE) on batch and stores results.
-        Thus-far collected results can be retrieved then by calling
-        `self.get_metrics` (which flushes the internal results storage).
-        Args:
-            batch: The batch to process (call `self.estimate()` on) and
-                store results (OPEs) for.
-        """
-        self.new_estimates.extend(self.estimate(batch))
+    def compute_action_probs(self, batch: SampleBatch):
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
-    @ExperimentalAPI
-    def get_metrics(self, get_losses: bool = False) -> List[OffPolicyEstimate]:
-        """Returns list of new episode metric estimates since the last call.
+        if self.epsilon_greedy > 0.0:
+            if not isinstance(self.policy.action_space, gym.spaces.Discrete):
+                raise ValueError(
+                    "Evaluation with epsilon-greedy exploration is only supported "
+                    "with discrete action spaces."
+                )
+            eps = self.epsilon_greedy
+            new_prob = new_prob * (1 - eps) + eps / self.policy.action_space.n
+
+        return new_prob
+
+    @DeveloperAPI
+    def train(self, batch: SampleBatchType) -> Dict[str, Any]:
+        """Train a model for Off-Policy Estimation.
 
         Args:
-            get_losses: If True, also return self.losses for the OPE estimator
+            batch: SampleBatch to train on
+
         Returns:
-            out: List of OffPolicyEstimate objects.
-            losses: List of training losses for the estimator.
+            Any optional metrics to return from the estimator
         """
-        out = self.new_estimates
-        self.new_estimates = []
-        if hasattr(self, "losses"):
-            losses = self.losses
-            self.losses = []
-            if get_losses:
-                return out, losses
-        return out
+        return {}
 
-    # TODO (rohan): Remove deprecated methods; set to error=True because changing
-    # from one episode per SampleBatch to full SampleBatch is a breaking change anyway
-
-    @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=False)
-    @classmethod
-    @ExperimentalAPI
-    def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
-        """Creates an off-policy estimator from an IOContext object.
-        Extracts Policy and gamma (discount factor) information from the
-        IOContext.
-        Args:
-            ioctx: The IOContext object to create the OffPolicyEstimator
-                from.
-        Returns:
-            The OffPolicyEstimator object created from the IOContext object.
-        """
-        gamma = ioctx.worker.policy_config["gamma"]
-        # Grab a reference to the current model
-        keys = list(ioctx.worker.policy_map.keys())
-        if len(keys) > 1:
-            raise NotImplementedError(
-                "Off-policy estimation is not implemented for multi-agent. "
-                "You can set `input_evaluation: []` to resolve this."
-            )
-        policy = ioctx.worker.get_policy(keys[0])
-        config = ioctx.input_config.get("estimator_config", {})
-        return cls(policy, gamma, config)
-
-    @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
-    @ExperimentalAPI
-    def create(self, *args, **kwargs):
-        return self.create_from_io_context(*args, **kwargs)
-
-    @Deprecated(new="OffPolicyEstimator.compute_log_likelihoods", error=False)
-    @ExperimentalAPI
-    def action_prob(self, *args, **kwargs):
-        return self.compute_log_likelihoods(*args, **kwargs)
+    @Deprecated(
+        old="OffPolicyEstimator.action_log_likelihood",
+        new="ray.rllib.utils.policy.compute_log_likelihoods_from_input_dict",
+        error=True,
+    )
+    def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
+        return convert_to_numpy(log_likelihoods)

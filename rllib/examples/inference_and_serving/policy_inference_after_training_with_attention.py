@@ -11,8 +11,9 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -21,7 +22,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -79,23 +80,26 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "FrozenLake-v1",
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("FrozenLake-v1")
+        # Run with tracing enabled for tf2?
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .training(
+            model={
+                "use_attention": True,
+                "attention_num_transformer_units": 1,
+                "attention_use_n_prev_actions": args.prev_n_actions,
+                "attention_use_n_prev_rewards": args.prev_n_rewards,
+                "attention_dim": 32,
+                "attention_memory_inference": 10,
+                "attention_memory_training": 10,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "use_attention": True,
-            "attention_num_transformer_units": 1,
-            "attention_use_n_prev_actions": args.prev_n_actions,
-            "attention_use_n_prev_rewards": args.prev_n_rewards,
-            "attention_dim": 32,
-            "attention_memory_inference": 10,
-            "attention_memory_training": 10,
-        },
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
-        "eager_tracing": args.eager_tracing,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -104,18 +108,23 @@ if __name__ == "__main__":
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")
-    results = tune.run(
+    tuner = tune.Tuner(
         args.run,
-        config=config,
-        stop=stop,
-        verbose=2,
-        checkpoint_freq=1,
-        checkpoint_at_end=True,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=1,
+                checkpoint_at_end=True,
+            ),
+        ),
     )
+    results = tuner.fit()
 
     print("Training completed. Restoring new Trainer for action inference.")
     # Get the last checkpoint from the above training run.
-    checkpoint = results.get_last_checkpoint()
+    checkpoint = results.get_best_result().checkpoint
     # Create new Trainer and restore its state from the last checkpoint.
     algo = get_algorithm_class(args.run)(config=config)
     algo.restore(checkpoint)
@@ -177,5 +186,7 @@ if __name__ == "__main__":
                 prev_a = a
             if init_prev_r is not None:
                 prev_r = reward
+
+    algo.stop()
 
     ray.shutdown()

@@ -44,7 +44,6 @@ parser.add_argument(
     help=("how many batches to wait before logging training " "status"),
 )
 parser.add_argument("--num-workers", type=int, default=16)
-parser.add_argument("--mock-train-step-time", type=float, default=1.0)
 parser.add_argument("--num-files", type=int, default=30)
 parser.add_argument("--num-windows", type=int, default=1)
 parser.add_argument("--manual-windows", type=bool, default=False)
@@ -137,7 +136,6 @@ def train_main(args, splits):
                     f"Processing batch {batch_idx} in epoch {epoch} on worker "
                     f"{rank}."
                 )
-            time.sleep(args.mock_train_step_time)
             loss = loss_function(batch_pred, target, delta=60)
             loss.mean().backward()
             for opt in optimizers:
@@ -269,9 +267,27 @@ def create_dataset(
 @ray.remote
 def consume(split, rank=None, batch_size=None):
     torch_iterator = create_torch_iterator(split, batch_size=batch_size, rank=rank)
+    start = time.perf_counter()
+    batch_start = start
+    batch_wait_time = []
+    num_batches = 0
     for i, (x, y) in enumerate(torch_iterator):
+        num_batches += 1
+        batch_wait = time.perf_counter() - batch_start
+        batch_wait_time.append(batch_wait)
         if i % 10 == 0:
-            print(i)
+            print(f"Consumer #{rank} finishes batch #{i}")
+        batch_start = time.perf_counter()
+
+    duration = time.perf_counter() - start
+    t50 = np.quantile(batch_wait_time, 0.5)
+    t95 = np.quantile(batch_wait_time, 0.95)
+    tmax = np.max(batch_wait_time)
+    print(
+        f"Consumer #{rank} total time: {duration}, total batches: {num_batches}, "
+        f"P50/P95/Max batch wait time (s): {t50}/{t95}/{tmax}."
+    )
+
     return
 
 

@@ -19,8 +19,9 @@ on `Github`_.
     suggestion.rst
     schedulers.rst
     stoppers.rst
-    analysis.rst
+    result_grid.rst
     reporters.rst
+    syncing.rst
     logging.rst
     env.rst
     sklearn.rst

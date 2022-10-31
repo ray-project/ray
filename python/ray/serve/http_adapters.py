@@ -7,7 +7,7 @@ import numpy as np
 import starlette.requests
 
 from ray.util.annotations import PublicAPI
-from ray.serve.utils import require_packages
+from ray.serve._private.utils import require_packages
 
 
 _1DArray = List[float]
@@ -43,7 +43,10 @@ class NdArray(BaseModel):
 
 @PublicAPI(stability="beta")
 def json_to_ndarray(payload: NdArray) -> np.ndarray:
-    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array."""
+    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array.
+
+    .. autopydantic_model:: ray.serve.http_adapters.NdArray
+    """
     arr = np.array(payload.array)
     if payload.shape:
         arr = arr.reshape(*payload.shape)
@@ -93,4 +96,6 @@ async def pandas_read_json(raw_request: Request):
     import pandas as pd
 
     raw_json = await raw_request.body()
+    if isinstance(raw_json, bytes):
+        raw_json = raw_json.decode("utf-8")
     return pd.read_json(raw_json, **raw_request.query_params)

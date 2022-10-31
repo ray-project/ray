@@ -39,16 +39,13 @@ from ray.tune.search.sample import (
 from ray.tune.search import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable.util import with_parameters
-
-from ray._private.usage import usage_lib
-
-usage_lib.record_library_usage("tune")
+from ray.tune.trainable.util import with_parameters, with_resources
+from ray.tune.result_grid import ResultGrid
+from ray.tune.tuner import Tuner
+from ray.tune.tune_config import TuneConfig
 
 __all__ = [
     "Trainable",
-    "DurableTrainable",
-    "durable",
     "Callback",
     "TuneError",
     "grid_search",
@@ -57,11 +54,10 @@ __all__ = [
     "run",
     "run_experiments",
     "with_parameters",
+    "with_resources",
     "Stopper",
     "Experiment",
-    "function",
     "sample_from",
-    "track",
     "uniform",
     "quniform",
     "choice",
@@ -85,7 +81,10 @@ __all__ = [
     "is_session_enabled",
     "checkpoint_dir",
     "SyncConfig",
+    "ResultGrid",
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
+    "Tuner",
+    "TuneConfig",
 ]

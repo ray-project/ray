@@ -18,12 +18,18 @@ There are three ways of starting the Ray runtime:
 * Explicitly via CLI (:ref:`start-ray-cli`)
 * Explicitly via the cluster launcher (:ref:`start-ray-up`)
 
+In all cases, ``ray.init()`` will try to automatically find a Ray instance to
+connect to. It checks, in order:
+1. The ``RAY_ADDRESS`` OS environment variable.
+2. The concrete address passed to ``ray.init(address=<address>)``.
+3. If no address is provided, the latest Ray instance that was started on the same machine using ``ray start``.
+
 .. _start-ray-init:
 
 Starting Ray on a single machine
 --------------------------------
 
-Calling ``ray.init()`` (without any ``address`` args) starts a Ray runtime on your laptop/machine. This laptop/machine becomes the  "head node".
+Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This laptop/machine becomes the  "head node".
 
 .. note::
 
@@ -161,15 +167,15 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
   ...
 
 
-You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
+You can connect to this Ray instance by starting a driver process on the same node as where you ran ``ray start``.
+``ray.init()`` will now automatically connect to the latest Ray instance.
 
 .. tabbed:: Python
 
   .. code-block:: python
 
-    # This must
     import ray
-    ray.init(address='auto')
+    ray.init()
 
 .. tabbed:: java
 
@@ -207,23 +213,23 @@ You can connect to this Ray runtime by starting a driver process on the same nod
       RAY_ADDRESS=<address> ./<binary> <args>
 
 
-You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init(address="auto")`` on any of the cluster machines will connect to the ray cluster.
+You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`on-prem` for more details. Calling ``ray.init()`` on any of the cluster machines will connect to the same Ray cluster.
 
 .. _start-ray-up:
 
 Launching a Ray cluster (``ray up``)
 ------------------------------------
 
-Ray clusters can be launched with the :ref:`Cluster Launcher <cluster-cloud>`.
+Ray clusters can be launched with the :ref:`Cluster Launcher <cluster-index>`.
 The ``ray up`` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls ``ray start`` to create a Ray cluster.
 
-Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.
+Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <cluster-index>`.
 
-To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows your script to connect to the existing Ray runtime on the cluster.
+To connect to the Ray cluster, call ``ray.init`` from one of the machines in the cluster. This will connect to the latest Ray cluster:
 
 .. code-block:: python
 
-    ray.init(address="auto")
+    ray.init()
 
 Note that the machine calling ``ray up`` will not be considered as part of the Ray cluster, and therefore calling ``ray.init`` on that same machine will not attach to the cluster.
 

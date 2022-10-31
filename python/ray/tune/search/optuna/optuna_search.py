@@ -101,7 +101,7 @@ class OptunaSearch(Searcher):
             .. warning::
                 No actual computation should take place in the define-by-run
                 function. Instead, put the training logic inside the function
-                or class trainable passed to ``tune.run``.
+                or class trainable passed to ``tune.Tuner()``.
 
         metric: The training result objective value attribute. If
             None but a mode was passed, the anonymous metric ``_metric``
@@ -162,7 +162,14 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, config=config, search_alg=optuna_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
+            param_space=config,
+        )
+        tuner.fit()
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -182,7 +189,13 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=optuna_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
+        )
+        tuner.fit()
 
         # Equivalent Optuna define-by-run function approach:
 
@@ -197,7 +210,13 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=optuna_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
+        )
+        tuner.fit()
 
     Multi-objective optimization is supported:
 
@@ -212,17 +231,20 @@ class OptunaSearch(Searcher):
         }
 
         # Note you have to specify metric and mode here instead of
-        # in tune.run
+        # in tune.TuneConfig
         optuna_search = OptunaSearch(
             space,
             metric=["loss1", "loss2"],
             mode=["min", "max"])
 
         # Do not specify metric and mode here!
-        tune.run(
+        tuner = tune.Tuner(
             trainable,
-            search_alg=optuna_search
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
         )
+        tuner.fit()
 
     You can pass configs that will be evaluated first using
     ``points_to_evaluate``:
@@ -243,7 +265,13 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=optuna_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
+        )
+        tuner.fit()
 
     Avoid re-running evaluated trials by passing the rewards together with
     `points_to_evaluate`:
@@ -265,7 +293,13 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=optuna_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=optuna_search,
+            ),
+        )
+        tuner.fit()
 
     .. versionadded:: 0.8.8
 
@@ -418,7 +452,7 @@ class OptunaSearch(Searcher):
                 f"took {time_taken} seconds to "
                 "run. Ensure that actual computation, training takes "
                 "place inside Tune's train functions or Trainables "
-                "passed to `tune.run`."
+                "passed to `tune.Tuner()`."
             )
         if ret is not None:
             if not isinstance(ret, dict):
@@ -541,7 +575,7 @@ class OptunaSearch(Searcher):
                 "Define-by-run function passed in `space` argument is not "
                 "yet supported when using `evaluated_rewards`. Please provide "
                 "an `OptunaDistribution` dict or pass a Ray Tune "
-                "search space to `tune.run()`."
+                "search space to `tune.Tuner()`."
             )
 
         ot_trial_state = OptunaTrialState.COMPLETE

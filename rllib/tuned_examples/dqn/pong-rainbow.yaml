@@ -18,11 +18,14 @@ pong-deterministic-rainbow:
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           prioritized_replay_alpha: 0.5
-          learning_starts: 10000
           capacity: 50000
+        num_steps_sampled_before_learning_starts: 10000
         n_step: 3
         gpu: True
         model:
           grayscale: True
           zero_mean: False
           dim: 42
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True

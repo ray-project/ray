@@ -4,7 +4,7 @@ The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
 
 To generate experiences:
-$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v0
+$ ./train.py --run=PG --config='{"output": "/tmp/cartpole"}' --env=CartPole-v1
 
 To train on experiences with joint PG + IL loss:
 $ python custom_loss.py --input-files=/tmp/cartpole
@@ -15,7 +15,7 @@ from pathlib import Path
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
@@ -24,6 +24,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -33,7 +34,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -63,26 +64,35 @@ if __name__ == "__main__":
         TorchCustomLossModel if args.framework == "torch" else CustomLossModel,
     )
 
-    config = {
-        "env": "CartPole-v0",
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("CartPole-v1")
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0)
+        .training(
+            model={
+                "custom_model": "custom_loss",
+                "custom_model_config": {
+                    "input_files": args.input_files,
+                },
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "model": {
-            "custom_model": "custom_loss",
-            "custom_model_config": {
-                "input_files": args.input_files,
-            },
-        },
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
     }
 
-    analysis = tune.run(args.run, config=config, stop=stop, verbose=1)
-    info = analysis.results[next(iter(analysis.results))]["info"]
+    tuner = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    )
+    results = tuner.fit()
+    info = results.get_best_result().metrics["info"]
 
     # Torch metrics structure.
     if args.framework == "torch":

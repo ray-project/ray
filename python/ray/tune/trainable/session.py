@@ -4,20 +4,23 @@ import os
 import traceback
 import warnings
 from contextlib import contextmanager
-from typing import Dict, Optional, Set
+from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.trainable.function_trainable import _StatusReporter
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
+
+if TYPE_CHECKING:
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +58,15 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.trial_id
 
     @property
-    def trial_resources(self) -> Dict[str, float]:
-        return self._status_reporter.trial_resources.required_resources
+    def trial_resources(self) -> "PlacementGroupFactory":
+        return self._status_reporter.trial_resources
+
+    @property
+    def trial_dir(self) -> str:
+        return self._status_reporter.logdir
 
 
-@PublicAPI
+@Deprecated(message=_deprecation_msg)
 def is_session_enabled() -> bool:
     """Returns True if running within an Tune process."""
     global _session
@@ -78,7 +85,7 @@ def get_session():
         if log_once(stack_trace_str):
             logger.warning(
                 "Session not detected. You should not be calling `{}` "
-                "outside `tune.run` or while using the class API. ".format(
+                "outside `tuner.fit()` or while using the class API. ".format(
                     function_name
                 )
             )
@@ -86,7 +93,7 @@ def get_session():
     return _session
 
 
-def init(reporter, ignore_reinit_error=True):
+def _init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
     global _session_v2
@@ -119,8 +126,8 @@ def init(reporter, ignore_reinit_error=True):
     from ray import actor, remote_function
 
     if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
-        actor._actor_launch_hook = tune_task_and_actor_launch_hook
-        remote_function._task_launch_hook = tune_task_and_actor_launch_hook
+        actor._actor_launch_hook = _tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
 
     _session = reporter
     _session_v2 = _TuneSessionImpl(status_reporter=reporter)
@@ -130,7 +137,7 @@ def init(reporter, ignore_reinit_error=True):
 _checked_resources: Set[frozenset] = set()
 
 
-def tune_task_and_actor_launch_hook(
+def _tune_task_and_actor_launch_hook(
     fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
 ):
     """Launch hook to catch nested tasks that can't fit in the placement group.
@@ -194,14 +201,14 @@ def tune_task_and_actor_launch_hook(
     )
 
 
-def shutdown():
+def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
     _session = None
 
 
-@PublicAPI
+@Deprecated(message=_deprecation_msg)
 def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
@@ -215,7 +222,8 @@ def report(_metric=None, **kwargs):
                 time.sleep(1)
                 tune.report(hello="world", ray="tune")
 
-        analysis = tune.run(run_me)
+        tuner = Tuner(run_me)
+        results = tuner.fit()
 
     Args:
         _metric: Optional default anonymous metric for ``tune.report(value)``
@@ -236,7 +244,7 @@ def report(_metric=None, **kwargs):
         return _session(_metric, **kwargs)
 
 
-@PublicAPI
+@Deprecated(message=_deprecation_msg)
 @contextmanager
 def checkpoint_dir(step: int):
     """Returns a checkpoint dir inside a context.
@@ -312,7 +320,7 @@ def checkpoint_dir(step: int):
         _session.set_checkpoint(_checkpoint_dir)
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
@@ -327,7 +335,7 @@ def get_trial_dir():
         return _session.logdir
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_name():
     """Trial name for the corresponding trial.
 
@@ -342,7 +350,7 @@ def get_trial_name():
         return _session.trial_name
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_id():
     """Trial id for the corresponding trial.
 
@@ -357,7 +365,7 @@ def get_trial_id():
         return _session.trial_id
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 

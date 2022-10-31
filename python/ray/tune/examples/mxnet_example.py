@@ -1,6 +1,6 @@
 import mxnet as mx
 
-from ray import tune, logger
+from ray import air, tune, logger
 from ray.tune.integration.mxnet import TuneCheckpointCallback, TuneReportCallback
 from ray.tune.schedulers import ASHAScheduler
 
@@ -55,21 +55,27 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
 
     scheduler = ASHAScheduler(max_t=num_epochs, grace_period=1, reduction_factor=2)
 
-    analysis = tune.run(
-        tune.with_parameters(
-            train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs
+    tuner = tune.Tuner(
+        tune.with_resources(
+            tune.with_parameters(
+                train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs
+            ),
+            resources={
+                "cpu": 1,
+            },
         ),
-        resources_per_trial={
-            "cpu": 1,
-        },
-        metric="mean_accuracy",
-        mode="max",
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        name="tune_mnist_mxnet",
+        tune_config=tune.TuneConfig(
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=num_samples,
+            scheduler=scheduler,
+        ),
+        param_space=config,
+        run_config=air.RunConfig(
+            name="tune_mnist_mxnet",
+        ),
     )
-    return analysis
+    return tuner.fit()
 
 
 if __name__ == "__main__":
@@ -94,8 +100,8 @@ if __name__ == "__main__":
         ray.init(f"ray://{args.server_address}")
 
     if args.smoke_test:
-        analysis = tune_mnist_mxnet(num_samples=1, num_epochs=1)
+        results = tune_mnist_mxnet(num_samples=1, num_epochs=1)
     else:
-        analysis = tune_mnist_mxnet(num_samples=10, num_epochs=10)
+        results = tune_mnist_mxnet(num_samples=10, num_epochs=10)
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

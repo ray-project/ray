@@ -8,10 +8,11 @@ from dataclasses import dataclass
 
 from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray.serve.exceptions import RayServeException
+from ray.util.annotations import PublicAPI
 
 
 @dataclass
-class SingleRequest:
+class _SingleRequest:
     self_arg: Optional[Any]
     flattened_args: List[Any]
     future: asyncio.Future
@@ -65,7 +66,7 @@ class _BatchQueue:
             handle_batch_func(Optional[Callable]): callback to run in the
                 background to handle batches if provided.
         """
-        self.queue: asyncio.Queue[SingleRequest] = asyncio.Queue()
+        self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.full_batch_event = asyncio.Event()
         self.max_batch_size = max_batch_size
         self.timeout_s = timeout_s
@@ -76,7 +77,7 @@ class _BatchQueue:
                 self._handle_batches(handle_batch_func)
             )
 
-    def put(self, request: Tuple[SingleRequest, asyncio.Future]) -> None:
+    def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         # Signal when the full batch is ready. The event will be reset
         # in wait_for_batch.
@@ -129,7 +130,7 @@ class _BatchQueue:
 
     async def _handle_batches(self, func):
         while True:
-            batch: List[SingleRequest] = await self.wait_for_batch()
+            batch: List[_SingleRequest] = await self.wait_for_batch()
             assert len(batch) > 0
             self_arg = batch[0].self_arg
             args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
@@ -166,7 +167,7 @@ class _BatchQueue:
         self._handle_batch_task.cancel()
 
 
-def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
+def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
     Does this by checking to see if `func` is the attribute of the first
@@ -210,6 +211,7 @@ def batch(
     pass
 
 
+@PublicAPI(stability="beta")
 def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     """Converts a function to asynchronously handle batches.
 
@@ -266,7 +268,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     def _batch_decorator(_func):
         @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
-            self = extract_self_if_method_call(args, _func)
+            self = _extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
             if self is None:
@@ -291,7 +293,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
 
             future = asyncio.get_event_loop().create_future()
-            batch_queue.put(SingleRequest(self, flattened_args, future))
+            batch_queue.put(_SingleRequest(self, flattened_args, future))
 
             # This will raise if the underlying call raised an exception.
             return await future

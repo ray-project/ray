@@ -34,10 +34,11 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_compilation(self):
         """Test whether DDPG can be built with both frameworks."""
-        config = ddpg.DDPGConfig()
-        config.num_workers = 0
-        config.num_envs_per_worker = 2
-        config.replay_buffer_config["learning_starts"] = 0
+        config = (
+            ddpg.DDPGConfig()
+            .training(num_steps_sampled_before_learning_starts=0)
+            .rollouts(num_rollout_workers=0, num_envs_per_worker=2)
+        )
         explore = config.exploration_config.update({"random_timesteps": 100})
         config.exploration(exploration_config=explore)
 
@@ -63,14 +64,20 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
 
-        core_config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        core_config = (
+            ddpg.DDPGConfig()
+            .environment("Pendulum-v1")
+            .rollouts(num_rollout_workers=0)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
+
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = copy.deepcopy(core_config)
             # Default OUNoise setup.
-            algo = config.build(env="Pendulum-v1")
+            algo = config.build()
             # Setting explore=False should always return the same action.
             a_ = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)
@@ -98,7 +105,7 @@ class TestDDPG(unittest.TestCase):
                 }
             )
 
-            algo = ddpg.DDPG(config=config, env="Pendulum-v1")
+            algo = config.build()
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = algo.compute_single_action(obs, explore=False)
             check(algo.get_policy().global_timestep, 1)
@@ -125,10 +132,11 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
-        config = ddpg.DDPGConfig()
+        config = ddpg.DDPGConfig().training(num_steps_sampled_before_learning_starts=0)
+
         # Run locally.
         config.seed = 42
-        config.num_workers = 0
+        config.num_rollout_workers = 0
         config.twin_q = True
         config.use_huber = True
         config.huber_threshold = 1.0
@@ -138,8 +146,8 @@ class TestDDPG(unittest.TestCase):
         config.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
-            "learning_starts": 0,
         }
+        config.num_steps_sampled_before_learning_starts = 0
         # Use very simple nets.
         config.actor_hiddens = [10]
         config.critic_hiddens = [10]
@@ -228,7 +236,14 @@ class TestDDPG(unittest.TestCase):
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
                 assert fw == "tf"  # Start with the tf vars-dict.
-                weights_dict = policy.get_weights()
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                with p_sess.graph.as_default():
+                    collector = ray.experimental.tf_utils.TensorFlowVariables(
+                        [], p_sess, weights_dict_list
+                    )
+                    weights_dict = collector.get_weights()
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)

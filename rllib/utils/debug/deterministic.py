@@ -37,20 +37,23 @@ def update_global_seed_if_necessary(
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
         else:
-            from distutils.version import LooseVersion
+            try:
+                from packaging.version import Version
+            except ImportError:
+                from distutils.version import LooseVersion as Version
 
-            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
+            if Version(torch.__version__) >= Version("1.8.0"):
                 # Not all Operations support this.
                 torch.use_deterministic_algorithms(True)
             else:
                 torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
-    elif framework == "tf2" or framework == "tfe":
-        tf1, tf, _ = try_import_tf()
+    elif framework == "tf2":
+        tf1, tf, tfv = try_import_tf()
         # Tf2.x.
-        if framework == "tf2":
+        if tfv == 2:
             tf.random.set_seed(seed)
-        # Tf-eager.
-        elif framework == "tfe":
+        # Tf1.x.
+        else:
             tf1.set_random_seed(seed)

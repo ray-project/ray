@@ -1,24 +1,38 @@
+from collections import Counter
 import copy
 import logging
 import random
 import re
 import time
-from collections import Counter
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+import os
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 import numpy as np
 import tree  # pip install dm_tree
 import yaml
+import pprint
 from gym.spaces import Box
 
 import ray
+from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
+
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.algorithms import Algorithm, AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -36,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 def framework_iterator(
     config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
@@ -44,34 +58,30 @@ def framework_iterator(
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tfe/tf.
+    as the correct eager/non-eager contexts for tf/tf2.
 
     Args:
         config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=[tfe|tf2].
+            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
 
     Yields:
-        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is False: The current framework [tf2|tf|torch] used.
         If `session` is True: A tuple consisting of the current framework
         string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
-    if "tf2" in frameworks and "tfe" in frameworks:
-        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -83,19 +93,13 @@ def framework_iterator(
                 "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
-        elif fw == "tfe" and not eager_mode:
-            logger.warning(
-                "framework_iterator skipping tf-eager (could not "
-                "import `eager_mode` from tensorflow.python)!"
-            )
-            continue
         elif fw == "tf2" and tfv != 2:
             logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
             logger.warning("framework_iterator skipping JAX (not installed)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
+        assert fw in ["tf2", "tf", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -110,8 +114,8 @@ def framework_iterator(
             config.framework(fw)
 
         eager_ctx = None
-        # Enable eager mode for tf2 and tfe.
-        if fw in ["tf2", "tfe"]:
+        # Enable eager mode for tf2.
+        if fw == "tf2":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
@@ -120,7 +124,7 @@ def framework_iterator(
             assert not tf1.executing_eagerly()
 
         # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw in ["tf2", "tfe"] and with_eager_tracing:
+        if fw == "tf2" and with_eager_tracing:
             for tracing in [True, False]:
                 if isinstance(config, dict):
                     config["eager_tracing"] = tracing
@@ -165,7 +169,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
         y: The expected value to be compared to `x`. This must not
-            be a tf-Tensor, but may be a tfe/torch-Tensor.
+            be a tf-Tensor, but may be a tf/torch-Tensor.
         decimals: The number of digits after the floating point up to
             which all numeric values have to match.
         atol: Absolute tolerance of the difference between x and y
@@ -463,14 +467,16 @@ def check_compute_single_action(
                             )
 
 
-def check_learning_achieved(tune_results, min_reward, evaluation=False):
+def check_learning_achieved(
+    tune_results: "tune.ResultGrid", min_reward, evaluation=False
+):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
     "episode_reward_mean" value and compares it to `min_reward`.
 
     Args:
-        tune_results: The tune.run returned results object.
+        tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
 
     Raises:
@@ -480,16 +486,16 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
     # (check if at least one trial achieved some learning)
     avg_rewards = [
         (
-            trial.last_result["episode_reward_mean"]
+            row["episode_reward_mean"]
             if not evaluation
-            else trial.last_result["evaluation"]["episode_reward_mean"]
+            else row["evaluation/episode_reward_mean"]
         )
-        for trial in tune_results.trials
+        for _, row in tune_results.get_dataframe().iterrows()
     ]
     best_avg_reward = max(avg_rewards)
     if best_avg_reward < min_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
-    print("ok")
+        raise ValueError(f"`stop-reward` of {min_reward} not reached!")
+    print(f"`stop-reward` of {min_reward} reached! ok")
 
 
 def check_train_results(train_results):
@@ -505,7 +511,6 @@ def check_train_results(train_results):
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -538,7 +543,7 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    _, is_multi_agent = check_multi_agent(train_results["config"])
+    is_multi_agent = train_results["config"].is_multi_agent()
 
     # Check in particular the "info" dict.
     info = train_results["info"]
@@ -918,3 +923,79 @@ def check_same_batch(batch1, batch2) -> None:
         ), f"MultiAgentBatches don't share the following information: \n{difference}."
     else:
         raise ValueError("Unsupported batch type " + str(type(batch1)))
+
+
+def check_reproducibilty(
+    algo_class: Type["Algorithm"],
+    algo_config: "AlgorithmConfig",
+    *,
+    fw_kwargs: Dict[str, Any],
+    training_iteration: int = 1,
+) -> None:
+    # TODO @kourosh: we can get rid of examples/deterministic_training.py once
+    # this is added to all algorithms
+    """Check if the algorithm is reproducible across different testing conditions:
+
+        frameworks: all input frameworks
+        num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_workers: 0 (only local workers) or
+                     4 ((1) local workers + (4) remote workers)
+        num_envs_per_worker: 2
+
+    Args:
+        algo_class: Algorithm class to test.
+        algo_config: Base config to use for the algorithm.
+        fw_kwargs: Framework iterator keyword arguments.
+        training_iteration: Number of training iterations to run.
+
+    Returns:
+        None
+
+    Raises:
+        It raises an AssertionError if the algorithm is not reproducible.
+    """
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+
+    stop_dict = {
+        "training_iteration": training_iteration,
+    }
+    # use 0 and 2 workers (for more that 4 workers we have to make sure the instance
+    # type in ci build has enough resources)
+    for num_workers in [0, 2]:
+        algo_config = (
+            algo_config.debugging(seed=42)
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
+        )
+
+        for fw in framework_iterator(algo_config, **fw_kwargs):
+            print(
+                f"Testing reproducibility of {algo_class.__name__}"
+                f" with {num_workers} workers on fw = {fw}"
+            )
+            print("/// config")
+            pprint.pprint(algo_config.to_dict())
+            # test tune.Tuner().fit() reproducibility
+            results1 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
+            results1 = results1.get_best_result().metrics
+
+            results2 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
+            results2 = results2.get_best_result().metrics
+
+            # Test rollout behavior.
+            check(results1["hist_stats"], results2["hist_stats"])
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            )

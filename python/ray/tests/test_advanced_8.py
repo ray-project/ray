@@ -165,8 +165,15 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
-    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    # Make sure we connect to the existing cluster with on args and RAY_ADDRESS
+    # is not set.
     ray.init()
+    assert "CPU" not in ray._private.state.cluster_resources()
+    ray.shutdown()
+
+    # Make sure we start a new cluster if "local" is explicitly passed.
+    # is not set.
+    ray.init(address="local")
     assert "CPU" in ray._private.state.cluster_resources()
     ray.shutdown()
 
@@ -288,7 +295,7 @@ def test_get_system_memory():
 
     # cgroups v1, high
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
-        memory_limit_file.write(str(2 ** 64))
+        memory_limit_file.write(str(2**64))
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (

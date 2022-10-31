@@ -155,8 +155,8 @@ def stage4():
         spreads.append(spread)
         logger.info(f"Spread: {last - first}\tLast: {last}\tFirst: {first}")
 
-    avg_spread = sum(spreads) / len(spreads)
-    logger.info(f"Avg spread: {sum(spreads)/len(spreads)}")
+    avg_spread = np.mean(spreads)
+    logger.info(f"Avg spread: {np.mean(spreads)}")
     return avg_spread
 
 
@@ -178,13 +178,11 @@ if __name__ == "__main__":
     is_smoke_test = args.smoke_test
 
     result = {"success": 0}
-    # Wait until the expected number of nodes have joined the cluster.
-    while True:
-        num_nodes = len(ray.nodes())
-        logger.info("Waiting for nodes {}/{}".format(num_nodes, num_remote_nodes + 1))
-        if num_nodes >= num_remote_nodes + 1:
-            break
-        time.sleep(5)
+    num_nodes = len(ray.nodes())
+    assert (
+        num_nodes == num_remote_nodes + 1
+    ), f"{num_nodes}/{num_remote_nodes+1} are available"
+
     logger.info(
         "Nodes have all joined. There are %s resources.", ray.cluster_resources()
     )

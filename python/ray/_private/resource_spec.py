@@ -90,17 +90,12 @@ class ResourceSpec(
         """
         assert self.resolved()
 
-        memory_units = ray_constants.to_memory_units(self.memory, round_up=False)
-        object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory, round_up=False
-        )
-
         resources = dict(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
-            memory=memory_units,
-            object_store_memory=object_store_memory_units,
+            memory=int(self.memory),
+            object_store_memory=int(self.object_store_memory),
         )
 
         resources = {
@@ -183,10 +178,7 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            if (
-                sys.platform.startswith("linux")
-                and importlib.util.find_spec("GPUtil") is not None
-            ):
+            if importlib.util.find_spec("GPUtil") is not None:
                 gpu_types = _get_gpu_types_gputil()
             else:
                 info_string = _get_gpu_info_string()
@@ -276,21 +268,19 @@ class ResourceSpec(
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): Use a better mechanism for Windows.
+    TODO(rkn): Only detects NVidia GPUs (except when using WMIC on windows)
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
-    if sys.platform.startswith("linux"):
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            result = len(gpu_list)
-        else:
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                result = len(os.listdir(proc_gpus_path))
+    if importlib.util.find_spec("GPUtil"):
+        gpu_list = GPUtil.getGPUs()
+        result = len(gpu_list)
+    elif sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
@@ -345,8 +335,7 @@ def _constraints_from_gpu_info(info_str: str):
 def _get_gpu_info_string():
     """Get the gpu type for this machine.
 
-    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
-    gpu type.
+    TODO: Detects maximum one NVidia gpu type on linux
 
     Returns:
         (str) The gpu's model name.

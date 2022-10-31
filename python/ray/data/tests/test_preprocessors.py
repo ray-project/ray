@@ -1,37 +1,38 @@
 import warnings
 from collections import Counter
-from typing import Dict
+import re
 from unittest.mock import patch
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow
 import pytest
-from pandas import DataFrame
 
 import ray
-from ray.data import Dataset
-from ray.data.aggregate import Max
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
     Chain,
-    CustomStatefulPreprocessor,
     LabelEncoder,
     MinMaxScaler,
     OneHotEncoder,
     OrdinalEncoder,
     SimpleImputer,
     StandardScaler,
+    CustomKBinsDiscretizer,
+    UniformKBinsDiscretizer,
 )
 from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
+from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.air.constants import MAX_REPR_LENGTH
 
 
 @pytest.fixture
@@ -43,22 +44,28 @@ def create_dummy_preprocessors():
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
             return df
 
-    class DummyPreprocessorWithArrow(DummyPreprocessorWithNothing):
-        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-            return table
+    class DummyPreprocessorWithNumpy(DummyPreprocessorWithNothing):
+        batch_format = "numpy"
 
-    class DummyPreprocessorWithPandasAndArrow(DummyPreprocessorWithNothing):
+        def _transform_numpy(
+            self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+            return np_data
+
+    class DummyPreprocessorWithPandasAndNumpy(DummyPreprocessorWithNothing):
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
             return df
 
-        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-            return table
+        def _transform_numpy(
+            self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+            return np_data
 
     yield (
         DummyPreprocessorWithNothing(),
         DummyPreprocessorWithPandas(),
-        DummyPreprocessorWithArrow(),
-        DummyPreprocessorWithPandasAndArrow(),
+        DummyPreprocessorWithNumpy(),
+        DummyPreprocessorWithPandasAndNumpy(),
     )
 
 
@@ -120,6 +127,38 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@pytest.mark.parametrize(
+    "preprocessor",
+    [
+        BatchMapper(fn=lambda x: x),
+        Categorizer(columns=["X"]),
+        CountVectorizer(columns=["X"]),
+        Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
+        FeatureHasher(columns=["X"], num_features=1),
+        HashingVectorizer(columns=["X"], num_features=1),
+        LabelEncoder(label_column="X"),
+        MaxAbsScaler(columns=["X"]),
+        MinMaxScaler(columns=["X"]),
+        MultiHotEncoder(columns=["X"]),
+        Normalizer(columns=["X"]),
+        OneHotEncoder(columns=["X"]),
+        OrdinalEncoder(columns=["X"]),
+        PowerTransformer(columns=["X"], power=1),
+        RobustScaler(columns=["X"]),
+        SimpleImputer(columns=["X"]),
+        StandardScaler(columns=["X"]),
+        Concatenator(),
+        Tokenizer(columns=["X"]),
+    ],
+)
+def test_repr(preprocessor):
+    representation = repr(preprocessor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile(f"^{preprocessor.__class__.__name__}\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @patch.object(warnings, "warn")
@@ -614,7 +653,7 @@ def test_one_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_one_hot_encoder_with_limit():
+def test_one_hot_encoder_with_max_categories():
     """Tests basic OneHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -622,7 +661,7 @@ def test_one_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = OneHotEncoder(["B", "C"], limit={"B": 2})
+    encoder = OneHotEncoder(["B", "C"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas().columns) == 1 + 2 + 3
@@ -723,7 +762,7 @@ def test_multi_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_multi_hot_encoder_with_limit():
+def test_multi_hot_encoder_with_max_categories():
     """Tests basic MultiHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -732,7 +771,7 @@ def test_multi_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = MultiHotEncoder(["B", "C", "D"], limit={"B": 2})
+    encoder = MultiHotEncoder(["B", "C", "D"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas()["B"].iloc[0]) == 2
@@ -827,23 +866,22 @@ def test_categorizer(predefined_dtypes):
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
+    columns = ["B", "C"]
     if predefined_dtypes:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
-        columns = {
-            "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
-            "C": None,
-        }
+        dtypes = {"B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True)}
     else:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"]),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
         columns = ["B", "C"]
+        dtypes = None
 
-    encoder = Categorizer(columns)
+    encoder = Categorizer(columns, dtypes)
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
@@ -1100,92 +1138,6 @@ def test_normalizer():
     assert out_df.equals(expected_df)
 
 
-def test_batch_mapper():
-    """Tests batch mapper functionality."""
-    old_column = [1, 2, 3, 4]
-    to_be_modified = [1, -1, 1, -1]
-    in_df = pd.DataFrame.from_dict(
-        {"old_column": old_column, "to_be_modified": to_be_modified}
-    )
-    ds = ray.data.from_pandas(in_df)
-
-    def add_and_modify_udf(df: "pd.DataFrame"):
-        df["new_col"] = df["old_column"] + 1
-        df["to_be_modified"] *= 2
-        return df
-
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
-    batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "old_column": old_column,
-            "to_be_modified": [2, -2, 2, -2],
-            "new_col": [2, 3, 4, 5],
-        }
-    )
-
-    assert out_df.equals(expected_df)
-
-
-def test_custom_stateful_preprocessor():
-    """Tests basic CustomStatefulPreprocessor functionality."""
-
-    items = [
-        {"A": 1, "B": 10, "C": 1},
-        {"A": 2, "B": 20, "C": 2},
-        {"A": 3, "B": 30, "C": 3},
-    ]
-
-    ds = ray.data.from_items(items)
-
-    def get_max_a(ds: Dataset):
-        # Calculate max value for column A.
-        max_a = ds.aggregate(Max("A"))
-        return max_a
-
-    def subtract_max_a_from_a_and_add_max_a_to_b(df: DataFrame, stats: Dict):
-        # Subtract max A value from column A and subtract it from B.
-        max_a = stats["max(A)"]
-        df["A"] = df["A"] - max_a
-        df["B"] = df["B"] + max_a
-        return df
-
-    preprocessor = CustomStatefulPreprocessor(
-        get_max_a, subtract_max_a_from_a_and_add_max_a_to_b
-    )
-    preprocessor.fit(ds)
-    transformed_ds = preprocessor.transform(ds)
-
-    expected_items = [
-        {"A": -2, "B": 13, "C": 1},
-        {"A": -1, "B": 23, "C": 2},
-        {"A": 0, "B": 33, "C": 3},
-    ]
-    expected_ds = ray.data.from_items(expected_items)
-
-    assert transformed_ds.take(3) == expected_ds.take(3)
-
-    batch = pd.DataFrame(
-        {
-            "A": [5, 6],
-            "B": [10, 10],
-            "C": [5, 10],
-        }
-    )
-    transformed_batch = preprocessor.transform_batch(batch)
-    expected_batch = pd.DataFrame(
-        {
-            "A": [2, 3],
-            "B": [13, 13],
-            "C": [5, 10],
-        }
-    )
-    assert transformed_batch.equals(expected_batch)
-
-
 def test_power_transformer():
     """Tests basic PowerTransformer functionality."""
 
@@ -1244,6 +1196,199 @@ def test_power_transformer():
     assert out_df.equals(expected_df)
 
 
+def test_concatenator():
+    """Tests basic Concatenator functionality."""
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3, 4],
+            "b": [5, 6, 7, 8],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="c")
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert np.array_equal(row["c"], np.array([i + 1, i + 5]))
+
+    df = pd.DataFrame({"a": [1, 2, 3, 4]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="c", exclude=["b"], raise_if_missing=True)
+
+    with pytest.raises(ValueError, match="'b'"):
+        prep.transform(ds)
+
+    # Test exclude working
+    df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5], "c": [3, 4, 5, 6]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(exclude=["b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "b"}
+
+    # Test include working
+    prep = Concatenator(include=["a", "b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "c"}
+
+    # Test exclude overrides include
+    prep = Concatenator(include=["a", "b"], exclude=["b"])
+    new_ds = prep.transform(ds)
+    for i, row in enumerate(new_ds.take()):
+        assert set(row) == {"concat_out", "b", "c"}
+
+    # Test that it works with string types.
+    df = pd.DataFrame({"a": ["string", "string2", "string3"]})
+    ds = ray.data.from_pandas(df)
+    prep = Concatenator(output_column_name="huh")
+    new_ds = prep.transform(ds)
+    assert "huh" in set(new_ds.schema().names)
+
+
+@pytest.mark.parametrize("bins", (3, {"A": 4, "B": 3}))
+@pytest.mark.parametrize(
+    "dtypes",
+    (
+        None,
+        {"A": int, "B": int},
+        {"A": int, "B": pd.CategoricalDtype(["cat1", "cat2", "cat3"], ordered=True)},
+    ),
+)
+@pytest.mark.parametrize("right", (True, False))
+@pytest.mark.parametrize("include_lowest", (True, False))
+def test_uniform_kbins_discretizer(
+    bins,
+    dtypes,
+    right,
+    include_lowest,
+):
+    """Tests basic UniformKBinsDiscretizer functionality."""
+
+    col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df).repartition(2)
+
+    discretizer = UniformKBinsDiscretizer(
+        ["A", "B"], bins=bins, dtypes=dtypes, right=right, include_lowest=include_lowest
+    )
+
+    transformed = discretizer.fit_transform(ds)
+    out_df = transformed.to_pandas()
+
+    if isinstance(bins, dict):
+        bins_A = bins["A"]
+        bins_B = bins["B"]
+    else:
+        bins_A = bins_B = bins
+
+    labels_A = False
+    ordered_A = True
+    labels_B = False
+    ordered_B = True
+    if isinstance(dtypes, dict):
+        if isinstance(dtypes.get("A"), pd.CategoricalDtype):
+            labels_A = dtypes.get("A").categories
+            ordered_A = dtypes.get("A").ordered
+        if isinstance(dtypes.get("B"), pd.CategoricalDtype):
+            labels_B = dtypes.get("B").categories
+            ordered_B = dtypes.get("B").ordered
+
+    assert out_df["A"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "bins", ([3, 4, 6, 9], {"A": [3, 4, 6, 8, 9], "B": [3, 4, 6, 9]})
+)
+@pytest.mark.parametrize(
+    "dtypes",
+    (
+        None,
+        {"A": int, "B": int},
+        {"A": int, "B": pd.CategoricalDtype(["cat1", "cat2", "cat3"], ordered=True)},
+    ),
+)
+@pytest.mark.parametrize("right", (True, False))
+@pytest.mark.parametrize("include_lowest", (True, False))
+def test_custom_kbins_discretizer(
+    bins,
+    dtypes,
+    right,
+    include_lowest,
+):
+    """Tests basic CustomKBinsDiscretizer functionality."""
+
+    col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df).repartition(2)
+
+    discretizer = CustomKBinsDiscretizer(
+        ["A", "B"], bins=bins, dtypes=dtypes, right=right, include_lowest=include_lowest
+    )
+
+    transformed = discretizer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    if isinstance(bins, dict):
+        bins_A = bins["A"]
+        bins_B = bins["B"]
+    else:
+        bins_A = bins_B = bins
+
+    labels_A = False
+    ordered_A = True
+    labels_B = False
+    ordered_B = True
+    if isinstance(dtypes, dict):
+        if isinstance(dtypes.get("A"), pd.CategoricalDtype):
+            labels_A = dtypes.get("A").categories
+            ordered_A = dtypes.get("A").ordered
+        if isinstance(dtypes.get("B"), pd.CategoricalDtype):
+            labels_B = dtypes.get("B").categories
+            ordered_B = dtypes.get("B").ordered
+
+    assert out_df["A"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+
+
 def test_tokenizer():
     """Tests basic Tokenizer functionality."""
 
@@ -1268,33 +1413,29 @@ def test_tokenizer():
 
 def test_feature_hasher():
     """Tests basic FeatureHasher functionality."""
-
-    col_a = [0, "a", "b"]
-    col_b = [0, "a", "c"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-    ds = ray.data.from_pandas(in_df)
-
-    hasher = FeatureHasher(["A", "B"], num_features=5)
-    transformed = hasher.transform(ds)
-    out_df = transformed.to_pandas()
-
-    processed_col_0 = [0, 0, 1]
-    processed_col_1 = [0, 0, 1]
-    processed_col_2 = [0, 2, 0]
-    processed_col_3 = [2, 0, 0]
-    processed_col_4 = [0, 0, 0]
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "hash_A_B_0": processed_col_0,
-            "hash_A_B_1": processed_col_1,
-            "hash_A_B_2": processed_col_2,
-            "hash_A_B_3": processed_col_3,
-            "hash_A_B_4": processed_col_4,
-        }
+    # This dataframe represents the counts from the documents "I like Python" and "I
+    # dislike Python".
+    token_counts = pd.DataFrame(
+        {"I": [1, 1], "like": [1, 0], "dislike": [0, 1], "Python": [1, 1]}
     )
 
-    assert out_df.equals(expected_df)
+    hasher = FeatureHasher(["I", "like", "dislike", "Python"], num_features=256)
+    document_term_matrix = hasher.fit_transform(
+        ray.data.from_pandas(token_counts)
+    ).to_pandas()
+
+    # Document-term matrix should have shape (# documents, # features)
+    assert document_term_matrix.shape == (2, 256)
+
+    # The tokens tokens "I", "like", and "Python" should be hashed to distinct indices
+    # for adequately large `num_features`.
+    assert document_term_matrix.iloc[0].sum() == 3
+    assert all(document_term_matrix.iloc[0] <= 1)
+
+    # The tokens tokens "I", "dislike", and "Python" should be hashed to distinct
+    # indices for adequately large `num_features`.
+    assert document_term_matrix.iloc[1].sum() == 3
+    assert all(document_term_matrix.iloc[1] <= 1)
 
 
 def test_hashing_vectorizer():
@@ -1416,13 +1557,13 @@ def test_simple_hash():
     assert simple_hash([1, 2, "apple"], 100) == 37
 
 
-def test_arrow_pandas_support_simple_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors):
     # Case 1: simple dataset. No support
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     ds = ray.data.range(10)
@@ -1433,19 +1574,19 @@ def test_arrow_pandas_support_simple_dataset(create_dummy_preprocessors):
         with_pandas.transform(ds)
 
     with pytest.raises(ValueError):
-        with_arrow.transform(ds)
+        with_numpy.transform(ds)
 
     with pytest.raises(ValueError):
-        with_pandas_and_arrow.transform(ds)
+        with_pandas_and_numpy.transform(ds)
 
 
-def test_arrow_pandas_support_pandas_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
     # Case 2: pandas dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        _,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
@@ -1455,18 +1596,16 @@ def test_arrow_pandas_support_pandas_dataset(create_dummy_preprocessors):
 
     assert with_pandas.transform(ds)._dataset_format() == "pandas"
 
-    assert with_arrow.transform(ds)._dataset_format() == "arrow"
-
-    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "pandas"
 
 
-def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
     # Case 3: arrow dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
@@ -1476,18 +1615,19 @@ def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
 
     assert with_pandas.transform(ds)._dataset_format() == "pandas"
 
-    assert with_arrow.transform(ds)._dataset_format() == "arrow"
+    assert with_numpy.transform(ds)._dataset_format() == "arrow"
 
-    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "arrow"
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "arrow"
 
 
-def test_arrow_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
     # Case 1: simple dataset. No support
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     batch = [1, 2, 3]
@@ -1498,51 +1638,105 @@ def test_arrow_pandas_support_transform_batch_wrong_format(create_dummy_preproce
         with_pandas.transform_batch(batch)
 
     with pytest.raises(NotImplementedError):
-        with_arrow.transform_batch(batch)
+        with_numpy.transform_batch(batch)
 
     with pytest.raises(NotImplementedError):
-        with_pandas_and_arrow.transform_batch(batch)
+        with_pandas_and_numpy.transform_batch(batch)
 
 
-def test_arrow_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
     # Case 2: pandas dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    df_single_column = pd.DataFrame([1, 2, 3], columns=["A"])
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(df)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(df_single_column)
 
     assert isinstance(with_pandas.transform_batch(df), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(df_single_column), pd.DataFrame)
 
-    assert isinstance(with_arrow.transform_batch(df), pyarrow.Table)
+    assert isinstance(with_numpy.transform_batch(df), (np.ndarray, dict))
+    # We can get pd.DataFrame after returning numpy data from UDF
+    assert isinstance(with_numpy.transform_batch(df_single_column), (np.ndarray, dict))
 
-    assert isinstance(with_pandas_and_arrow.transform_batch(df), pd.DataFrame)
+    assert isinstance(with_pandas_and_numpy.transform_batch(df), pd.DataFrame)
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(df_single_column), pd.DataFrame
+    )
 
 
-def test_arrow_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     # Case 3: arrow dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    df_single_column = pd.DataFrame([1, 2, 3], columns=["A"])
+
     table = pyarrow.Table.from_pandas(df)
+    table_single_column = pyarrow.Table.from_pandas(df_single_column)
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(table)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(table_single_column)
 
     assert isinstance(with_pandas.transform_batch(table), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(table_single_column), pd.DataFrame)
 
-    assert isinstance(with_arrow.transform_batch(table), pyarrow.Table)
+    assert isinstance(with_numpy.transform_batch(table), (np.ndarray, dict))
+    # We can get pyarrow.Table after returning numpy data from UDF
+    assert isinstance(
+        with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+    )
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
+    # We can get pyarrow.Table after returning numpy data from UDF
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+    )
 
-    assert isinstance(with_pandas_and_arrow.transform_batch(table), pyarrow.Table)
+
+def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors):
+    # Case 4: tensor dataset created by from numpy data directly
+    (
+        with_nothing,
+        _,
+        with_numpy,
+        with_pandas_and_numpy,
+    ) = create_dummy_preprocessors
+    np_data = np.arange(12).reshape(3, 2, 2)
+    np_single_column = {"A": np.arange(12).reshape(3, 2, 2)}
+    np_multi_column = {
+        "A": np.arange(12).reshape(3, 2, 2),
+        "B": np.arange(12, 24).reshape(3, 2, 2),
+    }
+
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_data)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_single_column)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_multi_column)
+
+    assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_numpy.transform_batch(np_multi_column), dict)
+
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from tensorflow.keras.layers import Convolution2D, MaxPooling2D
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-from ray import tune
+from ray import air, tune
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -190,34 +190,47 @@ if __name__ == "__main__":
     space = {
         "epochs": 1,
         "batch_size": 64,
-        "lr": tune.grid_search([10 ** -4, 10 ** -5]),
+        "lr": tune.grid_search([10**-4, 10**-5]),
         "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
         "dropout": tune.grid_search([0.25, 0.5]),
     }
     if args.smoke_test:
-        space["lr"] = 10 ** -4
+        space["lr"] = 10**-4
         space["dropout"] = 0.5
 
+    perturbation_interval = 10
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        perturbation_interval=10,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
         },
     )
 
-    analysis = tune.run(
-        Cifar10Model,
-        name="pbt_cifar10",
-        scheduler=pbt,
-        resources_per_trial={"cpu": 1, "gpu": 1},
-        stop={
-            "mean_accuracy": 0.80,
-            "training_iteration": 30,
-        },
-        config=space,
-        num_samples=4,
-        metric="mean_accuracy",
-        mode="max",
+    tuner = tune.Tuner(
+        tune.with_resources(
+            Cifar10Model,
+            resources={"cpu": 1, "gpu": 1},
+        ),
+        run_config=air.RunConfig(
+            name="pbt_cifar10",
+            stop={
+                "mean_accuracy": 0.80,
+                "training_iteration": 30,
+            },
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=pbt,
+            num_samples=4,
+            metric="mean_accuracy",
+            mode="max",
+        ),
+        param_space=space,
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

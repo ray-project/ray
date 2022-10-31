@@ -262,6 +262,7 @@ def run_wrk_on_all_nodes(
     http_port: str,
     all_endpoints: List[str] = None,
     ignore_output: bool = False,
+    debug: bool = False,
 ):
     """
     Use ray task to run one wrk trial on each node alive, picked randomly
@@ -294,7 +295,9 @@ def run_wrk_on_all_nodes(
     if ignore_output:
         return
 
-    for decoded_output in ray.get(rst_ray_refs):
+    for i, decoded_output in enumerate(ray.get(rst_ray_refs)):
+        if debug:
+            print(f"decoded_output {i}: {decoded_output}")
         all_wrk_stdout.append(decoded_output)
         parsed_metrics = parse_wrk_decoded_stdout(decoded_output)
 

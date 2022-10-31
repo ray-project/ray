@@ -70,16 +70,18 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -99,17 +101,22 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=0.7, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
-def custom_eval_function(trainer, eval_workers):
+def custom_eval_function(algorithm, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer: trainer class to evaluate.
-        eval_workers: evaluation workers.
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
 
     Returns:
-        metrics: evaluation metrics dict.
+        metrics: Evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.
@@ -152,37 +159,37 @@ if __name__ == "__main__":
     else:
         eval_fn = custom_eval_function
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    config = {
-        "env": SimpleCorridor,
-        "env_config": {
-            "corridor_length": 10,
-        },
-        "horizon": 20,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+    config = (
+        PGConfig()
+        .environment(SimpleCorridor, env_config={"corridor_length": 10})
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two
         # workers. Hence, this run will use 3 CPUs total (1 for the
         # learner + 2 more for evaluation workers).
-        "num_workers": 0,
-        "evaluation_num_workers": 2,
-        # Optional custom eval function.
-        "custom_eval_function": eval_fn,
-        # Enable evaluation, once per training iteration.
-        "evaluation_interval": 1,
-        # Run 10 episodes each time evaluation runs.
-        "evaluation_duration": 10,
-        # Override the env config for evaluation.
-        "evaluation_config": {
-            "env_config": {
-                # Evaluate using LONGER corridor than trained on.
-                "corridor_length": 5,
+        .rollouts(horizon=20, num_rollout_workers=0)
+        .evaluation(
+            evaluation_num_workers=2,
+            # Enable evaluation, once per training iteration.
+            evaluation_interval=1,
+            # Run 10 episodes each time evaluation runs (OR "auto" if parallel to
+            # training).
+            evaluation_duration="auto" if args.evaluation_parallel_to_training else 10,
+            # Evaluate parallelly to training.
+            evaluation_parallel_to_training=args.evaluation_parallel_to_training,
+            evaluation_config={
+                "env_config": {
+                    # Evaluate using LONGER corridor than trained on.
+                    "corridor_length": 5,
+                },
             },
-        },
-        "framework": args.framework,
-    }
+            custom_evaluation_function=eval_fn,
+        )
+        .framework(args.framework)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -190,7 +197,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        "PG",
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    )
+    results = tuner.fit()
 
     # Check eval results (from eval workers using the custom function),
     # not results from the regular workers.

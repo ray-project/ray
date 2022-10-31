@@ -5,7 +5,7 @@ from filelock import FileLock
 from tensorflow.keras.datasets import mnist
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCallback
 
@@ -52,23 +52,27 @@ def tune_mnist(num_training_iterations):
         time_attr="training_iteration", max_t=400, grace_period=20
     )
 
-    analysis = tune.run(
-        train_mnist,
-        name="exp",
-        scheduler=sched,
-        metric="mean_accuracy",
-        mode="max",
-        stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},
-        num_samples=10,
-        resources_per_trial={"cpu": 2, "gpu": 0},
-        config={
+    tuner = tune.Tuner(
+        tune.with_resources(train_mnist, resources={"cpu": 2, "gpu": 0}),
+        run_config=air.RunConfig(
+            name="exp",
+            stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=sched,
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=10,
+        ),
+        param_space={
             "threads": 2,
             "lr": tune.uniform(0.001, 0.1),
             "momentum": tune.uniform(0.1, 0.9),
             "hidden": tune.randint(32, 512),
         },
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/actor_handle.h>
+#include <ray/api/runtime_env.h>
 #include <ray/api/task_options.h>
 
 namespace ray {
@@ -36,6 +37,12 @@ class ActorCreator {
 
   ActorCreator &SetName(std::string name) {
     create_options_.name = std::move(name);
+    return *this;
+  }
+
+  ActorCreator &SetName(std::string name, std::string ray_namespace) {
+    create_options_.name = std::move(name);
+    create_options_.ray_namespace = std::move(ray_namespace);
     return *this;
   }
 
@@ -62,6 +69,11 @@ class ActorCreator {
   ActorCreator &SetPlacementGroup(PlacementGroup group, int bundle_index) {
     create_options_.group = group;
     create_options_.bundle_index = bundle_index;
+    return *this;
+  }
+
+  ActorCreator &SetRuntimeEnv(const ray::RuntimeEnv &runtime_env) {
+    create_options_.serialized_runtime_env_info = runtime_env.SerializeToRuntimeEnvInfo();
     return *this;
   }
 

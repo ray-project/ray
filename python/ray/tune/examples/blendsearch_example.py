@@ -34,14 +34,16 @@ def run_blendsearch_tune(smoke_test=False):
     algo = BlendSearch()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        metric="mean_loss",
-        mode="min",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=10 if smoke_test else 100,
-        config={
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=10 if smoke_test else 100,
+        ),
+        param_space={
             "steps": 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
@@ -49,8 +51,9 @@ def run_blendsearch_tune(smoke_test=False):
             "activation": tune.choice(["relu", "tanh"]),
         },
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 def run_blendsearch_tune_w_budget(time_budget_s=10):
@@ -67,20 +70,23 @@ def run_blendsearch_tune_w_budget(time_budget_s=10):
     algo.set_search_properties(config={"time_budget_s": time_budget_s})
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        metric="mean_loss",
-        mode="min",
-        search_alg=algo,
-        scheduler=scheduler,
-        time_budget_s=time_budget_s,
-        num_samples=-1,
-        config={
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            time_budget_s=time_budget_s,
+            num_samples=-1,
+        ),
+        param_space={
             "steps": 100,
         },
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 if __name__ == "__main__":

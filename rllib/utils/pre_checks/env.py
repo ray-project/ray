@@ -1,14 +1,20 @@
 """Common pre-checks for all RLlib experiments."""
 from copy import copy
+import inspect
 import logging
 import gym
 import numpy as np
 import traceback
+import tree  # pip install dm_tree
 from typing import TYPE_CHECKING, Set
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.spaces.space_utils import (
+    convert_element_to_space_type,
+    get_base_struct_from_space,
+)
 from ray.rllib.utils.typing import EnvType
 from ray.util import log_once
 
@@ -83,7 +89,7 @@ def check_env(env: EnvType) -> None:
             f"{actual_error}\n"
             "The above error has been found in your environment! "
             "We've added a module for checking your custom environments. It "
-            "may cause your experiment to fail if your environment is not set up"
+            "may cause your experiment to fail if your environment is not set up "
             "correctly. You can disable this behavior by setting "
             "`disable_env_checking=True` in your environment config "
             "dictionary. You can run the environment checking module "
@@ -146,55 +152,73 @@ def check_gym_environments(env: gym.Env) -> None:
                 "to infinity, and your environment will not be "
                 "reset."
             )
+    # Raise warning if using new reset api introduces in gym 0.24
+    reset_signature = inspect.signature(env.unwrapped.reset).parameters.keys()
+    if any(k in reset_signature for k in ["seed", "return_info"]):
+        if log_once("reset_signature"):
+            logger.warning(
+                "Your env reset() method appears to take 'seed' or 'return_info'"
+                " arguments. Note that these are not yet supported in RLlib."
+                " Seeding will take place using 'env.seed()' and the info dict"
+                " will not be returned from reset."
+            )
+
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
-    def get_type(var):
-        return var.dtype if hasattr(var, "dtype") else type(var)
-
     sampled_action = env.action_space.sample()
     sampled_observation = env.observation_space.sample()
-    # check if observation generated from stepping the environment is
-    # contained within the observation space
+    # Check if observation generated from stepping the environment is
+    # contained within the observation space.
     reset_obs = env.reset()
     if not env.observation_space.contains(reset_obs):
-        reset_obs_type = get_type(reset_obs)
-        space_type = env.observation_space.dtype
-        error = (
-            f"The observation collected from env.reset() was not  "
-            f"contained within your env's observation space. Its possible "
-            f"that There was a type mismatch, or that one of the "
-            f"sub-observations  was out of bounds: \n\n reset_obs: "
-            f"{reset_obs}\n\n env.observation_space: "
-            f"{env.observation_space}\n\n reset_obs's dtype: "
-            f"{reset_obs_type}\n\n env.observation_space's dtype: "
-            f"{space_type}"
-        )
         temp_sampled_reset_obs = convert_element_to_space_type(
             reset_obs, sampled_observation
         )
         if not env.observation_space.contains(temp_sampled_reset_obs):
-            raise ValueError(error)
-    # check if env.step can run, and generates observations rewards, done
+            # Find offending subspace in case we have a complex observation space.
+            key, space, space_type, value, value_type = _find_offending_sub_space(
+                env.observation_space, temp_sampled_reset_obs
+            )
+            raise ValueError(
+                "The observation collected from env.reset() was not "
+                "contained within your env's observation space. It is possible "
+                "that there was a type mismatch, or that one of the "
+                "sub-observations was out of bounds:\n {}(sub-)obs: {} ({})"
+                "\n (sub-)observation space: {} ({})".format(
+                    ("path: '" + key + "'\n ") if key else "",
+                    value,
+                    value_type,
+                    space,
+                    space_type,
+                )
+            )
+    # Check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
-    # the correct dtypes
+    # the correct dtypes.
     next_obs, reward, done, info = env.step(sampled_action)
     if not env.observation_space.contains(next_obs):
-        next_obs_type = get_type(next_obs)
-        space_type = env.observation_space.dtype
-        error = (
-            f"The observation collected from env.step(sampled_action) was "
-            f"not contained within your env's observation space. Its "
-            f"possible that There was a type mismatch, or that one of the "
-            f"sub-observations was out of bounds:\n\n next_obs: {next_obs}"
-            f"\n\n env.observation_space: {env.observation_space}"
-            f"\n\n next_obs's dtype: {next_obs_type}"
-            f"\n\n env.observation_space's dtype: {space_type}"
-        )
         temp_sampled_next_obs = convert_element_to_space_type(
             next_obs, sampled_observation
         )
         if not env.observation_space.contains(temp_sampled_next_obs):
+            # Find offending subspace in case we have a complex observation space.
+            key, space, space_type, value, value_type = _find_offending_sub_space(
+                env.observation_space, temp_sampled_next_obs
+            )
+            error = (
+                "The observation collected from env.step(sampled_action) was not "
+                "contained within your env's observation space. It is possible "
+                "that there was a type mismatch, or that one of the "
+                "sub-observations was out of bounds: \n\n {}(sub-)obs: {} ({})"
+                "\n (sub-)observation space: {} ({})".format(
+                    ("path='" + key + "'\n ") if key else "",
+                    value,
+                    value_type,
+                    space,
+                    space_type,
+                )
+            )
             raise ValueError(error)
     _check_done(done)
     _check_reward(reward)
@@ -258,7 +282,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    sampled_action = env.action_space_sample()
+    sampled_action = env.action_space_sample(reset_obs.keys())
     _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
     try:
         env.action_space_contains(sampled_action)
@@ -520,3 +544,50 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f"ids of agents supported by your env."
             )
         raise ValueError(error)
+
+
+def _find_offending_sub_space(space, value):
+    """Returns error, value, and space when offending `space.contains(value)` fails.
+
+    Returns only the offending sub-value/sub-space in case `space` is a complex Tuple
+    or Dict space.
+
+    Args:
+        space: The gym.Space to check.
+        value: The actual (numpy) value to check for matching `space`.
+
+    Returns:
+        Tuple consisting of 1) key-sequence of the offending sub-space or the empty
+        string if `space` is not complex (Tuple or Dict), 2) the offending sub-space,
+        3) the offending sub-space's dtype, 4) the offending sub-value, 5) the offending
+        sub-value's dtype.
+
+    Examples:
+         >>> path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
+         ...     gym.spaces.Dict({
+         ...    -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
+         ... )
+         >>> print(path)
+         ...
+    """
+    if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+        return None, space, space.dtype, value, _get_type(value)
+
+    structured_space = get_base_struct_from_space(space)
+
+    def map_fn(p, s, v):
+        if not s.contains(v):
+            raise UnsupportedSpaceException((p, s, v))
+
+    try:
+        tree.map_structure_with_path(map_fn, structured_space, value)
+    except UnsupportedSpaceException as e:
+        space, value = e.args[0][1], e.args[0][2]
+        return "->".join(e.args[0][0]), space, space.dtype, value, _get_type(value)
+
+    # This is actually an error.
+    return None, None, None, None, None
+
+
+def _get_type(var):
+    return var.dtype if hasattr(var, "dtype") else type(var)

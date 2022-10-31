@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
+import ray
 
 try:
     import requests
@@ -23,8 +24,8 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
-from ray.util.annotations import PublicAPI
-from ray.client_builder import _split_address
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)
@@ -124,24 +125,41 @@ def parse_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
+    """Create a cluster if needed and return its address, cookies, and metadata."""
     if address is None:
-        logger.info(f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}.")
-        address = DEFAULT_DASHBOARD_ADDRESS
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+            logger.info(
+                f"No address provided but Ray is running; using address {address}."
+            )
+        else:
+            logger.info(
+                f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
+            )
+            address = DEFAULT_DASHBOARD_ADDRESS
 
-    module_string, inner_address = _split_address(address)
+    if address == "auto":
+        raise ValueError("Internal error: unexpected address 'auto'.")
 
-    # If user passes in ray://, raise error. Dashboard submission should
-    # not use a Ray client address.
-    if module_string == "ray":
-        raise ValueError(
-            f'Got an unexpected Ray client address "{address}" while trying '
-            "to connect to the Ray dashboard. The dashboard SDK requires the "
-            "Ray dashboard server's HTTP(S) address (which should start with "
-            '"http://" or "https://", not "ray://"). If this address '
-            "wasn't passed explicitly, it may be set in the RAY_ADDRESS "
-            "environment variable."
+    if "://" not in address:
+        # Default to HTTP.
+        logger.info(
+            "No scheme (e.g. 'http://') or module string (e.g. 'ray://') "
+            f"provided in address {address}, defaulting to HTTP."
         )
+        address = f"http://{address}"
 
+    module_string, inner_address = split_address(address)
+
+    if module_string == "ray":
+        raise ValueError(f"Internal error: unexpected Ray Client address {address}.")
     # If user passes http(s)://, go through normal parsing.
     if module_string in {"http", "https"}:
         return get_job_submission_client_cluster_info(
@@ -150,7 +168,7 @@ def parse_cluster_info(
             cookies=cookies,
             metadata=metadata,
             headers=headers,
-            _use_tls=module_string == "https",
+            _use_tls=(module_string == "https"),
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -159,11 +177,12 @@ def parse_cluster_info(
         except Exception:
             raise RuntimeError(
                 f"Module: {module_string} does not exist.\n"
-                f"This module was parsed from Address: {address}"
+                f"This module was parsed from address: {address}"
             ) from None
         assert "get_job_submission_client_cluster_info" in dir(module), (
             f"Module: {module_string} does "
-            "not have `get_job_submission_client_cluster_info`."
+            "not have `get_job_submission_client_cluster_info`.\n"
+            f"This module was parsed from address: {address}"
         )
 
         return module.get_job_submission_client_cluster_info(
@@ -368,3 +387,7 @@ class SubmissionClient:
             return r.json().get("version")
         else:
             self._raise_error(r)
+
+    @DeveloperAPI
+    def get_address(self) -> str:
+        return self._address

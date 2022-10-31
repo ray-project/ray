@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-
+import asyncio
 import aiohttp.web
 import yaml
 
@@ -9,8 +9,8 @@ import ray
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
@@ -40,6 +40,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         gcs_address = dashboard_head.gcs_address
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:
@@ -127,15 +128,24 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         autoscaler writes them there.
         """
 
-        assert ray.experimental.internal_kv._internal_kv_initialized()
-        legacy_status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS_LEGACY)
-        formatted_status_string = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+        (legacy_status, formatted_status_string, error) = await asyncio.gather(
+            *[
+                self._gcs_aio_client.internal_kv_get(
+                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
+                )
+                for key in [
+                    DEBUG_AUTOSCALING_STATUS_LEGACY,
+                    DEBUG_AUTOSCALING_STATUS,
+                    DEBUG_AUTOSCALING_ERROR,
+                ]
+            ]
+        )
+
         formatted_status = (
             json.loads(formatted_status_string.decode())
             if formatted_status_string
             else {}
         )
-        error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
         return dashboard_optional_utils.rest_response(
             success=True,
             message="Got cluster status.",

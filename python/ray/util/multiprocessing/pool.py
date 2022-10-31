@@ -576,6 +576,8 @@ class Pool:
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        ray._private.usage.usage_lib.record_library_usage("util.multiprocessing.Pool")
+
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
@@ -603,19 +605,18 @@ class Pool:
         # ray_address argument > RAY_ADDRESS > start new local cluster.
         if not ray.is_initialized():
             # Cluster mode.
-            if ray_address is None and RAY_ADDRESS_ENV in os.environ:
-                logger.info(
-                    "Connecting to ray cluster at address='{}'".format(
-                        os.environ[RAY_ADDRESS_ENV]
-                    )
-                )
+            if ray_address is None and (
+                RAY_ADDRESS_ENV in os.environ
+                or ray._private.utils.read_ray_address() is not None
+            ):
                 ray.init()
             elif ray_address is not None:
-                logger.info(f"Connecting to ray cluster at address='{ray_address}'")
-                ray.init(address=ray_address)
+                init_kwargs = {}
+                if ray_address == "local":
+                    init_kwargs["num_cpus"] = processes
+                ray.init(address=ray_address, **init_kwargs)
             # Local mode.
             else:
-                logger.info("Starting local ray cluster")
                 ray.init(num_cpus=processes)
 
         ray_cpus = int(ray._private.state.cluster_resources()["CPU"])

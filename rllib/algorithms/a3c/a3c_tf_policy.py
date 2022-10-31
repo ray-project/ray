@@ -19,7 +19,6 @@ from ray.rllib.policy.tf_mixins import (
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
@@ -35,7 +34,7 @@ tf1, tf, tfv = try_import_tf()
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a A3CTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -50,7 +49,7 @@ def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -64,7 +63,7 @@ def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
@@ -178,17 +177,11 @@ def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         ) -> ModelGradients:
             return compute_gradients(self, optimizer, loss)
 
+    A3CTFPolicy.__name__ = name
+    A3CTFPolicy.__qualname__ = name
+
     return A3CTFPolicy
 
 
-A3CStaticGraphTFPolicy = get_a3c_tf_policy(DynamicTFPolicyV2)
-A3CEagerTFPolicy = get_a3c_tf_policy(EagerTFPolicyV2)
-
-
-@Deprecated(
-    old="rllib.algorithms.a3c.a3c_tf_policy.postprocess_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def postprocess_advantages(*args, **kwargs):
-    pass
+A3CTF1Policy = get_a3c_tf_policy("A3CTF1Policy", DynamicTFPolicyV2)
+A3CTF2Policy = get_a3c_tf_policy("A3CTF2Policy", EagerTFPolicyV2)

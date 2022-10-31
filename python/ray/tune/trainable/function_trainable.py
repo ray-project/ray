@@ -9,12 +9,16 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.air._internal.util import StartTraceback, RunnerThread
+from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
 from ray.tune import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -24,9 +28,9 @@ from ray.tune.result import (
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
-    detect_checkpoint_function,
-    detect_config_single,
-    detect_reporter,
+    _detect_checkpoint_function,
+    _detect_config_single,
+    _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -35,10 +39,6 @@ logger = logging.getLogger(__name__)
 
 # Time between FunctionTrainable checks when fetching
 # new results after signaling the reporter to continue
-RESULT_FETCH_TIMEOUT = 0.2
-
-ERROR_REPORT_TIMEOUT = 10
-ERROR_FETCH_TIMEOUT = 1
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
@@ -273,42 +273,6 @@ class _StatusReporter:
         return self._trial_resources
 
 
-class _RunnerThread(threading.Thread):
-    """Supervisor thread that runs your script."""
-
-    def __init__(self, entrypoint, error_queue):
-        threading.Thread.__init__(self)
-        self._entrypoint = entrypoint
-        self._error_queue = error_queue
-        self.daemon = True
-
-    def run(self):
-        try:
-            self._entrypoint()
-        except StopIteration:
-            logger.debug(
-                (
-                    "Thread runner raised StopIteration. Interperting it as a "
-                    "signal to terminate the thread without error."
-                )
-            )
-        except Exception as e:
-            logger.exception("Runner Thread raised error.")
-            try:
-                # report the error but avoid indefinite blocking which would
-                # prevent the exception from being propagated in the unlikely
-                # case that something went terribly wrong
-                self._error_queue.put(e, block=True, timeout=ERROR_REPORT_TIMEOUT)
-            except queue.Full:
-                logger.critical(
-                    (
-                        "Runner Thread was unable to report error to main "
-                        "function runner thread. This means a previous error "
-                        "was not processed. This should never happen."
-                    )
-                )
-
-
 @DeveloperAPI
 class FunctionTrainable(Trainable):
     """Trainable that runs a user function reporting results.
@@ -345,7 +309,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -357,14 +321,19 @@ class FunctionTrainable(Trainable):
 
     def _start(self):
         def entrypoint():
-            return self._trainable_func(
-                self.config,
-                self._status_reporter,
-                self._status_reporter.get_checkpoint(),
-            )
+            try:
+                return self._trainable_func(
+                    self.config,
+                    self._status_reporter,
+                    self._status_reporter.get_checkpoint(),
+                )
+            except Exception as e:
+                raise StartTraceback from e
 
         # the runner thread is not started until the first call to _train
-        self._runner = _RunnerThread(entrypoint, self._error_queue)
+        self._runner = RunnerThread(
+            target=entrypoint, error_queue=self._error_queue, daemon=True
+        )
         # if not alive, try to start
         self._status_reporter._start()
         try:
@@ -394,7 +363,7 @@ class FunctionTrainable(Trainable):
             # fetch the next produced result
             try:
                 result = self._results_queue.get(
-                    block=True, timeout=RESULT_FETCH_TIMEOUT
+                    block=True, timeout=_RESULT_FETCH_TIMEOUT
                 )
             except queue.Empty:
                 pass
@@ -516,6 +485,13 @@ class FunctionTrainable(Trainable):
         # as a new checkpoint.
         self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir
+        )
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+        self.restore(self.temp_checkpoint_dir)
+
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
@@ -542,7 +518,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session.shutdown()
+        session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir
@@ -576,24 +552,25 @@ class FunctionTrainable(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise e
+            e = self._error_queue.get(block=block, timeout=_ERROR_FETCH_TIMEOUT)
+            raise StartTraceback from e
         except queue.Empty:
             pass
 
 
+@DeveloperAPI
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
-):
+) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
     if hasattr(train_func, "__mixins__"):
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = detect_checkpoint_function(train_func)
-    use_config_single = detect_config_single(train_func)
-    use_reporter = detect_reporter(train_func)
+    use_checkpoint = _detect_checkpoint_function(train_func)
+    use_config_single = _detect_config_single(train_func)
+    use_reporter = _detect_reporter(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden
@@ -603,15 +580,6 @@ def wrap_function(
             "parameter. Any other args must be 'checkpoint_dir'. "
             "Found: {}".format(func_args)
         )
-
-    if use_config_single and not use_checkpoint:
-        if log_once("tune_function_checkpoint") and warn:
-            logger.warning(
-                "Function checkpointing is disabled. This may result in "
-                "unexpected behavior when using checkpointing features or "
-                "certain schedulers. To enable, set the train function "
-                "arguments to be `func(config, checkpoint_dir=None)`."
-            )
 
     if use_checkpoint:
         if log_once("tune_checkpoint_dir_deprecation") and warn:
@@ -627,12 +595,14 @@ def wrap_function(
                     "    # ...\n"
                     '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
-                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                    "https://docs.ray.io/en/master/tune/api_docs/trainable.html\n"
                 )
                 warnings.warn(
                     warning_msg,
                     DeprecationWarning,
                 )
+
+    resources = getattr(train_func, "_resources", None)
 
     class ImplicitFunc(*inherit_from):
         _name = name or (
@@ -677,5 +647,13 @@ def wrap_function(
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        @classmethod
+        def default_resource_request(
+            cls, config: Dict[str, Any]
+        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+                return resources(config)
+            return resources
 
     return ImplicitFunc

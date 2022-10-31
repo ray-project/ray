@@ -9,14 +9,12 @@ from ray._private.test_utils import SignalActor
 
 
 def test_serve_forceful_shutdown(serve_instance):
-    @serve.deployment(_graceful_shutdown_timeout_s=0.1)
+    @serve.deployment(graceful_shutdown_timeout_s=0.1)
     def sleeper():
         while True:
             time.sleep(1000)
 
-    sleeper.deploy()
-
-    handle = sleeper.get_handle()
+    handle = serve.run(sleeper.bind())
     ref = handle.remote()
     sleeper.delete()
 
@@ -30,15 +28,14 @@ def test_serve_graceful_shutdown(serve_instance):
     @serve.deployment(
         name="wait",
         max_concurrent_queries=10,
-        _graceful_shutdown_timeout_s=1000,
-        _graceful_shutdown_wait_loop_s=0.5,
+        graceful_shutdown_timeout_s=1000,
+        graceful_shutdown_wait_loop_s=0.5,
     )
     class Wait:
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
 
-    Wait.deploy()
-    handle = Wait.get_handle()
+    handle = serve.run(Wait.bind())
     refs = [handle.remote(signal) for _ in range(10)]
 
     # Wait for all the queries to be enqueued
@@ -95,8 +92,8 @@ def test_parallel_start(serve_instance):
         def __call__(self):
             return "Ready"
 
-    LongStartingServable.deploy()
-    ray.get(LongStartingServable.get_handle().remote(), timeout=10)
+    handle = serve.run(LongStartingServable.bind())
+    ray.get(handle.remote(), timeout=10)
 
 
 if __name__ == "__main__":

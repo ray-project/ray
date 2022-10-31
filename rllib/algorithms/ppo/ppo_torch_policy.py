@@ -24,6 +24,7 @@ from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     explained_variance,
     sequence_mask,
+    warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
 
@@ -119,6 +120,9 @@ class PPOTorchPolicy(
         if self.config["kl_coeff"] > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = reduce_mean_valid(action_kl)
+            # TODO smorad: should we do anything besides warn? Could discard KL term
+            # for this update
+            warn_if_infinite_kl_divergence(self, mean_kl_loss)
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
@@ -132,7 +136,6 @@ class PPOTorchPolicy(
                 logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
             ),
         )
-        mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         # Compute a value function loss.
         if self.config["use_critic"]:
@@ -144,8 +147,8 @@ class PPOTorchPolicy(
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
-            value_fn_out = 0
-            vf_loss_clipped = mean_vf_loss = 0.0
+            value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
+            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(surrogate_loss.device)
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
@@ -161,7 +164,7 @@ class PPOTorchPolicy(
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
         model.tower_stats["total_loss"] = total_loss
-        model.tower_stats["mean_policy_loss"] = mean_policy_loss
+        model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
         model.tower_stats["vf_explained_var"] = explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS], value_fn_out

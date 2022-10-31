@@ -106,5 +106,7 @@ def _all_tower_reduce(path, *tower_data):
         # Max stats: Reduce max.
         elif path[-1].startswith("max_"):
             return np.nanmax(tower_data)
+    if np.isnan(tower_data).all():
+        return np.nan
     # Everything else: Reduce mean.
     return np.nanmean(tower_data)

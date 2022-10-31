@@ -18,7 +18,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.examples.models.parametric_actions_model import (
     ParametricActionsModel,
@@ -34,7 +34,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -98,7 +98,11 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.Tuner(
+        args.run,
+        run_config=air.RunConfig(stop=stop, verbose=1),
+        param_space=config,
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

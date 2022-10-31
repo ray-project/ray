@@ -20,7 +20,7 @@ pandas
 pickle5
 pillow
 pyarrow
-pydantic
+pydantic < 1.10.0
 pyyaml
 scikit-optimize
 redis
@@ -29,13 +29,15 @@ tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
+tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
 transformers
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
-git+https://github.com/ray-project/ray_lightning@main#ray_lightning
+git+https://github.com/ray-project/ray_lightning@6aed848f757a03c03166c1a9bddfeea5153e7b90#ray_lightning
 
 # Syntax highlighting
 Pygments==2.11.2

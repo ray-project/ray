@@ -8,18 +8,18 @@ import warnings
 import numpy as np
 
 from ray.tune.error import TuneError
-from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.search.variant_generator import (
-    count_variants,
-    count_spec_samples,
+    _count_variants,
+    _count_spec_samples,
     generate_variants,
     format_vars,
-    flatten_resolved_vars,
-    get_preset_variants,
+    _flatten_resolved_vars,
+    _get_preset_variants,
 )
 from ray.tune.search.search_algorithm import SearchAlgorithm
-from ray.tune.utils.util import atomic_save, load_newest_checkpoint
+from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -71,13 +71,13 @@ class _TrialIterator:
     Args:
         uuid_prefix: Used in creating the trial name.
         num_samples: Number of samples from distribution
-             (same as tune.run).
+             (same as tune.TuneConfig).
         unresolved_spec: Experiment specification
             that might have unresolved distributions.
         constant_grid_search: Should random variables be sampled
             first before iterating over grid variants (True) or not (False).
         output_path: A specific output path within the local_dir.
-        points_to_evaluate: Same as tune.run.
+        points_to_evaluate: Configurations that will be tried out without sampling.
         lazy_eval: Whether variants should be generated
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
@@ -103,7 +103,7 @@ class _TrialIterator:
             Union[int, "np_random_generator", np.random.RandomState]
         ] = None,
     ):
-        self.parser = make_parser()
+        self.parser = _make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
         self.num_samples_left = num_samples
@@ -124,11 +124,11 @@ class _TrialIterator:
         if resolved_vars:
             experiment_tag += "_{}".format(format_vars(resolved_vars))
         self.counter += 1
-        return create_trial_from_spec(
+        return _create_trial_from_spec(
             spec,
             self.output_path,
             self.parser,
-            evaluated_params=flatten_resolved_vars(resolved_vars),
+            evaluated_params=_flatten_resolved_vars(resolved_vars),
             trial_id=trial_id,
             experiment_tag=experiment_tag,
         )
@@ -158,7 +158,7 @@ class _TrialIterator:
             config = self.points_to_evaluate.pop(0)
             self.num_samples_left -= 1
             self.variants = _VariantIterator(
-                get_preset_variants(
+                _get_preset_variants(
                     self.unresolved_spec,
                     config,
                     constant_grid_search=self.constant_grid_search,
@@ -222,13 +222,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         from ray import tune
 
         # This will automatically use the `BasicVariantGenerator`
-        tune.run(
+        tuner = tune.Tuner(
             lambda config: config["a"] + config["b"],
-            config={
+            tune_config=tune.TuneConfig(
+                num_samples=4
+            ),
+            param_space={
                 "a": tune.grid_search([1, 2]),
                 "b": tune.randint(0, 3)
             },
-            num_samples=4)
+        )
+        tuner.fit()
 
     In the example above, 8 trials will be generated: For each sample
     (``4``), each of the grid search variants for ``a`` will be sampled
@@ -249,19 +253,22 @@ class BasicVariantGenerator(SearchAlgorithm):
         from ray import tune
         from ray.tune.search.basic_variant import BasicVariantGenerator
 
-
-        tune.run(
+        tuner = tune.Tuner(
             lambda config: config["a"] + config["b"],
-            config={
+            tune_config=tune.TuneConfig(
+                search_alg=BasicVariantGenerator(points_to_evaluate=[
+                    {"a": 2, "b": 2},
+                    {"a": 1},
+                    {"b": 2}
+                ]),
+                num_samples=4
+            ),
+            param_space={
                 "a": tune.grid_search([1, 2]),
                 "b": tune.randint(0, 3)
             },
-            search_alg=BasicVariantGenerator(points_to_evaluate=[
-                {"a": 2, "b": 2},
-                {"a": 1},
-                {"b": 2}
-            ]),
-            num_samples=4)
+        )
+        tuner.fit()
 
     The example above will produce six trials via four samples:
 
@@ -320,12 +327,12 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment import convert_to_experiment_list
+        from ray.tune.experiment import _convert_to_experiment_list
 
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
-            grid_vals = count_spec_samples(experiment.spec, num_samples=1)
+            grid_vals = _count_spec_samples(experiment.spec, num_samples=1)
             lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
             if lazy_eval:
                 warnings.warn(
@@ -338,7 +345,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
             previous_samples = self._total_samples
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
-            self._total_samples += count_variants(experiment.spec, points_to_evaluate)
+            self._total_samples += _count_variants(experiment.spec, points_to_evaluate)
             iterator = _TrialIterator(
                 uuid_prefix=self._uuid_prefix,
                 num_samples=experiment.spec.get("num_samples", 1),
@@ -397,7 +404,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         if any(iterator.lazy_eval for iterator in self._iterators):
             return False
         state_dict = self.get_state()
-        atomic_save(
+        _atomic_save(
             state=state_dict,
             checkpoint_dir=dirpath,
             file_name=self.CKPT_FILE_TMPL.format(session_str),
@@ -410,7 +417,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
-        state_dict = load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
+        state_dict = _load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
         if not state_dict:
             raise RuntimeError("Unable to find checkpoint in {}.".format(dirpath))
         self.set_state(state_dict)

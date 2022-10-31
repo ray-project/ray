@@ -160,6 +160,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string name = "";
   std::optional<bool> is_detached = std::nullopt;
   int64_t max_restarts = 0;
+  int64_t max_task_retries = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
@@ -168,6 +169,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string serialized_runtime_env = "";
   std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
+  bool is_async = false;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -185,6 +187,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
+    max_task_retries =
+        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_task_retries);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -251,14 +255,16 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
     }
 
-    auto java_namespace = (jstring)env->GetObjectField(actorCreationOptions,
-                                                  java_actor_creation_options_namespace);
+    auto java_namespace = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_namespace);
     if (java_namespace) {
       ray_namespace = JavaStringToNativeString(env, java_namespace);
     }
 
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
+    is_async = (bool)env->GetBooleanField(actorCreationOptions,
+                                          java_actor_creation_options_is_async);
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -274,7 +280,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
   ActorCreationOptions actor_creation_options{
       max_restarts,
-      0,  // TODO: Allow setting max_task_retries from Java.
+      max_task_retries,
       static_cast<int>(max_concurrency),
       resources,
       resources,
@@ -282,7 +288,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       is_detached,
       name,
       ray_namespace,
-      /*is_asyncio=*/false,
+      is_async,
       /*scheduling_strategy=*/scheduling_strategy,
       serialized_runtime_env,
       concurrency_groups,
@@ -337,7 +343,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
   return PlacementGroupCreationOptions(name,
                                        ConvertStrategy(java_strategy),
                                        bundles,
-                                       /*is_detached=*/false);
+                                       /*is_detached=*/false,
+                                       /*max_cpu_fraction_per_node*/ 1.0);
 }
 
 #ifdef __cplusplus

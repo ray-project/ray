@@ -19,8 +19,7 @@ class ReservoirReplayBuffer(ReplayBuffer):
     """This buffer implements reservoir sampling.
 
     The algorithm has been described by Jeffrey S. Vitter in "Random sampling
-    with a reservoir". See https://www.cs.umd.edu/~samir/498/vitter.pdf for
-    the full paper.
+    with a reservoir".
     """
 
     def __init__(

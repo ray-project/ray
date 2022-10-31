@@ -86,3 +86,14 @@ class FreezeParameters:
     def __exit__(self, exc_type, exc_val, exc_tb):
         for i, param in enumerate(self.parameters):
             param.requires_grad = self.param_states[i]
+
+
+def batchify_states(states_list, batch_size, device=None):
+    """
+    Batchify data into batches of size batch_size
+    """
+    state_batches = [s[None, :].expand(batch_size, -1) for s in states_list]
+    if device is not None:
+        state_batches = [s.to(device) for s in state_batches]
+
+    return state_batches

@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
-from ray.tune.search.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
@@ -57,7 +57,13 @@ class Searcher:
                 if result and self.metric in result:
                     self.optimizer.update(configuration, result[self.metric])
 
-        tune.run(trainable_function, search_alg=ExampleSearch())
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=ExampleSearch()
+            )
+        )
+        tuner.fit()
 
 
     """
@@ -275,18 +281,21 @@ class Searcher:
 
             search_alg = Searcher(...)
 
-            analysis = tune.run(
+            tuner = tune.Tuner(
                 cost,
-                num_samples=5,
-                search_alg=search_alg,
-                name=self.experiment_name,
-                local_dir=self.tmpdir)
+                tune_config=tune.TuneConfig(
+                    search_alg=search_alg,
+                    num_samples=5
+                ),
+                param_space=config
+            )
+            results = tuner.fit()
 
             search_alg.save("./my_favorite_path.pkl")
 
         .. versionchanged:: 0.8.7
-            Save is automatically called by `tune.run`. You can use
-            `restore_from_dir` to restore from an experiment directory
+            Save is automatically called by `Tuner().fit()`. You can use
+            `Tuner().restore()` to restore from an experiment directory
             such as `~/ray_results/trainable`.
 
         """
@@ -310,7 +319,14 @@ class Searcher:
             search_alg2 = Searcher(...)
             search_alg2 = ConcurrencyLimiter(search_alg2, 1)
             search_alg2.restore(checkpoint_path)
-            tune.run(cost, num_samples=5, search_alg=search_alg2)
+            tuner = tune.Tuner(
+                cost,
+                tune_config=tune.TuneConfig(
+                    search_alg=search_alg2,
+                    num_samples=5
+                ),
+            )
+            tuner.fit()
 
         """
         raise NotImplementedError
@@ -340,7 +356,7 @@ class Searcher:
     def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
         """Automatically saves the given searcher to the checkpoint_dir.
 
-        This is automatically used by tune.run during a Tune job.
+        This is automatically used by Tuner().fit() during a Tune job.
 
         Args:
             checkpoint_dir: Filepath to experiment dir.
@@ -370,13 +386,19 @@ class Searcher:
 
         .. code-block:: python
 
-            experiment_1 = tune.run(
+            tuner = tune.Tuner(
                 cost,
-                num_samples=5,
-                search_alg=search_alg,
-                verbose=0,
-                name=self.experiment_name,
-                local_dir="~/my_results")
+                run_config=air.RunConfig(
+                    name=self.experiment_name,
+                    local_dir="~/my_results",
+                ),
+                tune_config=tune.TuneConfig(
+                    search_alg=search_alg,
+                    num_samples=5
+                ),
+                param_space=config
+            )
+            tuner.fit()
 
             search_alg2 = Searcher()
             search_alg2.restore_from_dir(
@@ -429,7 +451,14 @@ class ConcurrencyLimiter(Searcher):
         from ray.tune.search import ConcurrencyLimiter
         search_alg = HyperOptSearch(metric="accuracy")
         search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
-        tune.run(trainable, search_alg=search_alg)
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=search_alg
+            ),
+        )
+        tuner.fit()
+
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
@@ -472,7 +501,7 @@ class ConcurrencyLimiter(Searcher):
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
         self._set_searcher_max_concurrency()
-        return set_search_properties_backwards_compatible(
+        return _set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec
         )
 

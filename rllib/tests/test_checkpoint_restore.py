@@ -28,6 +28,7 @@ CONFIGS = {
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ARS": {
         "explore": False,
@@ -39,9 +40,11 @@ CONFIGS = {
     "DDPG": {
         "explore": False,
         "min_sample_timesteps_per_iteration": 100,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "DQN": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ES": {
         "explore": False,
@@ -59,20 +62,22 @@ CONFIGS = {
     },
     "SimpleQ": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "SAC": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
 }
 
 
-def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=False):
+def ckpt_restore_test(alg_name, tf2=False, object_store=False, replay_buffer=False):
     config = CONFIGS[alg_name].copy()
     # If required, store replay buffer data in checkpoints as well.
     if replay_buffer:
         config["store_buffer_in_checkpoints"] = True
 
-    frameworks = (["tf2"] if tfe else []) + ["torch", "tf"]
+    frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True] if object_store else [False]:
             print("use_object_store={}".format(use_object_store))
@@ -81,8 +86,8 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")
             else:
-                alg1 = cls(config=config, env="CartPole-v0")
-                alg2 = cls(config=config, env="CartPole-v0")
+                alg1 = cls(config=config, env="CartPole-v1")
+                alg2 = cls(config=config, env="CartPole-v1")
 
             policy1 = alg1.get_policy()
 
@@ -103,7 +108,7 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
             if optim_state:
                 s2 = alg2.get_policy().get_state().get("_optimizer_variables")
                 # Tf -> Compare states 1:1.
-                if fw in ["tf2", "tf", "tfe"]:
+                if fw in ["tf2", "tf"]:
                     check(s2, optim_state)
                 # For torch, optimizers have state_dicts with keys=params,
                 # which are different for the two models (ignore these

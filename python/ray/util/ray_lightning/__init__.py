@@ -1,16 +1,4 @@
-import logging
-
-logger = logging.getLogger(__name__)
-
-RayPlugin = None
-HorovodRayPlugin = None
-RayShardedPlugin = None
-
-try:
-    from ray_lightning import RayPlugin, HorovodRayPlugin, RayShardedPlugin
-except ImportError:
-    logger.info(
-        "ray_lightning is not installed. Please run `pip install ray-lightning`."
-    )
-
-__all__ = ["RayPlugin", "HorovodRayPlugin", "RayShardedPlugin"]
+raise DeprecationWarning(
+    "ray.util.ray_lightning has been removed as of Ray 2.0. Instead, use the "
+    "`ray_lightning` library directly."
+)

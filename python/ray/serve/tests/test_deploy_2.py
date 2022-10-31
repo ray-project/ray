@@ -3,6 +3,7 @@ import functools
 import os
 import sys
 import time
+from typing import Dict
 
 import pytest
 import requests
@@ -10,6 +11,8 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from pydantic import ValidationError
+from ray.serve.drivers import DAGDriver
 
 
 class TestGetDeployment:
@@ -30,8 +33,8 @@ class TestGetDeployment:
         with pytest.raises(KeyError):
             self.get_deployment(name, use_list_api)
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        handle = serve.run(d.bind())
+        val1, pid1 = ray.get(handle.remote())
         assert val1 == "1"
 
         del d
@@ -49,7 +52,7 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
+        serve.run(d.bind())
         del d
 
         d2 = self.get_deployment(name, use_list_api)
@@ -67,15 +70,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        handle = serve.run(d.bind())
+        val1, pid1 = ray.get(handle.remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.options(version="2").deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
+        handle = serve.run(d2.options(version="2").bind())
+        val2, pid2 = ray.get(handle.remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -87,15 +90,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        handle = serve.run(d.bind())
+        val1, pid1 = ray.get(handle.remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
+        handle = serve.run(d2.bind())
+        val2, pid2 = ray.get(handle.remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -141,12 +144,12 @@ class TestGetDeployment:
             handle = self.get_deployment(name, use_list_api).get_handle()
             assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
 
-        d.deploy()
+        serve.run(d.bind())
         check_num_replicas(1)
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.options(num_replicas=2).deploy()
+        serve.run(d2.options(num_replicas=2).bind())
         check_num_replicas(2)
 
 
@@ -202,17 +205,21 @@ def test_deploy_change_route_prefix(serve_instance):
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
 def test_deploy_nullify_route_prefix(serve_instance, prefixes):
+    # With multi dags support, dag driver will receive all route
+    # prefix when route_prefix is "None", since "None" will be converted
+    # to "/" internally.
+    # Note: the expose http endpoint will still be removed for internal
+    # dag node by setting "None" to route_prefix
     @serve.deployment
     def f(*args):
         return "got me"
 
     for prefix in prefixes:
-        f.options(route_prefix=prefix).deploy()
-        if prefix is None:
-            assert requests.get("http://localhost:8000/f").status_code == 404
-        else:
-            assert requests.get("http://localhost:8000/f").text == "got me"
-        assert ray.get(f.get_handle().remote()) == "got me"
+        dag = DAGDriver.options(route_prefix=prefix).bind(f.bind())
+        handle = serve.run(dag)
+        assert requests.get("http://localhost:8000/f").status_code == 200
+        assert requests.get("http://localhost:8000/f").text == '"got me"'
+        assert ray.get(handle.predict.remote()) == "got me"
 
 
 @pytest.mark.timeout(10, method="thread")
@@ -223,7 +230,7 @@ def test_deploy_empty_bundle(serve_instance):
             return "hello"
 
     # This should succesfully terminate within the provided time-frame.
-    D.deploy()
+    serve.run(D.bind())
 
 
 def test_deployment_error_handling(serve_instance):
@@ -231,12 +238,62 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(RuntimeError, match=". is not a valid URI"):
+    with pytest.raises(
+        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
+    ):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
 
-        f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
+        serve.run(
+            f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).bind()
+        )
+
+
+def test_json_serialization_user_config(serve_instance):
+    """See https://github.com/ray-project/ray/issues/25345.
+
+    See https://github.com/ray-project/ray/pull/26235 for additional context
+    about this test.
+    """
+
+    @serve.deployment(name="simple-deployment")
+    class SimpleDeployment:
+        value: str
+        nested_value: str
+
+        def reconfigure(self, config: Dict) -> None:
+            self.value = config["value"]
+            self.nested_value = config["nested"]["value"]
+
+        def get_value(self) -> None:
+            return self.value
+
+        def get_nested_value(self) -> None:
+            return self.nested_value
+
+    SimpleDeployment.options(
+        user_config={
+            "value": "Success!",
+            "nested": {"value": "Success!"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Success!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+
+    SimpleDeployment.options(
+        user_config={
+            "value": "Failure!",
+            "another-value": "Failure!",
+            "nested": {"value": "Success!"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Failure!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
@@ -254,7 +311,7 @@ def test_http_proxy_request_cancellation(serve_instance):
             await s.wait.remote()
             return ret_val
 
-    A.deploy()
+    serve.run(A.bind())
 
     url = "http://127.0.0.1:8000/A"
     with ThreadPoolExecutor() as pool:
