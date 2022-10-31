@@ -16,7 +16,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSION=$(python -c"from platform import python_version; print(python_version())")
 
-RAY_VERSIONS=("1.12.0")
+RAY_VERSIONS=("2.0.1")
 
 for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
@@ -78,6 +78,11 @@ do
     fi
 
     if ! ray job logs "${JOB_ID}"; then
+        cleanup
+        exit 1
+    fi
+
+    if ! pytest -vs test_backwards_compatibility.py::test_error_message; then
         cleanup
         exit 1
     fi

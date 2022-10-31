@@ -1,7 +1,8 @@
 import dataclasses
 import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
-
+import ray
+from packaging import version
 from ray.dashboard.utils import get_address_for_submission_client
 
 try:
@@ -66,6 +67,7 @@ class JobSubmissionClient(SubmissionClient):
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
+        self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
         if requests is None:
             raise RuntimeError(
@@ -103,6 +105,16 @@ class JobSubmissionClient(SubmissionClient):
             "cluster. Please ensure the cluster is "
             "running Ray 1.9 or higher.",
         )
+
+        # In ray>=2.0, the client sends the new kwarg `submission_id` to the server
+        # upon every job submission, which causes servers with ray<2.0 to error.
+        if version.parse(self._client_ray_version) > version.parse("2.0"):
+            self._check_connection_and_version(
+                min_version="2.0",
+                version_error_message=f"Client Ray version {self._client_ray_version} "
+                "is not compatible with the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.0 or higher or downgrade the client Ray version.",
+            )
 
     @PublicAPI(stability="beta")
     def submit_job(
@@ -162,6 +174,14 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
+        if num_cpus or num_gpus or resources:
+            self._check_connection_and_version(
+                min_version="2.2",
+                version_error_message="`num_cpus`, `num_gpus`, and `resources` kwargs"
+                " are not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.2 or higher.",
+            )
+
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -183,8 +203,13 @@ class JobSubmissionClient(SubmissionClient):
             resources=resources,
         )
 
+        json_data = dataclasses.asdict(req)
+        # Remove keys with None values so that new clients with new optional fields
+        # are still compatible with older servers.
+        json_data = {k: v for k, v in json_data.items() if v is not None}
+
         logger.debug(f"Submitting job with submission_id={submission_id}.")
-        r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
+        r = self._do_request("POST", "/api/jobs/", json_data=json_data)
 
         if r.status_code == 200:
             return JobSubmitResponse(**r.json()).submission_id
