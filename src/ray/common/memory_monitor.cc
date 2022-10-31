@@ -147,6 +147,49 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   return used;
 }
 
+int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                                  const char *usage_path) {
+  // Uses same calculation as libcontainer, that is: memory.current -
+  // memory.stat[inactive_file]. Source:
+  // https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
+  std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
+  if (!memstat_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << " cgroups v2 memory.stat file not found: " << stat_path;
+    return kNull;
+  }
+  std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
+  if (!memusage_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << " cgroups v2 memory.current file not found: " << usage_path;
+    return kNull;
+  }
+
+  std::string title;
+  int64_t value;
+  std::string line;
+
+  int64_t inactive_file_bytes = kNull;
+  while (std::getline(memstat_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value;
+    if (title == kCgroupsV2MemoryStatInactiveKey) {
+      inactive_file_bytes = value;
+      break;
+    }
+  }
+
+  int64_t current_usage_bytes = kNull;
+  memusage_ifs >> current_usage_bytes;
+  if (current_usage_bytes == kNull || inactive_file_bytes == kNull) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Failed to parse cgroup v2 memory usage. memory.current "
+        << current_usage_bytes << " inactive " << inactive_file_bytes;
+    return kNull;
+  }
+  return current_usage_bytes - inactive_file_bytes;
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   int64_t total_bytes = kNull;
   if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
@@ -158,9 +201,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   }
 
   int64_t used_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
-    std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
-    mem_file >> used_bytes;
+  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) &&
+      std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
+    used_bytes =
+        GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
     used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
   }

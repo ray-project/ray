@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 def framework_iterator(
     config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
@@ -58,34 +58,30 @@ def framework_iterator(
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tfe/tf.
+    as the correct eager/non-eager contexts for tf/tf2.
 
     Args:
         config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=[tfe|tf2].
+            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
 
     Yields:
-        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is False: The current framework [tf2|tf|torch] used.
         If `session` is True: A tuple consisting of the current framework
         string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
-    if "tf2" in frameworks and "tfe" in frameworks:
-        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -97,19 +93,13 @@ def framework_iterator(
                 "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
-        elif fw == "tfe" and not eager_mode:
-            logger.warning(
-                "framework_iterator skipping tf-eager (could not "
-                "import `eager_mode` from tensorflow.python)!"
-            )
-            continue
         elif fw == "tf2" and tfv != 2:
             logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
             logger.warning("framework_iterator skipping JAX (not installed)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
+        assert fw in ["tf2", "tf", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -124,8 +114,8 @@ def framework_iterator(
             config.framework(fw)
 
         eager_ctx = None
-        # Enable eager mode for tf2 and tfe.
-        if fw in ["tf2", "tfe"]:
+        # Enable eager mode for tf2.
+        if fw == "tf2":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
@@ -134,7 +124,7 @@ def framework_iterator(
             assert not tf1.executing_eagerly()
 
         # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw in ["tf2", "tfe"] and with_eager_tracing:
+        if fw == "tf2" and with_eager_tracing:
             for tracing in [True, False]:
                 if isinstance(config, dict):
                     config["eager_tracing"] = tracing
@@ -179,7 +169,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
         y: The expected value to be compared to `x`. This must not
-            be a tf-Tensor, but may be a tfe/torch-Tensor.
+            be a tf-Tensor, but may be a tf/torch-Tensor.
         decimals: The number of digits after the floating point up to
             which all numeric values have to match.
         atol: Absolute tolerance of the difference between x and y
@@ -521,7 +511,6 @@ def check_train_results(train_results):
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -554,7 +543,7 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    _, is_multi_agent = check_multi_agent(train_results["config"])
+    is_multi_agent = train_results["config"].is_multi_agent()
 
     # Check in particular the "info" dict.
     info = train_results["info"]

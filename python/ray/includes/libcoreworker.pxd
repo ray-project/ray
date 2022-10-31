@@ -321,7 +321,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers
-        (c_bool() nogil) kill_main
+        (c_bool(const CTaskID &) nogil) kill_main
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
@@ -329,6 +329,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int startup_token
+        c_string session_name
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod
