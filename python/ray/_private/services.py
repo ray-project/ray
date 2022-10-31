@@ -144,7 +144,7 @@ def _build_python_executable_command_memory_profileable(
     return command
 
 
-def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
+def _get_gcs_client_options(gcs_server_address):
     return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
@@ -401,20 +401,16 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
 
 
 def wait_for_node(
-    redis_address: str,
     gcs_address: str,
     node_plasma_store_socket_name: str,
-    redis_password: Optional[str] = None,
     timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
 
     Args:
-        redis_address: The redis address.
         gcs_address: The gcs address
         node_plasma_store_socket_name: The
             plasma_store_socket_name for the given node which we wait for.
-        redis_password: the redis password.
         timeout: The amount of time in seconds to wait before raising an
             exception.
 
@@ -438,12 +434,10 @@ def wait_for_node(
     raise TimeoutError("Timed out while waiting for node to startup.")
 
 
-def get_node_to_connect_for_driver(
-    redis_address, gcs_address, node_ip_address, redis_password=None
-):
+def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     # Get node table from global state accessor.
     global_state = ray._private.state.GlobalState()
-    gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
+    gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -1516,7 +1510,6 @@ def start_raylet(
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
-        f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
@@ -1811,13 +1804,11 @@ def determine_plasma_store_config(
 
 
 def start_monitor(
-    redis_address: str,
     gcs_address: str,
     logs_dir: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
-    redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1826,7 +1817,6 @@ def start_monitor(
     """Run a process to monitor the other processes.
 
     Args:
-        redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -1834,7 +1824,6 @@ def start_monitor(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
-        redis_password: The password of the redis server.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1854,8 +1843,6 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if redis_address is not None:
-        command.append(f"--redis-address={redis_address}")
     if gcs_address is not None:
         command.append(f"--gcs-address={gcs_address}")
     if stdout_file is None and stderr_file is None:
@@ -1869,8 +1856,6 @@ def start_monitor(
         command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
-    if redis_password:
-        command.append("--redis-password=" + redis_password)
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
     process_info = start_ray_process(
