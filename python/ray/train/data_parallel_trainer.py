@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from tabulate import tabulate
@@ -9,6 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -42,7 +42,10 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        if isinstance(checkpoint.dir_or_data, dict):
+            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        else:
+            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -220,6 +223,11 @@ class DataParallelTrainer(BaseTrainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
+    # Exposed here for testing purposes. Should never need
+    # to be overriden.
+    _backend_executor_cls: Type[BackendExecutor] = BackendExecutor
+    _training_iterator_cls: Type[TrainingIterator] = TrainingIterator
+
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
@@ -333,10 +341,10 @@ class DataParallelTrainer(BaseTrainer):
             name=session.get_trial_name(),
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
-            logdir=os.getcwd(),
+            logdir=session.get_trial_dir(),
         )
 
-        backend_executor = BackendExecutor(
+        backend_executor = self._backend_executor_cls(
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
@@ -353,7 +361,7 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
-        training_iterator = TrainingIterator(
+        training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
@@ -486,10 +494,10 @@ class DataParallelTrainer(BaseTrainer):
         return VBox(content, layout=Layout(width="100%"))
 
 
-def _load_checkpoint(
+def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint.
+    """Load a Ray Train Checkpoint (dict based).
 
     This is a private API.
 

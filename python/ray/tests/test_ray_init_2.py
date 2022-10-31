@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL
 import ray._private.services
-from ray.experimental.state.common import ray_address_to_api_server_url
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import run_string_as_driver
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -247,7 +247,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        address, cluster.gcs_address, "127.0.0.3", redis_password=password
+        cluster.gcs_address, "127.0.0.3"
     )
     assert node_info.node_manager_port == node2.node_manager_port
 

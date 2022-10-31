@@ -1,15 +1,20 @@
 import { CssBaseline } from "@material-ui/core";
 import { ThemeProvider } from "@material-ui/core/styles";
+import dayjs from "dayjs";
+import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { Provider } from "react-redux";
 import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
-import Dashboard from "./pages/dashboard/Dashboard";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
+import { Metrics } from "./pages/metrics";
+import { getGrafanaHost } from "./pages/metrics/utils";
 import { getNodeList } from "./service/node";
 import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
+
+dayjs.extend(duration);
 
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
@@ -26,11 +31,23 @@ const NodeDetail = React.lazy(() => import("./pages/node/NodeDetail"));
 const RAY_DASHBOARD_THEME_KEY = "ray-dashboard-theme";
 
 // a global map for relations
-export const GlobalContext = React.createContext({
-  nodeMap: {} as { [key: string]: string },
-  nodeMapByIp: {} as { [key: string]: string },
-  ipLogMap: {} as { [key: string]: string },
-  namespaceMap: {} as { [key: string]: string[] },
+type GlobalContextType = {
+  nodeMap: { [key: string]: string };
+  nodeMapByIp: { [key: string]: string };
+  ipLogMap: { [key: string]: string };
+  namespaceMap: { [key: string]: string[] };
+  /**
+   * The host that is serving grafana. Only set if grafana is
+   * running as detected by the grafana healthcheck endpoint.
+   */
+  grafanaHost: string | undefined;
+};
+export const GlobalContext = React.createContext<GlobalContextType>({
+  nodeMap: {},
+  nodeMapByIp: {},
+  ipLogMap: {},
+  namespaceMap: {},
+  grafanaHost: undefined,
 });
 
 export const getDefaultTheme = () =>
@@ -40,12 +57,13 @@ export const setLocalTheme = (theme: string) =>
 
 const App = () => {
   const [theme, _setTheme] = useState(getDefaultTheme());
-  const [context, setContext] = useState<{
-    nodeMap: { [key: string]: string };
-    nodeMapByIp: { [key: string]: string };
-    ipLogMap: { [key: string]: string };
-    namespaceMap: { [key: string]: string[] };
-  }>({ nodeMap: {}, nodeMapByIp: {}, ipLogMap: {}, namespaceMap: {} });
+  const [context, setContext] = useState<GlobalContextType>({
+    nodeMap: {},
+    nodeMapByIp: {},
+    ipLogMap: {},
+    namespaceMap: {},
+    grafanaHost: undefined,
+  });
   const getTheme = (name: string) => {
     switch (name) {
       case "dark":
@@ -70,9 +88,27 @@ const App = () => {
           nodeMapByIp[ip] = raylet.nodeId;
           ipLogMap[ip] = logUrl;
         });
-        setContext({ nodeMap, nodeMapByIp, ipLogMap, namespaceMap: {} });
+        setContext((existingContext) => ({
+          ...existingContext,
+          nodeMap,
+          nodeMapByIp,
+          ipLogMap,
+          namespaceMap: {},
+        }));
       }
     });
+  }, []);
+
+  // Detect if grafana is running
+  useEffect(() => {
+    const doEffect = async () => {
+      const grafanaHost = await getGrafanaHost();
+      setContext((existingContext) => ({
+        ...existingContext,
+        grafanaHost,
+      }));
+    };
+    doEffect();
   }, []);
 
   return (
@@ -88,7 +124,6 @@ const App = () => {
                   exact
                   path="/"
                 />
-                <Route component={Dashboard} exact path="/legacy" />
                 <Route
                   render={(props) => (
                     <BasicLayout {...props} setTheme={setTheme} theme={theme}>
@@ -97,6 +132,7 @@ const App = () => {
                       <Route component={Node} exact path="/node" />
                       <Route component={Actors} exact path="/actors" />
                       <Route component={Events} exact path="/events" />
+                      <Route component={Metrics} exact path="/metrics" />
                       <Route
                         render={(props) => (
                           <Logs {...props} theme={theme as "light" | "dark"} />

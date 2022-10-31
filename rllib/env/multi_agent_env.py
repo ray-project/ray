@@ -145,7 +145,7 @@ class MultiAgentEnv(gym.Env):
             for key, agent_obs in x.items():
                 if not self.observation_space[key].contains(agent_obs):
                     return False
-            if not all(k in self.observation_space for k in x):
+            if not all(k in self.observation_space.spaces for k in x):
                 if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
                     logger.warning(
                         "You environment returns observations that are "
@@ -457,7 +457,7 @@ def make_multi_agent(
     Examples:
          >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v1") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
          >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
          >>> obs = ma_cartpole.reset() # doctest: +SKIP

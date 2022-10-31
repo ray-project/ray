@@ -112,20 +112,17 @@ class SimpleQConfig(AlgorithmConfig):
             # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
         self.grad_clip = 40
+        self.tau = 1.0
         # __sphinx_doc_end__
         # fmt: on
 
         # Overrides of AlgorithmConfig defaults
         # `rollouts()`
-        self.num_workers = 0
         self.rollout_fragment_length = 4
 
         # `training()`
@@ -141,7 +138,7 @@ class SimpleQConfig(AlgorithmConfig):
         }
 
         # `evaluation()`
-        self.evaluation_config = {"explore": False}
+        self.evaluation(evaluation_config={"explore": False})
 
         # `reporting()`
         self.min_time_s_per_iteration = None
@@ -169,13 +166,12 @@ class SimpleQConfig(AlgorithmConfig):
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
         num_steps_sampled_before_learning_starts: Optional[int] = None,
+        tau: Optional[float] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
 
         Args:
-            timesteps_per_iteration: Minimum env steps to optimize for per train call.
-                This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.
@@ -227,6 +223,7 @@ class SimpleQConfig(AlgorithmConfig):
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
                 depends on config["multiagent"]["count_steps_by"].
+            tau: Update the target by \tau * policy + (1-\tau) * target_policy.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -259,15 +256,16 @@ class SimpleQConfig(AlgorithmConfig):
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
-
+        if tau is not None:
+            self.tau = tau
         return self
 
 
 class SimpleQ(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return SimpleQConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return SimpleQConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -296,7 +294,8 @@ class SimpleQ(Algorithm):
                     " used at the same time!"
                 )
 
-        validate_buffer_config(config)
+        if not config.get("in_evaluation"):
+            validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

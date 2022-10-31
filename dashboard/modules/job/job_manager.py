@@ -12,12 +12,16 @@ import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, Iterator, List, Optional, Tuple
-
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
+)
 import ray
 from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -249,6 +253,17 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
+        # RAY_ADDRESS may be the dashboard URL but not the gcs address,
+        # so when the environment variable is not empty, we force set RAY_ADDRESS
+        # to "auto" to avoid function `canonicalize_bootstrap_address_or_die` returning
+        # the wrong GCS address.
+        # TODO(Jialing He, Archit Kulkarni): Definition of Specification RAY_ADDRESS
+        if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
+            os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
+        ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
+            "auto", ray.worker._global_node._ray_params.temp_dir
+        )
+        assert ray_addr is not None
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
@@ -257,12 +272,12 @@ class JobSupervisor:
                     "metadata": self._metadata,
                 }
             ),
-            # When using jobs RAY_ADDRESS may be set to the dashboard url, but
-            # ray.init() also uses RAY_ADDRESS, and the dashboard url is not a
-            # valid cluster address for ray.init().
-            # As a workaround, we override RAY_ADDRESS for the driver script's
-            # ray.init() until #22221 is fixed.
-            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: "auto",
+            # Always set RAY_ADDRESS as find_bootstrap_address address for
+            # job submission. In case of local development, prevent user from
+            # re-using http://{address}:{dashboard_port} to interact with
+            # jobs SDK.
+            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
+            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: ray_addr,
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.
             "PYTHONUNBUFFERED": "1",
@@ -527,6 +542,38 @@ class JobManager:
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
+    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
+        if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
+            logger.info(
+                f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
+                "Using Ray's default actor scheduling strategy for the job "
+                "driver instead of running it on the head node."
+            )
+            scheduling_strategy = "DEFAULT"
+        else:
+            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
+                "head_node_id".encode(),
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=30,
+            )
+            if head_node_id_bytes is None:
+                logger.info(
+                    "Head node ID not found in GCS. Using Ray's default actor "
+                    "scheduling strategy for the job driver instead of running "
+                    "it on the head node."
+                )
+                scheduling_strategy = "DEFAULT"
+            else:
+                head_node_id = head_node_id_bytes.decode()
+                logger.info(
+                    "Head node ID found in GCS; scheduling job driver on "
+                    f"head node {head_node_id}"
+                )
+                scheduling_strategy = NodeAffinitySchedulingStrategy(
+                    node_id=head_node_id, soft=False
+                )
+        return scheduling_strategy
+
     async def submit_job(
         self,
         *,
@@ -583,11 +630,12 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
+            scheduling_strategy = await self._get_scheduling_strategy()
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
-                scheduling_strategy="DEFAULT",
+                scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
@@ -647,7 +695,7 @@ class JobManager:
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
-                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                if status.is_terminal():
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)

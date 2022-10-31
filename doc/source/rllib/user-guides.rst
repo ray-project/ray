@@ -31,6 +31,15 @@ RLlib Feature Guides
     :img-top: /rllib/images/rllib-logo.svg
 
     +++
+    .. link-button:: rllib-saving-and-loading-algos-and-policies
+        :type: ref
+        :text: Checkpointing your Algorithms and Policies, and Exporting your NN Models
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
     .. link-button:: rllib-concepts
         :type: ref
         :text: How To Customize Your Policies?
@@ -72,3 +81,11 @@ RLlib Feature Guides
         :text: How To Contribute To RLlib?
         :classes: btn-link btn-block stretched-link
 
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
+    .. link-button:: rllib-cli
+        :type: ref
+        :text: How To Work With the RLlib CLI?
+        :classes: btn-link btn-block stretched-link

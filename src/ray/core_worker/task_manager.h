@@ -33,7 +33,8 @@ class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply,
-                                   const rpc::Address &actor_addr) = 0;
+                                   const rpc::Address &actor_addr,
+                                   bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    bool task_failed_due_to_oom) = 0;
@@ -96,12 +97,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     task_counter_.SetOnChangeCallback(
-        [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
-          ray::stats::STATS_tasks.Record(value,
-                                         {{"State", rpc::TaskStatus_Name(key.second)},
-                                          {"Name", key.first},
-                                          {"Source", "owner"}});
-        });
+        [this](const std::pair<std::string, rpc::TaskStatus> key)
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+              ray::stats::STATS_tasks.Record(task_counter_.Get(key),
+                                             {{"State", rpc::TaskStatus_Name(key.second)},
+                                              {"Name", key.first},
+                                              {"Source", "owner"}});
+            });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -149,10 +151,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
+  /// \param[in] is_application_error Whether this is an Exception return.
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply,
-                           const rpc::Address &worker_addr) override;
+                           const rpc::Address &worker_addr,
+                           bool is_application_error) override;
 
   /// Returns true if task can be retried.
   ///
@@ -284,13 +288,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
-  /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. Returns true if the task's return object was returned
-  /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
-                        bool store_in_plasma);
+  /// Returns the generator ID that contains the dynamically allocated
+  /// ObjectRefs, if the task is dynamic. Else, returns Nil.
+  ObjectID TaskGeneratorId(const TaskID &task_id) const;
+
+  /// Record OCL metrics.
+  void RecordMetrics();
 
  private:
   struct TaskEntry {
@@ -366,6 +369,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // The task's current execution status.
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
+
+  /// Update nested ref count info and store the in-memory value for a task's
+  /// return object. Returns true if the task's return object was returned
+  /// directly by value.
+  bool HandleTaskReturn(const ObjectID &object_id,
+                        const rpc::ReturnObject &return_object,
+                        const NodeID &worker_raylet_id,
+                        bool store_in_plasma) LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.

@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import traceback
-
+import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
@@ -40,6 +40,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
+            ray._private.usage.usage_lib.record_library_usage("job_submission")
             submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
@@ -152,6 +153,8 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
+
+        return ws
 
     def get_job_manager(self):
         if not self._job_manager:

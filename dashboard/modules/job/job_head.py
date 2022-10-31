@@ -129,6 +129,13 @@ class JobAgentSubmissionClient:
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
+    """Runs on the head node of a Ray cluster and handles Ray Jobs APIs."""
+
+    # Time that we sleep while tailing logs while waiting for
+    # the supervisor actor to start. We don't know which node
+    # to read the logs from until then.
+    WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 1
+
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
@@ -251,7 +258,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if isinstance(result, Response):
             return result
         else:
-            submit_request = result
+            submit_request: JobSubmitRequest = result
 
         try:
             job_agent_client = await asyncio.wait_for(
@@ -261,7 +268,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
             return Response(
-                text="Not Available agent to submit job!",
+                text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
@@ -388,17 +395,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             driver_agent_http_address = job.driver_agent_http_address
             driver_node_id = job.driver_node_id
             if driver_agent_http_address is None:
-                return Response(
-                    text="The entrypoint script has not started running yet, "
-                    "please try again later",
-                    status=aiohttp.web.HTTPBadRequest.status_code,
-                )
-            if driver_node_id not in self._agents:
-                self._agents[driver_node_id] = JobAgentSubmissionClient(
-                    driver_agent_http_address
-                )
-            job_agent_client = self._agents[driver_node_id]
-            resp = await job_agent_client.get_job_logs_internal(job.submission_id)
+                resp = JobLogsResponse("")
+            else:
+                if driver_node_id not in self._agents:
+                    self._agents[driver_node_id] = JobAgentSubmissionClient(
+                        driver_agent_http_address
+                    )
+                job_agent_client = self._agents[driver_node_id]
+                resp = await job_agent_client.get_job_logs_internal(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
@@ -429,25 +433,34 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        driver_agent_http_address = job.driver_agent_http_address
-        driver_node_id = job.driver_node_id
-        if driver_agent_http_address is None:
-            return Response(
-                text="The driver process has not started running yet, "
-                "please try it later",
-                status=aiohttp.web.HTTPBadRequest.status_code,
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+
+        driver_agent_http_address = None
+        while driver_agent_http_address is None:
+            job = await find_job_by_ids(
+                self._dashboard_head.gcs_aio_client,
+                self._job_info_client,
+                job_or_submission_id,
             )
+            driver_agent_http_address = job.driver_agent_http_address
+            status = job.status
+            if status.is_terminal() and driver_agent_http_address is None:
+                # Job exited before supervisor actor started.
+                return
+            await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
+
+        driver_node_id = job.driver_node_id
         if driver_node_id not in self._agents:
             self._agents[driver_node_id] = JobAgentSubmissionClient(
                 driver_agent_http_address
             )
         job_agent_client = self._agents[driver_node_id]
 
-        ws = aiohttp.web.WebSocketResponse()
-        await ws.prepare(req)
-
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
+
+        return ws
 
     async def run(self, server):
         if not self._job_info_client:
