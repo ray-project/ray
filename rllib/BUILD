@@ -1954,7 +1954,7 @@ py_test(
 py_test(
     name = "policy/tests/test_policy",
     tags = ["team:rllib", "policy"],
-    size = "large",
+    size = "medium",
     srcs = ["policy/tests/test_policy.py"]
 )
 
@@ -2179,55 +2179,55 @@ py_test(
 
 py_test(
     name = "tests/test_checkpoint_restore_pg",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestorePG"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
 )
 
 py_test(
     name = "tests/test_policy_checkpoint_restore_twice_tf",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_policy_checkpoint_restore_twice.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_policy_checkpoint_restore_twice.py"],
     args = ["TestPolicyFromCheckpointTwiceTF"]
 )
 
 py_test(
     name = "tests/test_policy_checkpoint_restore_twice_tf2",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_policy_checkpoint_restore_twice.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_policy_checkpoint_restore_twice.py"],
     args = ["TestPolicyFromCheckpointTwiceT2"]
 )
 
 py_test(
     name = "tests/test_policy_checkpoint_restore_twice_torch",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_policy_checkpoint_restore_twice.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_policy_checkpoint_restore_twice.py"],
     args = ["TestPolicyFromCheckpointTwiceTorch"]
 )
 
