@@ -1,16 +1,15 @@
 from ray.rllib.utils.nested_dict import NestedDict
 from rllib.models.torch.model import TorchModel
 from torch import nn
+import torch
 from ray.rllib.models.specs.specs_dict import ModelSpec
 from dataclasses import dataclass
 from typing import Any, Callable, List
 
 
 def get_feature_size(spec: ModelSpec) -> int:
-    # TODO: Make this work for multiple inputs
-    assert len(spec) == 1, "Not yet implemented for multiple inputs"
-    shape = spec.values()[0].get_shape()[-1]
-    return shape
+    shapes = [v.get_shape()[-1] for v in spec.values()]
+    return sum(shapes)
 
 
 class TorchVectorEncoder(TorchModel):
@@ -41,7 +40,9 @@ class TorchVectorEncoder(TorchModel):
         self.net = nn.Sequential(layers)
 
     def _forward(self, inputs: NestedDict) -> NestedDict:
-        inputs[self.output_spec.keys()[0]] = self.net(inputs.values())
+        x = torch.cat(inputs.values(), dim=-1)
+        [out_key] = self.output_spec.keys()
+        inputs[out_key] = self.net(x)
         return inputs
 
 
@@ -53,5 +54,8 @@ class TorchVectorEncoderConfig:
     hidden_layer_sizes: List[int] = [128, 128]
     out_spec: ModelSpec = ModelSpec({"b, f"}, f=128)
 
-    def build(self, in_spec: ModelSpec) -> TorchVectorEncoder:
+    def build(self, in_spec: ModelSpec, in_feature_dim: str) -> TorchVectorEncoder:
+        assert (
+            len(self.out_spec) == 1
+        ), "VectorEncoder output spec must only contain one element"
         return TorchVectorEncoder(in_spec, self)
