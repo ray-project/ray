@@ -328,7 +328,12 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
+    # Conda env takes longer to install, causing flakiness.
+    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
+
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout
+    )
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
