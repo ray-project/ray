@@ -89,10 +89,10 @@ class SimpleQTorchPolicy(
             np.array(actions),
             [],
             {
-                "q_values": q_vals.detach().numpy(),
-                SampleBatch.ACTION_LOGP: logp.detach().numpy(),
-                SampleBatch.ACTION_PROB: (torch.exp(logp)).detach().numpy(),
-                SampleBatch.ACTION_DIST_INPUTS: q_vals.detach().numpy(),
+                "q_values": convert_to_numpy(q_vals),
+                SampleBatch.ACTION_LOGP: convert_to_numpy(logp),
+                SampleBatch.ACTION_PROB: convert_to_numpy(torch.exp(logp)),
+                SampleBatch.ACTION_DIST_INPUTS: convert_to_numpy(q_vals),
             },
         )
 
