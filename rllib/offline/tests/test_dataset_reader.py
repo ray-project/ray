@@ -37,7 +37,11 @@ class TestDatasetReader(unittest.TestCase):
         )
 
         ioctx = IOContext(
-            config=AlgorithmConfig().training(train_batch_size=1200),
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=1200)
+                .offline_data(actions_in_input_normalized=True)
+            ),
             worker_index=0,
         )
         reader = DatasetReader(dataset, ioctx)

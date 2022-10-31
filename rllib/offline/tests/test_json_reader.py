@@ -25,7 +25,11 @@ class TestJsonReader(unittest.TestCase):
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         ioctx = IOContext(
-            config=AlgorithmConfig().training(train_batch_size=1200),
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=1200)
+                .offline_data(actions_in_input_normalized=True)
+            ),
             worker_index=0,
         )
         reader = JsonReader([data_file], ioctx)
