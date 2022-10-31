@@ -10,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 def check_support(alg, config, test_eager=False, test_trace=True):
-    config["framework"] = "tfe"
+    config["framework"] = "tf2"
     config["log_level"] = "ERROR"
     # Test both continuous and discrete actions.
     for cont in [True, False]:
@@ -22,7 +22,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         if cont:
             config["env"] = "Pendulum-v1"
         else:
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
 
         a = get_algorithm_class(alg)
         if test_eager:

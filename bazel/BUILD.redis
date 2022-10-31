@@ -40,31 +40,8 @@ make(
     ]
 )
 
-genrule(
-    name = "bin",
-    srcs = [":redis"],
-    outs = [
-        "redis-server",
-        "redis-cli",
-    ],
-    cmd = """
-        cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
-        cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
-    """,
-    visibility = ["//visibility:public"],
-    tags = ["local"],
-)
-
-# This is a build for mac without openssl.
-# rules_foreign_cc somehow pick the wrong toolchain in CI.
-genrule(
-    name = "bin-mac",
-    srcs = glob(["**"]),
-    outs = [
-        "redis-server-mac",
-        "redis-cli-mac",
-    ],
-    cmd = """
+genrule_cmd = select({
+    "@bazel_tools//src/conditions:darwin": """
         unset CC LDFLAGS CXX CXXFLAGS
         tmpdir="redis.tmp"
         p=$(location Makefile)
@@ -72,13 +49,32 @@ genrule(
         chmod +x "$${tmpdir}"/deps/jemalloc/configure
         parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
         make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
-        mv "$${tmpdir}"/src/redis-server $(location redis-server-mac)
-        chmod +x $(location redis-server-mac)
-        mv "$${tmpdir}"/src/redis-cli $(location redis-cli-mac)
-        chmod +x $(location redis-cli-mac)
+        mv "$${tmpdir}"/src/redis-server $(location redis-server)
+        chmod +x $(location redis-server)
+        mv "$${tmpdir}"/src/redis-cli $(location redis-cli)
+        chmod +x $(location redis-cli)
         rm -r -f -- "$${tmpdir}"
     """,
+    "//conditions:default": """
+        cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
+        cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
+    """
+})
+
+genrule_srcs = select({
+    "@bazel_tools//src/conditions:darwin": glob(["**"]),
+    "//conditions:default": [":redis"],
+})
+
+
+genrule(
+    name = "bin",
+    srcs = genrule_srcs,
+    outs = [
+        "redis-server",
+        "redis-cli",
+    ],
+    cmd = genrule_cmd,
     visibility = ["//visibility:public"],
     tags = ["local"],
 )
-

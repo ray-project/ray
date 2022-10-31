@@ -116,6 +116,21 @@ Scikit-Learn
     :exclude-members: SklearnTrainer
     :show-inheritance:
 
+Mosaic
+~~~~~~
+
+.. autoclass:: ray.train.mosaic.MosaicTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.mosaic
+    :members:
+    :exclude-members: MosaicTrainer
+    :show-inheritance:
+
 
 Reinforcement Learning (RLlib)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -155,12 +170,3 @@ Base Classes (Developer APIs)
 
 .. autoclass:: ray.train.backend.BackendConfig
     :members:
-
-
-Deprecated APIs
----------------
-
-These APIs are deprecated and will be removed in a future Ray release:
-
-- ray.train.Trainer
-- ray.train.callbacks.*

@@ -2273,6 +2273,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
@@ -2708,7 +2709,6 @@ alias(
     name = "redis-server",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-server-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
     visibility = ["//visibility:public"],
@@ -2718,7 +2718,6 @@ alias(
     name = "redis-cli",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-cli-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
     visibility = ["//visibility:public"],

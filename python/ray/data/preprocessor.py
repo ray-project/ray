@@ -3,14 +3,12 @@ import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
-import numpy as np
-
 from ray.data import Dataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
-
+    import numpy as np
     from ray.air.data_batch_type import DataBatchType
 
 
@@ -274,6 +272,7 @@ class Preprocessor(abc.ABC):
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules
         import pandas as pd
+        import numpy as np
         from ray.air.util.data_batch_conversion import (
             convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
@@ -311,7 +310,7 @@ class Preprocessor(abc.ABC):
 
     @DeveloperAPI
     def _transform_numpy(
-        self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
+    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         """Run the transformation on a data batch in a NumPy ndarray format."""
         raise NotImplementedError()

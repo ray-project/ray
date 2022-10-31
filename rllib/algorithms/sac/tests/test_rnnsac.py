@@ -22,6 +22,7 @@ class TestRNNSAC(unittest.TestCase):
         """Test whether RNNSAC can be built on all frameworks."""
         config = (
             sac.RNNSACConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .training(
                 # Wrap with an LSTM and use a very simple base-model.
@@ -53,7 +54,7 @@ class TestRNNSAC(unittest.TestCase):
 
         # Test building an RNNSAC agent in all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
                 print(results)

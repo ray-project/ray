@@ -157,6 +157,7 @@ const rpc::Address &GcsActor::GetOwnerAddress() const {
 
 void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
   actor_table_data_.set_state(state);
+  RefreshMetrics();
 }
 
 rpc::ActorTableData::ActorState GcsActor::GetState() const {
@@ -223,6 +224,17 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
+  actor_state_counter_.reset(
+      new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
+  actor_state_counter_->SetOnChangeCallback(
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
+        int64_t num_actors = actor_state_counter_->Get(key);
+        ray::stats::STATS_actors.Record(
+            num_actors,
+            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
+             {"Name", key.second},
+             {"Source", "gcs"}});
+      });
 }
 
 void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
@@ -479,7 +491,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   RAY_CHECK(!ray_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
+  auto actor = std::make_shared<GcsActor>(
+      request.task_spec(), ray_namespace, actor_state_counter_);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -624,8 +637,9 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), actor_namespace);
-  actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
+  auto actor = std::make_shared<GcsActor>(
+      request.task_spec(), actor_namespace, actor_state_counter_);
+  actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
   RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
@@ -815,7 +829,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  actor->UpdateState(rpc::ActorTableData::DEAD);
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_end_time(time);
   mutable_actor_table_data->set_timestamp(time);
@@ -1075,7 +1089,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
     mutable_actor_table_data->set_num_restarts(num_restarts + 1);
-    mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
+    actor->UpdateState(rpc::ActorTableData::RESTARTING);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
@@ -1091,7 +1105,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     RemoveActorNameFromRegistry(actor);
-    mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
     auto time = current_sys_time_ms();
     mutable_actor_table_data->set_end_time(time);
@@ -1242,7 +1256,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         (!is_job_dead || actor_table_data.is_detached())) {
       const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
-      auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second);
+      auto actor = std::make_shared<GcsActor>(
+          actor_table_data, iter->second, actor_state_counter_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1274,7 +1289,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(actor_table_data);
+      auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(actor_id,
                                                 (int64_t)actor_table_data.timestamp());
@@ -1487,12 +1502,16 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
   if (!canceled_actor_id.IsNil()) {
     // The actor was being scheduled and has now been canceled.
     RAY_CHECK(canceled_actor_id == actor_id);
+    // Return the actor's acquired resources (if any).
+    gcs_actor_scheduler_->OnActorDestruction(actor);
   } else if (!RemovePendingActor(actor)) {
     // When actor creation request of this actor id is pending in raylet,
     // it doesn't responds, and the actor should be still in leasing state.
     // NOTE: We will cancel outstanding lease request by calling
     // `raylet_client->CancelWorkerLease`.
     gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
+    // Return the actor's acquired resources (if any).
+    gcs_actor_scheduler_->OnActorDestruction(actor);
   }
 }
 
@@ -1569,6 +1588,7 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  actor_state_counter_->FlushOnChangeCallbacks();
 }
 
 }  // namespace gcs

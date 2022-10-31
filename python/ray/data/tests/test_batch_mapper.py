@@ -7,7 +7,6 @@ from typing import Dict, Union
 from pandas.testing import assert_frame_equal
 
 from ray.data.preprocessors import BatchMapper
-from ray.data.extensions import TensorArray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.tests.conftest import *  # noqa
 
@@ -160,9 +159,11 @@ def test_batch_mapper_batch_size(ray_start_regular_shared, ds):
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 17).reshape((4, 2, 2)))
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                    ]
                 }
             ),
         ),
@@ -236,7 +237,7 @@ def test_batch_mapper_arrow_data_format(
 
 
 @pytest.mark.parametrize(
-    "ds_with_expected_pandas_numpy_df",
+    "ds,expected_df",
     [
         (
             lazy_fixture("ds_numpy_single_column_tensor_format"),
@@ -250,13 +251,6 @@ def test_batch_mapper_arrow_data_format(
                         [[9, 10], [11, 12]],
                         [[13, 14], [15, 16]],
                     ]
-                }
-            ),
-            pd.DataFrame(
-                {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 17).reshape((4, 2, 2)))
                 }
             ),
         ),
@@ -278,26 +272,16 @@ def test_batch_mapper_arrow_data_format(
                     ]
                 }
             ),
-            pd.DataFrame(
-                {
-                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
-                    # In UDFs
-                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 33).reshape((8, 2, 2)))
-                }
-            ),
         ),
     ],
 )
-def test_batch_mapper_numpy_data_format(
-    ray_start_regular_shared, ds_with_expected_pandas_numpy_df
-):
+def test_batch_mapper_numpy_data_format(ds, expected_df):
     """Tests batch mapper functionality for numpy data format.
 
     Note:
         For single column pandas dataframes, we automatically convert it to
         single column tensor with column name as `__value__`.
     """
-    ds, expected_df, expected_numpy_df = ds_with_expected_pandas_numpy_df
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         col_name = list(df.columns)[0]
@@ -315,7 +299,7 @@ def test_batch_mapper_numpy_data_format(
 
     transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
     out_df_map_batches = transformed_ds.to_pandas()
-    assert_frame_equal(out_df_map_batches, expected_numpy_df)
+    assert_frame_equal(out_df_map_batches, expected_df)
 
     # Test BatchMapper
     batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
@@ -328,7 +312,7 @@ def test_batch_mapper_numpy_data_format(
     batch_mapper.fit(ds)
     transformed_ds = batch_mapper.transform(ds)
     out_df = transformed_ds.to_pandas()
-    assert_frame_equal(out_df, expected_numpy_df)
+    assert_frame_equal(out_df, expected_df)
 
 
 if __name__ == "__main__":

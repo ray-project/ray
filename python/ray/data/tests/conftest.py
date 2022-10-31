@@ -322,3 +322,17 @@ def ds_numpy_list_of_ndarray_tensor_format():
     yield ray.data.from_numpy(
         [np.arange(16).reshape((4, 2, 2)), np.arange(16, 32).reshape((4, 2, 2))]
     )
+
+@pytest.fixture(params=["5.0.0", "7.0.0"])
+def unsupported_pyarrow_version(request):
+    orig_version = pa.__version__
+    pa.__version__ = request.param
+    yield request.param
+    pa.__version__ = orig_version
+
+
+@pytest.fixture
+def disable_pyarrow_version_check():
+    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
+    yield
+    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
