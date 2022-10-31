@@ -55,12 +55,12 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PGConfig()
             .environment("CartPole-v1")
+            .framework(fw)
             .rollouts(rollout_fragment_length=250)
             .offline_data(
                 output=output + (fw if output != "logdir" else ""),
                 output_config=output_config or {},
             )
-            .framework(fw)
         )
         algo = config.build()
         algo.train()
@@ -100,10 +100,10 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, frameworks=("torch", "tf")):
+            self.write_outputs(self.test_dir, fw)
             config.offline_data(
                 input_=self.test_dir + fw,
             )
-            self.write_outputs(self.test_dir, fw)
             print("WROTE TO: ", self.test_dir)
             algo = config.build()
             result = algo.train()
@@ -128,8 +128,8 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, frameworks=("tf", "torch")):
-            config.offline_data(input_=self.test_dir + fw)
             self.write_outputs(self.test_dir, fw)
+            config.offline_data(input_=self.test_dir + fw)
 
             # Rewrite the files to drop advantages and value_targets for
             # testing
@@ -168,8 +168,8 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
-            config.offline_data(input_=self.test_dir + fw)
             self.write_outputs(self.test_dir, fw)
+            config.offline_data(input_=self.test_dir + fw)
             algo = config.build()
             result = algo.train()
             assert np.isnan(
@@ -189,8 +189,8 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, frameworks=("torch", "tf")):
-            config.offline_data(input_=glob.glob(self.test_dir + fw + "/*.json"))
             self.write_outputs(self.test_dir, fw)
+            config.offline_data(input_=glob.glob(self.test_dir + fw + "/*.json"))
             algo = config.build()
             result = algo.train()
             self.assertEqual(result["timesteps_total"], 250)  # read from input
@@ -200,13 +200,13 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dict(self):
         config = PGConfig().environment("CartPole-v1").training(train_batch_size=2000)
         for fw in framework_iterator(config):
+            self.write_outputs(self.test_dir, fw)
             config.offline_data(
                 input_={
                     self.test_dir + fw: 0.1,
                     "sampler": 0.9,
                 }
             )
-            self.write_outputs(self.test_dir, fw)
             algo = config.build()
             result = algo.train()
             self.assertTrue(not np.isnan(result["episode_reward_mean"]))
@@ -280,8 +280,8 @@ class AgentIOTest(unittest.TestCase):
             )
 
             for fw in framework_iterator(config, frameworks=("torch", "tf")):
-                config.offline_data(input_config={"input_files": self.test_dir + fw})
                 self.write_outputs(self.test_dir, fw)
+                config.offline_data(input_config={"input_files": self.test_dir + fw})
                 algo = config.build()
                 result = algo.train()
                 self.assertEqual(result["timesteps_total"], 250)
@@ -302,7 +302,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
             config.offline_data(output=self.test_dir + fw)
             algo = config.build()
-            agent.train()
+            algo.train()
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
             reader = JsonReader(self.test_dir + fw + "/*.json")
             reader.next()

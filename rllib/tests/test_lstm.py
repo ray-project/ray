@@ -180,7 +180,7 @@ class TestRNNSequencing(unittest.TestCase):
             PPOConfig()
             .environment("counter")
             .framework("tf")
-            .rollouts(num_envs_per_worker=0, rollout_fragment_length=10)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=10,
@@ -251,7 +251,7 @@ class TestRNNSequencing(unittest.TestCase):
             PPOConfig()
             .environment("counter")
             .framework("tf")
-            .rollouts(num_envs_per_worker=0, rollout_fragment_length=20)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=20)
             .training(
                 train_batch_size=20,
                 sgd_minibatch_size=10,

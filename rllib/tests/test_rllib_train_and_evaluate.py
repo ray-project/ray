@@ -5,10 +5,10 @@ import sys
 import unittest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import get_trainable_cls
 
 
 rllib_dir = str(Path(__file__).parent.parent.absolute())
@@ -78,7 +78,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_plus_evaluate(algo, env="CartPole-v1"):
+def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', \\"framework\\": \\"{}\\"'.format(fw)
 
@@ -150,7 +150,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v1"):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_multi_agent_plus_evaluate(algo):
+def learn_test_multi_agent_plus_evaluate(algo: str):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
@@ -168,7 +168,8 @@ def learn_test_multi_agent_plus_evaluate(algo):
             return "pol{}".format(agent_id)
 
         config = (
-            algo.get_default_config()
+            get_trainable_cls(algo)
+            .get_default_config()
             .environment(MultiAgentCartPole)
             .framework(fw)
             .rollouts(num_rollout_workers=1)

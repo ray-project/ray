@@ -35,8 +35,16 @@ class IOContext:
                 worker, >0 for any of the remote workers.
             worker: The RolloutWorker object reference.
         """
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
         self.log_dir = log_dir or os.getcwd()
-        self.config = config or AlgorithmConfig()
+        # In case no config is provided, use the default one, but set
+        # `actions_in_input_normalized=True` if we don't have a worker.
+        # Not having a worker and/or a config should only be the case in some test
+        # cases, though.
+        self.config = config or AlgorithmConfig().offline_data(
+            actions_in_input_normalized=worker is None
+        )
         self.worker_index = worker_index
         self.worker = worker
 
@@ -56,9 +64,9 @@ class IOContext:
     @property
     @PublicAPI
     def input_config(self):
-        return self.config.input_config
+        return self.config.get("input_config", {})
 
     @property
     @PublicAPI
     def output_config(self):
-        return self.config.output_config
+        return self.config.get("output_config", {})
