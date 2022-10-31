@@ -32,17 +32,12 @@ class OnlineLinearRegression(tf.Module if tf else object):
         )
 
         self._init_params()
-        self.dist = self._make_dist()
 
     def _init_params(self):
         self.covariance.assign(self.covariance * self.alpha)
-
-    def _make_dist(self):
-        """Create a multivariate normal distribution with the current parameters"""
-        dist = tfp.distributions.MultivariateNormalTriL(
+        self.dist = tfp.distributions.MultivariateNormalTriL(
             self.theta, scale_tril=tf.linalg.cholesky(self.covariance)
         )
-        return dist
 
     def partial_fit(self, x, y):
         x, y = self._check_inputs(x, y)
@@ -60,11 +55,6 @@ class OnlineLinearRegression(tf.Module if tf else object):
             self.covariance.assign(tf.linalg.inv(self.precision))
             self.theta.assign(tf.linalg.matvec(self.covariance, self.f))
             self.covariance.assign(self.covariance * self.alpha)
-            # the multivariate dist needs to be reconstructed every time
-            # its parameters are updated.the parameters of the dist do not
-            #  update every time the stored self.covariance and self.theta
-            # (the mean) are updated.
-            self.dist = self._make_dist()
 
     def sample_theta(self):
         theta = self.dist.sample()
