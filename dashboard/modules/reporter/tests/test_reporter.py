@@ -304,5 +304,71 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             assert root_usage.free == 1
 
 
+def test_reporter_worker_cpu_percent():
+    # See more discussion in https://github.com/ray-project/ray/issues/29848
+    # This test is to make sure that the cpu_percent is not 0.0 for the
+    # reporter worker processes.
+    DEFAULT_WORKER_CPU_PERCENT = 0.8
+    DEFAULT_PADDING_VALUE = "DEFAULT_PADDING_VALUE"
+    DEFAULT_STATUS = "ANYTHING_NOT_ZOMBIE"
+
+    class psutilProcessDummy(object):
+        def __init__(self, name):
+            self._name = name
+            self._real_cpu_percent_metric = DEFAULT_WORKER_CPU_PERCENT
+            self._first_call = True
+
+        def __eq__(self, other):
+            return self._name == other._name
+
+        def __hash__(self):
+            return hash(self._name)
+
+        def children(self):
+            if self._name == "raylet":
+                # We enmulate psutil.Process.children() here.
+                return [psutilProcessDummy("worker"), psutilProcessDummy("agent")]
+            else:
+                return []
+
+        def as_dict(self, attrs=None):
+            retdict = dict()
+            for attr in attrs:
+                if attr == "cpu_percent":
+                    retdict[attr] = self.cpu_percent()
+                else:
+                    retdict[attr] = DEFAULT_PADDING_VALUE
+            return retdict
+
+        def status(self):
+            return DEFAULT_STATUS
+
+        def cpu_percent(self, interval=None):
+            # We enmulate the behavior of psutil.Process.cpu_percent() here.
+            if interval is not None:
+                return self._real_cpu_percent_metric
+            if self._first_call:
+                self._first_call = False
+                return 0.0
+            return self._real_cpu_percent_metric
+
+    class ReporterAgentDummy(object):
+        _workers = set()
+
+        def _get_raylet_proc(self):
+            return raylet_dummy_proc
+
+    raylet_dummy_proc = psutilProcessDummy("raylet")
+    obj = ReporterAgentDummy()
+
+    # Test worker cpu percent
+    workers = ReporterAgent._get_workers(obj)
+    assert all([worker["cpu_percent"] == 0.0 for worker in workers])
+    workers = ReporterAgent._get_workers(obj)
+    assert all(
+        [worker["cpu_percent"] == DEFAULT_WORKER_CPU_PERCENT for worker in workers]
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
