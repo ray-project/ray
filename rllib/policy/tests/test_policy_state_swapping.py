@@ -10,9 +10,6 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 
-TIME_NO_SWAPS: Optional[float] = None
-TIME_SWAPS: Optional[float] = None
-
 
 class TestPolicyStateSwapping(unittest.TestCase):
     """Tests, whether Policies can be "swapped out" via their state on a GPU."""
@@ -26,16 +23,17 @@ class TestPolicyStateSwapping(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_swap_gpu(self):
-        config = APPOConfig().framework("tf2", eager_tracing=True)
+        config = APPOConfig().framework("tf2", eager_tracing=True).resources(num_gpus=0)
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
         act_space = gym.spaces.Discrete(2)
         num_policies = 2
+        capacity = 1
 
         cls = get_tf_eager_cls_if_necessary(APPOTF2Policy, config.to_dict())
 
         # Create empty, swappable-policies PolicyMap.
-        policy_map = PolicyMap(capacity=1, policies_swappable=True)
+        policy_map = PolicyMap(capacity=capacity, policies_swappable=True)
 
         # Create and add some TF2 policies.
         for i in range(num_policies):
@@ -51,31 +49,28 @@ class TestPolicyStateSwapping(unittest.TestCase):
             pid: p.compute_single_action(dummy_obs)[2]["action_dist_inputs"]
             for pid, p in policy_map.items()
         }
+        # Make sure policies output different deterministic logits. Otherwise,
+        # this test would not work.
+        check(logits["pol0"], logits["pol1"], false=True)
 
         # Time the random access performance of our map.
-        start = time.time()
         for i in range(50):
             pid = f"pol{i % num_policies}"
             # Actually comptue one action to trigger tracing operations of the graph.
             # These may be performed lazily by the DL framework.
             print(i)
             pol = policy_map[pid]
+            # Make sure config has been changed properly.
+            self.assertTrue(pol.config["lr"] == (i + 1) * 0.00001)
             # After accessing `pid`, assume it's the most recently accessed item now.
             self.assertTrue(policy_map.deque[-1] == pid)
-            self.assertTrue(len(policy_map.deque) == 2)
-            self.assertTrue(len(policy_map.cache) == 2)
+            self.assertTrue(len(policy_map.deque) == capacity)
+            self.assertTrue(len(policy_map.cache) == capacity)
             self.assertTrue(pid in policy_map.cache)
             check(
                 pol.compute_single_action(dummy_obs)[2]["action_dist_inputs"],
                 logits[pid],
             )
-
-        global TIME_NO_SWAPS
-        global TIME_SWAPS
-        TIME_SWAPS = time.time() - start
-        print(f"Random access w/ swapping took {TIME_SWAPS}sec.")
-        if TIME_NO_SWAPS is not None:
-            self.assertTrue(TIME_NO_SWAPS >= 10 * TIME_SWAPS)
 
 
 if __name__ == "__main__":

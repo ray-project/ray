@@ -962,6 +962,10 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
+        if "policy_spec" in state:
+            # Assert spaces remained the same.
+            if
+
         self.restore_connectors(state)
 
     @ExperimentalAPI
