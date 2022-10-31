@@ -87,4 +87,4 @@ An alternative method is to run Ray Jobs interactively.  For interactive develop
 * Directly running a :ref:`Ray driver <ray-driver>` Ray driver on any head or worker node.
 * Using the Ray Client to connect remotely to the cluster within a :ref:`Ray driver <ray-driver>` script.
 
-For details about all of these workflows, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
+For details on these workflows, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
