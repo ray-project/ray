@@ -81,3 +81,11 @@ RLlib Feature Guides
         :text: How To Contribute To RLlib?
         :classes: btn-link btn-block stretched-link
 
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
+    .. link-button:: rllib-cli
+        :type: ref
+        :text: How To Work With the RLlib CLI?
+        :classes: btn-link btn-block stretched-link

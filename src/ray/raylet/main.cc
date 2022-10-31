@@ -33,7 +33,6 @@ DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
-DEFINE_string(redis_address, "", "The IP address of redis server.");
 DEFINE_int32(min_worker_port,
              0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -55,7 +54,6 @@ DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(native_library_path,
               "",
               "The native library path which includes the core libraries.");
-DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
@@ -95,7 +93,6 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
-  const std::string redis_address = FLAGS_redis_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
@@ -109,7 +106,6 @@ int main(int argc, char *argv[]) {
   const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
-  const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
