@@ -1121,9 +1121,10 @@ class Trainable:
 
         Returns:
             A dict or string. If string, the return value is expected to be
-            prefixed by `tmp_checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune and
-            passed to ``Trainable.load_checkpoint()``.
+            prefixed by `checkpoint_dir`. If dict, the return value will
+            be automatically serialized by Tune. In both cases, the return value
+            is exactly what will be passed to ``Trainable.load_checkpoint()``
+            upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1152,23 +1153,35 @@ class Trainable:
         The directory structure under the checkpoint_dir provided to
         ``Trainable.save_checkpoint`` is preserved.
 
-        See the example below.
+        See the examples below.
+
+        Example:
+            >>> import os
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        my_checkpoint_path = os.path.join(checkpoint_path, "my/path")
+            ...        return my_checkpoint_path
+            ...    def load_checkpoint(self, my_checkpoint_path):
+            ...        print(my_checkpoint_path)
+            >>> trainer = Example()
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
+            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/path
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
+            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/path
+
+        If `Trainable.save_checkpoint` returned a dict, then Tune will directly pass
+        the dict data as the argument to this method.
 
         Example:
             >>> from ray.tune.trainable import Trainable
             >>> class Example(Trainable):
             ...    def save_checkpoint(self, checkpoint_path):
-            ...        print(checkpoint_path)
-            ...        return os.path.join(checkpoint_path, "my/check/point")
-            ...    def load_checkpoint(self, checkpoint):
-            ...        print(checkpoint)
-            >>> trainer = Example()
-            >>> # This is used when PAUSED.
-            >>> obj = trainer.save_to_object() # doctest: +SKIP
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> # Note the different prefix.
-            >>> trainer.restore_from_object(obj) # doctest: +SKIP
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
+            ...        return {"my_data": 1}
+            ...    def load_checkpoint(self, checkpoint_dict):
+            ...        print(checkpoint_dict["my_data"])
 
         .. versionadded:: 0.8.7
 
@@ -1177,7 +1190,7 @@ class Trainable:
                 returned by `save_checkpoint`. If a string, then it is
                 a checkpoint path that may have a different prefix than that
                 returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` `save_checkpoint` is preserved.
+                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
         """
         raise NotImplementedError
 
