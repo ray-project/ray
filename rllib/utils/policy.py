@@ -155,6 +155,13 @@ def parse_policy_specs_from_checkpoint(
 
 
 @PublicAPI(stability="alpha")
+@Deprecated(
+    old="ray.rllib.utils.policy.local_policy_inference()",
+    new="Policy.compute_actions_from_input_dict()",
+    help="For connector-enabled policies, Policy.compute_actions_from_input_dict() "
+    "now handles connectors, making local_policy_inference() redundant.",
+    error=False,
+)
 def local_policy_inference(
     policy: "Policy",
     env_id: str,
@@ -197,7 +204,9 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+        policy_output = policy._compute_actions_without_connectors_from_input_dict(
+            ac.data.sample_batch
+        )
 
         action_connector_data = ActionConnectorDataType(
             env_id, agent_id, ac.data.raw_dict, policy_output
