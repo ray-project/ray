@@ -360,7 +360,7 @@ install_pip_packages() {
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt --ignore-installed ruamel.yaml
   fi
 
 
