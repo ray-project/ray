@@ -1473,7 +1473,7 @@
         "current": {
           "selected": false
         },
-        "datasource": null,
+        "datasource": "Prometheus",
         "definition": "label_values(SessionName)",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
