@@ -314,13 +314,13 @@ def ds_arrow_multi_column_format():
 # ===== Numpy dataset formats =====
 @pytest.fixture(scope="function")
 def ds_numpy_single_column_tensor_format():
-    yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))
+    yield ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
 
 
 @pytest.fixture(scope="function")
 def ds_numpy_list_of_ndarray_tensor_format():
     yield ray.data.from_numpy(
-        [np.arange(16).reshape((4, 2, 2)), np.arange(16, 32).reshape((4, 2, 2))]
+        [np.arange(12).reshape((3, 2, 2)), np.arange(12, 24).reshape((3, 2, 2))]
     )
 
 
