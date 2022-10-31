@@ -7,8 +7,10 @@ import pandas.api.types
 
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
@@ -122,6 +124,7 @@ class OrdinalEncoder(Preprocessor):
         )
 
 
+@PublicAPI(stability="alpha")
 class OneHotEncoder(Preprocessor):
     """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
@@ -236,6 +239,7 @@ class OneHotEncoder(Preprocessor):
         )
 
 
+@PublicAPI(stability="alpha")
 class MultiHotEncoder(Preprocessor):
     """Multi-hot encode categorical data.
 
@@ -338,6 +342,7 @@ class MultiHotEncoder(Preprocessor):
         )
 
 
+@PublicAPI(stability="alpha")
 class LabelEncoder(Preprocessor):
     """Encode labels as integer targets.
 
@@ -410,6 +415,7 @@ class LabelEncoder(Preprocessor):
         return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
 
+@PublicAPI(stability="alpha")
 class Categorizer(Preprocessor):
     """Convert columns to ``pd.CategoricalDtype``.
 

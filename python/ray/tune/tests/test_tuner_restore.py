@@ -1,13 +1,16 @@
+import json
 import os
+from pathlib import Path
+import tempfile
 import shutil
 import time
 
 import pytest
 import ray
 from ray import tune
-from ray.air import RunConfig, Checkpoint, session, FailureConfig
+from ray.air import RunConfig, Checkpoint, session, FailureConfig, CheckpointConfig
 from ray.air._internal.remote_storage import download_from_uri, delete_at_uri
-from ray.tune import Callback
+from ray.tune import Trainable, Callback
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.tune_config import TuneConfig
@@ -435,6 +438,63 @@ def test_tuner_restore_latest_available_checkpoint(
     # restored from 2, plus num_epochs = 4, plus one additional epoch
     assert result.metrics["it"] == 7
     assert result.metrics["iterations_since_restore"] == 5
+
+
+@pytest.mark.parametrize("retry_num", [0, 1])
+def test_retore_retry(ray_start_4_cpus, retry_num):
+    """Test retrying restore on a trial level."""
+
+    class MockTrainable(Trainable):
+        def setup(self, config):
+            self.idx = 0
+            self.tag_file_path = config["tag_file_path"]
+            self._is_restored = False
+
+        def step(self):
+            time.sleep(1)
+            if self.idx == 0 and self._is_restored:
+                raise RuntimeError(
+                    "===== Restored trial cannot start from scratch ====="
+                )
+            elif self.idx == 2 and not self._is_restored:
+                raise RuntimeError("===== First run fails at idx=2 =====")
+            self.idx += 1
+            return {"score": self.idx}
+
+        def save_checkpoint(self, checkpoint_dir):
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(path, "w") as f:
+                f.write(json.dumps({"idx": self.idx}))
+            return path
+
+        def load_checkpoint(self, checkpoint_path):
+            self._is_restored = True
+            if not os.path.exists(self.tag_file_path):
+                Path(self.tag_file_path).touch()
+                raise RuntimeError("===== Failing first restore =====")
+            # The following restore should pass!
+            with open(checkpoint_path) as f:
+                self.idx = json.loads(f.read())["idx"]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["TUNE_RESTORE_RETRY_NUM"] = str(retry_num)
+        tag_file = os.path.join(temp_dir, "tag")
+        tuner = Tuner(
+            MockTrainable,
+            run_config=RunConfig(
+                name="tryout_restore",
+                stop={"training_iteration": 5},
+                failure_config=FailureConfig(max_failures=1),
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            ),
+            param_space={"tag_file_path": tag_file},
+        )
+        results = tuner.fit()
+        [result] = list(results)
+        if retry_num == 1:
+            assert result.metrics["score"] == 5
+        else:
+            assert result.metrics["score"] == 2
 
 
 if __name__ == "__main__":

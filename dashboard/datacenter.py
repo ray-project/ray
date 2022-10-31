@@ -48,12 +48,6 @@ class DataSource:
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
     events = Dict()
-    # {node ip (str): log counts by pid
-    # (dict from pid to count of logs for that pid)}
-    ip_and_pid_to_log_counts = Dict()
-    # {node ip (str): error entries by pid
-    # (dict from pid to list of latest err entries)}
-    ip_and_pid_to_errors = Dict()
     # The current scheduling stats (e.g., pending actor creation tasks)
     # of gcs.
     # {task type(str): task list}
@@ -61,6 +55,8 @@ class DataSource:
 
 
 class DataOrganizer:
+    head_node_ip = None
+
     @staticmethod
     @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
     async def purge():
@@ -71,7 +67,6 @@ class DataOrganizer:
         #   * nodes
         #   * node_id_to_ip
         #   * node_id_to_hostname
-        logger.info("Purge data.")
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -106,9 +101,6 @@ class DataOrganizer:
     @classmethod
     async def get_node_workers(cls, node_id):
         workers = []
-        node_ip = DataSource.node_id_to_ip[node_id]
-        node_log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
-        node_errs = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
@@ -123,17 +115,9 @@ class DataOrganizer:
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
-        # Clean up logs from a dead pid.
-        dead_pids = set(node_log_counts.keys()) - pids_on_node
-        for dead_pid in dead_pids:
-            if dead_pid in node_log_counts:
-                node_log_counts.mutable().pop(dead_pid)
-
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["logCount"] = node_log_counts.get(str(pid), 0)
-            worker["errorCount"] = len(node_errs.get(str(pid), []))
             worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
@@ -150,16 +134,6 @@ class DataOrganizer:
         node_physical_stats = dict(DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
         node = DataSource.nodes.get(node_id, {})
-        node_ip = DataSource.node_id_to_ip.get(node_id)
-        # Merge node log count information into the payload
-        log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
-        node_log_count = 0
-        for entries in log_counts.values():
-            node_log_count += entries
-        error_info = DataSource.ip_and_pid_to_errors.get(node_ip, {})
-        node_err_count = 0
-        for entries in error_info.values():
-            node_err_count += len(entries)
 
         node_stats.pop("coreWorkersStats", None)
 
@@ -175,12 +149,17 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_info["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
         # Merge actors to node physical stats
         node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
         node_info["workers"] = DataSource.node_workers.get(node_id, [])
-        node_info["logCount"] = node_log_count
-        node_info["errorCount"] = node_err_count
         await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
@@ -205,6 +184,13 @@ class DataOrganizer:
         node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
+        # Add "is_head_node" field
+        # TODO(aguo): Grab head node information from a source of truth
+        node_summary["raylet"]["is_head_node"] = (
+            cls.head_node_ip == node_physical_stats.get("ip")
+            if node_physical_stats.get("ip")
+            else False
+        )
 
         await GlobalSignals.node_summary_fetched.send(node_summary)
 
@@ -223,6 +209,18 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
+
+    @classmethod
+    async def get_all_agent_infos(cls):
+        agent_infos = dict()
+        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+            agent_infos[node_id] = dict(
+                ipAddress=DataSource.node_id_to_ip[node_id],
+                httpPort=int(http_port or -1),
+                grpcPort=int(grpc_port or -1),
+                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            )
+        return agent_infos
 
     @classmethod
     async def get_all_actors(cls):

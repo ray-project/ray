@@ -289,9 +289,12 @@ class Policy(metaclass=ABCMeta):
 
         # Create the new policy.
         new_policy = pol_spec.policy_class(
-            observation_space=pol_spec.observation_space,
-            action_space=pol_spec.action_space,
-            config=pol_spec.config,
+            # Note(jungong) : we are intentionally not using keyward arguments here
+            # because some policies name the observation space parameter obs_space,
+            # and some others name it observation_space.
+            pol_spec.observation_space,
+            pol_spec.action_space,
+            pol_spec.config,
         )
 
         # Set the new policy's state (weights, optimizer vars, exploration state,
@@ -992,7 +995,7 @@ class Policy(metaclass=ABCMeta):
         # steps).
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
-        if self.framework in ["tfe", "tf2"]:
+        if self.framework == "tf2":
             self.global_timestep.assign(global_vars["timestep"])
         else:
             self.global_timestep = global_vars["timestep"]

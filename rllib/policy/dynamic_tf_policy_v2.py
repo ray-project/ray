@@ -61,7 +61,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         self.observation_space = obs_space
         self.action_space = action_space
-        config = dict(self.get_default_config(), **config)
         self.config = config
         self.framework = "tf"
         self._seq_lens = None
@@ -140,11 +139,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # This is static graph TF policy.
         # Simply do nothing.
         pass
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -513,7 +507,7 @@ class DynamicTFPolicyV2(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).

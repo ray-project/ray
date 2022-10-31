@@ -18,7 +18,6 @@ from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
-from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -139,7 +138,6 @@ def main(
         reporters.append(ArtifactsReporter())
 
     if report:
-        reporters.append(LegacyRDSReporter())
         reporters.append(DBReporter())
 
     try:
@@ -163,7 +161,7 @@ def main(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"
     )
-    sys.exit(result.return_code)
+    sys.exit(return_code)
 
 
 if __name__ == "__main__":

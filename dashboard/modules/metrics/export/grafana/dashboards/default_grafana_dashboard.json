@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665101733478,
+  "iteration": 1666983138154,
   "links": [],
   "panels": [
     {
@@ -39,6 +39,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -54,13 +55,19 @@
       "hiddenSeries": false,
       "id": 26,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
         "max": false,
         "min": false,
+        "rightSide": false,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -80,9 +87,9 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_tasks) by (State)",
+          "expr": "sum(max_over_time(ray_tasks{State=~\"FINISHED|FAILED\"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~\"FINISHED|FAILED\"}) by (State), 0)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{State}}",
           "queryType": "randomWalk",
           "refId": "A"
         }
@@ -108,8 +115,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:628",
-          "format": "short",
-          "label": null,
+          "format": "tasks",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -131,13 +138,12 @@
       }
     },
     {
-      "aliasColors": {
-        "{State=\"AVAILABLE\"}": "green"
-      },
+      "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -151,15 +157,21 @@
         "y": 1
       },
       "hiddenSeries": false,
-      "id": 27,
+      "id": 33,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
         "max": false,
         "min": false,
+        "rightSide": false,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -179,9 +191,9 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"CPU\"}) by (State)",
+          "expr": "sum(ray_actors) by (State)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{State}}",
           "queryType": "randomWalk",
           "refId": "A"
         }
@@ -190,7 +202,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Scheduler CPUs (logical slots)",
+      "title": "Scheduler Actor State",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -206,16 +218,16 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:563",
-          "format": "short",
-          "label": null,
+          "$$hashKey": "object:628",
+          "format": "actors",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
           "show": true
         },
         {
-          "$$hashKey": "object:564",
+          "$$hashKey": "object:629",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -235,6 +247,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -250,13 +263,17 @@
       "hiddenSeries": false,
       "id": 29,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -269,18 +286,35 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:475",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9) by (State)",
+          "expr": "sum(ray_object_store_memory / 1e9) by (Location)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{Location}}",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -304,8 +338,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:508",
-          "format": "short",
-          "label": null,
+          "format": "gbytes",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -327,11 +361,15 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "{State=\"AVAILABLE\"}": "green",
+        "{State=\"USED\"}": "semi-dark-green"
+      },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -345,15 +383,19 @@
         "y": 9
       },
       "hiddenSeries": false,
-      "id": 28,
+      "id": 27,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -366,18 +408,158 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:251",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"GPU\"}) by (State)",
+          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
+          "format": "time_series",
+          "instant": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "CPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"CPU\"})",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Scheduler CPUs (logical slots)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:563",
+          "format": "cores",
+          "label": "",
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "$$hashKey": "object:564",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "MAX": "dark-blue"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
+      "description": "Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "hiddenSeries": false,
+      "id": 28,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "max": false,
+        "min": false,
+        "rightSide": true,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:353",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "ray_resources{Name=\"GPU\",State=\"USED\"}",
+          "interval": "",
+          "legendFormat": "GPU Usage: {{instance}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"GPU\"})",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -401,8 +583,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:1740",
-          "format": "short",
-          "label": null,
+          "format": "GPUs",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": null,
@@ -430,7 +612,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "id": 14,
       "panels": [],
@@ -445,6 +627,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) CPU usage. The dotted line means the total number of hardware CPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -455,7 +638,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "hiddenSeries": false,
       "id": 2,
@@ -467,6 +650,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -516,7 +701,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node CPU",
+      "title": "Node CPU (hardware utilization)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -561,6 +746,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -571,7 +757,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 26
       },
       "hiddenSeries": false,
       "id": 8,
@@ -583,6 +769,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -613,7 +801,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
@@ -631,7 +819,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node GPU",
+      "title": "Node GPU (hardware utilization)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -648,8 +836,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:2835",
-          "format": "short",
-          "label": null,
+          "format": "GPUs",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -672,12 +860,14 @@
     },
     {
       "aliasColors": {
+        "MAX": "dark-red",
         "MAX_AVAIL": "dark-red"
       },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
@@ -690,7 +880,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 6,
@@ -702,6 +892,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -719,7 +911,7 @@
       "seriesOverrides": [
         {
           "$$hashKey": "object:1146",
-          "alias": "MAX_AVAIL",
+          "alias": "MAX",
           "dashes": true,
           "fill": 0,
           "stack": false
@@ -745,7 +937,7 @@
           "expr": "sum(ray_node_disk_free{cluster_id=\"$cluster_id\"}) + sum(ray_node_disk_usage{cluster_id=\"$cluster_id\"})",
           "hide": false,
           "interval": "",
-          "legendFormat": "MAX_AVAIL",
+          "legendFormat": "MAX",
           "refId": "B"
         }
       ],
@@ -800,6 +992,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
@@ -812,7 +1005,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 4,
@@ -824,6 +1017,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -871,7 +1066,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Memory",
+      "title": "Node Memory (heap + object store)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -916,6 +1111,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
@@ -928,7 +1124,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 40
       },
       "hiddenSeries": false,
       "id": 18,
@@ -940,6 +1136,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -970,7 +1168,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * 1024 * 1024",
           "interval": "",
           "legendFormat": "Used GRAM: {{instance}}",
           "queryType": "randomWalk",
@@ -978,7 +1176,7 @@
         },
         {
           "exemplar": true,
-          "expr": "sum(ray_node_gram_available{cluster_id=\"$cluster_id\"}) + sum(ray_node_gram_used{cluster_id=\"$cluster_id\"})",
+          "expr": "(sum(ray_node_gram_available{cluster_id=\"$cluster_id\"}) + sum(ray_node_gram_used{cluster_id=\"$cluster_id\"})) * 1024 * 1024",
           "interval": "",
           "legendFormat": "MAX",
           "refId": "B"
@@ -1034,9 +1232,9 @@
       "dashes": false,
       "datasource": "Prometheus",
       "decimals": 2,
+      "description": "Network speed per node.",
       "fieldConfig": {
         "defaults": {
-          "displayName": "ray_node_network_receive_speed",
           "unit": "binBps"
         },
         "overrides": []
@@ -1047,7 +1245,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 40
       },
       "hiddenSeries": false,
       "id": 20,
@@ -1060,6 +1258,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -1083,7 +1283,7 @@
           "exemplar": true,
           "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Receive: {{instance}}",
+          "legendFormat": "Recv: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -1091,7 +1291,7 @@
           "exemplar": true,
           "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Send: {{instance}}",
+          "legendFormat": "Send: {{instance}}",
           "refId": "B"
         }
       ],
@@ -1144,6 +1344,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -1154,7 +1355,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 47
       },
       "hiddenSeries": false,
       "id": 24,
@@ -1166,6 +1367,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -1228,7 +1431,119 @@
       },
       "yaxes": [
         {
+          "$$hashKey": "object:1110",
+          "format": "nodes",
+          "label": "",
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "$$hashKey": "object:1111",
           "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
+      "decimals": 2,
+      "description": "",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 47
+      },
+      "hiddenSeries": false,
+      "id": 32,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "hideEmpty": false,
+        "max": false,
+        "min": false,
+        "rightSide": true,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "ray_node_disk_io_write_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "interval": "",
+          "legendFormat": "Write: {{instance}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "ray_node_disk_io_read_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "interval": "",
+          "legendFormat": "Read: {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Node Disk IO",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:2779",
+          "format": "Bps",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1236,6 +1551,7 @@
           "show": true
         },
         {
+          "$$hashKey": "object:2780",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1323,5 +1639,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 4
 }

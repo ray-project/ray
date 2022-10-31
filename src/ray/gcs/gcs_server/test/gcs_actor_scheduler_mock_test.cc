@@ -62,6 +62,8 @@ class GcsActorSchedulerMockTest : public Test {
         nullptr,
         /*local_task_manager=*/
         std::make_shared<NoopLocalTaskManager>());
+    counter.reset(
+        new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,
@@ -86,6 +88,8 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<MockGcsNodeManager> gcs_node_manager;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
+  std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
+      counter;
   MockCallback schedule_failure_handler;
   MockCallback schedule_success_handler;
   NodeID node_id;
@@ -104,7 +108,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
@@ -131,7 +135,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));

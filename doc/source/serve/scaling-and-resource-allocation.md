@@ -82,7 +82,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 
 **smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each autoscaling step. For example, when the application has high traffic volume in short period of time, you can increase `smoothing_factor` to scale up the resource quickly.  You can think of this as a "gain" factor to amplify the response of the autoscaling algorithm.
 
-**metrics_interval_s[default_value=10]**: This is control how often each replica sends metrics to the autoscaler. (Normally you don't need to change this config.)
+**metrics_interval_s[default_value=10]**: This controls how often each replica sends metrics to the autoscaler. (Normally you don't need to change this config.)
 
 (serve-cpus-gpus)=
 

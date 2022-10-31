@@ -4,6 +4,7 @@ import subprocess
 from collections import Counter
 import multiprocessing
 import os
+
 import pytest
 import shutil
 import tempfile
@@ -461,7 +462,7 @@ class TuneExampleTest(unittest.TestCase):
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
-        from tensorflow.python.keras.datasets import cifar10
+        from tensorflow.keras.datasets import cifar10
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)

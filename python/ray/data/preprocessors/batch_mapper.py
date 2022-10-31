@@ -4,11 +4,13 @@ import warnings
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas
 
 
+@PublicAPI(stability="alpha")
 class BatchMapper(Preprocessor):
     """Apply an arbitrary operation to a dataset.
 

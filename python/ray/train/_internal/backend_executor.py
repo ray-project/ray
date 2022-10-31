@@ -346,7 +346,7 @@ class BackendExecutor:
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend.encode_data,
+                    encode_data_fn=self._backend._encode_data,
                 )
             )
 
@@ -396,10 +396,8 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`session.report()` (legacy API:"
-                    "`train.report()` and `train.save_checkpoint()`) "
-                    "are called the same number of times on all "
-                    "workers."
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
                 )
             else:
                 # Return None if all results are None.
@@ -410,15 +408,13 @@ class BackendExecutor:
             raise RuntimeError(
                 "Some workers returned results with "
                 "different types. Make sure that "
-                "`session.report()` (legacy API:"
-                "`train.report()` and `train.save_checkpoint()`) "
-                "are called the same number of times on all "
-                "workers."
+                "`session.report()` are called the "
+                "same number of times on all workers."
             )
         return results
 
     def pause_reporting(self):
-        """Disable workers from enqueuing results from `train.report()`.
+        """Disable workers from enqueuing results from ``session.report()``.
 
         Note: Already reported results may still be enqueued at this point,
               and should be handled appropriately.

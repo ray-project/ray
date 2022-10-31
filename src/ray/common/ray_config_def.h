@@ -22,8 +22,12 @@
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, true)
+
+/// Whether to enbale Ray event stats metrics export.
+/// Note that enabling this adds high overhead to
+/// Ray metrics agent.
+RAY_CONFIG(bool, event_stats_metrics, false)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -80,7 +84,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// memory_usage_threshold_fraction and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
@@ -93,7 +97,7 @@ RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 /// This value is useful for larger host where the memory_usage_threshold_fraction could
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)1 * 1024 * 1024 * 1024)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)512 * 1024 * 1024)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
@@ -485,7 +489,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 5000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
@@ -682,7 +686,6 @@ RAY_CONFIG(std::string, TLS_CA_CERT, "")
 
 /// Location of Redis TLS credentials
 /// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
-RAY_CONFIG(bool, REDIS_ENABLE_SSL, false)
 RAY_CONFIG(std::string, REDIS_CA_CERT, "")
 RAY_CONFIG(std::string, REDIS_CA_PATH, "")
 

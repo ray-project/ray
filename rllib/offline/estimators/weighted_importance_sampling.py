@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 @DeveloperAPI
 class WeightedImportanceSampling(OffPolicyEstimator):
-    """The step-wise WIS estimator.
+    r"""The step-wise WIS estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 
@@ -53,9 +53,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         v_target = 0.0
         episode_p = self.p[eps_id]
         for t in range(episode.count):
-            v_behavior += rewards[t] * self.gamma ** t
+            v_behavior += rewards[t] * self.gamma**t
             w_t = self.cummulative_ips_values[t] / self.episode_timestep_count[t]
-            v_target += episode_p[t] / w_t * rewards[t] * self.gamma ** t
+            v_target += episode_p[t] / w_t * rewards[t] * self.gamma**t
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target
@@ -114,7 +114,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         eps_id = episode[SampleBatch.EPS_ID][0]
         if eps_id in self.p:
             raise ValueError(
-                f"eps_id {eps_id} was already passed to the peek function."
+                f"eps_id {eps_id} was already passed to the peek function. "
                 f"Make sure dataset contains only unique episodes with unique ids."
             )
         self.p[eps_id] = episode_p
