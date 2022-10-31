@@ -879,6 +879,11 @@ class AlgorithmConfig:
         if num_rollout_workers is not None:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not None:
+            if num_envs_per_worker <= 0:
+                raise ValueError(
+                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be "
+                    f"larger than 0!"
+                )
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not None:
             self.sample_collector = sample_collector

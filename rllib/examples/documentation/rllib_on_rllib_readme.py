@@ -1,5 +1,5 @@
 import gym
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPOConfig
 
 
 # Define your problem using python and openAI's gym API:
@@ -49,18 +49,19 @@ class ParrotEnv(gym.Env):
         return self.cur_obs, reward, done, {}
 
 
-# Create an RLlib Algorithm instance to learn how to act in the above.
-# environment.
-algo = PPO(
-    config={
+# Create an RLlib Algorithm instance from a PPOConfig to learn how to
+# act in the above environment.
+config = (
+    PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
-        "env": ParrotEnv,
+        env=ParrotEnv,
         # Config dict to be passed to our custom env's constructor.
-        "env_config": {"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
-        # Parallelize environment rollouts.
-        "num_workers": 3,
-    }
+        env_config={"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
+    )
+    # Parallelize environment rollouts.
+    .rollouts(num_rollout_workers=3)
 )
+algo = config.build()
 
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to guess 10 times and the optimal reward is 0.0

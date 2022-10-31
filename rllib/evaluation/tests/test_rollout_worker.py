@@ -9,9 +9,9 @@ import time
 import unittest
 
 import ray
-from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.pg import PG
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -150,19 +150,18 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_global_vars_update(self):
-        for fw in framework_iterator(frameworks=("tf2", "tf")):
-            agent = A2C(
-                env="CartPole-v1",
-                config={
-                    "num_workers": 1,
-                    # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
-                    "lr_schedule": [[0, 0.1], [100000, 0.000001]],
-                    "framework": fw,
-                },
-            )
-            policy = agent.get_policy()
+        config = (
+            A2CConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_envs_per_worker=1)
+            # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
+            .training(lr_schedule=[[0, 0.1], [100000, 0.000001]])
+        )
+        for fw in framework_iterator(config, frameworks=("tf2", "tf")):
+            algo = config.build()
+            policy = algo.get_policy()
             for i in range(3):
-                result = agent.train()
+                result = algo.train()
                 print(
                     "{}={}".format(
                         NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
@@ -184,38 +183,34 @@ class TestRolloutWorker(unittest.TestCase):
                 if fw == "tf":
                     lr = policy.get_session().run(lr)
                 check(lr, expected_lr, rtol=0.05)
-            agent.stop()
+            algo.stop()
 
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        for fw in framework_iterator():
+        config = PGConfig().environment("fail").rollouts(num_rollout_workers=2)
+        for _ in framework_iterator(config):
             # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PG(
-                    env="fail",
-                    config={
-                        "num_workers": 2,
-                        "framework": fw,
-                    },
-                ),
+                lambda: config.build(),
             )
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PG(
-                env="test",
-                config={
-                    "num_workers": 2,
-                    "rollout_fragment_length": 5,
-                    "num_envs_per_worker": 2,
-                    "framework": fw,
-                    "create_env_on_driver": True,
-                },
+        config = (
+            PGConfig()
+            .environment("test")
+            .rollouts(
+                num_rollout_workers=2,
+                rollout_fragment_length=5,
+                num_envs_per_worker=2,
+                create_env_on_local_worker=True,
             )
+        )
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            pg = config.build()
             results = pg.workers.foreach_worker(
                 lambda ev: ev.total_rollout_fragment_length
             )
