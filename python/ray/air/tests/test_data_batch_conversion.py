@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import pyarrow as pa
 
+from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
@@ -183,6 +184,17 @@ def test_numpy_object_pandas():
     np.testing.assert_array_equal(
         convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
+
+
+@pytest.mark.parametrize("writable", [False, True])
+def test_numpy_to_tensor_warning(writable):
+    input_data = np.array([[1, 2, 3]], dtype=int)
+    input_data.setflags(write=writable)
+
+    with pytest.warns(None) as record:
+        tensor = convert_ndarray_to_torch_tensor(input_data)
+    assert not record.list, [w.message for w in record.list]
+    assert tensor is not None
 
 
 def test_dict_fail():

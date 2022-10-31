@@ -322,6 +322,8 @@ def setup(app):
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
+    app.add_js_file("js/try-anyscale.js", defer="defer")
+
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos

@@ -93,7 +93,7 @@ class DTConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]],
+        replay_buffer_config: Optional[Dict[str, Any]] = None,
         embed_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
         num_heads: Optional[int] = None,
@@ -293,8 +293,8 @@ class DT(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DTConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DTConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

@@ -298,8 +298,8 @@ class DreamerIteration:
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DreamerConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DreamerConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
