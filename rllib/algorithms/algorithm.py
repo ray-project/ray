@@ -60,7 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -985,7 +985,8 @@ class Algorithm(Trainable):
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            _agent_steps if self.config.count_steps_by == "agent_steps"
+                            _agent_steps
+                            if self.config.count_steps_by == "agent_steps"
                             else _env_steps
                         )
                     if self.reward_estimators:
@@ -1196,7 +1197,8 @@ class Algorithm(Trainable):
             # n timesteps per returned batch.
             else:
                 num_units_done += (
-                    _agent_steps if self.config.count_steps_by == "agent_steps"
+                    _agent_steps
+                    if self.config.count_steps_by == "agent_steps"
                     else _env_steps
                 )
 

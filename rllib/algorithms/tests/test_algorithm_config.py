@@ -34,9 +34,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .environment("CartPole-v0")
             .training(lr=0.12345, train_batch_size=3000)
             .multi_agent(
-                policies={
-                    "pol1": (None, None, None, {"lr": 0.001})
-                },
+                policies={"pol1": (None, None, None, {"lr": 0.001})},
                 policy_mapping_fn=lambda aid, episode, worker, **kw: "pol1",
             )
         )
@@ -48,7 +46,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertRaisesRegex(
             AttributeError,
             "Cannot set attribute.+of an already frozen AlgorithmConfig",
-            lambda: set_lr(config)
+            lambda: set_lr(config),
         )
 
         def set_one_policy(config):
@@ -57,7 +55,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertRaisesRegex(
             AttributeError,
             "Cannot set attribute.+of an already frozen AlgorithmConfig",
-            lambda: set_one_policy(config)
+            lambda: set_one_policy(config),
         )
 
 

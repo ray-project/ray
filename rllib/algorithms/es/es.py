@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import AlgorithmConfigDict, PolicyID
+from ray.rllib.utils.typing import PolicyID
 
 logger = logging.getLogger(__name__)
 

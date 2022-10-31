@@ -753,7 +753,9 @@ class Impala(Algorithm):
                 self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
-                    batch.agent_steps() if self.config.count_steps_by == "agent_steps" else batch.count
+                    batch.agent_steps()
+                    if self.config.count_steps_by == "agent_steps"
+                    else batch.count
                 )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1

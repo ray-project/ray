@@ -232,7 +232,9 @@ class APPO(Impala):
                 training step.
         """
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self.config.count_steps_by == "agent_steps" else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (

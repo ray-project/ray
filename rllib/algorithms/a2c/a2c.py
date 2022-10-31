@@ -23,7 +23,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)

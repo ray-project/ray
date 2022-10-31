@@ -230,7 +230,9 @@ class CRR(Algorithm):
         # update target every few gradient updates
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self.config.count_steps_by == "agent_steps" else NUM_ENV_STEPS_TRAINED
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 

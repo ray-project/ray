@@ -186,10 +186,7 @@ class DDPPOConfig(PPOConfig):
                 "num_gpus_per_worker=1."
             )
         # `batch_mode` must be "truncate_episodes".
-        if (
-            not self.in_evaluation
-            and self.batch_mode != "truncate_episodes"
-        ):
+        if not self.in_evaluation and self.batch_mode != "truncate_episodes":
             raise ValueError(
                 "Distributed data parallel requires truncate_episodes batch mode."
             )
