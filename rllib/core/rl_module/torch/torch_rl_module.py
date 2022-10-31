@@ -28,7 +28,7 @@ class TorchRLModule(RLModule, nn.Module):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
-    
+
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Makes the module distributed."""
@@ -40,7 +40,7 @@ class TorchRLModule(RLModule, nn.Module):
         """Returns True if the module is distributed."""
         # TODO (Avnish): Implement this.
         return False
-    
+
     @classmethod
     @override(RLModule)
     def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
