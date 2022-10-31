@@ -9,6 +9,7 @@ from torchvision import transforms, datasets
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
+from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -315,12 +316,12 @@ def test_checkpoint_model(ray_start_4_cpus):
     )
 
     result = trainer.fit()
+    checkpoint_dict = result.checkpoint.to_dict()
+    assert "state" in checkpoint_dict
 
-    # load checkpointed model weights
-    model.load_state_dict(result.checkpoint.to_dict()["model"], strict=True)
-
+    loaded_model = result.checkpoint.get_model(model)
     trainer_init_config = {
-        "model": model,
+        "model": loaded_model,
         "max_duration": "2ep",
     }
 

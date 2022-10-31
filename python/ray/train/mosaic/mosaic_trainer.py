@@ -5,6 +5,8 @@ import warnings
 
 from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
+from composer.callbacks.checkpoint_saver import CheckpointSaver
+
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -215,20 +217,24 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     # Replace Composer's Loggers with RayLogger
-    ray_logger = RayLogger(keys=config.pop("log_keys", []))
+    ray_logger = RayLogger(
+        keys=config.pop("log_keys", [])
+    )
 
     # initialize Composer trainer
     trainer: Trainer = trainer_init_per_worker(config)
 
     # Remove Composer's Loggers if there are any added in the trainer_init_per_worker
     # this removes the logging part of the loggers
+    # Also remove all user configured checkpointSavers
     filtered_callbacks = list()
     for callback in trainer.state.callbacks:
-        if not isinstance(callback, LoggerDestination):
+        if not isinstance(callback, LoggerDestination) and not isinstance(
+            callback, CheckpointSaver
+        ):
             filtered_callbacks.append(callback)
     filtered_callbacks.append(ray_logger)
     trainer.state.callbacks = filtered_callbacks
-    print(trainer.state.callbacks)
 
     # this prevents data to be routed to all the Composer Loggers
     trainer.logger.destinations = (ray_logger,)

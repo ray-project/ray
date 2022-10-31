@@ -1,12 +1,19 @@
 from typing import Any, Dict, Optional, List
 import torch
+import os
 
 from composer.loggers import Logger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
+from composer.callbacks.checkpoint_saver import CheckpointSaver
+from composer.loggers.logger import LogLevel
+from composer.utils import checkpoint, is_model_deepspeed
+from composer.utils.checkpoint import PartialFilePath
+
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 
 
 class RayLogger(LoggerDestination):
@@ -38,8 +45,11 @@ class RayLogger(LoggerDestination):
         keys: the key values that will be included in the reported metrics.
     """
 
-    def __init__(self, keys: Optional[List[str]] = None) -> None:
+    def __init__(
+        self, keys: Optional[List[str]] = None
+    ) -> None:
         self.data = {}
+        self.filename = PartialFilePath('ep{epoch}-ba{batch}-rank{rank}.pt', "ray_tmp")
         # report at fit end only if there are additional training batches run after the
         # last epoch checkpoint report
         self.should_report_fit_end = False
@@ -65,21 +75,27 @@ class RayLogger(LoggerDestination):
     def fit_end(self, state: State, logger: Logger) -> None:
         # report at close in case the trainer stops in the middle of an epoch.
         # this may be double counted with epoch checkpoint.
-        del logger  # unused
         if self.should_report_fit_end:
             self._report(state)
 
     def _report(self, state: State):
-        model_state_dict = state.state_dict()["model"]
-
-        # remove module prefixes when loading the model weights
-        for i in range(2):
-            torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
-                model_state_dict, "module."
+        # get last checkpoint from the checkpoint saver.
+        filename = self.filename.format(state, is_model_deepspeed(state.model))
+        saved_path = checkpoint.save_checkpoint(
+            state=state,
+            filename=filename,
+            weights_only=False,
+        )
+        mosaic_checkpoint = MosaicCheckpoint.from_dict({"state" : None})
+        if saved_path:
+            saved_path = os.path.join(
+                os.getcwd(), saved_path
             )
+            mosaic_checkpoint=MosaicCheckpoint.from_directory(saved_path)
+
 
         session.report(
-            self.data, checkpoint=Checkpoint.from_dict({"model": model_state_dict})
+            self.data, checkpoint=mosaic_checkpoint
         )
 
         # flush the data
