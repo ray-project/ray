@@ -22,7 +22,9 @@ def trainer_init_per_worker(config):
     import composer.optim
 
     BATCH_SIZE = 32
-    model = ComposerClassifier(config.pop("model", torchvision.models.resnet18(num_classes=10)))
+    model = ComposerClassifier(
+        config.pop("model", torchvision.models.resnet18(num_classes=10))
+    )
 
     # prepare train/test dataset
     mean = (0.507, 0.487, 0.441)
