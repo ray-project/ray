@@ -1071,7 +1071,8 @@ def set_runtime_env_plugin_schemas(request):
 
 
 @pytest.fixture(params=[True, False])
-def enable_syncer_test(with_syncer, monkeypatch):
+def enable_syncer_test(request, monkeypatch):
+    with_syncer = request.param
     monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
     ray._raylet.Config.initialize("")
     yield
