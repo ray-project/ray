@@ -183,7 +183,6 @@ class _WandbLoggingProcess(Process):
         queue: Queue,
         exclude: List[str],
         to_config: List[str],
-        flush_interval: int,
         *args,
         **kwargs,
     ):
