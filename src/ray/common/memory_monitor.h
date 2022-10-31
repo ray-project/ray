@@ -76,6 +76,8 @@ class MemoryMonitor {
   static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
+  static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
+  static constexpr char kCgroupsV2MemoryStatInactiveKey[] = "inactive_file";
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
@@ -96,6 +98,13 @@ class MemoryMonitor {
   ///
   /// \return the used memory for cgroup v1.
   static int64_t GetCGroupV1MemoryUsedBytes(const char *path);
+
+  /// \param stat_path file path to the memory.stat file.
+  /// \param usage_path file path to the memory.current file
+  /// \return the used memory for cgroup v2. May return negative value, which should be
+  /// discarded.
+  static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                            const char *usage_path);
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
@@ -133,6 +142,12 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentStatFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull);
   FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
