@@ -140,7 +140,12 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             result = runner.invoke(
@@ -152,6 +157,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             result = runner.invoke(
@@ -162,6 +170,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
@@ -176,7 +187,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             # Test passing via json.
@@ -186,7 +202,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             # Test passing both throws an error.
@@ -221,7 +242,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             result = runner.invoke(
@@ -238,7 +264,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
     def test_job_id(self, mock_sdk_client):
@@ -249,7 +280,12 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
             result = runner.invoke(
@@ -258,7 +294,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id="my_job_id", runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id="my_job_id",
+                runtime_env={},
+                num_cpus=None,
+                num_gpus=None,
+                resources=None,
             )
 
     def test_num_cpus(self, mock_sdk_client):
