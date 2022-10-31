@@ -17,10 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef _WIN32
+#include <afunix.h>
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <afunix.h>
 #else
 #include <sys/un.h>
 #endif
