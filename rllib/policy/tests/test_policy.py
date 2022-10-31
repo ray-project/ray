@@ -53,11 +53,11 @@ class TestPolicy(unittest.TestCase):
                     check(state3["weights"], state4["weights"])
 
     def test_policy_from_checkpoint_twice(self):
-        # Checks if we can load a policy from a checkpoint twice
+        # Checks if we can load a policy from a checkpoint (at least) twice
         config = PPOConfig()
         for fw in framework_iterator(config, frameworks=["tf", "tf2", "torch"]):
             algo1 = config.build(env="CartPole-v1")
-            algo2 = config.build(env="BreakoutNoFrameskip-v4")
+            algo2 = config.build(env="PongNoFrameskip-v4")
 
             algo1.train()
             algo2.train()

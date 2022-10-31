@@ -1954,7 +1954,7 @@ py_test(
 py_test(
     name = "policy/tests/test_policy",
     tags = ["team:rllib", "policy"],
-    size = "medium",
+    size = "long",
     srcs = ["policy/tests/test_policy.py"]
 )
 
