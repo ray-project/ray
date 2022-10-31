@@ -17,67 +17,51 @@ from ray.util import PublicAPI
 class ResultGrid:
     """A set of ``Result`` objects for interacting with Ray Tune results.
 
-     You can use it to inspect the trials and obtain the best result.
+    You can use it to inspect the trials and obtain the best result.
 
-     The constructor is a private API. This object can only be created as a result of
-     ``Tuner.fit()``.
+    The constructor is a private API. This object can only be created as a result of
+    ``Tuner.fit()``.
 
-     Example:
-
-     .. code-block:: python
-
-         import random
-         from ray import air, tune
-
-         def random_error_trainable(config):
-             if random.random() < 0.5:
-                 return {"loss": 0.0}
-             else:
-                 raise ValueError("This is an error")
-
-         tuner = tune.Tuner(
-             random_error_trainable,
-             run_config=air.RunConfig(name="example-experiment"),
-             tune_config=tune.TuneConfig(num_samples=10),
-         )
-         result_grid = tuner.fit()
-
-         for i in range(len(result_grid)):
-             result = result_grid[i]
-             if not result.error:
-                 print(f"Trial finishes successfully with metric {result.metric}.")
-             else:
-                 print(f"Trial failed with error {result.error}.")
+    Example:
+         >>> import random
+         >>> from ray import air, tune
+         >>> def random_error_trainable(config):
+         ...     if random.random() < 0.5:
+         ...         return {"loss": 0.0}
+         ...     else:
+         ...         raise ValueError("This is an error")
+         >>> tuner = tune.Tuner(
+         ...     random_error_trainable,
+         ...     run_config=air.RunConfig(name="example-experiment"),
+         ...     tune_config=tune.TuneConfig(num_samples=10),
+         ... )
+         >>> result_grid = tuner.fit()  # doctest: +SKIP
+         >>> for i in range(len(result_grid)): # doctest: +SKIP
+         ...     result = result_grid[i]
+         ...     if not result.error:
+         ...             print(f"Trial finishes successfully with metrics"
+         ...                f"{result.metrics}.")
+         ...     else:
+         ...             print(f"Trial failed with error {result.error}.")
 
 
-     You can also use ``result_grid`` for more advanced analysis.
+    You can also use ``result_grid`` for more advanced analysis.
 
-     .. code-block:: python
+    >>> # Get the best result based on a particular metric.
+    >>> best_result = result_grid.get_best_result( # doctest: +SKIP
+    ...     metric="loss", mode="min")
+    >>> # Get the best checkpoint corresponding to the best result.
+    >>> best_checkpoint = best_result.checkpoint # doctest: +SKIP
+    >>> # Get a dataframe for the last reported results of all of the trials
+    >>> df = result_grid.get_dataframe() # doctest: +SKIP
+    >>> # Get a dataframe for the minimum loss seen for each trial
+    >>> df = result_grid.get_dataframe(metric="loss", mode="min") # doctest: +SKIP
 
-         # Get the best result based on a particular metric.
-         best_result = result_grid.get_best_result(metric="loss", mode="min")
+    Note that trials of all statuses are included in the final result grid.
+    If a trial is not in terminated state, its latest result and checkpoint as
+    seen by Tune will be provided.
 
-         # Get the best checkpoint corresponding to the best result.
-         best_checkpoint = best_result.checkpoint
-
-         # Get a dataframe for the last reported results of all of the trials
-         df = result_grid.get_dataframe()
-
-         # Get a dataframe for the minimum loss seen for each trial
-         df = result_grid.get_dataframe(metric="loss", mode="min")
-
-     Note that trials of all statuses are included in the final result grid.
-     If a trial is not in terminated state, its latest result and checkpoint as
-     seen by Tune will be provided.
-
-    ``ResultGrid`` will be the successor of the ``ExperimentAnalysis`` object
-    but is not yet at feature parity. For interacting with an existing experiment,
-    located at ``local_dir``, do the following:
-
-     .. code-block:: python
-
-         from ray.tune import ExperimentAnalysis
-         analysis = ExperimentAnalysis("~/ray_results/example-experiment")
+    See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
     """
 
     def __init__(
@@ -177,7 +161,9 @@ class ResultGrid:
                 df = result_grid.get_dataframe()
 
                 # Get best ever reported accuracy per trial
-                df = result_grid.get_dataframe(metric="accuracy", mode="max")
+                df = result_grid.get_dataframe(
+                    filter_metric="accuracy", filter_mode="max"
+                )
 
         Args:
             filter_metric: Metric to filter best result for.

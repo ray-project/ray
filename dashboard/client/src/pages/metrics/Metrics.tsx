@@ -69,6 +69,10 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
   },
   {
+    title: "Scheduler Actor State",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+  },
+  {
     title: "Scheduler CPUs (logical slots)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
   },
@@ -119,7 +123,7 @@ export const Metrics = () => {
   const { grafanaHost } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.ONE_HOUR,
+    TimeRangeOptions.THIRTY_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,

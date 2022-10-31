@@ -14,6 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
+#include "ray/stats/metric.h"
+DEFINE_stats(health_check_rpc_latency_ms,
+             "Latency of rpc request for health check.",
+             (),
+             ({1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
+
 namespace ray {
 namespace gcs {
 
@@ -29,7 +36,13 @@ GcsHealthCheckManager::GcsHealthCheckManager(
       initial_delay_ms_(initial_delay_ms),
       timeout_ms_(timeout_ms),
       period_ms_(period_ms),
-      failure_threshold_(failure_threshold) {}
+      failure_threshold_(failure_threshold) {
+  RAY_CHECK(on_node_death_callback != nullptr);
+  RAY_CHECK(initial_delay_ms >= 0);
+  RAY_CHECK(timeout_ms >= 0);
+  RAY_CHECK(period_ms >= 0);
+  RAY_CHECK(failure_threshold >= 0);
+}
 
 GcsHealthCheckManager::~GcsHealthCheckManager() {}
 
@@ -71,11 +84,14 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_.get(),
       &request_,
       &response_,
-      [this, stopped = this->stopped_, context = this->context_](::grpc::Status status) {
+      [this, stopped = this->stopped_, context = this->context_, now = absl::Now()](
+          ::grpc::Status status) {
+        // This callback is done in gRPC's thread pool.
+        STATS_health_check_rpc_latency_ms.Record(
+            absl::ToInt64Milliseconds(absl::Now() - now));
         if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
           return;
         }
-
         manager_->io_service_.post(
             [this, stopped, status]() {
               // Stopped has to be read in the same thread where it's updated.
@@ -100,8 +116,10 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 // Do another health check.
                 timer_.expires_from_now(
                     boost::posix_time::milliseconds(manager_->period_ms_));
-                timer_.async_wait([this](auto ec) {
-                  if (ec != boost::asio::error::operation_aborted) {
+                timer_.async_wait([this, stopped](auto ec) {
+                  // We need to check stopped here as well since cancel
+                  // won't impact the queued tasks.
+                  if (ec != boost::asio::error::operation_aborted && !*stopped) {
                     StartHealthCheck();
                   }
                 });

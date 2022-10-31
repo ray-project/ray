@@ -68,13 +68,19 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     "Space {} is not supported.".format(space)
                 )
 
+        from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
+
+        policies, _ = (
+            MADDPGConfig.from_dict(config)
+            .environment(observation_space=obs_space, action_space=act_space)
+            .get_multi_agent_setup()
+        )
         obs_space_n = [
-            _make_continuous_space(spec.observation_space or obs_space)
-            for _, spec in config["multiagent"]["policies"].items()
+            _make_continuous_space(spec.observation_space)
+            for _, spec in policies.items()
         ]
         act_space_n = [
-            _make_continuous_space(spec.action_space or act_space)
-            for _, spec in config["multiagent"]["policies"].items()
+            _make_continuous_space(spec.action_space) for _, spec in policies.items()
         ]
 
         # _____ Placeholders
@@ -141,7 +147,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             ),
             critic[:, 0],
         )
-        critic_loss = tf.reduce_mean(td_error ** 2)
+        critic_loss = tf.reduce_mean(td_error**2)
 
         # _____ Policy Network
         # Build actor network for t.
@@ -183,7 +189,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         actor_loss = -tf.reduce_mean(critic)
         if config["actor_feature_reg"] is not None:
             actor_loss += config["actor_feature_reg"] * tf.reduce_mean(
-                actor_feature ** 2
+                actor_feature**2
             )
 
         # _____ Losses

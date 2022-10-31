@@ -30,14 +30,12 @@ namespace gcs {
 /// GcsHealthCheckManager is used to track the healthiness of the nodes in the ray
 /// cluster. The health check is done in pull based way, which means this module will send
 /// health check to the raylets to see whether the raylet is healthy or not. If the raylet
-/// is not healthy for certain times, the module will think the raylet dead.
+/// is not healthy for certain times, the module will think the raylet is dead.
 /// When the node is dead a callback passed in the constructor will be called and this
 /// node will be removed from GcsHealthCheckManager. The node can be added into this class
 /// later. Although the same node id is not supposed to be reused in ray cluster, this is
-/// not enforced in this class. The implementation of this class try its bes not to couple
-/// itself with GCS so we can move it to ray/common/health_check_manager.h in the future.
-/// TODO (iycheng): Move the GcsHealthCheckManager to common and decouple it from GCS
-/// completely.
+/// not enforced in this class.
+/// TODO (iycheng): Move the GcsHealthCheckManager to ray/common.
 class GcsHealthCheckManager {
  public:
   /// Constructor of GcsHealthCheckManager.
@@ -76,6 +74,10 @@ class GcsHealthCheckManager {
   std::vector<NodeID> GetAllNodes() const;
 
  private:
+  /// Fail a node when health check failed. It'll stop the health checking and
+  /// call on_node_death_callback.
+  ///
+  /// \param node_id The id of the node.
   void FailNode(const NodeID &node_id);
 
   /// This is for testing. We'll use mock timer in gtest.
