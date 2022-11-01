@@ -204,12 +204,15 @@ class TorchPolicyV2(Policy):
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
 
+
+        # if model is an RLModule it won't have tower_stats instead there will be a self.tower_state[model] -> dict for each tower
+        self.tower_stats = {}
+        if not hasattr(self.model, "tower_stats"):
+            for model in self.model_gpu_towers:
+                self.tower_stats[model] = {}
+
     def loss_initialized(self):
         return self._loss_initialized
-
-    @OverrideToImplementCustomLogic
-    def make_rl_module(self):
-        """Returns the RL Module"""
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -623,8 +626,10 @@ class TorchPolicyV2(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        if self.model:
+        if self.model and hasattr(self.model, "metrics"):
             fetches["model"] = self.model.metrics()
+        else:
+            fetches["model"] = {}
         fetches.update(
             {
                 "custom_metrics": learn_stats,
@@ -847,13 +852,19 @@ class TorchPolicyV2(Policy):
             of the tower's `tower_stats` dicts.
         """
         data = []
-        for tower in self.model_gpu_towers:
-            if stats_name in tower.tower_stats:
+        for model in self.model_gpu_towers:
+            if self.tower_stats:
+                tower_stats = self.tower_stats[model]
+            else:
+                tower_stats = model.tower_stats
+
+            if stats_name in tower_stats:
                 data.append(
                     tree.map_structure(
-                        lambda s: s.to(self.device), tower.tower_stats[stats_name]
+                        lambda s: s.to(self.device), tower_stats[stats_name] 
                     )
                 )
+            
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
             f"{len(self.model_gpu_towers)} towers in total)! Make "
@@ -1015,10 +1026,19 @@ class TorchPolicyV2(Policy):
             sample_batch = input_dict
             if state_batches:
                 sample_batch.update({"state": state_batches})
-            fwd_out = self.model.forward_exploration(sample_batch)
+
+            if explore:
+                fwd_out = self.model.forward_exploration(sample_batch)
+            else:
+                fwd_out = self.model.forward_inference(sample_batch)
             # anything but action_dist and state_out is an extra fetch
             action_dist = fwd_out.pop("action_dist")
-            actions, logp = action_dist.sample(return_logp=True)
+
+            if explore:
+                actions, logp = action_dist.sample(return_logp=True)
+            else:
+                actions = action_dist.sample()
+                logp = None
             state_out = fwd_out.pop("state_out", [])
             extra_fetches = fwd_out
             dist_inputs = None
@@ -1084,7 +1104,6 @@ class TorchPolicyV2(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
-
         return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
@@ -1131,7 +1150,8 @@ class TorchPolicyV2(Policy):
 
                     # Call Model's custom-loss with Policy loss outputs and
                     # train_batch.
-                    loss_out = model.custom_loss(loss_out, sample_batch)
+                    if hasattr(model, "custom_loss"):
+                        loss_out = model.custom_loss(loss_out, sample_batch)
 
                     assert len(loss_out) == len(self._optimizers)
 

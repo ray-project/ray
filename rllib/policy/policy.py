@@ -7,6 +7,7 @@ import numpy as np
 import os
 from packaging import version
 import platform
+from ray.rllib.utils.nested_dict import NestedDict
 import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
@@ -355,6 +356,11 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
+    @ExperimentalAPI
+    @OverrideToImplementCustomLogic
+    def make_rl_module(self):
+        """Returns the RL Module"""
+
     @DeveloperAPI
     def init_view_requirements(self):
         """Maximal view requirements dict for `learn_on_batch()` and
@@ -480,7 +486,7 @@ class Policy(metaclass=ABCMeta):
         return (
             single_action,
             [s[0] for s in state_out],
-            {k: v[0] for k, v in info.items()},
+            tree.map_structure(lambda x: x[0], info)
         )
 
     @DeveloperAPI
@@ -1245,8 +1251,11 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
+        # with RL modules you want the explore to be True for initialization of the 
+        # tensors and placeholder you'd need for training
+        explore = is_overridden(self.make_rl_module)
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
-            self._dummy_batch, explore=False
+            self._dummy_batch, explore=explore
         )
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
@@ -1256,19 +1265,40 @@ class Policy(metaclass=ABCMeta):
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
             if key not in self.view_requirements:
-                self.view_requirements[key] = ViewRequirement(
-                    space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype
-                    ),
-                    used_for_compute_actions=False,
-                )
+                if isinstance(value, np.ndarray):
+                    self.view_requirements[key] = ViewRequirement(
+                        space=gym.spaces.Box(
+                            -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype
+                        ),
+                        used_for_compute_actions=False,
+                    )
+                elif isinstance(value, dict):
+                    # the assumption is that value is a nested_dict of np.arrays leaves
+                    space = get_gym_space_from_struct_of_tensors(value)
+                    self.view_requirements[key] = ViewRequirement(
+                        space=space, used_for_compute_actions=False
+                    )
+                else:
+                    raise ValueError(
+                        "policy.compute_actions_from_input_dict() returns an "
+                        "extra action output that is neither a numpy array nor a dict."
+                    )
+
         for key in self._dummy_batch.accessed_keys:
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
-            self.view_requirements[key].used_for_compute_actions = True
-        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+                self.view_requirements[key].used_for_compute_actions = False
+            # TODO (kourosh) Ideally you should not make used_for_compute_actions true here if 
+            # self.view_requirements[key].used_for_compute_actions = True
+        new_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )
+        # try to re-use the output of the previous run to avoid overriding things that 
+        # would break (e.g. scale = 0 of Normal distribution cannot be zero) 
+        for k in new_batch:
+            if k not in self._dummy_batch:
+                self._dummy_batch[k] = new_batch[k]
+                
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -1523,3 +1553,21 @@ class Policy(metaclass=ABCMeta):
     @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
+
+
+
+def get_gym_space_from_struct_of_tensors(value: TensorStructType) -> gym.spaces.Dict:
+    value_dict = NestedDict(value)
+    struct = tree.map_structure(lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype), value_dict)
+    space = get_gym_space_from_struct_of_spaces(struct.asdict())
+    return space
+
+
+def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
+    if isinstance(value, dict):
+        return gym.spaces.Dict({k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()})
+    elif isinstance(value, tuple):
+        return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
+    else:
+        assert isinstance(value, gym.spaces.Space)
+        return value
