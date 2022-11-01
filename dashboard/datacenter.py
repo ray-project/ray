@@ -136,11 +136,14 @@ class DataOrganizer:
         node = DataSource.nodes.get(node_id, {})
 
         node_stats.pop("coreWorkersStats", None)
-
-        view_data = node_stats.get("viewData", [])
-        ray_stats = cls._extract_view_data(
-            view_data, {"object_store_used_memory", "object_store_available_memory"}
-        )
+        store_stats = node_stats.get("storeStats", {})
+        used = int(store_stats.get("objectStoreBytesUsed", 0))
+        # objectStoreBytesAvail == total in the object_manager.cc definition.
+        total = int(store_stats.get("objectStoreBytesAvail", 0))
+        ray_stats = {
+            "object_store_used_memory": used,
+            "object_store_available_memory": total - used,
+        }
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
@@ -172,11 +175,14 @@ class DataOrganizer:
 
         node_physical_stats.pop("workers", None)
         node_stats.pop("workersStats", None)
-        view_data = node_stats.get("viewData", [])
-        ray_stats = cls._extract_view_data(
-            view_data, {"object_store_used_memory", "object_store_available_memory"}
-        )
-        node_stats.pop("viewData", None)
+        store_stats = node_stats.get("storeStats", {})
+        used = int(store_stats.get("objectStoreBytesUsed", 0))
+        # objectStoreBytesAvail == total in the object_manager.cc definition.
+        total = int(store_stats.get("objectStoreBytesAvail", 0))
+        ray_stats = {
+            "object_store_used_memory": used,
+            "object_store_available_memory": total - used,
+        }
 
         node_summary = node_physical_stats
         # Merge node stats to node physical stats
@@ -334,23 +340,3 @@ class DataOrganizer:
             all_worker_stats, group_by=group_by, sort_by=sort_by
         )
         return memory_information
-
-    @staticmethod
-    def _extract_view_data(views, data_keys):
-        view_data = {}
-        for view in views:
-            view_name = view["viewName"]
-            if view_name in data_keys:
-                if not view.get("measures"):
-                    view_data[view_name] = 0
-                    continue
-                measure = view["measures"][0]
-                if "doubleValue" in measure:
-                    measure_value = measure["doubleValue"]
-                elif "intValue" in measure:
-                    measure_value = measure["intValue"]
-                else:
-                    measure_value = 0
-                view_data[view_name] = measure_value
-
-        return view_data

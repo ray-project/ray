@@ -15,7 +15,6 @@ import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
-import { ViewMeasures } from "../../type/raylet";
 import { memoryConverter } from "../../util/converter";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
@@ -35,34 +34,6 @@ const useStyle = makeStyles((theme) => ({
     marginBottom: theme.spacing(2),
   },
 }));
-
-const showMeasureKeys = [
-  "local_total_resource",
-  "local_available_resource",
-  "actor_stats",
-  "task_dependency_manager_stats",
-  "reconstruction_policy_stats",
-  "scheduling_queue_stats",
-  "object_manager_stats",
-];
-
-const ViewDataDisplayer = ({ view }: { view?: ViewMeasures }) => {
-  if (!view) {
-    return null;
-  }
-  const { tags = "", ...otherProps } = view;
-
-  return (
-    <Grid item xs={6}>
-      <span>{tags.split(",").pop()?.split(":").slice(1).join(":")}</span>=
-      {Object.keys(otherProps).length > 0 ? (
-        JSON.stringify(Object.values(otherProps).pop())
-      ) : (
-        <span style={{ color: "gray" }}>null</span>
-      )}
-    </Grid>
-  );
-};
 
 const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
   const classes = useStyle();
@@ -237,29 +208,6 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   {raylet?.nodeManagerPort}
                 </Grid>
               </Grid>
-              {showMeasureKeys
-                .map((e) => raylet.viewData.find((view) => view.viewName === e))
-                .map((e) =>
-                  e ? (
-                    <React.Fragment key={e.viewName}>
-                      <p className={classes.label}>
-                        {e.viewName
-                          .split("_")
-                          .map((e) => e[0].toUpperCase() + e.slice(1))
-                          .join(" ")}
-                      </p>
-                      <Grid
-                        container
-                        spacing={2}
-                        style={{ maxHeight: 177, overflow: "auto" }}
-                      >
-                        {e.measures.map((e) => (
-                          <ViewDataDisplayer key={e.tags} view={e} />
-                        ))}
-                      </Grid>
-                    </React.Fragment>
-                  ) : null,
-                )}
             </div>
           </React.Fragment>
         )}

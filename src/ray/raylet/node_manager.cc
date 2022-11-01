@@ -2523,43 +2523,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
-  // Ensure we never report an empty set of metrics.
-  if (!recorded_metrics_) {
-    RecordMetrics();
-  }
-  for (const auto &view : opencensus::stats::StatsExporter::GetViewData()) {
-    auto view_data = reply->add_view_data();
-    view_data->set_view_name(view.first.name());
-    if (view.second.type() == opencensus::stats::ViewData::Type::kInt64) {
-      for (const auto &measure : view.second.int_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_int_value(measure.second);
-      }
-    } else if (view.second.type() == opencensus::stats::ViewData::Type::kDouble) {
-      for (const auto &measure : view.second.double_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_double_value(measure.second);
-      }
-    } else {
-      RAY_CHECK(view.second.type() == opencensus::stats::ViewData::Type::kDistribution);
-      for (const auto &measure : view.second.distribution_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_distribution_min(measure.second.min());
-        measure_data->set_distribution_mean(measure.second.mean());
-        measure_data->set_distribution_max(measure.second.max());
-        measure_data->set_distribution_count(measure.second.count());
-        for (const auto &bound : measure.second.bucket_boundaries().lower_boundaries()) {
-          measure_data->add_distribution_bucket_boundaries(bound);
-        }
-        for (const auto &count : measure.second.bucket_counts()) {
-          measure_data->add_distribution_bucket_counts(count);
-        }
-      }
-    }
-  }
   // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
