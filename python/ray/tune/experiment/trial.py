@@ -908,6 +908,20 @@ class Trial:
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
 
+        # Update CheckpointManager checkpoint paths with those found in the trial logdir
+        checkpoint_paths_df = TrainableUtil.get_checkpoints_paths(self.logdir)
+        checkpoint_paths_per_iter = {
+            row["training_iteration"]: row["chkpt_path"]
+            for _, row in checkpoint_paths_df.iterrows()
+        }
+        for tracked_checkpoint in self.get_trial_checkpoints():
+            if tracked_checkpoint.storage_mode == CheckpointStorage.PERSISTENT:
+                training_iteration = tracked_checkpoint.metrics[TRAINING_ITERATION]
+                if training_iteration in checkpoint_paths_per_iter:
+                    tracked_checkpoint.dir_or_data = checkpoint_paths_per_iter[
+                        training_iteration
+                    ]
+
         if not self.stub:
             validate_trainable(self.trainable_name)
 
