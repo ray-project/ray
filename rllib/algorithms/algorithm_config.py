@@ -872,7 +872,7 @@ class AlgorithmConfig:
         sample_collector: Optional[Type[SampleCollector]] = None,
         sample_async: Optional[bool] = None,
         enable_connectors: Optional[bool] = None,
-        rollout_fragment_length: Optional[int] = None,
+        rollout_fragment_length: Optional[Union[int, str]] = None,
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
         remote_env_batch_wait_ms: Optional[float] = None,
@@ -917,7 +917,7 @@ class AlgorithmConfig:
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
             rollout_fragment_length: Divide episodes into fragments of this many steps
-                each during rollouts. Sample batches of this size are collected from
+                each during rollouts. Trajectories of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
                 for learning.
                 For example, given rollout_fragment_length=100 and
@@ -930,6 +930,8 @@ class AlgorithmConfig:
                 rollout workers will return experiences in chunks of 5*100 = 500 steps.
                 The dataflow here can vary per algorithm. For example, PPO further
                 divides the train batch into minibatches for multi-epoch SGD.
+                Set to "auto" to have RLlib compute an exact `rollout_fragment_length`
+                to match the given batch size.
             batch_mode: How to build per-Sampler (RolloutWorker) batches, which are then
                 usually concat'd to form the train batch. Note that "steps" below can
                 mean different things (either env- or agent-steps) and depends on the
@@ -1038,6 +1040,14 @@ class AlgorithmConfig:
         if enable_connectors is not None:
             self.enable_connectors = enable_connectors
         if rollout_fragment_length is not None:
+            if not (
+                (
+                    isinstance(rollout_fragment_length, int)
+                    and rollout_fragment_length > 0
+                )
+                or rollout_fragment_length == "auto"
+            ):
+                raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
             self.rollout_fragment_length = rollout_fragment_length
 
         # Check batching/sample collection settings.
@@ -1778,6 +1788,39 @@ class AlgorithmConfig:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        """Automatically infers a proper rollout_fragment_length setting if "auto".
+
+        Uses the simple formula:
+        `rollout_fragment_length` = `train_batch_size` /
+        (`num_envs_per_worker` * `num_rollout_workers`)
+
+        If result is not a fraction AND `worker_index` is provided, will make
+        those workers add another timestep, such that the overall batch size (across
+        the workers) will add up to exactly the `train_batch_size`.
+
+        Returns:
+            The user-provided `rollout_fragment_length` or a computed one (if user
+            value is "auto").
+        """
+        if self.rollout_fragment_length == "auto":
+            # Example:
+            # 2 workers, 2 envs per worker, 2000 train batch size:
+            # -> 2000 / 4 -> 500
+            # 4 workers, 3 envs per worker, 2500 train batch size:
+            # -> 2500 / 12 -> 208.333 -> diff=4 (208 * 12 = 2496)
+            # -> worker 1: 209, workers 2-4: 208
+            rollout_fragment_length = self.train_batch_size / (
+                self.num_envs_per_worker * (self.num_rollout_workers or 1)
+            )
+            if int(rollout_fragment_length) != rollout_fragment_length:
+                diff = self.train_batch_size - int(rollout_fragment_length) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                if (worker_index * self.num_envs_per_worker) <= diff:
+                    return int(rollout_fragment_length) + 1
+            return int(rollout_fragment_length)
+        else:
+            return self.rollout_fragment_length
 
     def get_evaluation_config_object(
         self,

@@ -102,7 +102,7 @@ class PPOConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
-        self.rollout_fragment_length = 200
+        self.rollout_fragment_length = "auto"  # used to be 200
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
@@ -235,36 +235,38 @@ class PPOConfig(AlgorithmConfig):
             )
 
         # Check for mismatches between `train_batch_size` and
-        # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
-        # if necessary.
+        # `rollout_fragment_length` (if not "auto")..
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
-        calculated_min_rollout_size = (
-            max(self.num_rollout_workers, 1)
-            * self.num_envs_per_worker
-            * self.rollout_fragment_length
-        )
         if (
-            not self.in_evaluation
+            self.rollout_fragment_length != "auto"
+            and not self.in_evaluation
             and self.train_batch_size > 0
-            and self.train_batch_size % calculated_min_rollout_size != 0
         ):
-            new_rollout_fragment_length = math.ceil(
-                self.train_batch_size
-                / (self.num_rollout_workers * self.num_envs_per_worker)
+            min_batch_size = (
+                max(self.num_rollout_workers, 1)
+                * self.num_envs_per_worker
+                * self.rollout_fragment_length
             )
-            raise ValueError(
-                "`train_batch_size` ({}) cannot be achieved with your other "
-                "settings (num_rollout_workers={} num_envs_per_worker={} "
-                "rollout_fragment_length={})! Try setting rollout_fragment_length to "
-                "{}.".format(
-                    self.train_batch_size,
-                    self.num_rollout_workers,
-                    self.num_envs_per_worker,
-                    self.rollout_fragment_length,
-                    new_rollout_fragment_length,
+            batch_size = min_batch_size
+            while batch_size < self.train_batch_size:
+                batch_size += min_batch_size
+            if (
+                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+                or batch_size - min_batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+            ):
+                suggested_rollout_fragment_length = self.train_batch_size / (
+                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
-            )
+                raise ValueError(
+                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
+                    "value 10% off of that cannot be achieved with your other "
+                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length})! "
+                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    f"{suggested_rollout_fragment_length}."
+                )
 
         # Episodes may only be truncated (and passed into PPO's
         # `postprocessing_fn`), iff generalized advantage estimation is used
