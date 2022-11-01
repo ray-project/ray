@@ -1,83 +1,81 @@
+from collections import (
+    dataclass,
+    defaultdict
+)
+from copy import copy
 import logging
-from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_STATUS
+    TAG_RAY_NODE_STATUS,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.autoscaler._private.util import (
+    NodeID,
+    NodeIP,
+    NodeType,
+)
 
 logger = logging.getLogger(__name__)
 
+NodeStatus = str
+
+
+@dataclass
 class ScaleRequest:
-    pass
+    desired_num_workers: Dict[NodeType, int] = {}
+    workers_to_delete: List[NodeID] = []
 
+
+@dataclass
 class NodeData:
-    pass
+    node_id: NodeID
+    node_tags: Dict[str, str]
+    internal_ip: Optional[NodeIP]
+    external_ip: Optional[NodeIP]
+    node_status: NodeStatus
 
-@DeveloperAPI
+
 class BatchingNodeProvider(NodeProvider):
-    """Interface for getting and returning nodes from a Cloud.
-
-    **Important**: This is an INTERNAL API that is only exposed for the purpose
-    of implementing custom node providers. It is not allowed to call into
-    NodeProvider methods from any Ray package outside the autoscaler, only to
-    define new implementations of NodeProvider for use with the "external" node
-    provider option.
-
-    NodeProviders are namespaced by the `cluster_name` parameter; they only
-    operate on nodes within that namespace.
-
-    Nodes may be in one of three states: {pending, running, terminated}. Nodes
-    appear immediately once started by `create_node`, and transition
-    immediately to terminated when `terminate_node` is called.
-    """
-
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.node_data = {}
+        self.node_data_dict = {}
         self.scale_request = ScaleRequest()
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
-        self.node_data = self.get_node_data()
+        self.node_data_dict = self.get_node_data()
         self.scale_request = ScaleRequest(
-            desired_num_workers=self.get_cur_num_workers(node_data),
+            desired_num_workers=self.get_num_workers(self.node_data_dict),
             workers_to_delete=[]
         )
-        return list(node_data.keys())
+        return list(self.node_data_dict.keys())
 
-    def get_cur_num_workers(self, self.node_data):
-        for node_data in self.node_data.values():
-            pass
+    def get_node_data(self):
+        raise NotImplementedError
+
+    def get_num_workers(self, node_data_dict: Dict[str, Any]):
+        num_workers_dict = defaultdict(int)
+        for node_data in node_data_dict.values():
+            node_type = node_data.node_tags[TAG_RAY_USER_NODE_TYPE]
+            num_workers_dict[node_type] += 1
+        return num_workers_dict
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
-        """Returns the tags of the given node (string dict)."""
-        node_data = self.node_data[node_id]
-        return self.node_data.node_tags + {TAG_RAY_NODE_STATUS: node_data.status}
+        node_data = self.node_data_dict[node_id]
+        tags = copy(node_data.tags)
+        tags[TAG_RAY_NODE_STATUS] = node_data.status
+        return tags
 
     def external_ip(self, node_id: str) -> str:
-        """Returns the external ip of the given node."""
-        return self.node_data[node_id].external_ip
+        return self.node_data_dict[node_id].external_ip
 
     def internal_ip(self, node_id: str) -> str:
-        """Returns the internal ip (Ray ip) of the given node."""
-        return self.node_data[node_id].internal_ip
+        return self.node_data_dict[node_id].internal_ip
 
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Optional[Dict[str, Any]]:
-        """Creates a number of nodes within the namespace.
-
-        Optionally returns a mapping from created node ids to node metadata.
-
-        Optionally may throw a
-        ray.autoscaler.node_launch_exception.NodeLaunchException which the
-        autoscaler may use to provide additional functionality such as
-        observability.
-
-        """
         node_type = tags[TAG_RAY_USER_NODE_TYPE]
         self.scale_request.desired_num_workers[node_type] += count
 
@@ -105,4 +103,4 @@ class BatchingNodeProvider(NodeProvider):
         return True
 
     def submit_scale_request(self, scale_request: ScaleRequest) -> None:
-        pass
+        raise NotImplementedError
