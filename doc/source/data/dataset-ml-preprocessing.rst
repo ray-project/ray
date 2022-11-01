@@ -75,6 +75,8 @@ Pandas operations to the block columns within the UDF.
     # represented as Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
 
+.. _datasets-groupbys:
+
 Group-bys and aggregations
 ==========================
 

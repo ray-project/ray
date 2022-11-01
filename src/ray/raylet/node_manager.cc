@@ -526,7 +526,6 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
   }
-  last_resource_report_at_ms_ = now_ms;
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -538,6 +537,7 @@ ray::Status NodeManager::RegisterGcs() {
                     << io_service_.stats().StatsString() << "\n\n"
                     << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
+          ReportWorkerOOMKillStats();
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -610,6 +610,11 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
+  if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+    number_workers_killed_++;
+  } else if (disconnect_type == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    number_workers_killed_by_oom_++;
+  }
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -2518,43 +2523,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
-  // Ensure we never report an empty set of metrics.
-  if (!recorded_metrics_) {
-    RecordMetrics();
-  }
-  for (const auto &view : opencensus::stats::StatsExporter::GetViewData()) {
-    auto view_data = reply->add_view_data();
-    view_data->set_view_name(view.first.name());
-    if (view.second.type() == opencensus::stats::ViewData::Type::kInt64) {
-      for (const auto &measure : view.second.int_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_int_value(measure.second);
-      }
-    } else if (view.second.type() == opencensus::stats::ViewData::Type::kDouble) {
-      for (const auto &measure : view.second.double_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_double_value(measure.second);
-      }
-    } else {
-      RAY_CHECK(view.second.type() == opencensus::stats::ViewData::Type::kDistribution);
-      for (const auto &measure : view.second.distribution_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_distribution_min(measure.second.min());
-        measure_data->set_distribution_mean(measure.second.mean());
-        measure_data->set_distribution_max(measure.second.max());
-        measure_data->set_distribution_count(measure.second.count());
-        for (const auto &bound : measure.second.bucket_boundaries().lower_boundaries()) {
-          measure_data->add_distribution_bucket_boundaries(bound);
-        }
-        for (const auto &count : measure.second.bucket_counts()) {
-          measure_data->add_distribution_bucket_counts(count);
-        }
-      }
-    }
-  }
   // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
@@ -3017,7 +2985,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker) const {
   std::stringstream not_retriable_recommendation_ss;
-  if (!worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+  if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
     if (worker->GetAssignedTask().GetTaskSpecification().IsNormalTask()) {
       not_retriable_recommendation_ss << "max_retries";
@@ -3065,6 +3033,23 @@ void NodeManager::GCTaskFailureReason() {
       task_failure_reasons_.erase(entry.first);
     }
   }
+}
+
+void NodeManager::ReportWorkerOOMKillStats() {
+  if (number_workers_killed_by_oom_ > 0) {
+    RAY_LOG(ERROR) << number_workers_killed_by_oom_
+                   << " Workers (tasks / actors) killed due to memory pressure (OOM), "
+                   << number_workers_killed_
+                   << " Workers crashed due to other reasons at node (ID: "
+                   << self_node_id_ << ", IP: " << initial_config_.node_manager_address
+                   << ") over the last time period. "
+                   << "To see more information about the Workers killed on this node, "
+                   << "use `ray logs raylet.out -ip "
+                   << initial_config_.node_manager_address << "`\n\n"
+                   << CreateOomKillMessageSuggestions({});
+  }
+  number_workers_killed_by_oom_ = 0;
+  number_workers_killed_ = 0;
 }
 
 }  // namespace raylet
