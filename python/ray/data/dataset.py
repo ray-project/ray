@@ -542,21 +542,27 @@ class Dataset(Generic[T]):
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                if isinstance(batch, dict) and not all(
+                    isinstance(col, np.ndarray) for col in batch.values()
+                ):
+                    raise ValueError(
+                        "The `fn` you passed to `map_batches` returned a `dict`, but "
+                        "one or more values isn't an `numpy.ndarray`. If your `fn` "
+                        "returns a `dict`, `map_batches` expects all values to be of "
+                        "type `numpy.ndarray`."
+                    )
                 if not (
                     isinstance(batch, list)
                     or isinstance(batch, pa.Table)
                     or isinstance(batch, np.ndarray)
-                    or (
-                        isinstance(batch, dict)
-                        and all(isinstance(col, np.ndarray) for col in batch.values())
-                    )
+                    or isinstance(batch, dict)
                     or isinstance(batch, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
-                        "The map batches UDF returned the value "
-                        f"{batch} of type {type(batch)}, "
-                        "which is not allowed. "
-                        f"The return type must be one of: {BatchType}"
+                        "The `fn` you passed to `map_batches` returned a value of type "
+                        f"{type(batch)}. This isn't allowed -- `map_batches` expects "
+                        "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
+                        "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                     )
                 # Add output batch to output buffer.
                 output_buffer.add_batch(batch)
