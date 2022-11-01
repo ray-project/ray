@@ -20,6 +20,14 @@ but is meant to be an engineering resource that you can use to build your own us
         :text: Processing NYC taxi data using Ray Datasets
         :classes: btn-link btn-block stretched-link
     ---
+    :img-top: /images/taxi.png
+
+    +++
+    .. link-button:: /data/examples/batch_training
+        :type: ref
+        :text: Batch Training on NYC taxi data using Ray Datasets
+        :classes: btn-link btn-block stretched-link
+    ---
     :img-top: /images/ocr.jpg
 
     +++
