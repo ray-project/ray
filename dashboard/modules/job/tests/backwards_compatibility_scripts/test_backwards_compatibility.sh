@@ -67,6 +67,9 @@ do
 
     JOB_ID=$(python -c "import uuid; print(uuid.uuid4().hex)")
 
+    # Get directory of current file. https://stackoverflow.com/questions/59895/
+    DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
     if ! ray job submit --job-id="${JOB_ID}" --working-dir="${DIR}" --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py; then
         cleanup
         exit 1
