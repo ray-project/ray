@@ -47,12 +47,6 @@ class CounterMap {
     on_change_ = on_change;
   }
 
-  /// Increment the specified key by `val`, default to 1.
-  void Increment(const K &key, int64_t val = 1) {
-    counters_[key] += val;
-    total_ += val;
-  }
-
   /// Flush any pending on change callbacks.
   void FlushOnChangeCallbacks() {
     if (on_change_ != nullptr) {
