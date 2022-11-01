@@ -419,25 +419,24 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
-  periodical_runner_.RunFnPeriodically(
-      [this]() {
-        auto now = absl::Now();
-        auto threshold =
-            now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
-        for (auto &[node_id, resource] : resource_message_udpated_) {
-          if (resource.second < threshold) {
-            resource.second = now;
-            UpdateResourceUsage(node_id, resource.first);
-          }
-        }
-      },
-      RayConfig::instance().message_refresh_interval_ms());
-
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   if (RayConfig::instance().use_ray_syncer()) {
+    periodical_runner_.RunFnPeriodically(
+        [this]() {
+          auto now = absl::Now();
+          auto threshold =
+              now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
+          for (auto &[node_id, resource] : resource_message_udpated_) {
+            if (resource.second < threshold) {
+              resource.second = now;
+              UpdateResourceUsage(node_id, resource.first);
+            }
+          }
+        },
+        RayConfig::instance().message_refresh_interval_ms());
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
