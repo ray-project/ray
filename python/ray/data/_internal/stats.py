@@ -227,8 +227,13 @@ class DatasetStats:
         """Placeholder for ops not yet instrumented."""
         return DatasetStats(stages={"TODO": []}, parent=None)
 
-    def summary_string(self, already_printed: Set[str] = None) -> str:
-        """Return a human-readable summary of this Dataset's stats."""
+    def summary_string(self, already_printed: Set[str] = None, log_parent: bool = True) -> str:
+        """Return a human-readable summary of this Dataset's stats.
+        
+            Args:
+            `already_printed`: Set of stage IDs that have already had its stats printed out.
+            `log_parent`: If true, also log parent stats; otherwise, only log stats of the latest stage.
+        """
         if already_printed is None:
             already_printed = set()
 
@@ -244,7 +249,7 @@ class DatasetStats:
                 for i, metadata in stats_map.items():
                     self.stages["read"][i] = metadata[0]
         out = ""
-        if self.parents:
+        if self.parents and log_parent:
             for p in self.parents:
                 parent_sum = p.summary_string(already_printed)
                 if parent_sum:
