@@ -13,6 +13,7 @@ from ray.air._internal.remote_storage import download_from_uri, delete_at_uri
 from ray.tune import Trainable, Callback
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
+from ray.tune.result_grid import ResultGrid
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -495,6 +496,80 @@ def test_retore_retry(ray_start_4_cpus, retry_num):
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
+
+
+@pytest.mark.parametrize("use_tune_run", [True, False])
+def test_tuner_restore_from_moved_experiment_path(
+    ray_start_2_cpus, tmp_path, use_tune_run
+):
+    """Check that restoring a Tuner from a moved experiment directory works."""
+    # Create a fail_marker dummy file that causes the first Tune run to fail and
+    # the second run to succeed
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    old_local_dir = tmp_path / "ray_results"
+    old_exp_name = "exp_dir"
+
+    new_local_dir = tmp_path / "new_ray_results"
+    new_exp_name = "new_exp_dir"
+
+    # Initial training run (that errors out in the middle)
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name=old_exp_name,
+            local_dir=str(old_local_dir),
+        ),
+        param_space={
+            "failing_hanging": (fail_marker, None),
+        },
+    )
+
+    results = tuner.fit()
+    assert len(results.errors) == 1
+    training_iteration = results[0].metrics["training_iteration"]
+    assert (
+        training_iteration == 1
+    ), f"Should only have 1 session.report before erroring, got {training_iteration}"
+
+    # Move experiment from `tmp_path/ray_results/exp_dir`
+    # to `tmp_path/moved_ray_results/new_exp_dir`, changing both `local_dir` and
+    # the experiment `name`
+    shutil.move(str(old_local_dir), str(new_local_dir))
+    os.rename(str(new_local_dir / old_exp_name), str(new_local_dir / new_exp_name))
+
+    del tuner
+    # Remove fail_marker so that the restored Tuner doesn't error again
+    fail_marker.unlink()
+
+    # Restore from moved experiment directory location, and launch resumed training
+    if use_tune_run:
+        analysis = tune.run(
+            _train_fn_sometimes_failing,
+            name=new_exp_name,
+            local_dir=str(new_local_dir),
+            resume="AUTO+ERRORED",
+        )
+        results = ResultGrid(analysis)
+    else:
+        restore_path = str(new_local_dir / new_exp_name)
+        tuner = Tuner.restore(restore_path, resume_errored=True)
+        results = tuner.fit()
+
+    assert len(results.errors) == 0
+    # Check that we restored iter=1, then made 2 calls to session.report -> iter=3
+    training_iteration = results[0].metrics["training_iteration"]
+    assert training_iteration == 3, training_iteration
+
+    # Make sure that checkpoints are loaded properly
+    assert results[0].checkpoint and isinstance(results[0].checkpoint, Checkpoint)
+
+    # Make sure that we did not create a logdir in the old location
+    assert not old_local_dir.exists()
 
 
 if __name__ == "__main__":
