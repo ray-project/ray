@@ -136,3 +136,8 @@ cdef class Config:
     @staticmethod
     def REDIS_SERVER_NAME():
         return RayConfig.instance().REDIS_SERVER_NAME()
+
+    @staticmethod
+    def memory_monitor_interval_ms():
+        return (RayConfig.instance()
+                .memory_monitor_interval_ms())

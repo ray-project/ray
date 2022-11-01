@@ -79,6 +79,7 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
+    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -321,7 +322,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -1999,7 +2000,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
-    def take_all(self, limit: int = 100000) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
         This will move the entire dataset to the caller's machine; if the
@@ -2017,7 +2018,7 @@ class Dataset(Generic[T]):
         output = []
         for row in self.iter_rows():
             output.append(row)
-            if len(output) > limit:
+            if limit is not None and len(output) > limit:
                 raise ValueError(
                     "The dataset has more than the given limit of {} records.".format(
                         limit
