@@ -113,9 +113,7 @@ class RemoteCallResults:
 
     def ignore_errors(self) -> Iterator[ResultOrError]:
         """Return an iterator over the results, skipping errors."""
-        return self._Iterator(
-            [r for r in self.result_or_errors if r.ok]
-        )
+        return self._Iterator([r for r in self.result_or_errors if r.ok])
 
 
 class FaultTolerantActorManager:
