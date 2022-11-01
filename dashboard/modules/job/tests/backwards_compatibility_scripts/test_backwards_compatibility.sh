@@ -67,7 +67,7 @@ do
 
     JOB_ID=$(python -c "import uuid; print(uuid.uuid4().hex)")
 
-    if ! ray job submit --job-id="${JOB_ID}" --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"; then
+    if ! ray job submit --job-id="${JOB_ID}" --working-dir="${DIR}" --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py; then
         cleanup
         exit 1
     fi
@@ -82,7 +82,7 @@ do
         exit 1
     fi
 
-    if ! pytest -vs test_backwards_compatibility.py::test_error_message; then
+    if ! pytest -vs "${DIR}"/../test_backwards_compatibility.py::test_error_message; then
         cleanup
         exit 1
     fi

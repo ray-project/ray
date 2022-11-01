@@ -68,7 +68,6 @@ def test_error_message():
     """
     Check that we get a good error message when running against an old server version.
     """
-    # If using a remote cluster, replace 127.0.0.1 with the head node's IP address.
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
     # Check that a basic job successfully runs.
