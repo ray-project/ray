@@ -880,7 +880,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
@@ -2152,6 +2152,14 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/tests/test_check_multi_agent.py"]
+)
+
+py_test(
+    name = "test_actor_manager",
+    tags = ["team:rllib", "utils", "exclusive"],
+    size = "medium",
+    srcs = ["utils/tests/test_actor_manager.py"],
+    data = ["utils/tests/random_numbers.pkl"],
 )
 
 # --------------------------------------------------------------------

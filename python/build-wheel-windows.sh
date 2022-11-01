@@ -50,7 +50,10 @@ Get-ChildItem env:* | %{
     if ($_.Name -eq 'PATH') {
       $value = $value -replace ';',':'
     }
-    Write-Output ("export " + $_.Name + "='" + $value + "'")
+    # Use heredocs to wrap values. This fixes problems with environment variables containing single quotes.
+    # An environment variable containing the string REFRESHENV_EOF could still cause problems, but is
+    # far less likely than a single quote.
+    Write-Output ("export " + $_.Name + "=$`(cat <<- 'REFRESHENV_EOF'`n" + $value + "`nREFRESHENV_EOF`)")
   }
 } | Out-File -Encoding ascii $env:TEMP\refreshenv.sh
 
