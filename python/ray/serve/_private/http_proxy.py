@@ -246,6 +246,7 @@ class HTTPProxy:
             ),
             tag_keys=(
                 "deployment",
+                "error_code",
                 "method",
             ),
         )
@@ -347,6 +348,7 @@ class HTTPProxy:
             self.deployment_request_error_counter.inc(
                 tags={
                     "deployment": handle.deployment_name,
+                    "error_code": status_code,
                     "method": scope["method"].upper(),
                 }
             )
