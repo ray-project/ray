@@ -25,6 +25,7 @@ def test_strip_keys_with_value_none():
     d = {"a": 1, "b": None, "c": None}
     assert strip_keys_with_value_none(d) == {"a": 1}
 
+
 # Mock for aiohttp.web.Request, which should not be constructed directly.
 class MockRequest:
     def __init__(self, **kwargs):

@@ -36,7 +36,6 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
     get_driver_jobs,
     find_job_by_ids,
-    strip_keys_with_value_none,
 )
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
