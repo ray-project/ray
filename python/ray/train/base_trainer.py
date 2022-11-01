@@ -409,11 +409,6 @@ class BaseTrainer(abc.ABC):
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
 
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
-
             @classmethod
             def has_base_dataset(cls) -> bool:
                 """Whether a dataset is provided through the Trainer."""

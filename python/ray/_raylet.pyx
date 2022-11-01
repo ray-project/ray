@@ -921,8 +921,7 @@ cdef execute_task(
                 # log prefix with the full repr of the actor. The log monitor
                 # will pick up the updated token.
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in
-                        actor_class.__ray_actor_class__.__dict__):
+                        actor_class.__ray_actor_class__.__repr__ != object.__repr__):
                     actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
