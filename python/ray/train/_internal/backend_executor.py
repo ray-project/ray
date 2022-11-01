@@ -272,6 +272,37 @@ class BackendExecutor:
             ip_dict[node_ip] += 1
         return rank_mapping
 
+    def _create_local_world_map(self) -> Dict:
+        ip_dict = defaultdict(int)
+        local_world_size_map = {}
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata.node_ip
+            ip_dict[node_ip] += 1
+
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata.node_ip
+            local_world_size_map[world_rank] = ip_dict[node_ip]
+        return local_world_size_map
+
+    def _create_node_rank(self) -> Dict:
+        node_ips = dict()
+        node_cnt = 0
+        node_rank_map = {}
+
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata.node_ip
+            if node_ip not in node_ips:
+                node_ips[node_ip] = node_cnt
+                node_cnt += 1
+            node_rank_map[world_rank] = node_ips[node_ip]
+        return node_rank_map
+
+    def _get_local_world_size(self) -> Dict:
+        pass
+
     def start_training(
         self,
         train_func: Callable[[], T],
@@ -301,6 +332,8 @@ class BackendExecutor:
             train_func,
             world_rank,
             local_rank,
+            node_rank,
+            local_world_size,
             world_size,
             trial_info,
             checkpoint,
@@ -312,6 +345,8 @@ class BackendExecutor:
                     training_func=train_func,
                     world_rank=world_rank,
                     local_rank=local_rank,
+                    node_rank=node_rank,
+                    local_world_size=local_world_size,
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
@@ -332,6 +367,8 @@ class BackendExecutor:
             self.dataset_shards = dataset_spec.get_dataset_shards(actors)
 
         local_rank_map = self._create_local_rank_map()
+        local_world_map = self._create_local_world_map()
+        node_rank_map = self._create_node_rank()
 
         futures = []
         for index in range(len(self.worker_group)):
@@ -341,6 +378,8 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=index,
                     local_rank=local_rank_map[index],
+                    node_rank=node_rank_map[index],
+                    local_world_size=local_world_map[index],
                     world_size=len(self.worker_group),
                     trial_info=self._trial_info,
                     train_func=train_func,
