@@ -407,7 +407,7 @@ class WandbLoggerCallback(LoggerCallback):
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
-            resume=False,
+            resume="never",
             reinit=True,
             allow_val_change=True,
             group=wandb_group,
