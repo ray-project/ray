@@ -17,7 +17,7 @@ try_import_tf()
 def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
     config = PPOConfig()
-    for fw in framework_iterator(frameworks=[framework]):
+    for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
         algo2 = config.build(env="PongNoFrameskip-v4")
 
@@ -60,8 +60,8 @@ class TestPolicyFromCheckpointTwiceTF2(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_policy_from_checkpoint_twice_tf(self):
-        return _do_checkpoint_twice_test("tf")
+    def test_policy_from_checkpoint_twice_tf2(self):
+        return _do_checkpoint_twice_test("tf2")
 
 
 class TestPolicyFromCheckpointTwiceTorch(unittest.TestCase):
@@ -73,8 +73,8 @@ class TestPolicyFromCheckpointTwiceTorch(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_policy_from_checkpoint_twice_tf(self):
-        return _do_checkpoint_twice_test("tf")
+    def test_policy_from_checkpoint_twice_torch(self):
+        return _do_checkpoint_twice_test("torch")
 
 
 if __name__ == "__main__":
