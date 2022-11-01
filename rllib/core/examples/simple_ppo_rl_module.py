@@ -276,6 +276,9 @@ class SimplePPOModule(TorchRLModule):
             action_dist = TorchDiagGaussian(loc, scale)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
         output[SampleBatch.ACTION_DIST] = action_dist
+
+        # compute the value function
+        output[SampleBatch.VF_PREDS] = self.vf(encoded_state).squeeze(-1)
         return output
 
     @override(RLModule)
@@ -286,13 +289,13 @@ class SimplePPOModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
+        obs_specs = (
+            self.encoder.input_specs() if self.encoder else self.pi.input_specs()
+        )
         return ModelSpec(
             {
-                SampleBatch.OBS: (
-                    self.encoder.input_specs()
-                    if self.encoder
-                    else self.pi.input_specs()
-                ),
+                SampleBatch.OBS: obs_specs,
+                SampleBatch.NEXT_OBS: obs_specs,
                 SampleBatch.ACTIONS: action_spec,
             }
         )
@@ -305,6 +308,7 @@ class SimplePPOModule(TorchRLModule):
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
                 SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
                 "entropy": TorchTensorSpec("b", dtype=torch.float32),
+                "vf_preds_next_obs": TorchTensorSpec("b", dtype=torch.float32),
             }
         )
 
@@ -324,11 +328,18 @@ class SimplePPOModule(TorchRLModule):
 
         logp = action_dist.logp(batch[SampleBatch.ACTIONS].squeeze(-1))
         entropy = action_dist.entropy()
+
+        # get vf of the next obs
+        encoded_next_state = batch[SampleBatch.NEXT_OBS]
+        if self.encoder:
+            encoded_next_state = self.encoder(encoded_next_state)
+        vf_next_obs = self.vf(encoded_next_state)
         return {
             SampleBatch.ACTION_DIST: action_dist,
             SampleBatch.ACTION_LOGP: logp,
             SampleBatch.VF_PREDS: vf.squeeze(-1),
             "entropy": entropy,
+            "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
 
     def __get_action_dist_type(self):
