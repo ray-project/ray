@@ -12,7 +12,8 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -77,20 +78,23 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "FrozenLake-v1",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "use_lstm": True,
-            "lstm_cell_size": 256,
-            "lstm_use_prev_action": args.prev_action,
-            "lstm_use_prev_reward": args.prev_reward,
-        },
-        "framework": args.framework,
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
-        "eager_tracing": args.eager_tracing,
-    }
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .training(
+            model={
+                "use_lstm": True,
+                "lstm_cell_size": 256,
+                "lstm_use_prev_action": args.prev_action,
+                "lstm_use_prev_reward": args.prev_reward,
+            }
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -116,9 +120,8 @@ if __name__ == "__main__":
     print("Training completed. Restoring new Algorithm for action inference.")
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
-    # Create new Algorithm and restore its state from the last checkpoint.
-    algo = get_algorithm_class(args.run)(config=config)
-    algo.restore(checkpoint)
+    # Create new Algorithm from the last checkpoint.
+    algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
@@ -168,5 +171,7 @@ if __name__ == "__main__":
                 prev_a = a
             if init_prev_r is not None:
                 prev_r = reward
+
+    algo.stop()
 
     ray.shutdown()
