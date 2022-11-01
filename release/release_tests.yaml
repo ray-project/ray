@@ -4750,7 +4750,7 @@
   frequency: nightly
   team: core
   cluster:
-    # leave oom disabled as test is broken at the moment.
+    # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
