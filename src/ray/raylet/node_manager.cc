@@ -2600,8 +2600,11 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     ObjectID generator_id = request.has_generator_id()
                                 ? ObjectID::FromBinary(request.generator_id())
                                 : ObjectID::Nil();
-    local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, global_owner_ids, std::move(results), request.owner_address(), generator_id);
+    local_object_manager_.PinObjectsAndWaitForFree(object_ids,
+                                                   global_owner_ids,
+                                                   std::move(results),
+                                                   request.owner_address(),
+                                                   generator_id);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3186,49 +3189,50 @@ void NodeManager::ReportWorkerOOMKillStats() {
   }
   number_workers_killed_by_oom_ = 0;
   number_workers_killed_ = 0;
-
-void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id,
-                                              const rpc::Address &init_address) {
-  auto it = global_owner_address_.find(actor_id);
-  if (it != global_owner_address_.end()) return;
-  global_owner_address_[actor_id] = absl::optional<rpc::Address>(init_address);
-
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-      actor_id,
-      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
-        RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
-                       << ", address: " << actor_data.address().ip_address() << ":"
-                       << actor_data.address().port();
-        if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          global_owner_address_[actor_id] =
-              absl::optional<rpc::Address>(actor_data.address());
-
-          auto it = objects_need_to_report_.find(actor_id);
-          if (it == objects_need_to_report_.end()) return;
-          for (auto [object_id, object_info] : it->second) {
-            RAY_CHECK(object_info.global_owner_id == actor_id)
-                << "object_info.global_owner_id = " << object_info.global_owner_id
-                << ", actor_id: " << actor_id;
-
-            object_info.owner_raylet_id =
-                NodeID::FromBinary(actor_data.address().raylet_id());
-            object_info.owner_ip_address = actor_data.address().ip_address();
-            object_info.owner_port = actor_data.address().port();
-            object_info.owner_worker_id =
-                WorkerID::FromBinary(actor_data.address().worker_id());
-
-            RAY_LOG(DEBUG) << "try to report object add " << object_id;
-            object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
-          }
-        } else {
-          global_owner_address_[actor_id] = absl::optional<rpc::Address>();
-        }
-      },
-      [](Status status) {
-        // TO_BE_SOLVED(buniu): handler subscribe failed.
-        RAY_CHECK(status.ok()) << "CoreWorker Subscribe failed!";
-      }));
 }
+
+  void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id,
+                                                const rpc::Address &init_address) {
+    auto it = global_owner_address_.find(actor_id);
+    if (it != global_owner_address_.end()) return;
+    global_owner_address_[actor_id] = absl::optional<rpc::Address>(init_address);
+
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id,
+        [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
+          RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
+                         << ", address: " << actor_data.address().ip_address() << ":"
+                         << actor_data.address().port();
+          if (actor_data.state() == rpc::ActorTableData::ALIVE) {
+            global_owner_address_[actor_id] =
+                absl::optional<rpc::Address>(actor_data.address());
+
+            auto it = objects_need_to_report_.find(actor_id);
+            if (it == objects_need_to_report_.end()) return;
+            for (auto [object_id, object_info] : it->second) {
+              RAY_CHECK(object_info.global_owner_id == actor_id)
+                  << "object_info.global_owner_id = " << object_info.global_owner_id
+                  << ", actor_id: " << actor_id;
+
+              object_info.owner_raylet_id =
+                  NodeID::FromBinary(actor_data.address().raylet_id());
+              object_info.owner_ip_address = actor_data.address().ip_address();
+              object_info.owner_port = actor_data.address().port();
+              object_info.owner_worker_id =
+                  WorkerID::FromBinary(actor_data.address().worker_id());
+
+              RAY_LOG(DEBUG) << "try to report object add " << object_id;
+              object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+            }
+          } else {
+            global_owner_address_[actor_id] = absl::optional<rpc::Address>();
+          }
+        },
+        [](Status status) {
+          // TO_BE_SOLVED(buniu): handler subscribe failed.
+          RAY_CHECK(status.ok()) << "CoreWorker Subscribe failed!";
+        }));
+  }
 
 }  // namespace raylet
 

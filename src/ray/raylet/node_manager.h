@@ -862,7 +862,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
-  
+
   absl::flat_hash_map<ActorID, absl::flat_hash_map<ObjectID, ObjectInfo>>
       objects_need_to_report_;
 

@@ -263,7 +263,9 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const absl::optional<NodeID> &pinned_at_raylet_id) {
+    const absl::optional<NodeID> &pinned_at_raylet_id,
+    const std::string &spilled_url,
+    const NodeID &spilled_node_id) {
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
@@ -304,6 +306,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   }
 
   if (!spilled_url.empty()) {
+    RAY_CHECK(!spilled_node_id.IsNil());
     it->second.spilled_url = spilled_url;
     it->second.spilled_node_id = spilled_node_id;
   }

@@ -774,7 +774,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               const int64_t object_size,
                               bool is_reconstructable,
                               bool add_local_ref,
-                              const absl::optional<NodeID> &pinned_at_raylet_id)
+                              const absl::optional<NodeID> &pinned_at_raylet_id,
+                              const std::string &spilled_url = "",
+                              const NodeID &spilled_node_id = NodeID::Nil())
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)

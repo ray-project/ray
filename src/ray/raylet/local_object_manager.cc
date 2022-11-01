@@ -27,7 +27,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     const std::vector<ActorID> &global_owner_ids,
     std::vector<std::unique_ptr<RayObject>> &&objects,
     const rpc::Address &owner_address,
-	const ObjectID &generator_id) {
+    const ObjectID &generator_id) {
   RAY_CHECK(object_ids.size() == global_owner_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
@@ -39,7 +39,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     const auto inserted = local_objects_.emplace(
-        object_id, LocalObjectInfo(owner_address, generator_id, object->GetSize(), global_owner_ids[i]));
+        object_id,
+        LocalObjectInfo(
+            owner_address, generator_id, object->GetSize(), global_owner_ids[i]));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;

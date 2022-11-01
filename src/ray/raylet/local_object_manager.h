@@ -179,17 +179,17 @@ class LocalObjectManager {
     LocalObjectInfo(const rpc::Address &owner_address,
                     const ObjectID &generator_id,
                     size_t object_size,
-					const ActorID &owner_id)
+                    const ActorID &owner_id)
         : owner_address(owner_address),
           generator_id(generator_id.IsNil() ? std::nullopt
                                             : std::optional<ObjectID>(generator_id)),
           object_size(object_size),
-		  global_owner_id(ActorID::FromBinary(owner_id.Binary())) {}
+          global_owner_id(ActorID::FromBinary(owner_id.Binary())) {}
     rpc::Address owner_address;
     bool is_freed = false;
     const std::optional<ObjectID> generator_id;
     size_t object_size;
-	ActorID global_owner_id;
+    ActorID global_owner_id;
   };
 
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);

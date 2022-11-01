@@ -984,7 +984,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
           rpc_address_,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
-		  {ActorID::Nil()},
+          {ActorID::Nil()},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
@@ -1137,8 +1137,12 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
                              const std::unique_ptr<rpc::Address> &owner_address,
                              const ActorID &global_owner_id,
                              std::string *spilled_url) {
-  auto status = SealExisting(
-      object_id, pin_object, ObjectID::Nil(), std::move(owner_address), global_owner_id, spilled_url);
+  auto status = SealExisting(object_id,
+                             pin_object,
+                             ObjectID::Nil(),
+                             std::move(owner_address),
+                             global_owner_id,
+                             spilled_url);
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1189,7 +1193,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         real_owner_address,
         {object_id},
         generator_id,
-		{global_owner_id},
+        {global_owner_id},
         [this, object_id, dump_object_callabeck = std::move(dump_object_callabeck)](
             const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -1223,7 +1227,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
-	  
+
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_LOG(INFO) << "CoreWorker::Get " << ids[i] << ", spilled_url: " << spilled_urls[i];
   }
@@ -2390,7 +2394,11 @@ Status CoreWorker::ExecuteTask(
 
       AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
-          dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
+          dynamic_return_id,
+          ObjectID::Nil(),
+          task_spec.CallerAddress(),
+          /*spilled_url=*/"",
+          /*spilled_node_id=*/NodeID::Nil());
     }
   }
 
@@ -2586,7 +2594,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         owner_address,
         {return_id},
         generator_id,
-		{ActorID::Nil()},
+        {ActorID::Nil()},
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
           if (!status.ok() || !reply.successes(0)) {
@@ -2612,7 +2620,11 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
       ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(
-      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+      return_id,
+      ObjectID::Nil(),
+      worker_context_.GetCurrentTask()->CallerAddress(),
+      /*spilled_url=*/"",
+      /*spilled_node_id=*/NodeID::Nil());
   return return_id;
 }
 

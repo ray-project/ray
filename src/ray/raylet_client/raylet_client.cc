@@ -499,7 +499,7 @@ void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,
     const ObjectID &generator_id,
-	const std::vector<ActorID> &global_owner_ids,
+    const std::vector<ActorID> &global_owner_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   RAY_CHECK(object_ids.size() == global_owner_ids.size());
   rpc::PinObjectIDsRequest request;
