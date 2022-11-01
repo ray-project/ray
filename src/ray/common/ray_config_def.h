@@ -88,7 +88,7 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
 
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold_fraction and free space is below min_memory_free_bytes then it
