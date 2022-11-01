@@ -7,7 +7,7 @@ import ray
 def test_multi_raise_exception_on_non_client(shutdown_only):
     with pytest.raises(
         RuntimeError,
-        match=("Do not pass the `allow_multiple` to " "`ray.init` to fix the issue."),
+        match=("Do not pass the `allow_multiple` to `ray.init` to fix the issue."),
     ):
         ray.init(allow_multiple=True)
 
