@@ -825,12 +825,9 @@ class Trial:
         return self.saving_to is not None
 
     def __repr__(self):
-        return self._trainable_name(include_trial_id=True)
+        return self._trainable_name + "_" + self.trial_id
 
-    def __str__(self):
-        return self._trainable_name(include_trial_id=True)
-
-    def _trainable_name(self, include_trial_id=False):
+    def _trainable_name(self):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overridden with a custom string creator.
@@ -845,8 +842,7 @@ class Trial:
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        if include_trial_id:
-            identifier += "_" + self.trial_id
+
         return identifier.replace("/", "_")
 
     def _generate_dirname(self):
