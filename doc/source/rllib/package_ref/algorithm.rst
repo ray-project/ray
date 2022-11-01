@@ -1,7 +1,7 @@
 .. algorithm-reference-docs:
 
-Algorithm API
-=============
+Algorithms
+==========
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib.
 It allows you to train and evaluate policies, save an experiment's progress and restore from
@@ -22,6 +22,30 @@ and thus fully supports distributed hyperparameter tuning for RL.
     a set of :py:class:`~ray.rllib.policy.Policy`(ies)
     and their NN models per worker, and a (already vectorized)
     RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` per worker.
+
+Defining Algorithms with the AlgorithmConfig Class
+--------------------------------------------------
+
+The :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class represents
+the primary way of configuring and building an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+
+Here's how you work with it.
+
+.. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
+    :members:
+
+
+Interacting with an Algorithm
+-----------------------------
+
+Once you've built an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you can use it
+to train and evaluate your experiments.
+
+Here's the full ``Algorithm`` API reference.
+
+.. autoclass:: ray.rllib.algorithms.algorithm.Algorithm
+    :members:
 
 
 Building Custom Algorithm Classes
