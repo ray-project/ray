@@ -326,11 +326,12 @@ def run(
     try:
         if is_config:
             client.deploy_app(config, _blocking=gradio)
+            cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+            cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
