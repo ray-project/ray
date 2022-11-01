@@ -422,9 +422,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically(
       [this]() {
         auto now = absl::Now();
-        auto threshold = now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
-        for(auto& [node_id, resource] : resource_message_udpated_) {
-          if(resource.second < threshold) {
+        auto threshold =
+            now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
+        for (auto &[node_id, resource] : resource_message_udpated_) {
+          if (resource.second < threshold) {
             resource.second = now;
             UpdateResourceUsage(node_id, resource.first);
           }
@@ -1060,7 +1061,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Remove the messages received
   resource_message_udpated_.erase(node_id);
-  
+
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
           scheduling::NodeID(node_id.Binary()))) {

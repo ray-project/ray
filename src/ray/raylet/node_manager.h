@@ -857,7 +857,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
   /// Resource message updated
-  absl::flat_hash_map<NodeID, std::pair<rpc::ResourcesData, absl::Time>> resource_message_udpated_;
+  absl::flat_hash_map<NodeID, std::pair<rpc::ResourcesData, absl::Time>>
+      resource_message_udpated_;
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
