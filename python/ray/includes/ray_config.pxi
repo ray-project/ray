@@ -156,3 +156,8 @@ cdef class Config:
     @staticmethod
     def health_check_failure_threshold():
         return RayConfig.instance().health_check_failure_threshold()
+
+    @staticmethod
+    def memory_monitor_interval_ms():
+        return (RayConfig.instance()
+                .memory_monitor_interval_ms())
