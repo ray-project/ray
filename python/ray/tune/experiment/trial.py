@@ -528,7 +528,7 @@ class Trial:
 
     @classmethod
     def generate_id(cls):
-        return str(uuid.uuid1().hex)[:8]
+        return str(uuid.uuid4().hex)[:8]
 
     @property
     def remote_checkpoint_dir(self):
