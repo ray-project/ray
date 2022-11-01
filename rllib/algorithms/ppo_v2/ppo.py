@@ -287,7 +287,7 @@ class PPO(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfigDict:
-        return PPOConfig().to_dict()
+        return PPOConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -386,10 +386,10 @@ class PPO(Algorithm):
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_policy import (
-                PPOTorchPolicy,
+                PPOTorchPolicyV2,
             )
 
-            return PPOTorchPolicy
+            return PPOTorchPolicyV2
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 

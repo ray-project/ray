@@ -5,7 +5,7 @@ import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
-    compute_gae_for_sample_batch,
+    compute_gae_for_sample_batch
 )
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -32,17 +32,26 @@ torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-from .ppo_torch_rl_module import SimplePPOModule, PPOModuleConfig, FCConfig
+from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_rl_module import (
+    SimplePPOModule, PPOModuleConfig, FCConfig
+)
 
-
-class PPOTorchPolicy(
-    # ValueNetworkMixin,
+class PPOTorchPolicyV2(
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with PPO."""
+    """PyTorch policy class used with PPO.
+    
+    This class is copied from PPOTorchPolicy (V1) and is modified to support RLModules.
+    Some subtle differences:
+    - if make_rl_module is implemented by the policy the policy is assumed to be v2 and self.model would be an RLModule
+    - Tower stats no longer belongs to the RLModule
+    - Connectors should be enabled to use this policy
+    - So far it only works for CartPole and Pendulum (needs model catalog to work for other obs and action spaces)
+
+    """
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
@@ -110,7 +119,6 @@ class PPOTorchPolicy(
         fwd_out = model.forward_train(train_batch)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         state = fwd_out.get("state_out", {})
-        breakpoint()
 
         # TODO (Kourosh): come back to RNNs later
         # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -133,9 +141,8 @@ class PPOTorchPolicy(
             mask = None
             reduce_mean_valid = torch.mean
 
-        prev_action_dist = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], model
-        )
+        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        prev_action_dist = action_dist_class(**train_batch[SampleBatch.ACTION_DIST_INPUTS])
 
         logp_ratio = torch.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
@@ -165,10 +172,8 @@ class PPOTorchPolicy(
 
         # Compute a value function loss.
         if self.config["use_critic"]:
-            value_fn_out = model.value_function()
-            vf_loss = torch.pow(
-                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0
-            )
+            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            vf_loss = (value_fn_out - train_batch[Postprocessing.VALUE_TARGETS])**2
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
@@ -187,16 +192,18 @@ class PPOTorchPolicy(
         if self.config["kl_coeff"] > 0.0:
             total_loss += self.kl_coeff * mean_kl_loss
 
+        # TODO (Kourosh) Where would tower_stats go? How should stats_fn be implemented 
+        # here?
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
-        model.tower_stats["total_loss"] = total_loss
-        model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
-        model.tower_stats["mean_vf_loss"] = mean_vf_loss
-        model.tower_stats["vf_explained_var"] = explained_variance(
+        self.tower_stats[model]["total_loss"] = total_loss
+        self.tower_stats[model]["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
+        self.tower_stats[model]["mean_vf_loss"] = mean_vf_loss
+        self.tower_stats[model]["vf_explained_var"] = explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
         )
-        model.tower_stats["mean_entropy"] = mean_entropy
-        model.tower_stats["mean_kl_loss"] = mean_kl_loss
+        self.tower_stats[model]["mean_entropy"] = mean_entropy
+        self.tower_stats[model]["mean_kl_loss"] = mean_kl_loss
 
         return total_loss
 
@@ -235,13 +242,12 @@ class PPOTorchPolicy(
     @override(TorchPolicyV2)
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
-    ):
-        return sample_batch
-        # # Do all post-processing always with no_grad().
-        # # Not using this here will introduce a memory leak
-        # # in torch (issue #6962).
-        # # TODO: no_grad still necessary?
-        # with torch.no_grad():
-        #     return compute_gae_for_sample_batch(
-        #         self, sample_batch, other_agent_batches, episode
-        #     )
+    ):  
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        # TODO: no_grad still necessary?
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
