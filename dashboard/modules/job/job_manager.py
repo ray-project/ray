@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -151,7 +152,7 @@ class JobSupervisor:
         gcs_aio_client = GcsAioClient(address=gcs_address)
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
-        self._driver_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
 
         # Default metadata if not passed by the user.
@@ -163,6 +164,16 @@ class JobSupervisor:
 
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
+
+    def _get_driver_runtime_env(self) -> Dict[str, Any]:
+        # Get the runtime_env set for the supervisor actor.
+        curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
+        # & actors.
+        env_vars = curr_runtime_env.get("env_vars", {})
+        env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        curr_runtime_env["env_vars"] = env_vars
+        return curr_runtime_env
 
     def ping(self):
         """Used to check the health of the actor."""
@@ -518,6 +529,26 @@ class JobManager:
         if result is None:
             return
 
+    def _get_supervisor_runtime_env(
+        self, user_runtime_env: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Configure and return the runtime_env for the supervisor actor."""
+        # Make a copy to avoid mutating passed runtime_env.
+        runtime_env = (
+            copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
+        )
+        # NOTE(edoakes): Can't use .get(, {}) here because we need to handle the case
+        # where env_vars is explicitly set to `None`.
+        env_vars = runtime_env.get("env_vars")
+        if env_vars is None:
+            env_vars = {}
+        # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
+        # driver can use GPUs if it wants to. This will be removed from
+        # the driver's runtime_env so it isn't inherited by tasks & actors.
+        env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+        runtime_env["env_vars"] = env_vars
+        return runtime_env
+
     async def _get_scheduling_strategy(
         self, resources_specified: bool
     ) -> SchedulingStrategyT:
@@ -633,7 +664,7 @@ class JobManager:
             status=JobStatus.PENDING,
             start_time=int(time.time() * 1000),
             metadata=metadata,
-            runtime_env=runtime_env,
+            runtime_env=self._get_supervisor_runtime_env(runtime_env),
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
