@@ -121,7 +121,8 @@ Here's a simple example combining a preprocess function and model.
 
 ## What's Next?
 Now that you have learned the key concepts, you can dive into the [User Guide](user-guide):
-- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Serve Scaling](serve-scaling)
+- [CPU and GPU support and custom resource](serve-cpus-gpus)
 - [Configuring HTTP logic and integrating with FastAPI](http-guide)
 - [Development workflow for Serve applications](dev-workflow)
 - [Composing deployments to perform model composition](model_composition)
