@@ -22,53 +22,6 @@
 #include <unordered_map>
 
 using namespace boost;
-
-// Copied from
-// https://stackoverflow.com/questions/14191855/how-do-you-mock-the-time-for-boost-timers
-class mock_time_traits {
-  typedef boost::asio::deadline_timer::traits_type source_traits;
-
- public:
-  typedef source_traits::time_type time_type;
-  typedef source_traits::duration_type duration_type;
-
-  // Note this implemenation requires set_now(...) to be called before now()
-  static time_type now() { return *now_; }
-
-  // After modifying the clock, we need to sleep the thread to give the io_service
-  // the opportunity to poll and notice the change in clock time
-  static void set_now(time_type t) {
-    now_ = t;
-    boost::this_thread::sleep_for(boost::chrono::milliseconds(2));
-  }
-
-  static time_type add(time_type t, duration_type d) { return source_traits::add(t, d); }
-  static duration_type subtract(time_type t1, time_type t2) {
-    return source_traits::subtract(t1, t2);
-  }
-  static bool less_than(time_type t1, time_type t2) {
-    return source_traits::less_than(t1, t2);
-  }
-
-  // This function is called by asio to determine how often to check
-  // if the timer is ready to fire. By manipulating this function, we
-  // can make sure asio detects changes to now_ in a timely fashion.
-  static boost::posix_time::time_duration to_posix_duration(duration_type d) {
-    return d < boost::posix_time::milliseconds(1) ? d
-                                                  : boost::posix_time::milliseconds(1);
-  }
-
- private:
-  static boost::optional<time_type> now_;
-};
-
-boost::optional<mock_time_traits::time_type> mock_time_traits::now_;
-
-using mock_deadline_timer =
-    boost::asio::basic_deadline_timer<boost::posix_time::ptime, mock_time_traits>;
-
-#define _TESTING_RAY_TIMER mock_deadline_timer
-
 #include <ray/rpc/grpc_server.h>
 
 #include <chrono>
@@ -82,12 +35,17 @@ using namespace std::literals::chrono_literals;
 
 class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
+  GcsHealthCheckManagerTest() {}
   void SetUp() override {
     grpc::EnableDefaultHealthCheckService(true);
-    mock_time_traits::set_now(
-        boost::posix_time::time_from_string("2022-01-20 0:0:0.000"));
+
     health_check = std::make_unique<gcs::GcsHealthCheckManager>(
-        io_service, [this](const NodeID &id) { dead_nodes.insert(id); });
+        io_service,
+        [this](const NodeID &id) { dead_nodes.insert(id); },
+        initial_delay_ms,
+        timeout_ms,
+        period_ms,
+        failure_threshold);
     port = 10000;
   }
 
@@ -139,18 +97,6 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  void AdvanceInitialDelay() {
-    auto delta = boost::posix_time::millisec(
-        RayConfig::instance().health_check_initial_delay_ms() + 10);
-    mock_time_traits::set_now(mock_time_traits::now() + delta);
-  }
-
-  void AdvanceNextDelay() {
-    auto delta =
-        boost::posix_time::millisec(RayConfig::instance().health_check_period_ms() + 10);
-    mock_time_traits::set_now(mock_time_traits::now() + delta);
-  }
-
   void Run(size_t n = 1) {
     // If n == 0 it mean we just run it and return.
     if (n == 0) {
@@ -171,6 +117,10 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
+  const int64_t initial_delay_ms = 1000;
+  const int64_t timeout_ms = 1000;
+  const int64_t period_ms = 1000;
+  const int64_t failure_threshold = 5;
 };
 
 TEST_F(GcsHealthCheckManagerTest, TestBasic) {
@@ -179,17 +129,14 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
-  AdvanceInitialDelay();
   Run();
   ASSERT_TRUE(dead_nodes.empty());
 
-  AdvanceNextDelay();
   Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   StopServing(node_id);
 
-  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
-    AdvanceNextDelay();
+  for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
@@ -205,19 +152,16 @@ TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
-  AdvanceInitialDelay();
   Run();
   ASSERT_TRUE(dead_nodes.empty());
 
-  AdvanceNextDelay();
   Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   StopServing(node_id);
 
-  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
-    AdvanceNextDelay();
+  for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
-    if (i == (RayConfig::instance().health_check_failure_threshold()) / 2) {
+    if (i == failure_threshold / 2) {
       StartServing(node_id);
     }
   }
@@ -233,23 +177,19 @@ TEST_F(GcsHealthCheckManagerTest, Crashed) {
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
-  AdvanceInitialDelay();
   Run();
   ASSERT_TRUE(dead_nodes.empty());
 
-  AdvanceNextDelay();
   Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
 
   // Check it again
-  AdvanceNextDelay();
   Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
 
   DeleteServer(node_id);
 
-  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
-    AdvanceNextDelay();
+  for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
@@ -265,18 +205,15 @@ TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
   ASSERT_TRUE(dead_nodes.empty());
 
   // Run the first health check
-  AdvanceInitialDelay();
   Run();
   ASSERT_TRUE(dead_nodes.empty());
 
-  AdvanceNextDelay();
   Run(2);  // One for starting RPC and one for the RPC callback.
   ASSERT_TRUE(dead_nodes.empty());
   health_check->RemoveNode(node_id);
 
   // Make sure it's not monitored any more
-  for (auto i = 0; i < RayConfig::instance().health_check_failure_threshold(); ++i) {
-    AdvanceNextDelay();
+  for (auto i = 0; i < failure_threshold; ++i) {
     io_service.poll();
   }
 

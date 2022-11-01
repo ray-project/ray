@@ -80,12 +80,7 @@ class GcsHealthCheckManager {
   /// \param node_id The id of the node.
   void FailNode(const NodeID &node_id);
 
-  /// This is for testing. We'll use mock timer in gtest.
-#if defined(_TESTING_RAY_TIMER)
-  using Timer = _TESTING_RAY_TIMER;
-#else
   using Timer = boost::asio::deadline_timer;
-#endif
 
   /// The context for the health check. It's to support unary call.
   /// It can be updated to support streaming call for efficiency.
