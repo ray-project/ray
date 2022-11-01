@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1667341518093,
+  "iteration": 1667344411089,
   "links": [],
   "panels": [
     {
@@ -143,7 +143,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
-      "description": "Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+      "description": "Current number of (live) tasks with a particular name.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -155,6 +155,110 @@
         "w": 12,
         "x": 12,
         "y": 1
+      },
+      "hiddenSeries": false,
+      "id": 35,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
+        "max": false,
+        "min": false,
+        "rightSide": false,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "sum(ray_tasks{State!~\"FINISHED|FAILED\"}) by (Name)",
+          "interval": "",
+          "legendFormat": "{{Name}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Active Tasks by Name",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:628",
+          "format": "tasks",
+          "label": "",
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "$$hashKey": "object:629",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
+      "description": "Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
       },
       "hiddenSeries": false,
       "id": 33,
@@ -247,6 +351,110 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
+      "description": "Current number of (live) actors with a particular name.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "hiddenSeries": false,
+      "id": 36,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
+        "max": false,
+        "min": false,
+        "rightSide": false,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "sum(ray_actors) by (Name)",
+          "interval": "",
+          "legendFormat": "{{Name}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Active Actors by Name",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:628",
+          "format": "actors",
+          "label": "",
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "$$hashKey": "object:629",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
       "description": "Ray's object store memory usage. The dotted line indicates the maximum amount of object store memory from the cluster. \n\nThe total object store memory is dynamically decided by Ray based on the available memory when Ray starts (`ray start`) unless --object-store-memory is specified.\n\nRay objects can be in 3 different states. \n\nUNSEALED: Object is being written to the object store.\n\nIN_MEMORY: Object is in shared memory.\n\nSPILLED: Object is spilled to a disk because the shared memory is full. ",
       "fieldConfig": {
         "defaults": {},
@@ -258,7 +466,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 29,
@@ -380,7 +588,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 27,
@@ -502,8 +710,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 17
+        "x": 0,
+        "y": 25
       },
       "hiddenSeries": false,
       "id": 28,
@@ -612,7 +820,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "id": 14,
       "panels": [],
@@ -638,7 +846,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 34
       },
       "hiddenSeries": false,
       "id": 2,
@@ -757,7 +965,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 34
       },
       "hiddenSeries": false,
       "id": 8,
@@ -880,7 +1088,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "hiddenSeries": false,
       "id": 6,
@@ -1005,7 +1213,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 41
       },
       "hiddenSeries": false,
       "id": 4,
@@ -1124,7 +1332,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 48
       },
       "hiddenSeries": false,
       "id": 18,
@@ -1246,7 +1454,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 48
       },
       "hiddenSeries": false,
       "id": 34,
@@ -1345,25 +1553,27 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
-      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
+      "decimals": 2,
+      "description": "",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "fill": 0,
+      "fill": 10,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 55
       },
       "hiddenSeries": false,
-      "id": 24,
+      "id": 32,
       "legend": {
         "alignAsTable": true,
         "avg": false,
         "current": true,
+        "hideEmpty": false,
         "max": false,
         "min": false,
         "rightSide": true,
@@ -1386,37 +1596,30 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": false,
+      "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_cluster_active_nodes{cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_disk_io_write_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Active Nodes ({{node_type}})",
+          "legendFormat": "Write: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
           "exemplar": true,
-          "expr": "ray_cluster_failed_nodes{cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_disk_io_read_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Failed Nodes {{node_type}}",
+          "legendFormat": "Read: {{instance}}",
           "refId": "B"
-        },
-        {
-          "exemplar": true,
-          "expr": "ray_cluster_pending_nodes{cluster_id=\"$cluster_id\"}",
-          "interval": "",
-          "legendFormat": "Pending Nodes ({{node_type}})",
-          "refId": "C"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Count",
+      "title": "Node Disk IO",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1432,16 +1635,16 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:1110",
-          "format": "nodes",
-          "label": "",
+          "$$hashKey": "object:2779",
+          "format": "Bps",
+          "label": null,
           "logBase": 1,
           "max": null,
           "min": null,
           "show": true
         },
         {
-          "$$hashKey": "object:1111",
+          "$$hashKey": "object:2780",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1475,7 +1678,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 55
       },
       "hiddenSeries": false,
       "id": 20,
@@ -1574,27 +1777,25 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
-      "decimals": 2,
-      "description": "",
+      "description": "A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "fill": 10,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 7,
         "w": 12,
-        "x": 12,
-        "y": 54
+        "x": 0,
+        "y": 62
       },
       "hiddenSeries": false,
-      "id": 32,
+      "id": 24,
       "legend": {
         "alignAsTable": true,
         "avg": false,
         "current": true,
-        "hideEmpty": false,
         "max": false,
         "min": false,
         "rightSide": true,
@@ -1617,30 +1818,37 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": true,
+      "stack": false,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_disk_io_write_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_cluster_active_nodes{cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Write: {{instance}}",
+          "legendFormat": "Active Nodes ({{node_type}})",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
           "exemplar": true,
-          "expr": "ray_node_disk_io_read_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_cluster_failed_nodes{cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Read: {{instance}}",
+          "legendFormat": "Failed Nodes {{node_type}}",
           "refId": "B"
+        },
+        {
+          "exemplar": true,
+          "expr": "ray_cluster_pending_nodes{cluster_id=\"$cluster_id\"}",
+          "interval": "",
+          "legendFormat": "Pending Nodes ({{node_type}})",
+          "refId": "C"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Disk IO",
+      "title": "Node Count",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1656,16 +1864,16 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:2779",
-          "format": "Bps",
-          "label": null,
+          "$$hashKey": "object:1110",
+          "format": "nodes",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": null,
           "show": true
         },
         {
-          "$$hashKey": "object:2780",
+          "$$hashKey": "object:1111",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1753,5 +1961,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 4
 }
