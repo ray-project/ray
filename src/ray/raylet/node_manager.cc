@@ -427,8 +427,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
     periodical_runner_.RunFnPeriodically(
         [this]() {
           auto now = absl::Now();
-          auto threshold =
-              now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
+          auto threshold = now - absl::Milliseconds(
+                                     RayConfig::instance().message_refresh_interval_ms());
           for (auto &[node_id, resource] : resource_message_udpated_) {
             if (resource.second < threshold) {
               resource.second = now;
