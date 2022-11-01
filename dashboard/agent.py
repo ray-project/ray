@@ -180,12 +180,17 @@ class DashboardAgent:
                     parent = curr_proc.parent()
                     # If the parent is dead, it is None.
                     parent_gone = parent is None
-                    # Sometimes, the parent is changed to the `init` process.
-                    # In this case, the parent.pid is 1.
-                    init_assigned_for_parent = parent.pid == 1
-                    # Sometimes, the parent is dead, and the pid is reused
-                    # by other processes. In this case, this condition is triggered.
-                    parent_changed = self.ppid != parent.pid
+                    init_assigned_for_parent = False
+                    parent_changed = False
+
+                    if parent:
+                        # Sometimes, the parent is changed to the `init` process.
+                        # In this case, the parent.pid is 1.
+                        init_assigned_for_parent = parent.pid == 1
+                        # Sometimes, the parent is dead, and the pid is reused
+                        # by other processes. In this case, this condition is triggered.
+                        parent_changed = self.ppid != parent.pid
+
                     if parent_gone or init_assigned_for_parent or parent_changed:
                         parent_death_cnt += 1
                         logger.warning(
@@ -257,7 +262,7 @@ class DashboardAgent:
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:

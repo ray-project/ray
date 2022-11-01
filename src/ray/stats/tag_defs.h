@@ -50,11 +50,6 @@ extern const TagKeyType NameKey;
 
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
-constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
-constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
+constexpr char kObjectLocInMemory[] = "IN_MEMORY";
 constexpr char kObjectLocSpilled[] = "SPILLED";
-
-// Object store memory sealed/unsealed tag
-extern const TagKeyType ObjectStateKey;
-constexpr char kObjectSealed[] = "SEALED";
-constexpr char kObjectUnsealed[] = "UNSEALED";
+constexpr char kObjectLocUnsealed[] = "UNSEALED";
