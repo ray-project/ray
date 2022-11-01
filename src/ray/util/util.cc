@@ -17,10 +17,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef _WIN32
-#include <afunix.h>
+/// NOTE(NKcqx): <afunix.h> contains the usage of socket address family 
+/// that can be imported from different headers based on OS. 
+/// In Win10, this socket address family is defined in <ws2def.h>
+/// which can be imported by <winsock2.h>, therefore the <afunix.h> 
+/// must be imported after it.
+// clang-format off
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <afunix.h>
+// clang-format on
 #else
 #include <sys/un.h>
 #endif
