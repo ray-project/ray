@@ -36,36 +36,11 @@ class BatchingNodeProvider(NodeProvider):
     """
 
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
-        self.provider_config = provider_config
-        self.cluster_name = cluster_name
-        self._internal_ip_cache: Dict[str, str] = {}
-        self._external_ip_cache: Dict[str, str] = {}
-
-    def is_readonly(self) -> bool:
-        """Returns whether this provider is readonly.
-
-        Readonly node providers do not allow nodes to be created or terminated.
-        """
-        return False
+        NodeProvider.__init__(self, provider_config, cluster_name)
+        self.node_data = {}
+        self.scale_request = ScaleRequest()
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
-        """Return a list of node ids filtered by the specified tags dict.
-
-        This list must not include terminated nodes. For performance reasons,
-        providers are allowed to cache the result of a call to
-        non_terminated_nodes() to serve single-node queries
-        (e.g. is_running(node_id)). This means that non_terminate_nodes() must
-        be called again to refresh results.
-
-        Examples:
-            >>> from ray.autoscaler.node_provider import NodeProvider
-            >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
-            >>> provider = NodeProvider(...) # doctest: +SKIP
-            >>> provider.non_terminated_nodes( # doctest: +SKIP
-            ...     {TAG_RAY_NODE_KIND: "worker"})
-            ["node-1", "node-2"]
-
-        """
         self.node_data = self.get_node_data()
         self.scale_request = ScaleRequest(
             desired_num_workers=self.get_cur_num_workers(node_data),
