@@ -55,6 +55,8 @@ parts:
             sections:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
+              - file: data/examples/batch_training
+                title: Batch training on the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example

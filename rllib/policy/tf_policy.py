@@ -9,7 +9,7 @@ import tree  # pip install dm_tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import Policy, PolicyState, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -65,6 +65,18 @@ class TFPolicy(Policy):
         >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
+
+    # In order to create tf_policies from checkpoints, this class needs to separate
+    # variables into their own scopes. Normally, we would do this in the model
+    # catalog, but since Policy.from_state() can be called anywhere, we need to
+    # keep track of it here to not break the from_state API.
+    tf_var_creation_scope_counter = 0
+
+    @staticmethod
+    def next_tf_var_scope_name():
+        # Tracks multiple instances that are spawned from this policy via .from_state()
+        TFPolicy.tf_var_creation_scope_counter += 1
+        return f"var_scope_{TFPolicy.tf_var_creation_scope_counter}"
 
     @DeveloperAPI
     def __init__(
@@ -453,6 +465,46 @@ class TFPolicy(Policy):
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
+    @staticmethod
+    def _tf1_from_state_helper(state: PolicyState) -> "Policy":
+        """Recovers a TFPolicy from a state object.
+
+        The `state` of an instantiated TFPolicy can be retrieved by calling its
+        `get_state` method. Is meant to be used by the Policy.from_state() method to
+        aid with tracking variable creation.
+
+        Args:
+            state: The state to recover a new TFPolicy instance from.
+
+        Returns:
+            A new TFPolicy instance.
+        """
+        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
+        if serialized_pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! "
+                "Cannot create new Policy."
+            )
+        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+
+        with tf1.variable_scope(TFPolicy.next_tf_var_scope_name()):
+            # Create the new policy.
+            new_policy = pol_spec.policy_class(
+                # Note(jungong) : we are intentionally not using keyward arguments here
+                # because some policies name the observation space parameter obs_space,
+                # and some others name it observation_space.
+                pol_spec.observation_space,
+                pol_spec.action_space,
+                pol_spec.config,
+            )
+
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+
+        # Return the new policy.
+        return new_policy
+
     @override(Policy)
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
@@ -517,7 +569,7 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
