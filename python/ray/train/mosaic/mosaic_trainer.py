@@ -215,10 +215,18 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))
 
+    # resume from checkpoint if checkpoint exists
+    checkpoint = session.get_checkpoint()
+    if checkpoint:
+        f_name = "rank{rank}.pt".format(rank=os.environ["RANK"])
+        load_path = checkpoint.to_path(f_name)
+        config["load_path"] = load_path
     # initialize Composer trainer
     trainer: Trainer = trainer_init_per_worker(config)
 

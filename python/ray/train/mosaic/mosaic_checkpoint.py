@@ -1,5 +1,7 @@
-from ray.air.checkpoint import Checkpoint
+import os
 import torch
+
+from ray.air.checkpoint import Checkpoint
 
 
 class MosaicCheckpoint(Checkpoint):
@@ -28,4 +30,9 @@ class MosaicCheckpoint(Checkpoint):
     @classmethod
     def from_path(cls, path: str):
         composer_state_dict = torch.load(path)
-        return super().from_dict(composer_state_dict)
+        return cls.from_dict(composer_state_dict)
+
+    def to_path(self, path: str):
+        with open(path, "wb") as f:
+            torch.save(self.to_dict(), f)
+        return os.path.join(os.getcwd(), path)

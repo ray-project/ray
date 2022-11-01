@@ -316,6 +316,8 @@ def test_checkpoint_model(ray_start_4_cpus):
     result = trainer.fit()
     checkpoint_dict = result.checkpoint.to_dict()
     assert "state" in checkpoint_dict
+    print(checkpoint_dict.keys())
+    print(checkpoint_dict["state"].keys())
 
     loaded_model = result.checkpoint.get_model(model)
     trainer_init_config = {
@@ -334,6 +336,95 @@ def test_checkpoint_model(ray_start_4_cpus):
     # Accuracy should increase after two additional epochs of training
     acc_key = "metrics/train/Accuracy"
     assert result.metrics[acc_key] <= result2.metrics[acc_key]
+
+
+class TestResumedTraining:
+    """Tests resuming training from a checkpoint. When resuming training, the max
+    duration should be properly set.
+    """
+
+    def test_resume_from_checkpoint(self, ray_start_4_cpus):
+        """
+        Resuming training without changing the max duration results in ValueError
+        """
+        from ray.train.mosaic import MosaicTrainer
+
+        trainer_init_config = {"max_duration": "1ep"}
+
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+        )
+
+        result = trainer.fit()
+
+        # Same `max_duration`` results in `ValueError`
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+            resume_from_checkpoint=result.checkpoint,
+        )
+
+        with pytest.raises(ValueError):
+            trainer.fit().error
+
+        # Train for 1 more epoch, so a total of 2 epochs.
+        trainer_init_config["max_duration"] = "2ep"
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+            resume_from_checkpoint=result.checkpoint,
+        )
+
+        result2 = trainer.fit()
+        assert (
+            result.metrics_dataframe["iterations_since_restore"].max()
+            == result2.metrics_dataframe["iterations_since_restore"].max()
+        )
+
+    def test_resume_from_checkpoint_after_early_stopping(self, ray_start_4_cpus):
+        # Test Early Stopper Callback
+        # Note that composer library epoch starts at 1 when a stopper callback is
+        # applied
+        from ray.train.mosaic import MosaicTrainer
+
+        from composer.callbacks.threshold_stopper import ThresholdStopper
+
+        # the training should stop after the 2nd epoch
+        trainer_init_config = {
+            "max_duration": "5ep",
+            "should_eval": True,
+            "log_keys": ["metrics/my_evaluator/Accuracy"],
+            "callbacks": ThresholdStopper("Accuracy", "my_evaluator", 0.0),
+        }
+
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+        )
+
+        result = trainer.fit()
+
+        assert list(result.metrics_dataframe["epoch"])[0] == 1
+        assert result.metrics["epoch"] == 1
+
+        # Remove callbacks and resume -- finish up to 5 epochs
+        trainer_init_config["callbacks"] = []
+
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+            resume_from_checkpoint=result.checkpoint,
+        )
+
+        result = trainer.fit()
+
+        assert result.metrics["epoch"] == 5
 
 
 if __name__ == "__main__":
