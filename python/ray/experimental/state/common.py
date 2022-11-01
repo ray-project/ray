@@ -477,9 +477,9 @@ class TaskState(StateSchema):
     #: breakdowns and typical state transition flow.
     #:
     scheduling_state: TypeTaskStatus = state_column(filterable=True)
-    #: The job id of this actor.
+    #: The job id of this task.
     job_id: str = state_column(filterable=True)
-    #: The node id of the task. If the task is retried, it could
+    #: Id of the node that runs the task. If the task is retried, it could
     #: contain the node id of the previous executed task.
     #: If empty, it means the task hasn't been scheduled yet.
     node_id: str = state_column(filterable=True)
