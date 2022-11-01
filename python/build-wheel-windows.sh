@@ -39,6 +39,10 @@ Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 
 Update-SessionEnvironment
 
+# Print out the list of env vars we're going to export.
+# Sometimes the bash source fails, this will help with debugging.
+gci env:
+
 # Round brackets in variable names cause problems with bash
 Get-ChildItem env:* | %{
   if (!($_.Name.Contains('('))) {
