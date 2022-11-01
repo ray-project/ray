@@ -3,11 +3,13 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.logger import pretty_print
 
 
-algo = PPOConfig()\
-    .rollouts(num_rollout_workers=1)\
-    .resources(num_gpus=0)\
-    .environment(env="CartPole-v1")\
+algo = (
+    PPOConfig()
+    .rollouts(num_rollout_workers=1)
+    .resources(num_gpus=0)
+    .environment(env="CartPole-v1")
     .build()
+)
 
 for i in range(1000):
     result = algo.train()
@@ -35,7 +37,9 @@ config = {
 
 tuner = tune.Tuner(
     "PPO",
-    run_config=air.RunConfig(stop={"episode_reward_mean": 200},),
+    run_config=air.RunConfig(
+        stop={"episode_reward_mean": 200},
+    ),
     param_space=config,
 )
 
@@ -50,21 +54,20 @@ results = ray.tune.Tuner(
     run_config=air.RunConfig(
         stop={"episode_reward_mean": 200},
         checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
-    )).fit()
+    ),
+).fit()
 
 # list of lists: one list per checkpoint; each checkpoint list contains
 # 1st the path, 2nd the metric value
 checkpoints = results.get_trial_checkpoints_paths(
-    trial=results.get_best_trial("episode_reward_mean"),
-    metric="episode_reward_mean")
+    trial=results.get_best_trial("episode_reward_mean"), metric="episode_reward_mean"
+)
 
 # or simply get the last checkpoint (with highest "training_step")
 last_checkpoint = results.get_last_checkpoint()
 # if there are multiple trials, select a specific trial or automatically
 # choose the best one according to a given metric
-last_checkpoint = results.get_last_checkpoint(
-    metric="episode_reward_mean", mode="max"
-)
+last_checkpoint = results.get_last_checkpoint(metric="episode_reward_mean", mode="max")
 # __rllib-tuner-end__
 
 
