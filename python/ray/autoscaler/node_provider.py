@@ -244,3 +244,8 @@ class NodeProvider:
     ) -> Dict[str, Any]:
         """Fills out missing "resources" field for available_node_types."""
         return cluster_config
+
+    def post_process() -> None:
+        """This optional method is executed at the end of StandardAutoscaler._update().
+        """
+        pass
