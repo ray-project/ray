@@ -390,13 +390,22 @@ class RayParams:
                 )
 
         if self.resources is not None:
-            assert "CPU" not in self.resources, (
-                "'CPU' should not be included in the resource dictionary. Use "
-                "num_cpus instead."
-            )
-            assert "GPU" not in self.resources, (
-                "'GPU' should not be included in the resource dictionary. Use "
-                "num_gpus instead."
+
+            def build_error(resource, alternative):
+                return (
+                    f"{self.resources} -> `{resource}` cannot be a "
+                    "custom resource because it is one of the default resources "
+                    f"({ray_constants.DEFAULT_RESOURCES}). "
+                    f"Use `{alternative}` instead. For example, use `ray start "
+                    f"--{alternative.replace('_', '-')}=1` instead of "
+                    f"`ray start --resources={{'{resource}': 1}}`"
+                )
+
+            assert "CPU" not in self.resources, build_error("CPU", "num_cpus")
+            assert "GPU" not in self.resources, build_error("GPU", "num_gpus")
+            assert "memory" not in self.resources, build_error("memory", "memory")
+            assert "object_store_memory" not in self.resources, build_error(
+                "object_store_memory", "object_store_memory"
             )
 
         if self.redirect_output is not None:
