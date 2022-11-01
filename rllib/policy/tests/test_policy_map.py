@@ -30,7 +30,7 @@ class TestPolicyMap(unittest.TestCase):
         act_space = gym.spaces.Discrete(2)
         num_policies = 6
 
-        cls = get_tf_eager_cls_if_necessary(PPOTF2Policy, config.to_dict())
+        cls = get_tf_eager_cls_if_necessary(PPOTF2Policy, config)
 
         # Create empty PolicyMap.
         policy_map = PolicyMap(capacity=2)
@@ -86,7 +86,7 @@ class TestPolicyMap(unittest.TestCase):
         act_space = gym.spaces.Discrete(2)
         num_policies = 6
 
-        cls = get_tf_eager_cls_if_necessary(PPOTF2Policy, config.to_dict())
+        cls = get_tf_eager_cls_if_necessary(PPOTF2Policy, config)
 
         # Create empty, swappable-policies PolicyMap.
         policy_map = PolicyMap(capacity=2, policies_swappable=True)

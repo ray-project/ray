@@ -961,11 +961,32 @@ class Policy(metaclass=ABCMeta):
             state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
-        self.set_weights(state["weights"])
         if "policy_spec" in state:
+            policy_spec = state["policy_spec"]
             # Assert spaces remained the same.
-            if
+            if (
+                space_from_dict(policy_spec["observation_space"])
+                != self.observation_space
+            ):
+                logger.warning(
+                    "`observation_space` in given policy state ("
+                    f"{policy_spec.observation_space}) does not match this Policy's "
+                    f"observation space ({self.observation_space})."
+                )
+            if (
+                space_from_dict(policy_spec["action_space"])
+                != self.action_space
+            ):
+                logger.warning(
+                    "`action_space` in given policy state ("
+                    f"{policy_spec.action_space}) does not match this Policy's "
+                    f"action space ({self.action_space})."
+                )
+            # Override config.
+            self.config = policy_spec["config"]
 
+        # Override NN weights.
+        self.set_weights(state["weights"])
         self.restore_connectors(state)
 
     @ExperimentalAPI
