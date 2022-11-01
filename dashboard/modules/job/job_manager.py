@@ -643,7 +643,6 @@ class JobManager:
                 the entrypoint command. Defaults to 0.
             resources: The quantity of various custom resources
                 to reserve for the entrypoint command.
-            entrypoint_resources: Resources to allocate for the driver.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
