@@ -94,7 +94,6 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
-        self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
 
@@ -198,8 +197,8 @@ class MARWILConfig(AlgorithmConfig):
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MARWILConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MARWILConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

@@ -13,6 +13,7 @@ import logging
 from typing import List, Optional, Type, Callable
 import numpy as np
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
@@ -330,8 +331,8 @@ def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
 class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DQNConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DQNConfig()
 
     @override(SimpleQ)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
