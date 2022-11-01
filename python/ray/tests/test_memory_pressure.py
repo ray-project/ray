@@ -1,4 +1,5 @@
 from math import ceil
+import os
 import sys
 import time
 
@@ -436,6 +437,27 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
             ),
             timeout=90,
         )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_legacy_memory_monitor_disabled_by_oom_killer():
+    os.environ["RAY_MEMORY_MONITOR_ERROR_THRESHOLD"] = "0.5"
+    with ray.init(
+        _system_config={
+            "memory_monitor_interval_ms": 50,
+            "memory_usage_threshold_fraction": 0.9,
+            "min_memory_free_bytes": -1,
+        },
+    ):
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.7)
+        leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
+        ray.get(leaker.allocate.remote(bytes_to_alloc))
+
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
+        ray.get(leaker.allocate.remote(allocate_bytes=bytes_to_alloc, sleep_time_s=10))
 
 
 if __name__ == "__main__":
