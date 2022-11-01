@@ -17,10 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef _WIN32
-/// NOTE(NKcqx): <afunix.h> contains the usage of socket address family 
-/// that can be imported from different headers based on OS. 
+/// NOTE(NKcqx): <afunix.h> contains the usage of socket address family
+/// that can be imported from different headers based on OS.
 /// In Win10, this socket address family is defined in <ws2def.h>
-/// which can be imported by <winsock2.h>, therefore the <afunix.h> 
+/// which can be imported by <winsock2.h>, therefore the <afunix.h>
 /// must be imported after it.
 // clang-format off
 #include <windows.h>
@@ -34,11 +34,11 @@
 
 #include <algorithm>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <boost/asio/local/stream_protocol.hpp>
-#include <boost/asio/ip/tcp.hpp>
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
