@@ -330,7 +330,7 @@ def run(
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+        cli_logger.success("Submitted deploy config successfully.")
 
         if gradio:
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
