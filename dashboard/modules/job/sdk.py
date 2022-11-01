@@ -3,7 +3,11 @@ import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
 from pkg_resources import packaging
-from ray.dashboard.utils import get_address_for_submission_client
+from ray.dashboard.utils import (
+    get_address_for_submission_client,
+    strip_keys_with_value_none,
+)
+
 
 try:
     import aiohttp
@@ -205,10 +209,10 @@ class JobSubmissionClient(SubmissionClient):
             resources=resources,
         )
 
-        json_data = dataclasses.asdict(req)
-        # Remove keys with None values so that new clients with new optional fields
-        # are still compatible with older servers.
-        json_data = {k: v for k, v in json_data.items() if v is not None}
+        # Remove keys with value None so that new clients with new optional fields
+        # are still compatible with older servers.  This is also done on the server,
+        # but we do it here as well to be extra defensive.
+        json_data = strip_keys_with_value_none(dataclasses.asdict(req))
 
         logger.debug(f"Submitting job with submission_id={submission_id}.")
         r = self._do_request("POST", "/api/jobs/", json_data=json_data)
