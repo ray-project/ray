@@ -973,10 +973,7 @@ class Policy(metaclass=ABCMeta):
                     f"{policy_spec.observation_space}) does not match this Policy's "
                     f"observation space ({self.observation_space})."
                 )
-            if (
-                space_from_dict(policy_spec["action_space"])
-                != self.action_space
-            ):
+            if space_from_dict(policy_spec["action_space"]) != self.action_space:
                 logger.warning(
                     "`action_space` in given policy state ("
                     f"{policy_spec.action_space}) does not match this Policy's "
