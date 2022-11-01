@@ -191,7 +191,7 @@ class TestWandbLogger:
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
 
-    def test_wandb_logger_start(self, monkeypatch):
+    def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
         # API Key in env
         logger = WandbTestExperimentLogger(project="test_project")
