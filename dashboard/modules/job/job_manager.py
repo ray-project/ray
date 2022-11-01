@@ -533,15 +533,18 @@ class JobManager:
         self, user_runtime_env: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor."""
+
         # Make a copy to avoid mutating passed runtime_env.
         runtime_env = (
             copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
         )
+
         # NOTE(edoakes): Can't use .get(, {}) here because we need to handle the case
         # where env_vars is explicitly set to `None`.
         env_vars = runtime_env.get("env_vars")
         if env_vars is None:
             env_vars = {}
+
         # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
         # driver can use GPUs if it wants to. This will be removed from
         # the driver's runtime_env so it isn't inherited by tasks & actors.
@@ -563,7 +566,7 @@ class JobManager:
                 (CPUs, GPUs, or custom).
 
         Returns:
-            SchedulingStrategyT: The scheduling strategy to use for the job.
+            The scheduling strategy to use for the job.
         """
         if resources_specified:
             return "DEFAULT"
@@ -664,7 +667,7 @@ class JobManager:
             status=JobStatus.PENDING,
             start_time=int(time.time() * 1000),
             metadata=metadata,
-            runtime_env=self._get_supervisor_runtime_env(runtime_env),
+            runtime_env=runtime_env,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
@@ -692,7 +695,7 @@ class JobManager:
                 num_gpus=num_gpus,
                 resources=resources,
                 scheduling_strategy=scheduling_strategy,
-                runtime_env=runtime_env,
+                runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
