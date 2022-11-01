@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 
 class ResultOrError:
     """A wrapper around a result or an error.
-    
+
     This is used to return data from FaultTolerantActorManager
     that allows us to distinguish between error and actual results.
 
     Users of this class should always use ResultOrError.Result() and
     ResultOrError.Error() to construct instances of this class.
     """
+
     def __init__(self, result: Any = None, error: Exception = None):
         """One and only one of result or error should be set.
 
@@ -29,9 +30,9 @@ class ResultOrError:
             result: The result of the computation.
             error: Alternatively, the error that occurred during the computation.
         """
-        assert (result is None) != (error is None), (
-            "Must provide one of, and only one of, result or error."
-        )
+        assert (result is None) != (
+            error is None
+        ), "Must provide one of, and only one of, result or error."
         self._result = result
         self._error = error
 
@@ -51,6 +52,7 @@ class CallResult:
     Each CallResult contains the index of the actor that was called
     plus the result or error from the call.
     """
+
     actor_idx: int
     result_or_error: ResultOrError
 
@@ -80,9 +82,10 @@ class RemoteCallResults:
     >>> for result in results.ignore_errors():
     >>>     print(result.get())
     """
+
     class _Iterator:
-        """An iterator over the results of a remote call.
-        """
+        """An iterator over the results of a remote call."""
+
         def __init__(self, call_results: List[CallResult]):
             self._call_results = call_results
 
@@ -120,7 +123,7 @@ class RemoteCallResults:
 
 class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
-    
+
     Example:
     >>> import ray
     >>> from ray.rllib.utils.actor_manager import FaultTolerantActorManager
@@ -165,8 +168,8 @@ class FaultTolerantActorManager:
                 actor instance itself).
             max_remote_requests_in_flight_per_actor: The maximum number of remote
                 requests that can be in flight per actor. Any requests made to the pool
-                that cannot be scheduled because the limit has been reached will be dropped.
-                This only applies to the asynchronous remote call mode.
+                that cannot be scheduled because the limit has been reached will be
+                dropped. This only applies to the asynchronous remote call mode.
         """
         self.__actors = actors or []
         # Start with healthy state for all remote actors.
@@ -223,7 +226,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def set_actor_state(self, idx: int, healthy: bool) -> None:
         """Update activate state for a specific remote actor.
-        
+
         Args:
             idx: Index of the remote actor.
             healthy: Whether the remote actor is healthy.
@@ -328,10 +331,12 @@ class FaultTolerantActorManager:
                 remote_results.add_result(actor_idx, ResultOrError(error=e))
 
                 if isinstance(e, RayActorError):
-                    # Take this actor out of service and wait for Ray Core to recover it.
+                    # Take this actor out of service and wait for Ray Core to
+                    # restore it.
                     if self.is_actor_healthy(actor_idx):
                         logger.error(
-                            f"Ray error, taking actor {actor_idx} out of service. {str(e)}"
+                            f"Ray error, taking actor {actor_idx} out of service. "
+                            f"{str(e)}"
                         )
                     self.set_actor_state(actor_idx, healthy=False)
                 else:
@@ -423,8 +428,10 @@ class FaultTolerantActorManager:
             limited_func = []
             limited_remote_actor_indices = []
             for i, f in zip(remote_actor_indices, func):
-                if (self.__remote_reqs_in_flight[i] + num_calls_to_make[i] <
-                    self._max_remote_requests_in_flight_per_actor):
+                if (
+                    self.__remote_reqs_in_flight[i] + num_calls_to_make[i]
+                    < self._max_remote_requests_in_flight_per_actor
+                ):
                     num_calls_to_make[i] += 1
                     limited_func.append(f)
                     limited_remote_actor_indices.append(i)
@@ -432,8 +439,10 @@ class FaultTolerantActorManager:
             limited_func = func
             limited_remote_actor_indices = []
             for i in remote_actor_indices:
-                if (self.__remote_reqs_in_flight[i] + num_calls_to_make[i] <
-                    self._max_remote_requests_in_flight_per_actor):
+                if (
+                    self.__remote_reqs_in_flight[i] + num_calls_to_make[i]
+                    < self._max_remote_requests_in_flight_per_actor
+                ):
                     num_calls_to_make[i] += 1
                     limited_remote_actor_indices.append(i)
 

@@ -52,8 +52,7 @@ class Actor:
 
 
 def wait_for_restore():
-    """Wait for Ray actor fault tolerence to restore all failed actors.
-    """
+    """Wait for Ray actor fault tolerence to restore all failed actors."""
     while True:
         states = [
             # Wait till all actors are either "ALIVE" (retored),
@@ -86,7 +85,9 @@ class TestActorManager(unittest.TestCase):
         results = []
         for _ in range(10):
             results.extend(
-                manager.foreach_actor(lambda w: w.call(), healthy_only=True).ignore_errors()
+                manager.foreach_actor(
+                    lambda w: w.call(), healthy_only=True
+                ).ignore_errors()
             )
             # Wait for actors to recover.
             wait_for_restore()
@@ -143,7 +144,8 @@ class TestActorManager(unittest.TestCase):
         self.assertEqual(len(results1), 0)
 
         results2 = [
-            r.get() for r in manager.foreach_actor(
+            r.get()
+            for r in manager.foreach_actor(
                 lambda w: w.call(), healthy_only=False
             ).ignore_errors()
         ]
@@ -159,7 +161,9 @@ class TestActorManager(unittest.TestCase):
 
         # 2 synchronous call to actor 0.
         results = manager.foreach_actor(
-            lambda w: w.call(), healthy_only=False, remote_actor_indices=[0, 0],
+            lambda w: w.call(),
+            healthy_only=False,
+            remote_actor_indices=[0, 0],
         )
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
@@ -171,7 +175,9 @@ class TestActorManager(unittest.TestCase):
 
         # 2 asynchronous call to actor 0.
         num_of_calls = manager.foreach_actor_async(
-            lambda w: w.call(), healthy_only=False, remote_actor_indices=[0, 0],
+            lambda w: w.call(),
+            healthy_only=False,
+            remote_actor_indices=[0, 0],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -213,23 +219,27 @@ class TestActorManager(unittest.TestCase):
         # lists of random numbers.
         self.assertEqual(len(results), 6)
 
-
     def test_async_calls_get_dropped_if_inflight_requests_over_limit(self):
         """Test asynchronous remote calls get dropped if too many in-flight calls."""
         actors = [Actor.remote(i) for i in range(4)]
         manager = FaultTolerantActorManager(
-            actors=actors, max_remote_requests_in_flight_per_actor=2,
+            actors=actors,
+            max_remote_requests_in_flight_per_actor=2,
         )
 
         # 2 asynchronous call to actor 1.
         num_of_calls = manager.foreach_actor_async(
-            lambda w: w.call(), healthy_only=False, remote_actor_indices=[1, 1],
+            lambda w: w.call(),
+            healthy_only=False,
+            remote_actor_indices=[1, 1],
         )
         self.assertEqual(num_of_calls, 2)
 
         # Now, let's try to make another async call to actor 1.
         num_of_calls = manager.foreach_actor_async(
-            lambda w: w.call(), healthy_only=False, remote_actor_indices=[1],
+            lambda w: w.call(),
+            healthy_only=False,
+            remote_actor_indices=[1],
         )
         # We actually made 0 calls.
         self.assertEqual(num_of_calls, 0)
