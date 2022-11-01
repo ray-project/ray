@@ -45,8 +45,8 @@ class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
-        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
+        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
+        ...     .resources(num_gpus=0)
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.

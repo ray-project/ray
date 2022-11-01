@@ -23,28 +23,21 @@ and thus fully supports distributed hyperparameter tuning for RL.
     and their NN models per worker, and a (already vectorized)
     RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` per worker.
 
+.. _algo-config-api:
+
 Defining Algorithms with the AlgorithmConfig Class
 --------------------------------------------------
 
 The :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class represents
 the primary way of configuring and building an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
+implementations such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`, which each come
+with their own set of arguments to their respective ``.training()`` method.
 
-Here's how you work with it.
+Here's how you work with an ``AlgorithmConfig``.
 
 .. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
-    :members:
-
-
-Interacting with an Algorithm
------------------------------
-
-Once you've built an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you can use it
-to train and evaluate your experiments.
-
-Here's the full ``Algorithm`` API reference.
-
-.. autoclass:: ray.rllib.algorithms.algorithm.Algorithm
+    :noindex:
     :members:
 
 
@@ -72,8 +65,14 @@ and override one or more of its methods. Those are in particular:
 
 .. _rllib-algorithm-api:
 
-Algorithm base class (ray.rllib.algorithms.algorithm.Algorithm)
----------------------------------------------------------------
+Interacting with an Algorithm
+-----------------------------
+
+Once you've built an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you can use it
+to train and evaluate your experiments.
+
+Here's the full ``Algorithm`` API reference.
 
 .. autoclass:: ray.rllib.algorithms.algorithm.Algorithm
     :special-members: __init__

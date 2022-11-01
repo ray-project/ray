@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __rllib-first-config-begin__
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.logger import pretty_print

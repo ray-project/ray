@@ -96,16 +96,29 @@ class CRRConfig(AlgorithmConfig):
                 discrete and continuous action spaces while `expectation` only
                 works for discrete action spaces.
                 `max`: Uses max over sampled actions to estimate the value.
-                .. math:: A(s_t, a_t) = Q(s_t, a_t) - \max_{a^j} Q(s_t, a^j)
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+                
+                .. math:: 
+
+                    A(s_t, a_t) = Q(s_t, a_t) - \max_{a^j} Q(s_t, a^j)
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `mean`: Uses mean over sampled actions to estimate the value.
-                .. math:: A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}[Q(s_t, a^j)]
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
+                
+                .. math::
+
+                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}
+                    [Q(s_t, a^j)]
+
+                where :math:`a^j` is `n_action_sample` times sampled from the
+                policy :math:`\pi(a | s_t)`
                 `expectation`: This uses categorical distribution to evaluate
                 the expectation of the q values directly to estimate the value.
-                .. math:: A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,a^j)]
+                
+                .. math::
+
+                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,a^j)]
+
             n_action_sample: the number of actions to sample for v_t estimation.
             twin_q: if True, uses pessimistic q estimation.
             target_network_update_freq: The frequency at which we update the

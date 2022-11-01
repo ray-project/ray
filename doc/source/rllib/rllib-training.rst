@@ -294,6 +294,7 @@ Below you find the basic signature of the `AlgorithmConfig` class, as well as so
 advanced usage examples:
 
 .. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
+    :noindex:
 
 As RLlib algorithms are fairly complex, they come with many configuration options.
 To make things easier, the common properties of algorithms are naturally grouped into
@@ -331,7 +332,7 @@ as this is where all the algorithm-specific options go.
 But the base configuration for `training` of an `AlgorithmConfig` is actually quite small:
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training
-
+    :noindex:
 
 .. _rllib-config-env:
 
@@ -339,6 +340,7 @@ Specifying Environments
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment
+    :noindex:
 
 
 .. _rllib-config-framework:
@@ -347,6 +349,7 @@ Specifying Framework Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.framework
+    :noindex:
 
 
 .. _rllib-config-rollouts:
@@ -355,6 +358,7 @@ Specifying Rollout Workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rollouts
+    :noindex:
 
 
 .. _rllib-config-evaluation:
@@ -363,6 +367,7 @@ Specifying Evaluation Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation
+    :noindex:
 
 
 .. _rllib-config-exploration:
@@ -371,6 +376,7 @@ Specifying Exploration Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.exploration
+    :noindex:
 
 
 .. _rllib-config-offline_data:
@@ -379,6 +385,7 @@ Specifying Offline Data Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_data
+    :noindex:
 
 
 .. _rllib-config-multi_agent:
@@ -387,6 +394,7 @@ Specifying Multi-Agent Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.multi_agent
+    :noindex:
 
 
 .. _rllib-config-reporting:
@@ -395,6 +403,7 @@ Specifying Reporting Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting
+    :noindex:
 
 
 .. _rllib-config-checkpointing:
@@ -403,6 +412,7 @@ Specifying Checkpointing Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.checkpointing
+    :noindex:
 
 
 .. _rllib-config-debugging:
@@ -411,6 +421,8 @@ Specifying Debugging Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.debugging
+    :noindex:
+
 
 .. _rllib-config-callbacks:
 
@@ -418,6 +430,8 @@ Specifying Callback Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks
+    :noindex:
+
 
 .. _rllib-config-resources:
 
@@ -464,6 +478,7 @@ if you set ``num_gpus=0``, your policies will be built solely on the CPU, even i
 GPUs are available on the machine.
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.resources
+    :noindex:
 
 
 .. _rllib-config-experimental:
@@ -472,6 +487,8 @@ Specifying Experimental Features
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
+    :noindex:
+
 
 .. _rllib-scaling-guide:
 
