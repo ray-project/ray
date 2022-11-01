@@ -134,17 +134,20 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     assert "sort_map" in stats, stats
     assert "sort_reduce" in stats, stats
 
-@patch('ray.data._internal.plan.logger')
+
+@patch("ray.data._internal.plan.logger")
 def test_dataset_stats_autolog(mock_logger, ray_start_regular_shared):
-    """ Tests functionality to autolog stats after each stage execution,
-        enabled via the `DatasetContext.enable_auto_log_stats` parameter. """
+    """Tests functionality to autolog stats after each stage execution,
+    enabled via the `DatasetContext.enable_auto_log_stats` parameter."""
     context = DatasetContext.get_current()
     context.enable_auto_log_stats = True
     ds = ray.data.range(1000, parallelism=10)
     # Check logged stats after each stage
     ds = ds.map_batches(lambda x: x)
     logger_args, logger_kwargs = mock_logger.info.call_args
-    assert canonicalize(logger_args[0]) == """Stage Z read: N/N blocks executed in T, N/N blocks split from parent
+    assert (
+        canonicalize(logger_args[0])
+        == """Stage Z read: N/N blocks executed in T, N/N blocks split from parent
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -152,10 +155,13 @@ def test_dataset_stats_autolog(mock_logger, ray_start_regular_shared):
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
+    )
 
     ds = ds.map(lambda x: x)
     logger_args, logger_kwargs = mock_logger.info.call_args
-    assert canonicalize(logger_args[0]) == """Stage N read->map_batches: N/N blocks executed in T
+    assert (
+        canonicalize(logger_args[0])
+        == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -163,6 +169,7 @@ def test_dataset_stats_autolog(mock_logger, ray_start_regular_shared):
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
+    )
 
     # Ensure that manual `stats()` method returns summarized stats
     for batch in ds.iter_batches():
@@ -196,6 +203,7 @@ Dataset iterator time breakdown:
 * Total time: T
 """
     )
+
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))

@@ -42,6 +42,7 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 logger = logging.getLogger(__name__)
 
+
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
@@ -316,10 +317,10 @@ class ExecutionPlan:
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
-                    stats = stats_builder.build(blocks)log_parent
+                    stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
                 if context.enable_auto_log_stats:
-                    logger.info(self._snapshot_stats.summary_string(print_parent=False))
+                    logger.info(self._snapshot_stats.summary_string(log_parent=False))
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
