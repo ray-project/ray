@@ -7,7 +7,7 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.algorithms.pg import PG
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -248,13 +248,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env(
             "flex_agents_multi_agent_cartpole", lambda _: FlexAgentsMultiAgent()
         )
-        pg = PG(
-            env="flex_agents_multi_agent_cartpole",
-            config={
-                "num_workers": 0,
-                "framework": "tf",
-            },
+        config = (
+            PGConfig()
+            .environment("flex_agents_multi_agent_cartpole")
+            .rollouts(num_rollout_workers=0)
+            .framework("tf")
         )
+        pg = config.build()
         for i in range(10):
             result = pg.train()
             print(
@@ -421,13 +421,14 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env(
             "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
         )
-        pg = PG(
-            env="multi_agent_cartpole",
-            config={
-                "num_workers": 0,
-                "framework": "tf",
-            },
+        config = (
+            PGConfig()
+            .environment("multi_agent_cartpole")
+            .rollouts(num_rollout_workers=0)
+            .framework("tf")
         )
+
+        pg = config.build()
         for i in range(50):
             result = pg.train()
             print(
@@ -452,21 +453,21 @@ class TestMultiAgentEnv(unittest.TestCase):
             }
             return PolicySpec(config=config)
 
-        pg = PG(
-            env="multi_agent_cartpole",
-            config={
-                "num_workers": 0,
-                "multiagent": {
-                    "policies": {
-                        "policy_1": gen_policy(),
-                        "policy_2": gen_policy(),
-                    },
-                    "policy_mapping_fn": lambda aid, **kwargs: "policy_1",
+        config = (
+            PGConfig()
+            .environment("multi_agent_cartpole")
+            .rollouts(num_rollout_workers=0)
+            .multi_agent(
+                policies={
+                    "policy_1": gen_policy(),
+                    "policy_2": gen_policy(),
                 },
-                "framework": "tf",
-            },
+                policy_mapping_fn=lambda aid, **kwargs: "policy_1",
+            )
+            .framework("tf")
         )
 
+        pg = config.build()
         # Just check that it runs without crashing
         for i in range(10):
             result = pg.train()
