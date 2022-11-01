@@ -2,7 +2,7 @@ import dataclasses
 import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
-from packaging import version
+from pkg_resources import packaging
 from ray.dashboard.utils import get_address_for_submission_client
 
 try:
@@ -108,7 +108,9 @@ class JobSubmissionClient(SubmissionClient):
 
         # In ray>=2.0, the client sends the new kwarg `submission_id` to the server
         # upon every job submission, which causes servers with ray<2.0 to error.
-        if version.parse(self._client_ray_version) > version.parse("2.0"):
+        if packaging.version.parse(self._client_ray_version) > packaging.version.parse(
+            "2.0"
+        ):
             self._check_connection_and_version(
                 min_version="2.0",
                 version_error_message=f"Client Ray version {self._client_ray_version} "
