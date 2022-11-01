@@ -419,6 +419,19 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
+  periodical_runner_.RunFnPeriodically(
+      [this]() {
+        auto now = absl::Now();
+        auto threshold = now - absl::Milliseconds(RayConfig::instance().message_refresh_interval_ms());
+        for(auto& [node_id, resource] : resource_message_udpated_) {
+          if(resource.second < threshold) {
+            resource.second = now;
+            UpdateResourceUsage(node_id, resource.first);
+          }
+        }
+      },
+      RayConfig::instance().message_refresh_interval_ms());
+
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
@@ -1045,6 +1058,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
 
+  // Remove the messages received
+  resource_message_udpated_.erase(node_id);
+  
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
           scheduling::NodeID(node_id.Binary()))) {
@@ -2840,6 +2856,8 @@ void NodeManager::ConsumeSyncMessage(
     if (UpdateResourceUsage(node_id, data)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
+    data.set_should_global_gc(false);
+    resource_message_udpated_[node_id] = std::make_pair(std::move(data), absl::Now());
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
