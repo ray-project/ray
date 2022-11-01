@@ -4000,9 +4000,10 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        count_str = str(count) if count is not None else "?"
+        if count is None:
+            count = "?"
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._plan.initial_num_blocks(), count_str, schema_str
+            self._plan.initial_num_blocks(), count, schema_str
         )
 
     def __str__(self) -> str:
