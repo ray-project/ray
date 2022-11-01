@@ -8,7 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -43,15 +43,9 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         air_checkpoint: Checkpoint = checkpoint.dir_or_data
-        if air_checkpoint._local_path:
-            save_preprocessor_to_dir(self.preprocessor, air_checkpoint._local_path)
-        else:
-            metadata = air_checkpoint._metadata
-            checkpoint_dict = air_checkpoint.to_dict()
-            checkpoint_dict[PREPROCESSOR_KEY] = self.preprocessor
-            air_checkpoint = air_checkpoint.from_dict(checkpoint_dict)
-            air_checkpoint._metadata = metadata
-            checkpoint.dir_or_data = air_checkpoint
+        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
+            air_checkpoint, self.preprocessor
+        )
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )

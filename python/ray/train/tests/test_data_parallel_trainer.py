@@ -15,7 +15,6 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
-    PREPROCESSOR_KEY,
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, CheckpointConfig, RunConfig
@@ -224,7 +223,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should
         )
         result = trainer.fit()
     assert result.checkpoint.to_dict()["model"] == 2
-    assert result.checkpoint.to_dict()[PREPROCESSOR_KEY].is_same
+    assert result.checkpoint.get_preprocessor().is_same
 
     path = result.metrics["path"]
     if path:
