@@ -2154,6 +2154,14 @@ py_test(
     srcs = ["utils/tests/test_check_multi_agent.py"]
 )
 
+py_test(
+    name = "test_actor_manager",
+    tags = ["team:rllib", "utils", "exclusive"],
+    size = "medium",
+    srcs = ["utils/tests/test_actor_manager.py"],
+    data = ["utils/tests/random_numbers.pkl"],
+)
+
 # --------------------------------------------------------------------
 # rllib/tests/ directory
 #
