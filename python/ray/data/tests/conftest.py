@@ -280,6 +280,12 @@ def ds_pandas_multi_column_format():
     yield ray.data.from_pandas(in_df)
 
 
+@pytest.fixture(scope="function")
+def ds_pandas_list_multi_column_format():
+    in_df = pd.DataFrame({"column_1": [1], "column_2": [1]})
+    yield ray.data.from_pandas([in_df] * 4)
+
+
 # ===== Arrow dataset formats =====
 @pytest.fixture(scope="function")
 def ds_arrow_single_column_format():
@@ -311,6 +317,11 @@ def ds_arrow_multi_column_format():
     )
 
 
+@pytest.fixture(scope="function")
+def ds_list_arrow_multi_column_format():
+    yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
+
+
 # ===== Numpy dataset formats =====
 @pytest.fixture(scope="function")
 def ds_numpy_single_column_tensor_format():
@@ -319,9 +330,7 @@ def ds_numpy_single_column_tensor_format():
 
 @pytest.fixture(scope="function")
 def ds_numpy_list_of_ndarray_tensor_format():
-    yield ray.data.from_numpy(
-        [np.arange(16).reshape((4, 2, 2)), np.arange(16, 24).reshape((2, 2, 2))]
-    )
+    yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
 @pytest.fixture(params=["5.0.0", "7.0.0"])

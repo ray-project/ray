@@ -99,9 +99,11 @@ def test_batch_mapper_pandas_data_format(
     [
         lazy_fixture("ds_pandas_single_column_format"),
         lazy_fixture("ds_pandas_multi_column_format"),
+        lazy_fixture("ds_pandas_list_multi_column_format"),
         lazy_fixture("ds_arrow_single_column_format"),
         lazy_fixture("ds_arrow_single_column_tensor_format"),
         lazy_fixture("ds_arrow_multi_column_format"),
+        lazy_fixture("ds_list_arrow_multi_column_format"),
         lazy_fixture("ds_numpy_single_column_tensor_format"),
         lazy_fixture("ds_numpy_list_of_ndarray_tensor_format"),
     ],
