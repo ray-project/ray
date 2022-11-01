@@ -1,4 +1,4 @@
-Pattern: Using actors to synchronize multiple tasks or actors
+Pattern: Using an actor to synchronize other tasks and actors
 =============================================================
 
 When you have multiple tasks that need to wait on some condition or otherwise
