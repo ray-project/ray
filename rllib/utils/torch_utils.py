@@ -144,7 +144,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Numpy arrays.
         elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
-            if item.dtype == object:
+            # str type (e.g. agent_id in train batch): leave as-is.
+            if item.dtype == object or isinstance(item.dtype, type(np.dtype("str_"))):
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:
