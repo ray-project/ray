@@ -36,6 +36,26 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.logger import Logger
 
+"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
+under input and input_config keys. E.g.
+input: sample
+input_config {
+env: CartPole-v1
+}
+or:
+input: json_reader
+input_config {
+path: /tmp/
+}
+or:
+input: dataset
+input_config {
+format: parquet
+path: /tmp/
+}
+"""
+
+
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
 
@@ -561,7 +581,7 @@ class AlgorithmConfig:
                 "PACK": Packs bundles into as few nodes as possible.
                 "SPREAD": Places bundles across distinct nodes as even as possible.
                 "STRICT_PACK": Packs bundles into one node. The group is not allowed
-                    to span multiple nodes.
+                to span multiple nodes.
                 "STRICT_SPREAD": Packs bundles across distinct nodes.
 
         Returns:
@@ -1014,7 +1034,7 @@ class AlgorithmConfig:
         """Sets the config's exploration settings.
 
         Args:
-            explore: Default exploration behavior, iff `explore`=None is passed into
+            explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
             exploration_config: A dict specifying the Exploration object's config.
@@ -1236,35 +1256,17 @@ class AlgorithmConfig:
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
-        TODO(jungong, sven): we can potentially unify all input types
-          under input and input_config keys. E.g.
-          input: sample
-          input_config {
-            env: CartPole-v1
-          }
-          or:
-          input: json_reader
-          input_config {
-            path: /tmp/
-          }
-          or:
-          input: dataset
-          input_config {
-            format: parquet
-            path: /tmp/
-          }
-
         Args:
             input_: Specify how to generate experiences:
-             - "sampler": Generate experiences via online (env) simulation (default).
-             - A local directory or file glob expression (e.g., "/tmp/*.json").
-             - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-               "s3://bucket/2.json"]).
-             - A dict with string keys and sampling probabilities as values (e.g.,
-               {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-             - A callable that takes an `IOContext` object as only arg and returns a
-               ray.rllib.offline.InputReader.
-             - A string key that indexes a callable with tune.registry.register_input
+                - "sampler": Generate experiences via online (env) simulation (default).
+                - A local directory or file glob expression (e.g., "/tmp/*.json").
+                - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+                "s3://bucket/2.json"]).
+                - A dict with string keys and sampling probabilities as values (e.g.,
+                {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+                - A callable that takes an `IOContext` object as only arg and returns a
+                ray.rllib.offline.InputReader.
+                - A string key that indexes a callable with tune.registry.register_input
             input_config: Arguments accessible from the IOContext for configuring custom
                 input.
             actions_in_input_normalized: True, if the actions in a given offline "input"
@@ -1360,7 +1362,7 @@ class AlgorithmConfig:
                 Could be a directory (str) or an S3 location. None for using the
                 default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: (agent_id, episode, worker, **kwargs) -> PolicyID.
+                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for all policies.

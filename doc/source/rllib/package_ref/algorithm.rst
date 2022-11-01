@@ -46,6 +46,8 @@ and override one or more of its methods. Those are in particular:
 `See here for an example on how to override Algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 
 
+.. _rllib-algorithm-api:
+
 Algorithm base class (ray.rllib.algorithms.algorithm.Algorithm)
 ---------------------------------------------------------------
 

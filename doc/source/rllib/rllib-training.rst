@@ -16,6 +16,9 @@ and optimization of multiple policies at once.
 
 .. image:: images/rllib-api.svg
 
+In this guide, we will first walk you through running your first experiments with
+the RLlib CLI, and then discuss our Python API in more detail.
+
 Using the RLlib CLI
 -------------------
 
@@ -31,7 +34,8 @@ You can train DQN with the following commands:
 
 .. margin::
 
-    The ``rllib train`` command (same as the ``train.py`` script in the repo) has a number of options you can show by running `rllib train --help`.
+    The ``rllib train`` command (same as the ``train.py`` script in the repo)
+    has a number of options you can show by running `rllib train --help`.
 
 Note that you choose any supported RLlib algorithm (``--algo``) and environment (``--env``).
 RLlib supports any OpenAI Gym environment, as well as a number of other environments
@@ -63,14 +67,28 @@ You can evaluate the trained algorithm with the following command (assuming the 
 
 For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
 
+.. note::
+
+    Each algorithm has specific hyperparameters that can be set with ``--config``,
+    see the `algorithms documentation <rllib-algorithms.html>`__ for more information.
+    For instance, you can train the A2C algorithm on 8 workers by specifying
+    `num_workers: 8` in a JSON string passed to ``--config``:
+
+    .. code-block:: bash
+
+        rllib train --env=PongDeterministic-v4 --run=A2C --config '{"num_workers": 8}'
+
 Running Tuned Examples
 ----------------------
 
 Some good hyperparameters and settings are available in
 `the RLlib repository <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__
 (some of them are tuned to run on GPUs).
-If you find better settings or tune an algorithm on a different domain,
-consider submitting a Pull Request!
+
+.. margin::
+
+    If you find better settings or tune an algorithm on a different domain,
+    consider submitting a Pull Request!
 
 You can run these with the ``rllib train file`` command as follows:
 
@@ -82,6 +100,8 @@ You can run these with the ``rllib train file`` command as follows:
 
 Note that this works with any local YAML file in the correct format, or with remote URLs
 pointing to such files.
+If you want to learn more about the RLlib CLI, please check out
+the :ref:`RLlib CLI user guide <rllib-cli-doc>`.
 
 
 .. _rllib-training-api:
@@ -90,69 +110,31 @@ Using the Python API
 --------------------
 
 The Python API provides the needed flexibility for applying RLlib to new problems.
-You will need to use this API if you wish to use
+For instance, you will need to use this API if you wish to use
 `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
-Here is an example of the basic usage (for a more complete example, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__):
+Here is an example of the basic usage.
+We first create a `PPOConfig` and add properties to it, like the `environment` we want
+to use, or the `resources` we want to leverage for training.
+After we `build` the `algo` from its configuration, we can `train` it for a number of
+episodes (here `1000`) and `save` the resulting policy periodically
+(here every `100` episodes).
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/getting_started.py
+    :language: python
+    :start-after: rllib-first-config-begin
+    :end-before: rllib-first-config-end
 
-    import ray
-    import ray.rllib.algorithms.ppo as ppo
-    from ray.tune.logger import pretty_print
 
-    ray.init()
-    config = ppo.DEFAULT_CONFIG.copy()
-    config["num_gpus"] = 0
-    config["num_workers"] = 1
-    algo = ppo.PPO(config=config, env="CartPole-v0")
+All RLlib algorithms are compatible with the :ref:`Tune API <tune-api-ref>`.
+This enables them to be easily used in experiments with :ref:`Ray Tune <tune-main>`.
+For example, the following code performs a simple hyper-parameter sweep of PPO.
 
-    # Can optionally call algo.restore(path) to load a checkpoint.
 
-    for i in range(1000):
-       # Perform one iteration of training the policy with PPO
-       result = algo.train()
-       print(pretty_print(result))
-
-       if i % 100 == 0:
-           checkpoint_dir = algo.save()
-           print(f"Checkpoint saved in directory {checkpoint_dir}")
-
-    # Also, in case you have trained a model outside of ray/RLlib and have created
-    # an h5-file with weight values in it, e.g.
-    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
-    # (see: https://keras.io/models/about-keras-models/)
-
-    # ... you can load the h5-weights into your Algorithm's Policy's ModelV2
-    # (tf or torch) by doing:
-    algo.import_model("my_weights.h5")
-    # NOTE: In order for this to work, your (custom) model needs to implement
-    # the `import_from_h5` method.
-    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
-    # for detailed examples for tf- and torch policies/models.
-
-.. note::
-
-    It's recommended that you run RLlib algorithms with :ref:`Ray Tune <tune-main>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
-
-All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Ray Tune <tune-main>`. For example, the following code performs a simple hyperparam sweep of PPO:
-
-.. code-block:: python
-
-    import ray
-    from ray import air, tune
-
-    ray.init()
-    tune.Tuner(
-        "PPO",
-        run_config=air.RunConfig(stop={"episode_reward_mean": 200},),
-        param_space={
-            "env": "CartPole-v0",
-            "num_gpus": 0,
-            "num_workers": 1,
-            "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-        },
-    ).fit()
+.. literalinclude:: ./doc_code/getting_started.py
+    :language: python
+    :start-after: rllib-tune-config-begin
+    :end-before: rllib-tune-config-end
 
 Tune will schedule the trials to run in parallel on your Ray cluster:
 
@@ -163,42 +145,28 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     Resources requested: 4/4 CPUs, 0/0 GPUs
     Result logdir: ~/ray_results/my_experiment
     PENDING trials:
-     - PPO_CartPole-v0_2_lr=0.0001:	PENDING
+     - PPO_CartPole-v1_2_lr=0.0001:	PENDING
     RUNNING trials:
-     - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
-     - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
+     - PPO_CartPole-v1_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v1_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-``Tuner.fit()`` returns an ``ResultGrid`` object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
+``Tuner.fit()`` returns an ``ResultGrid`` object that allows further analysis
+of the training results and retrieving the checkpoint(s) of the trained agent.
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/getting_started.py
+    :language: python
+    :start-after: rllib-tuner-begin
+    :end-before: rllib-tuner-end
 
-    # ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
-    results = ray.tune.Tuner(
-        ppo.PPO,
-        param_space=config,
-        run_config=air.RunConfig(
-            local_dir=log_dir,
-            stop=stop_criteria,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
-        )).fit()
+.. margin::
 
-    # list of lists: one list per checkpoint; each checkpoint list contains
-    # 1st the path, 2nd the metric value
-    checkpoints = analysis.get_trial_checkpoints_paths(
-        trial=analysis.get_best_trial("episode_reward_mean"),
-        metric="episode_reward_mean")
-
-    # or simply get the last checkpoint (with highest "training_step")
-    last_checkpoint = analysis.get_last_checkpoint()
-    # if there are multiple trials, select a specific trial or automatically
-    # choose the best one according to a given metric
-    last_checkpoint = analysis.get_last_checkpoint(
-        metric="episode_reward_mean", mode="max"
-    )
+    You can find your checkpoint's version by
+    looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory.
 
 Loading and restoring a trained algorithm from a checkpoint is simple.
-For RLlib checkpoint versions of >= v1.0 (you can find your checkpoint's version by
-looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory), do:
+Let's assume you have a local checkpoint directory called ``checkpoint_path``.
+To load newer RLlib checkpoints (version >= 1.0), use the following code:
+
 
 .. code-block:: python
 
@@ -206,7 +174,8 @@ looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory
     algo = Algorithm.from_checkpoint(checkpoint_path)
 
 
-For older RLlib checkpoint versions (v0.1), you can still restore an algorithm via:
+For older RLlib checkpoint versions (version < 1.0), you can
+restore an algorithm via:
 
 .. code-block:: python
 
@@ -215,181 +184,242 @@ For older RLlib checkpoint versions (v0.1), you can still restore an algorithm v
     algo.restore(checkpoint_path)
 
 
-
 Computing Actions
 ~~~~~~~~~~~~~~~~~
 
-The simplest way to programmatically compute actions from a trained agent is to use ``Algorithm.compute_action()``.
-This method preprocesses and filters the observation before passing it to the agent policy.
+The simplest way to programmatically compute actions from a trained agent is to
+use ``Algorithm.compute_single_action()``.
+This method preprocesses and filters the observation before passing it to the agent
+policy.
 Here is a simple example of testing a trained agent for one episode:
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/getting_started.py
+    :language: python
+    :start-after: rllib-compute-action-begin
+    :end-before: rllib-compute-action-end
 
-    # instantiate env class
-    env = env_class(env_config)
-
-    # run until episode ends
-    episode_reward = 0
-    done = False
-    obs = env.reset()
-    while not done:
-        action = agent.compute_action(obs)
-        obs, reward, done, info = env.step(action)
-        episode_reward += reward
-
-For more advanced usage, you can access the ``workers`` and policies held by the algorithm
-directly as ``compute_action()`` does:
-
-.. code-block:: python
-
-  class Algorithm(Trainable):
-
-    @PublicAPI
-    def compute_action(self,
-                       observation,
-                       state=None,
-                       prev_action=None,
-                       prev_reward=None,
-                       info=None,
-                       policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False):
-        """Computes an action for the specified policy.
-
-        Note that you can also access the policy object through
-        self.get_policy(policy_id) and call compute_actions() on it directly.
-
-        Args:
-            observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None,
-                          then all of compute_single_action(...) is returned
-                          (computed action, rnn state, logits dictionary).
-                          Otherwise compute_single_action(...)[0] is
-                          returned (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): policy to query (only applies to multi-agent).
-            full_fetch (bool): whether to return extra action fetch results.
-                This is always set to true if RNN state is specified.
-
-        Returns:
-            Just the computed action if full_fetch=False, or the full output
-            of policy.compute_actions() otherwise.
-        """
-
-        if state is None:
-            state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
-        if state:
-            return self.get_policy(policy_id).compute_single_action(
-                filtered_obs,
-                state,
-                prev_action,
-                prev_reward,
-                info,
-                clip_actions=self.config["clip_actions"])
-        res = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            clip_actions=self.config["clip_actions"])
-        if full_fetch:
-            return res
-        else:
-            return res[0]  # backwards compatibility
-
+For more advanced usage on computing actions and other functionality,
+you can consult the :ref:`RLlib Algorithm API documentation <rllib-algorithm-api>`.
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
 
-It is common to need to access a algorithm's internal state, e.g., to set or get internal weights.
-In RLlib algorithm state is replicated across multiple *rollout workers* (Ray actors) in the cluster.
-However, you can easily get and update this state between calls to ``train()`` via ``Algorithm.workers.foreach_worker()`` or ``Algorithm.workers.foreach_worker_with_index()``.
-These functions take a lambda function that is applied with the worker as an arg.
-You can also return values from these functions and those will be returned as a list.
+It is common to need to access a algorithm's internal state, for instance to set
+or get model weights.
 
-You can also access just the "master" copy of the algorithm state through ``Algorithm.get_policy()`` or
-``Algorithm.workers.local_worker()``, but note that updates here may not be immediately reflected in
-remote replicas if you have configured ``num_workers > 0``.
-For example, to access the weights of a local TF policy, you can run ``Algorithm.get_policy().get_weights()``.
-This is also equivalent to ``Algorithm.workers.local_worker().policy_map["default_policy"].get_weights()``:
+In RLlib algorithm state is replicated across multiple *rollout workers* (Ray actors)
+in the cluster.
+However, you can easily get and update this state between calls to ``train()``
+via ``Algorithm.workers.foreach_worker()``
+or ``Algorithm.workers.foreach_worker_with_index()``.
+These functions take a lambda function that is applied with the worker as an argument.
+These functions return values for each worker as a list.
 
-.. code-block:: python
+You can also access just the "master" copy of the algorithm state through
+``Algorithm.get_policy()`` or ``Algorithm.workers.local_worker()``,
+but note that updates here may not be immediately reflected in
+your rollout workers (if you have configured ``num_rollout_workers > 0``).
+Here's a quick example of how to access state of a model:
 
-    # Get weights of the default local policy
-    algo.get_policy().get_weights()
-
-    # Same as above
-    algo.workers.local_worker().policy_map["default_policy"].get_weights()
-
-    # Get list of weights of each worker, including remote replicas
-    algo.workers.foreach_worker(lambda ev: ev.get_policy().get_weights())
-
-    # Same as above
-    algo.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
+.. literalinclude:: ./doc_code/getting_started.py
+    :language: python
+    :start-after: rllib-get-state-begin
+    :end-before: rllib-get-state-end
 
 Accessing Model State
 ~~~~~~~~~~~~~~~~~~~~~
 
-Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+Similar to accessing policy state, you may want to get a reference to the
+underlying neural network model being trained. For example, you may want to
+pre-train it separately, or otherwise update its weights outside of RLlib.
+This can be done by accessing the ``model`` of the policy.
 
-**Example: Preprocessing observations for feeding into a model**
+.. margin::
 
-First, install the dependencies:
+    To run these examples, you need to install a few extra dependencies, namely
+    `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 
-.. code-block:: python
+Below you find three explicit examples showing how to access the model state of
+an algorithm.
 
-    # The "Pong-v0" Atari environment requires a few additional gym installs:
-    pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
-
-Then for the code:
-
-.. literalinclude:: doc_code/training.py
-    :language: python
-    :start-after: __preprocessing_observations_start__
-    :end-before: __preprocessing_observations_end__
-
-**Example: Querying a policy's action distribution**
-
-.. literalinclude:: doc_code/training.py
-    :language: python
-    :start-after: __query_action_dist_start__
-    :end-before: __query_action_dist_end__
-
-**Example: Getting Q values from a DQN model**
-
-.. literalinclude:: doc_code/training.py
-    :language: python
-    :start-after: __get_q_values_dqn_start__
-    :end-before: __get_q_values_dqn_end__
+.. dropdown:: **Example: Preprocessing observations for feeding into a model**
 
 
-This is especially useful when used with `custom model classes <rllib-models.html>`__.
+    Then for the code:
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __preprocessing_observations_start__
+        :end-before: __preprocessing_observations_end__
+
+.. dropdown:: **Example: Querying a policy's action distribution**
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __query_action_dist_start__
+        :end-before: __query_action_dist_end__
+
+.. dropdown:: **Example: Getting Q values from a DQN model**
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __get_q_values_dqn_start__
+        :end-before: __get_q_values_dqn_end__
+
+    This is especially useful when used with
+    `custom model classes <rllib-models.html>`__.
 
 .. _rllib-algo-configuration:
 
 Configuring RLlib Algorithms
 ----------------------------
 
-Specifying Parameters
-~~~~~~~~~~~~~~~~~~~~~
+You can configure RLlib algorithms in a modular fashion by working with so-called
+`AlgorithmConfig` objects.
+In essence, you first create a `config = AlgorithmConfig()` object and then call methods
+on it to set the desired configuration options.
+Each RLlib algorithm has its own config class that inherits from `AlgorithmConfig`.
+For instance, to create a `PPO` algorithm, you start with a `PPOConfig` object, to work
+with a `DQN` algorithm, you start with a `DQNConfig` object, etc.
 
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of
-`common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
-(soon to be replaced by `AlgorithmConfig objects <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm_config.py>`__).
+.. note::
 
-See the `algorithms documentation <rllib-algorithms.html>`__ for more information.
+    Each algorithm has its specific settings, but most configuration options are shared.
+    We discuss the common options below, and refer to
+    :ref:`the RLlib algorithms guide <rllib-algorithms-doc>` for algorithm-specific
+    properties.
+    Algorithms differ mostly in their `training` settings.
 
-In an example below, we train A2C by specifying 8 workers through the config flag.
+Below you find the basic signature of the `AlgorithmConfig` class, as well as some
+advanced usage examples:
 
-.. code-block:: bash
+.. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
 
-    rllib train --env=PongDeterministic-v4 --run=A2C --config '{"num_workers": 8}'
+As RLlib algorithms are fairly complex, they come with many configuration options.
+To make things easier, the common properties of algorithms are naturally grouped into
+the following categories:
+
+- :ref:`Training options <rllib-config-train>`,
+- :ref:`environment options <rllib-config-env>`,
+- :ref:`deep learning framework options <rllib-config-framework>`,
+- :ref:`rollout worker options <rllib-config-rollouts>`,
+- :ref:`evaluation options <rllib-config-evaluation>`,
+- :ref:`exploration options <rllib-config-exploration>`,
+- :ref:`options for training with offline data <rllib-config-offline_data>`,
+- :ref:`options for training multiple agents <rllib-config-multi_agent>`,
+- :ref:`reporting options <rllib-config-reporting>`,
+- :ref:`options for saving and restoring checkpoints <rllib-config-checkpointing>`,
+- :ref:`debugging options <rllib-config-debugging>`,
+- :ref:`options for adding callbacks to algorithms <rllib-config-callbacks>`,
+- :ref:`Resource options <rllib-config-resources>`
+- :ref:`and options for experimental features <rllib-config-experimental>`
+
+Let's discuss each category one by one, starting with training options.
+
+.. _rllib-config-train:
+
+Specifying Training Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. margin::
+
+    For instance, a `DQNConfig` takes a `double_q` `training` argument to specify whether
+    to use a double-Q DQN, whereas in a `PPOConfig` this does not make sense.
+
+For individual algorithms, this is probably the most relevant configuration group,
+as this is where all the algorithm-specific options go.
+But the base configuration for `training` of an `AlgorithmConfig` is actually quite small:
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training
+
+
+.. _rllib-config-env:
+
+Specifying Environments
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment
+
+
+.. _rllib-config-framework:
+
+Specifying Framework Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.framework
+
+
+.. _rllib-config-rollouts:
+
+Specifying Rollout Workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rollouts
+
+
+.. _rllib-config-evaluation:
+
+Specifying Evaluation Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation
+
+
+.. _rllib-config-exploration:
+
+Specifying Exploration Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.exploration
+
+
+.. _rllib-config-offline_data:
+
+Specifying Offline Data Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_data
+
+
+.. _rllib-config-multi_agent:
+
+Specifying Multi-Agent Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.multi_agent
+
+
+.. _rllib-config-reporting:
+
+Specifying Reporting Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting
+
+
+.. _rllib-config-checkpointing:
+
+Specifying Checkpointing Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.checkpointing
+
+
+.. _rllib-config-debugging:
+
+Specifying Debugging Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.debugging
+
+.. _rllib-config-callbacks:
+
+Specifying Callback Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks
+
+.. _rllib-config-resources:
 
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
@@ -433,24 +463,30 @@ available, a RuntimeError will be thrown by the respective worker. On the other 
 if you set ``num_gpus=0``, your policies will be built solely on the CPU, even if
 GPUs are available on the machine.
 
-Scaling Guide
-~~~~~~~~~~~~~
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.resources
+
+
+.. _rllib-config-experimental:
+
+Specifying Experimental Features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
 
 .. _rllib-scaling-guide:
+
+RLlib Scaling Guide
+-------------------
 
 Here are some rules of thumb for scaling training with RLlib.
 
 1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Make sure to set ``num_gpus: 1`` if you want to use a GPU. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
 
-
 2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
-
 
 3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
 
-
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
-
 
 In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
 the config settings ``ignore_worker_failures=True``, ``recreate_failed_workers=True``, or ``restart_failed_sub_environments=True``:
@@ -465,526 +501,8 @@ Using these options will make your training runs much more stable and more robus
 themselves or inside your environments.
 
 
-Common Parameters
-~~~~~~~~~~~~~~~~~
-
-.. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-    objects, which have the advantage of being type safe, allowing users to set different config settings within
-    meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
-    construct an Algorithm instance from these config objects (via their ``build()`` method).
-
-The following is a list of the common algorithm hyper-parameters:
-
-.. code-block:: python
-
-    # === Settings for Rollout Worker processes ===
-    # Number of rollout worker actors to create for parallel sampling. Setting
-    # this to 0 will force rollouts to be done in the algorithm's actor.
-    "num_workers": 2,
-    # Number of environments to evaluate vector-wise per worker. This enables
-    # model inference batching, which can improve performance for inference
-    # bottlenecked workloads.
-    "num_envs_per_worker": 1,
-    # When `num_workers` > 0, the driver (local_worker; worker-idx=0) does not
-    # need an environment. This is because it doesn't have to sample (done by
-    # remote_workers; worker_indices > 0) nor evaluate (done by evaluation
-    # workers; see below).
-    "create_env_on_driver": False,
-    # Divide episodes into fragments of this many steps each during rollouts.
-    # Sample batches of this size are collected from rollout workers and
-    # combined into a larger batch of `train_batch_size` for learning.
-    #
-    # For example, given rollout_fragment_length=100 and train_batch_size=1000:
-    #   1. RLlib collects 10 fragments of 100 steps each from rollout workers.
-    #   2. These fragments are concatenated and we perform an epoch of SGD.
-    #
-    # When using multiple envs per worker, the fragment size is multiplied by
-    # `num_envs_per_worker`. This is since we are collecting steps from
-    # multiple envs in parallel. For example, if num_envs_per_worker=5, then
-    # rollout workers will return experiences in chunks of 5*100 = 500 steps.
-    #
-    # The dataflow here can vary per algorithm. For example, PPO further
-    # divides the train batch into minibatches for multi-epoch SGD.
-    "rollout_fragment_length": 200,
-    # How to build per-Sampler (RolloutWorker) batches, which are then
-    # usually concat'd to form the train batch. Note that "steps" below can
-    # mean different things (either env- or agent-steps) and depends on the
-    # `count_steps_by` (multiagent) setting below.
-    # truncate_episodes: Each produced batch (when calling
-    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
-    #   steps. This mode guarantees evenly sized batches, but increases
-    #   variance as the future return must now be estimated at truncation
-    #   boundaries.
-    # complete_episodes: Each unroll happens exactly over one episode, from
-    #   beginning to end. Data collection will not stop unless the episode
-    #   terminates or a configured horizon (hard or soft) is hit.
-    "batch_mode": "truncate_episodes",
-
-    # === Settings for the Algorithm process ===
-    # Discount factor of the MDP.
-    "gamma": 0.99,
-    # The default learning rate.
-    "lr": 0.0001,
-    # Training batch size, if applicable. Should be >= rollout_fragment_length.
-    # Samples batches will be concatenated together to a batch of this size,
-    # which is then passed to SGD.
-    "train_batch_size": 200,
-    # Arguments to pass to the policy model. See models/catalog.py for a full
-    # list of the available model options.
-    "model": MODEL_DEFAULTS,
-    # Arguments to pass to the policy optimizer. These vary by optimizer.
-    "optimizer": {},
-
-    # === Environment Settings ===
-    # Number of steps after which the episode is forced to terminate. Defaults
-    # to `env.spec.max_episode_steps` (if present) for Gym envs.
-    "horizon": None,
-    # Calculate rewards but don't reset the environment when the horizon is
-    # hit. This allows value estimation and RNN state to span across logical
-    # episodes denoted by horizon. This only has an effect if horizon != inf.
-    "soft_horizon": False,
-    # Don't set 'done' at the end of the episode.
-    # In combination with `soft_horizon`, this works as follows:
-    # - no_done_at_end=False soft_horizon=False:
-    #   Reset env and add `done=True` at end of each episode.
-    # - no_done_at_end=True soft_horizon=False:
-    #   Reset env, but do NOT add `done=True` at end of the episode.
-    # - no_done_at_end=False soft_horizon=True:
-    #   Do NOT reset env at horizon, but add `done=True` at the horizon
-    #   (pretending the episode has terminated).
-    # - no_done_at_end=True soft_horizon=True:
-    #   Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
-    "no_done_at_end": False,
-    # The environment specifier:
-    # This can either be a tune-registered env, via
-    # `tune.register_env([name], lambda env_ctx: [env object])`,
-    # or a string specifier of an RLlib supported type. In the latter case,
-    # RLlib will try to interpret the specifier as either an openAI gym env,
-    # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-    # Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
-    "env": None,
-    # The observation- and action spaces for the Policies of this Algorithm.
-    # Use None for automatically inferring these from the given env.
-    "observation_space": None,
-    "action_space": None,
-    # Arguments dict passed to the env creator as an EnvContext object (which
-    # is a dict plus the properties: num_workers, worker_index, vector_index,
-    # and remote).
-    "env_config": {},
-    # If using num_envs_per_worker > 1, whether to create those new envs in
-    # remote processes instead of in the same worker. This adds overheads, but
-    # can make sense if your envs can take much time to step / reset
-    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
-    "remote_worker_envs": False,
-    # Timeout that remote workers are waiting when polling environments.
-    # 0 (continue when at least one env is ready) is a reasonable default,
-    # but optimal value could be obtained by measuring your environment
-    # step / reset and model inference perf.
-    "remote_env_batch_wait_ms": 0,
-    # A callable taking the last train results, the base env and the env
-    # context as args and returning a new task to set the env to.
-    # The env must be a `TaskSettableEnv` sub-class for this to work.
-    # See `examples/curriculum_learning.py` for an example.
-    "env_task_fn": None,
-    # If True, try to render the environment on the local worker or on worker
-    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
-    # the first sub-environment will be rendered.
-    # In order for this to work, your env will have to implement the
-    # `render()` method which either:
-    # a) handles window generation and rendering itself (returning True) or
-    # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
-    "render_env": False,
-    # Whether to clip rewards during Policy's postprocessing.
-    # None (default): Clip for Atari only (r=sign(r)).
-    # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
-    # False: Never clip.
-    # [float value]: Clip at -value and + value.
-    # Tuple[value1, value2]: Clip at value1 and value2.
-    "clip_rewards": None,
-    # If True, RLlib will learn entirely inside a normalized action space
-    # (0.0 centered with small stddev; only affecting Box components).
-    # We will unsquash actions (and clip, just in case) to the bounds of
-    # the env's action space before sending actions back to the env.
-    "normalize_actions": True,
-    # If True, RLlib will clip actions according to the env's bounds
-    # before sending them back to the env.
-    # TODO: (sven) This option should be obsoleted and always be False.
-    "clip_actions": False,
-    # Whether to use "rllib" or "deepmind" preprocessors by default
-    # Set to None for using no preprocessor. In this case, the model will have
-    # to handle possibly complex observations from the environment.
-    "preprocessor_pref": "deepmind",
-
-    # === Debug Settings ===
-    # Set the ray.rllib.* log level for the agent process and its workers.
-    # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
-    # periodically print out summaries of relevant internal dataflow (this is
-    # also printed out once at startup at the INFO level). When using the
-    # `rllib train` command, you can also use the `-v` and `-vv` flags as
-    # shorthand for INFO and DEBUG.
-    "log_level": "WARN",
-    # Callbacks that will be run during various phases of training. See the
-    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
-    # for more usage information.
-    "callbacks": DefaultCallbacks,
-    # Whether to attempt to continue training if a worker crashes. The number
-    # of currently healthy workers is reported as the "num_healthy_workers"
-    # metric.
-    "ignore_worker_failures": False,
-    # Whether - upon a worker failure - RLlib will try to recreate the lost worker as
-    # an identical copy of the failed one. The new worker will only differ from the
-    # failed one in its `self.recreated_worker=True` property value. It will have
-    # the same `worker_index` as the original one.
-    # If True, the `ignore_worker_failures` setting will be ignored.
-    "recreate_failed_workers": False,
-    # Log system resource metrics to results. This requires `psutil` to be
-    # installed for sys stats, and `gputil` for GPU metrics.
-    "log_sys_usage": True,
-    # Use fake (infinite speed) sampler. For testing only.
-    "fake_sampler": False,
-
-    # === Deep Learning Framework Settings ===
-    # tf: TensorFlow (static-graph)
-    # tf2: TensorFlow 2.x (eager or traced, if eager_tracing=True)
-    # torch: PyTorch
-    "framework": "tf",
-    # Enable tracing in eager mode. This greatly improves performance
-    # (speedup ~2x), but makes it slightly harder to debug since Python
-    # code won't be evaluated after the initial eager pass.
-    # Only supported if framework=tf2.
-    "eager_tracing": False,
-    # Maximum number of tf.function re-traces before a runtime error is raised.
-    # This is to prevent unnoticed retraces of methods inside the
-    # `..._eager_traced` Policy, which could slow down execution by a
-    # factor of 4, without the user noticing what the root cause for this
-    # slowdown could be.
-    # Only supported for framework=tf2.
-    # Set to None to ignore the re-trace count and never throw an error.
-    "eager_max_retraces": 20,
-
-    # === Exploration Settings ===
-    # Default exploration behavior, iff `explore`=None is passed into
-    # compute_action(s).
-    # Set to False for no exploration behavior (e.g., for evaluation).
-    "explore": True,
-    # Provide a dict specifying the Exploration object's config.
-    "exploration_config": {
-        # The Exploration class to use. In the simplest case, this is the name
-        # (str) of any class present in the `rllib.utils.exploration` package.
-        # You can also provide the python class directly or the full location
-        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-        # EpsilonGreedy").
-        "type": "StochasticSampling",
-        # Add constructor kwargs here (if any).
-    },
-    # === Evaluation Settings ===
-    # Evaluate with every `evaluation_interval` training iterations.
-    # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that for Ape-X metrics are already only reported for the lowest
-    # epsilon workers (least random workers).
-    # Set to None (or 0) for no evaluation.
-    "evaluation_interval": None,
-    # Duration for which to run evaluation each `evaluation_interval`.
-    # The unit for the duration can be set via `evaluation_duration_unit` to
-    # either "episodes" (default) or "timesteps".
-    # If using multiple evaluation workers (evaluation_num_workers > 1),
-    # the load to run will be split amongst these.
-    # If the value is "auto":
-    # - For `evaluation_parallel_to_training=True`: Will run as many
-    #   episodes/timesteps that fit into the (parallel) training step.
-    # - For `evaluation_parallel_to_training=False`: Error.
-    "evaluation_duration": 10,
-    # The unit, with which to count the evaluation duration. Either "episodes"
-    # (default) or "timesteps".
-    "evaluation_duration_unit": "episodes",
-    # Whether to run evaluation in parallel to a Algorithm.train() call
-    # using threading. Default=False.
-    # E.g. evaluation_interval=2 -> For every other training iteration,
-    # the Algorithm.train() and Algorithm.evaluate() calls run in parallel.
-    # Note: This is experimental. Possible pitfalls could be race conditions
-    # for weight synching at the beginning of the evaluation loop.
-    "evaluation_parallel_to_training": False,
-    # Internal flag that is set to True for evaluation workers.
-    "in_evaluation": False,
-    # Typical usage is to pass extra args to evaluation env creator
-    # and to disable exploration by computing deterministic actions.
-    # IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
-    # policy, even if this is a stochastic one. Setting "explore=False" here
-    # will result in the evaluation workers not using this optimal policy!
-    "evaluation_config": {
-        # Example: overriding env_config, exploration, etc:
-        # "env_config": {...},
-        # "explore": False
-    },
-
-    # Number of parallel workers to use for evaluation. Note that this is set
-    # to zero by default, which means evaluation will be run in the algorithm
-    # process (only if evaluation_interval is not None). If you increase this,
-    # it will increase the Ray resource usage of the algorithm since evaluation
-    # workers are created separately from rollout workers (used to sample data
-    # for training).
-    "evaluation_num_workers": 0,
-    # Customize the evaluation method. This must be a function of signature
-    # (algorithm: Algorithm, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Algorithm.evaluate() method to see the default implementation.
-    # The Algorithm guarantees all eval workers have the latest policy state
-    # before this function is called.
-    "custom_eval_function": None,
-    # Make sure the latest available evaluation results are always attached to
-    # a step result dict.
-    # This may be useful if Tune or some other meta controller needs access
-    # to evaluation metrics all the time.
-    "always_attach_evaluation_results": False,
-    # Store raw custom metrics without calculating max, min, mean
-    "keep_per_episode_custom_metrics": False,
-
-    # === Advanced Rollout Settings ===
-    # Use a background thread for sampling (slightly off-policy, usually not
-    # advisable to turn on unless your env specifically requires it).
-    "sample_async": False,
-
-    # The SampleCollector class to be used to collect and retrieve
-    # environment-, model-, and sampler data. Override the SampleCollector base
-    # class to implement your own collection/buffering/retrieval logic.
-    "sample_collector": SimpleListCollector,
-
-    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
-    "observation_filter": "NoFilter",
-    # Whether to synchronize the statistics of remote filters.
-    "synchronize_filters": True,
-    # Configures TF for single-process operation by default.
-    "tf_session_args": {
-        # note: overridden by `local_tf_session_args`
-        "intra_op_parallelism_threads": 2,
-        "inter_op_parallelism_threads": 2,
-        "gpu_options": {
-            "allow_growth": True,
-        },
-        "log_device_placement": False,
-        "device_count": {
-            "CPU": 1
-        },
-        # Required by multi-GPU (num_gpus > 1).
-        "allow_soft_placement": True,
-    },
-    # Override the following tf session args on the local worker
-    "local_tf_session_args": {
-        # Allow a higher level of parallelism by default, but not unlimited
-        # since that can cause crashes with many concurrent drivers.
-        "intra_op_parallelism_threads": 8,
-        "inter_op_parallelism_threads": 8,
-    },
-    # Whether to LZ4 compress individual observations.
-    "compress_observations": False,
-    # Wait for metric batches for at most this many seconds. Those that
-    # have not returned in time will be collected in the next train iteration.
-    "metrics_episode_collection_timeout_s": 180,
-    # Smooth metrics over this many episodes.
-    "metrics_num_episodes_for_smoothing": 100,
-    # Minimum time interval over which to accumulate within a single `train()` call.
-    # This value does not affect learning, only the number of times
-    # `self.step_attempt()` is called by `self.train()`.
-    # If - after one `step_attempt()`, the time limit has not been reached,
-    # will perform n more `step_attempt()` calls until this minimum time has been
-    # consumed. Set to 0 for no minimum time.
-    "min_time_s_per_iteration": 0,
-    # Minimum train/sample timesteps to accumulate within a single `train()` call.
-    # This value does not affect learning, only the number of times
-    # `self.step_attempt()` is called by `self.train()`.
-    # If - after one `step_attempt()`, the timestep counts (sampling or
-    # training) have not been reached, will perform n more `step_attempt()`
-    # calls until the minimum timesteps have been executed.
-    # Set to 0 for no minimum timesteps.
-    "min_train_timesteps_per_iteration": 0,
-    "min_sample_timesteps_per_iteration": 0,
-
-    # This argument, in conjunction with worker_index, sets the random seed of
-    # each worker, so that identically configured trials will have identical
-    # results. This makes experiments reproducible.
-    "seed": None,
-    # Any extra python env vars to set in the algorithm process, e.g.,
-    # {"OMP_NUM_THREADS": "16"}
-    "extra_python_environs_for_driver": {},
-    # The extra python environments need to set for worker processes.
-    "extra_python_environs_for_worker": {},
-
-    # === Resource Settings ===
-    # Number of GPUs to allocate to the algorithm process. Note that not all
-    # algorithms can take advantage of GPUs. Support for multi-GPU
-    # is currently only available for tf-[PPO/IMPALA/DQN/PG].
-    # This can be fractional (e.g., 0.3 GPUs).
-    "num_gpus": 0,
-    # Set to True for debugging (multi-)?GPU funcitonality on a CPU machine.
-    # GPU towers will be simulated by graphs located on CPUs in this case.
-    # Use `num_gpus` to test for different numbers of fake GPUs.
-    "_fake_gpus": False,
-    # Number of CPUs to allocate per worker.
-    "num_cpus_per_worker": 1,
-    # Number of GPUs to allocate per worker. This can be fractional. This is
-    # usually needed only if your env itself requires a GPU (i.e., it is a
-    # GPU-intensive video game), or model inference is unusually expensive.
-    "num_gpus_per_worker": 0,
-    # Any custom Ray resources to allocate per worker.
-    "custom_resources_per_worker": {},
-    # Number of CPUs to allocate for the algorithm. Note: this only takes effect
-    # when running in Tune. Otherwise, the algorithm runs in the main program.
-    "num_cpus_for_driver": 1,
-    # The strategy for the placement group factory returned by
-    # `Algorithm.default_resource_request()`. A PlacementGroup defines, which
-    # devices (resources) should always be co-located on the same node.
-    # For example, an Algorithm with 2 rollout workers, running with
-    # num_gpus=1 will request a placement group with the bundles:
-    # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
-    # for the driver and the other 2 bundles are for the two workers.
-    # These bundles can now be "placed" on the same or different
-    # nodes depending on the value of `placement_strategy`:
-    # "PACK": Packs bundles into as few nodes as possible.
-    # "SPREAD": Places bundles across distinct nodes as even as possible.
-    # "STRICT_PACK": Packs bundles into one node. The group is not allowed
-    #   to span multiple nodes.
-    # "STRICT_SPREAD": Packs bundles across distinct nodes.
-    "placement_strategy": "PACK",
-
-    # === Offline Datasets ===
-    # Specify how to generate experiences:
-    #  - "sampler": Generate experiences via online (env) simulation (default).
-    #  - A local directory or file glob expression (e.g., "/tmp/*.json").
-    #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    #    "s3://bucket/2.json"]).
-    #  - A dict with string keys and sampling probabilities as values (e.g.,
-    #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - A callable that takes an `IOContext` object as only arg and returns a
-    #    ray.rllib.offline.InputReader.
-    #  - A string key that indexes a callable with tune.registry.register_input
-    "input": "sampler",
-    # Arguments accessible from the IOContext for configuring custom input
-    "input_config": {},
-    # True, if the actions in a given offline "input" are already normalized
-    # (between -1.0 and 1.0). This is usually the case when the offline
-    # file has been generated by another RLlib algorithm (e.g. PPO or SAC),
-    # while "normalize_actions" was set to True.
-    "actions_in_input_normalized": False,
-    # Specify how to evaluate the current policy. This only has an effect when
-    # reading offline experiences ("input" is not "sampler").
-    # Available options:
-    #  - "simulation": Run the environment in the background, but use
-    #    this data for evaluation only and not for learning.
-    #  - Any subclass of OffPolicyEstimator, e.g.
-    #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
-    #    subclass.
-    "off_policy_estimation_methods": {
-        "is": {
-            "type": ImportanceSampling,
-        },
-        "wis": {
-            "type": WeightedImportanceSampling,
-        }
-    },
-    # Whether to run postprocess_trajectory() on the trajectory fragments from
-    # offline inputs. Note that postprocessing will be done using the *current*
-    # policy, not the *behavior* policy, which is typically undesirable for
-    # on-policy algorithms.
-    "postprocess_inputs": False,
-    # If positive, input batches will be shuffled via a sliding window buffer
-    # of this number of batches. Use this if the input data is not in random
-    # enough order. Input is delayed until the shuffle buffer is filled.
-    "shuffle_buffer_size": 0,
-    # Specify where experiences should be saved:
-    #  - None: don't save any experiences
-    #  - "logdir" to save to the agent log dir
-    #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
-    #  - a function that returns a rllib.offline.OutputWriter
-    "output": None,
-    # Arguments accessible from the IOContext for configuring custom output
-    "output_config": {},
-    # What sample batch columns to LZ4 compress in the output data.
-    "output_compress_columns": ["obs", "new_obs"],
-    # Max output file size (in bytes) before rolling over to a new file.
-    "output_max_file_size": 64 * 1024 * 1024,
-
-    # === Settings for Multi-Agent Environments ===
-    "multiagent": {
-        # Map of type MultiAgentPolicyConfigDict from policy ids to tuples
-        # of (policy_cls, obs_space, act_space, config). This defines the
-        # observation and action spaces of the policies and any extra config.
-        "policies": {},
-        # Keep this many policies in the "policy_map" (before writing
-        # least-recently used ones to disk/S3).
-        "policy_map_capacity": 100,
-        # Where to store overflowing (least-recently used) policies?
-        # Could be a directory (str) or an S3 location. None for using
-        # the default output dir.
-        "policy_map_cache": None,
-        # Function mapping agent ids to policy ids.
-        "policy_mapping_fn": None,
-        # Determines those policies that should be updated.
-        # Options are:
-        # - None, for all policies.
-        # - An iterable of PolicyIDs that should be updated.
-        # - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
-        #   and returning a bool (indicating whether the given policy is trainable
-        #   or not, given the particular batch). This allows you to have a policy
-        #   trained only on certain data (e.g. when playing against a certain
-        #   opponent).
-        "policies_to_train": None,
-        # Optional function that can be used to enhance the local agent
-        # observations to include more state.
-        # See rllib/evaluation/observation_function.py for more info.
-        "observation_fn": None,
-        # When replay_mode=lockstep, RLlib will replay all the agent
-        # transitions at a particular timestep together in a batch. This allows
-        # the policy to implement differentiable shared computations between
-        # agents it controls at that timestep. When replay_mode=independent,
-        # transitions are replayed independently per policy.
-        "replay_mode": "independent",
-        # Which metric to use as the "batch size" when building a
-        # MultiAgentBatch. The two supported values are:
-        # env_steps: Count each time the env is "stepped" (no matter how many
-        #   multi-agent actions are passed/how many multi-agent observations
-        #   have been returned in the previous step).
-        # agent_steps: Count each individual agent step as one step.
-        "count_steps_by": "env_steps",
-    },
-
-    # === Logger ===
-    # Define logger-specific configuration to be used inside Logger
-    # Default value None allows overwriting with nested dicts
-    "logger_config": None,
-
-    # === API deprecations/simplifications/changes ===
-    # If True, the execution plan API will not be used. Instead,
-    # a Algorithm's `training_step()` method will be called on each
-    # training iteration.
-    "_disable_execution_plan_api": True,
-
-    # Experimental flag.
-    # If True, TFPolicy will handle more than one loss/optimizer.
-    # Set this to True, if you would like to return more than
-    # one loss term from your `loss_fn` and an equal number of optimizers
-    # from your `optimizer_fn`.
-    # In the future, the default for this will be True.
-    "_tf_policy_handles_more_than_one_loss": False,
-    # Experimental flag.
-    # If True, no (observation) preprocessor will be created and
-    # observations will arrive in model as they are returned by the env.
-    # In the future, the default for this will be True.
-    "_disable_preprocessor_api": False,
-    # Experimental flag.
-    # If True, RLlib will no longer flatten the policy-computed actions into
-    # a single tensor (for storage in SampleCollectors/output files/etc..),
-    # but leave (possibly nested) actions as-is. Disabling flattening affects:
-    # - SampleCollectors: Have to store possibly nested action structs.
-    # - Models that have the previous action(s) as part of their input.
-    # - Algorithms reading from offline files (incl. action information).
-    "_disable_action_flattening": False,
-
-    # If True, disable the environment pre-checking module.
-    "disable_env_checking": False,
-
-
-Debugging
----------
+Debugging RLlib Experiments
+---------------------------
 
 Gym Monitor
 ~~~~~~~~~~~
@@ -1029,7 +547,9 @@ this case.
 Episode Traces
 ~~~~~~~~~~~~~~
 
-You can use the `data output API <rllib-offline.html>`__ to save episode traces for debugging. For example, the following command will run PPO while saving episode traces to ``/tmp/debug``.
+You can use the `data output API <rllib-offline.html>`__ to save episode traces
+for debugging. For example, the following command will run PPO while saving episode
+traces to ``/tmp/debug``.
 
 .. code-block:: bash
 
@@ -1056,9 +576,12 @@ For example, the following two commands are about equivalent:
     rllib train --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2}' -vv
 
-The default log level is ``WARN``. We strongly recommend using at least ``INFO`` level logging for development.
+The default log level is ``WARN``. We strongly recommend using at least ``INFO``
+level logging for development.
 
 Stack Traces
 ~~~~~~~~~~~~
 
-You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
+You can use the ``ray stack`` command to dump the stack traces of all the
+Python workers on a single node. This can be useful for debugging unexpected
+hangs or performance issues.
