@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1666983138154,
+  "iteration": 1667341518093,
   "links": [],
   "panels": [
     {
@@ -1226,16 +1226,17 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "MAX": "dark-red"
+      },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": "Prometheus",
-      "decimals": 2,
-      "description": "Network speed per node.",
+      "description": "The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component.",
       "fieldConfig": {
         "defaults": {
-          "unit": "binBps"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -1248,12 +1249,11 @@
         "y": 40
       },
       "hiddenSeries": false,
-      "id": 20,
+      "id": 34,
       "legend": {
         "alignAsTable": true,
         "avg": false,
         "current": true,
-        "hideEmpty": false,
         "max": false,
         "min": false,
         "rightSide": true,
@@ -1274,32 +1274,33 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:2987",
+          "alias": "MAX",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "sum(ray_component_uss_mb * 1e6) by (Component)",
           "interval": "",
-          "legendFormat": "Recv: {{instance}}",
+          "legendFormat": "{{Component}}",
           "queryType": "randomWalk",
           "refId": "A"
-        },
-        {
-          "exemplar": true,
-          "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
-          "interval": "",
-          "legendFormat": "Send: {{instance}}",
-          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Network",
+      "title": "Node Memory by Component",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1315,16 +1316,16 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:2779",
-          "format": "binBps",
+          "$$hashKey": "object:2968",
+          "format": "bytes",
           "label": null,
           "logBase": 1,
           "max": null,
-          "min": null,
+          "min": "0",
           "show": true
         },
         {
-          "$$hashKey": "object:2780",
+          "$$hashKey": "object:2969",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1461,6 +1462,119 @@
       "dashes": false,
       "datasource": "Prometheus",
       "decimals": 2,
+      "description": "Network speed per node.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "fill": 10,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 47
+      },
+      "hiddenSeries": false,
+      "id": 20,
+      "legend": {
+        "alignAsTable": true,
+        "avg": false,
+        "current": true,
+        "hideEmpty": false,
+        "max": false,
+        "min": false,
+        "rightSide": true,
+        "show": true,
+        "sort": "current",
+        "sortDesc": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.5.17",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "interval": "",
+          "legendFormat": "Recv: {{instance}}",
+          "queryType": "randomWalk",
+          "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "interval": "",
+          "legendFormat": "Send: {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Node Network",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:2779",
+          "format": "binBps",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "$$hashKey": "object:2780",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "Prometheus",
+      "decimals": 2,
       "description": "",
       "fieldConfig": {
         "defaults": {},
@@ -1472,7 +1586,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 54
       },
       "hiddenSeries": false,
       "id": 32,
@@ -1639,5 +1753,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 4
+  "version": 2
 }
