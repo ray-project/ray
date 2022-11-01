@@ -3,6 +3,7 @@ import math
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -109,8 +110,8 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A2CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A2CConfig()
 
     @override(A3C)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

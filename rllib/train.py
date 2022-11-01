@@ -50,7 +50,9 @@ def _patch_path(path: str):
         return path
 
 
-def load_experiments_from_file(config_file: str, file_type: SupportedFileType) -> dict:
+def load_experiments_from_file(
+    config_file: str, file_type: SupportedFileType, checkpoint_config: dict
+) -> dict:
     """Load experiments from a file. Supports YAML, JSON and Python files.
     If you want to use a Python file, it has to have a 'config' variable
     that is an AlgorithmConfig object."""
@@ -91,6 +93,9 @@ def load_experiments_from_file(config_file: str, file_type: SupportedFileType) -
             stop = getattr(module, "stop")
             experiments["default"]["stop"] = stop
 
+    for key, val in experiments.items():
+        experiments[key]["checkpoint_config"] = checkpoint_config
+
     return experiments
 
 
@@ -99,6 +104,11 @@ def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
     file_type: SupportedFileType = cli.FileType,
+    # Checkpointing
+    checkpoint_freq: int = cli.CheckpointFreq,
+    checkpoint_at_end: bool = cli.CheckpointAtEnd,
+    keep_checkpoints_num: int = cli.KeepCheckpointsNum,
+    checkpoint_score_attr: str = cli.CheckpointScoreAttr,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -137,7 +147,14 @@ def file(
     import_backends()
     framework = framework.value if framework else None
 
-    experiments = load_experiments_from_file(config_file, file_type)
+    checkpoint_config = {
+        "checkpoint_frequency": checkpoint_freq,
+        "checkpoint_at_end": checkpoint_at_end,
+        "num_to_keep": keep_checkpoints_num,
+        "checkpoint_score_attribute": checkpoint_score_attr,
+    }
+
+    experiments = load_experiments_from_file(config_file, file_type, checkpoint_config)
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
 
