@@ -80,3 +80,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_string REDIS_CLIENT_KEY() const
 
         c_string REDIS_SERVER_NAME() const
+
+        uint64_t memory_monitor_interval_ms() const

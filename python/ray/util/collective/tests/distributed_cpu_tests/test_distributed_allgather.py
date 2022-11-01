@@ -15,7 +15,7 @@ from ray.util.collective.tests.cpu_util import (
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("tensor_backend", ["numpy", "torch"])
 @pytest.mark.parametrize(
-    "array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20, [2, 2], [5, 5, 5]]
+    "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]]
 )
 def test_allgather_different_array_size(
     ray_start_distributed_2_nodes, array_size, tensor_backend, backend

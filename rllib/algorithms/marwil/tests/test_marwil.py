@@ -35,7 +35,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         To generate this data, first run:
-        $ ./train.py --run=PPO --env=CartPole-v0 \
+        $ ./train.py --run=PPO --env=CartPole-v1 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -47,7 +47,7 @@ class TestMARWIL(unittest.TestCase):
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=2)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_workers=1,
@@ -136,7 +136,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_loss_function(self):
         """
         To generate the historic data used in this test case, first run:
-        $ ./train.py --run=PPO --env=CartPole-v0 \
+        $ ./train.py --run=PPO --env=CartPole-v1 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -155,7 +155,7 @@ class TestMARWIL(unittest.TestCase):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             policy = algo.get_policy()
             model = policy.model
 

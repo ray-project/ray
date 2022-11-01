@@ -555,10 +555,10 @@ inline void CoreWorkerMemoryStore::EraseObjectAndUpdateStats(const ObjectID &obj
     num_in_plasma_ -= 1;
   } else {
     num_local_objects_ -= 1;
-    used_object_store_memory_ -= it->second->GetSize();
+    num_local_objects_bytes_ -= it->second->GetSize();
   }
   RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
-            used_object_store_memory_ >= 0);
+            num_local_objects_bytes_ >= 0);
   objects_.erase(it);
 }
 
@@ -570,11 +570,11 @@ inline void CoreWorkerMemoryStore::EmplaceObjectAndUpdateStats(
       num_in_plasma_ += 1;
     } else {
       num_local_objects_ += 1;
-      used_object_store_memory_ += object_entry->GetSize();
+      num_local_objects_bytes_ += object_entry->GetSize();
     }
   }
   RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
-            used_object_store_memory_ >= 0);
+            num_local_objects_bytes_ >= 0);
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
@@ -582,8 +582,15 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   MemoryStoreStats item;
   item.num_in_plasma = num_in_plasma_;
   item.num_local_objects = num_local_objects_;
-  item.used_object_store_memory = used_object_store_memory_;
+  item.num_local_objects_bytes = num_local_objects_bytes_;
   return item;
+}
+
+void CoreWorkerMemoryStore::RecordMetrics() {
+  absl::MutexLock lock(&mu_);
+  ray::stats::STATS_object_store_memory.Record(
+      num_local_objects_bytes_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocWorkerHeap}});
 }
 
 }  // namespace core

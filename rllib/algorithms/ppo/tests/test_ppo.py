@@ -208,7 +208,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -267,7 +267,7 @@ class TestPPO(unittest.TestCase):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
-            .environment("CartPole-v0")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -308,7 +308,7 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw in ["tf2", "tfe"]:
+            if fw == "tf2":
                 PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(

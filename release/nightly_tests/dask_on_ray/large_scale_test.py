@@ -275,7 +275,7 @@ class TransformRoutines:
         )
 
         spectrogram = np.abs(spectrogram)
-        spectrogram = 10 * np.log10(spectrogram ** 2)
+        spectrogram = 10 * np.log10(spectrogram**2)
         return spectrogram
 
     @staticmethod

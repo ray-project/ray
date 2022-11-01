@@ -16,6 +16,7 @@ Dataset API
     ray.data.Dataset.filter
     ray.data.Dataset.add_column
     ray.data.Dataset.drop_columns
+    ray.data.Dataset.select_columns
     ray.data.Dataset.random_sample
     ray.data.Dataset.limit
 
@@ -143,6 +144,8 @@ Basic Transformations
 .. automethod:: ray.data.Dataset.add_column
 
 .. automethod:: ray.data.Dataset.drop_columns
+
+.. automethod:: ray.data.Dataset.select_columns
 
 .. automethod:: ray.data.Dataset.random_sample
 

@@ -17,6 +17,7 @@
 #include <list>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/util/logging.h"
 
 /// \class CounterMap
@@ -40,8 +41,20 @@ class CounterMap {
   CounterMap &operator=(const CounterMap &other) = delete;
 
   /// Set a function `f((key, count))` to run when the count for the key changes.
-  void SetOnChangeCallback(std::function<void(const K &, int64_t)> on_change) {
+  /// Changes are buffered until `FlushOnChangeCallbacks()` is called to enable
+  /// batching for performance reasons.
+  void SetOnChangeCallback(std::function<void(const K &)> on_change) {
     on_change_ = on_change;
+  }
+
+  /// Flush any pending on change callbacks.
+  void FlushOnChangeCallbacks() {
+    if (on_change_ != nullptr) {
+      for (const auto &key : pending_changes_) {
+        on_change_(key);
+      }
+    }
+    pending_changes_.clear();
   }
 
   /// Increment the specified key by `val`, default to 1.
@@ -49,7 +62,7 @@ class CounterMap {
     counters_[key] += val;
     total_ += val;
     if (on_change_ != nullptr) {
-      on_change_(key, counters_[key]);
+      pending_changes_.insert(key);
     }
   }
 
@@ -66,7 +79,7 @@ class CounterMap {
       counters_.erase(it);
     }
     if (on_change_ != nullptr) {
-      on_change_(key, new_value);
+      pending_changes_.insert(key);
     }
   }
 
@@ -95,6 +108,9 @@ class CounterMap {
   /// Return the total count across all keys in this counter.
   size_t Total() const { return total_; }
 
+  /// For testing, return the number of pending change callbacks.
+  size_t NumPendingCallbacks() const { return pending_changes_.size(); }
+
   /// Run the given function `f((key, count))` for every tracked entry.
   void ForEachEntry(std::function<void(const K &, int64_t)> callback) const {
     for (const auto &it : counters_) {
@@ -104,6 +120,7 @@ class CounterMap {
 
  private:
   absl::flat_hash_map<K, int64_t> counters_;
-  std::function<void(const K &, int64_t)> on_change_;
+  absl::flat_hash_set<K> pending_changes_;
+  std::function<void(const K &)> on_change_;
   size_t total_ = 0;
 };

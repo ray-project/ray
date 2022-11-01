@@ -837,8 +837,8 @@ class ObjectSummaries:
             # object_size's unit is byte by default. It is -1, if the size is
             # unknown.
             if size_bytes != -1:
-                object_summary.total_size_mb += size_bytes / 1024 ** 2
-                total_size_mb += size_bytes / 1024 ** 2
+                object_summary.total_size_mb += size_bytes / 1024**2
+                total_size_mb += size_bytes / 1024**2
 
             key_to_workers[key].add(object["pid"])
             key_to_nodes[key].add(object["ip"])

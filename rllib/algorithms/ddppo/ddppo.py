@@ -21,6 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -41,7 +42,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -92,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -195,8 +196,8 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
     def validate_config(self, config):

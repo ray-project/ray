@@ -97,8 +97,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     task_counter_.SetOnChangeCallback(
-        [this](const std::pair<std::string, rpc::TaskStatus> key, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) { task_counter_changes_.insert(key); });
+        [this](const std::pair<std::string, rpc::TaskStatus> key)
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+              ray::stats::STATS_tasks.Record(task_counter_.Get(key),
+                                             {{"State", rpc::TaskStatus_Name(key.second)},
+                                              {"Name", key.first},
+                                              {"Source", "owner"}});
+            });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -444,11 +449,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Tracks per-task-state counters for metric purposes.
   TaskStatusCounter task_counter_ GUARDED_BY(mu_);
-
-  /// Tracks changes to the above counter that need to be flushed to OCL. We cannot
-  /// simply iterate over the counter since entries are deleted once they are zeroed.
-  absl::flat_hash_set<std::pair<std::string, rpc::TaskStatus>> task_counter_changes_
-      GUARDED_BY(mu_);
 
   /// This map contains one entry per task that may be submitted for
   /// execution. This includes both tasks that are currently pending execution

@@ -96,7 +96,7 @@ class ARSConfig(AlgorithmConfig):
         self.offset = 0
 
         # Override some of AlgorithmConfig's default values with ARS-specific values.
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.observation_filter = "MeanStdFilter"
 
         # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
@@ -323,8 +323,8 @@ class ARS(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ARSConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ARSConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

@@ -71,33 +71,41 @@ TEST_F(CounterMapTest, TestCallback) {
   int num_calls = 0;
   std::string last_call_key;
   int64_t last_call_value;
-  c.SetOnChangeCallback([&](const std::string &key, int64_t value) mutable {
+  c.SetOnChangeCallback([&](const std::string &key) mutable {
     num_calls += 1;
     last_call_key = key;
-    last_call_value = value;
+    last_call_value = c.Get(key);
   });
 
   c.Increment("k1");
+  EXPECT_EQ(num_calls, 0);
+  EXPECT_EQ(c.NumPendingCallbacks(), 1);
+  c.FlushOnChangeCallbacks();
+  EXPECT_EQ(c.NumPendingCallbacks(), 0);
   EXPECT_EQ(num_calls, 1);
   EXPECT_EQ(last_call_key, "k1");
   EXPECT_EQ(last_call_value, 1);
 
   c.Increment("k1");
+  c.FlushOnChangeCallbacks();
   EXPECT_EQ(num_calls, 2);
   EXPECT_EQ(last_call_key, "k1");
   EXPECT_EQ(last_call_value, 2);
 
   c.Increment("k2");
+  c.FlushOnChangeCallbacks();
   EXPECT_EQ(num_calls, 3);
   EXPECT_EQ(last_call_key, "k2");
   EXPECT_EQ(last_call_value, 1);
 
   c.Swap("k1", "k2");
+  EXPECT_EQ(c.NumPendingCallbacks(), 2);
+  c.FlushOnChangeCallbacks();
+  EXPECT_EQ(c.NumPendingCallbacks(), 0);
   EXPECT_EQ(num_calls, 5);
-  EXPECT_EQ(last_call_key, "k2");
-  EXPECT_EQ(last_call_value, 2);
 
   c.Decrement("k1");
+  c.FlushOnChangeCallbacks();
   EXPECT_EQ(num_calls, 6);
   EXPECT_EQ(last_call_key, "k1");
   EXPECT_EQ(last_call_value, 0);

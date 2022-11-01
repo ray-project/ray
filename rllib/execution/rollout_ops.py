@@ -154,7 +154,7 @@ def ParallelRollouts(
         >>> rollouts = ParallelRollouts(workers, mode="bulk_sync") # doctest: +SKIP
         >>> batch = next(rollouts) # doctest: +SKIP
         >>> print(batch.count) # doctest: +SKIP
-        200  # config.rollout_fragment_length * config.num_workers
+        200  # config.rollout_fragment_length * config.num_rollout_workers
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """

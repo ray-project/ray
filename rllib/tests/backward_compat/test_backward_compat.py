@@ -7,9 +7,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.policy.policy import Policy
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import register_env
 
 
 class TestBackwardCompatibility(unittest.TestCase):
@@ -98,6 +100,41 @@ class TestBackwardCompatibility(unittest.TestCase):
 
             policy = Policy.from_checkpoint(path_to_checkpoint)
             self.assertTrue(isinstance(policy, Policy))
+
+    def test_old_algorithm_config_dicts(self):
+        """Tests, whether we can build Algorithm objects with old config dicts."""
+        register_env(
+            "test",
+            lambda ctx: MultiAgentCartPole(config={"num_agents": ctx["num_agents"]}),
+        )
+
+        config = {
+            "env": "test",
+            "env_config": {
+                "num_agents": 1,
+            },
+            "lr": 0.001,
+            "evaluation_config": {
+                "num_envs_per_worker": 4,
+                "explore": False,
+            },
+            "evaluation_num_workers": 1,
+            "multiagent": {
+                "policies": {
+                    "policy1": PolicySpec(),
+                },
+                "policy_mapping_fn": lambda aid, ep, worker, **kw: "policy1",
+                "policies_to_train": ["policy1"],
+            },
+        }
+        algo = PPO(config=config)
+        self.assertTrue(algo.config.lr == 0.001)
+        self.assertTrue(algo.config.evaluation_num_workers == 1)
+        self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])
+        self.assertTrue(algo.config.explore is True)
+        self.assertTrue(algo.evaluation_config.explore is False)
+        print(algo.train())
+        algo.stop()
 
 
 if __name__ == "__main__":

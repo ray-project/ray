@@ -130,7 +130,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
@@ -451,8 +451,8 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ImpalaConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ImpalaConfig()
 
     @override(Algorithm)
     def get_default_policy_class(
@@ -524,7 +524,7 @@ class Impala(Algorithm):
             # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
             #  models to return separate sets of weights in order to create
             #  the different torch optimizers).
-            if config["framework"] not in ["tf", "tf2", "tfe"]:
+            if config["framework"] not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
                 )

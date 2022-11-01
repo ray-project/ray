@@ -20,9 +20,9 @@ class TestReproSimpleQ(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env("DeterministicCartPole-v0", create_cartpole_deterministic)
+        register_env("DeterministicCartPole-v1", create_cartpole_deterministic)
         config = simple_q.SimpleQConfig().environment(
-            env="DeterministicCartPole-v0", env_config={"seed": 42}
+            env="DeterministicCartPole-v1", env_config={"seed": 42}
         )
         check_reproducibilty(
             algo_class=simple_q.SimpleQ,

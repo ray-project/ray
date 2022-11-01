@@ -6,6 +6,7 @@ import pytest
 
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.offline import IOContext
 from ray.rllib.offline.dataset_reader import (
     DatasetReader,
@@ -19,7 +20,7 @@ class TestDatasetReader(unittest.TestCase):
     def setUpClass(cls) -> None:
         ray.init()
         # TODO(Kourosh): Hitting S3 in CI is currently broken due to some AWS
-        # credentials issues, using a local file instead for now.
+        #  credentials issues, using a local file instead for now.
 
         # cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
         cls.dset_path = "tests/data/pendulum/large.json"
@@ -35,7 +36,14 @@ class TestDatasetReader(unittest.TestCase):
             {"input": "dataset", "input_config": input_config}
         )
 
-        ioctx = IOContext(config={"train_batch_size": 1200}, worker_index=0)
+        ioctx = IOContext(
+            config=(
+                AlgorithmConfig()
+                .training(train_batch_size=1200)
+                .offline_data(actions_in_input_normalized=True)
+            ),
+            worker_index=0,
+        )
         reader = DatasetReader(dataset, ioctx)
         assert len(reader.next()) >= 1200
 
@@ -179,7 +187,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 str(Path("./").absolute() / "enormous.json"),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     def test_absolute_zip(self):
@@ -198,7 +206,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 str(Path("./").absolute() / "enormous.json"),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     # @TODO: unskip when this is fixed
@@ -240,7 +248,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 ),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
     def test_absolute_json(self):
@@ -259,7 +267,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
                 ),
             )
 
-            assert all([Path(fpath).exists() for fpath in unzipped_paths])
+            assert all(Path(fpath).exists() for fpath in unzipped_paths)
             os.chdir(cwdir)
 
 

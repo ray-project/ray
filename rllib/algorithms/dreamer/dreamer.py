@@ -99,7 +99,6 @@ class DreamerConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
-        self.num_workers = 0
         self.num_envs_per_worker = 1
         self.horizon = 1000
         self.batch_mode = "complete_episodes"
@@ -299,8 +298,8 @@ class DreamerIteration:
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DreamerConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DreamerConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

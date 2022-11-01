@@ -12,6 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
@@ -28,7 +29,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,10 +86,10 @@ class APPOConfig(ImpalaConfig):
         self.kl_target = 0.01
 
         # Override some of ImpalaConfig's default values with APPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
-        self.num_workers = 2
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
@@ -280,8 +280,8 @@ class APPO(Impala):
 
     @classmethod
     @override(Impala)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return APPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return APPOConfig()
 
     @override(Impala)
     def get_default_policy_class(
