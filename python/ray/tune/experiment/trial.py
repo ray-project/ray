@@ -382,7 +382,7 @@ class Trial:
 
         self.checkpoint_manager = _CheckpointManager(
             checkpoint_config=self.checkpoint_config,
-            delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
+            delete_fn=_CheckpointDeleter(self._trainable_name, self.runner),
         )
 
         # Restoration fields
@@ -625,7 +625,7 @@ class Trial:
                 debug_metrics_only=True
             )
         self.checkpoint_manager.set_delete_fn(
-            _CheckpointDeleter(self._trainable_name(), runner)
+            _CheckpointDeleter(self._trainable_name, runner)
         )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
@@ -827,6 +827,7 @@ class Trial:
     def __repr__(self):
         return self._trainable_name + "_" + self.trial_id
 
+    @property
     def _trainable_name(self):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
