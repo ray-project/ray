@@ -197,7 +197,7 @@ class WandbTrainableMixin:
         else:
             os.environ["WANDB_START_METHOD"] = "fork"
 
-        self.wandb = self._wandb.init(**wandb_init_kwargs)
+        self.run = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
         self._wandb.finish()
