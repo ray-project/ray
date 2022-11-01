@@ -234,7 +234,7 @@ class DatasetStats:
 
         Args:
         `already_printed`: Set of stage IDs that have already had its stats printed out.
-        `log_parent`: If true, also log parent stats; otherwise, only log stats of the 
+        `log_parent`: If true, also log parent stats; otherwise, only log stats of the
         latest stage.
         """
         if already_printed is None:
