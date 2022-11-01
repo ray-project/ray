@@ -77,6 +77,9 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
+# Default batch size for batch transformations.
+DEFAULT_BATCH_SIZE = 4096
+
 
 @DeveloperAPI
 class DatasetContext:
