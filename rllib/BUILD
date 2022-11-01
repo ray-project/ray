@@ -84,7 +84,7 @@ py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
     args = ["--yaml-dir=tuned_examples/a2c"]
@@ -758,6 +758,13 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_algorithm.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_algorithm_config",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
 py_test(
@@ -1737,6 +1744,27 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+py_test(
+    name = "test_torch_marl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -2158,29 +2186,56 @@ py_test(
 
 py_test(
     name = "tests/test_checkpoint_restore_pg",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestorePG"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_tf",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTF"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_tf2",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTF2"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_torch",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTorch"]
 )
 
 py_test(
@@ -2666,7 +2721,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(

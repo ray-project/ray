@@ -18,7 +18,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
         ray.get(signal.send.remote())
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_worker_pid():
@@ -68,7 +68,7 @@ def test_dying_driver_get(ray_start_regular):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     x_id = sleep_forever.remote()
 
@@ -108,7 +108,7 @@ ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     @ray.remote
     def get_pid():
@@ -149,7 +149,7 @@ def test_dying_driver_wait(ray_start_regular):
 
     @ray.remote
     def sleep_forever():
-        time.sleep(10 ** 6)
+        time.sleep(10**6)
 
     x_id = sleep_forever.remote()
 
