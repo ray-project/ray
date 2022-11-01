@@ -2219,7 +2219,7 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
-    args = ["TestPolicyFromCheckpointTwiceT2"]
+    args = ["TestPolicyFromCheckpointTwiceTF2"]
 )
 
 py_test(
