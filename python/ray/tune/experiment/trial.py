@@ -353,8 +353,9 @@ class Trial:
         self.relative_logdir = None
         self.runner = None
         self.last_debug = 0
-        self.error_file = None
-        self.pickled_error_file = None
+        self.error_filename = None
+        self.pickled_error_filename = None
+
         self.trial_name_creator = trial_name_creator
         self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
@@ -652,6 +653,18 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
+    @property
+    def error_file(self):
+        if not self.logdir or not self.error_filename:
+            return None
+        return os.path.join(self.logdir, self.error_filename)
+
+    @property
+    def pickled_error_file(self):
+        if not self.logdir or not self.pickled_error_filename:
+            return None
+        return os.path.join(self.logdir, self.pickled_error_filename)
+
     def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
         if isinstance(exc, _TuneRestoreError):
             exc = exc.exc
@@ -667,10 +680,10 @@ class Trial:
             self.num_failures += 1
 
         if self.logdir:
-            self.error_file = os.path.join(self.logdir, "error.txt")
+            self.error_filename = "error.txt"
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
+                self.pickled_error_filename = "error.pkl"
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
