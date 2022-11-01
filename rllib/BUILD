@@ -2149,7 +2149,7 @@ py_test(
 
 py_test(
     name = "test_actor_manager",
-    tags = ["team:rllib", "utils"],
+    tags = ["team:rllib", "utils", "exclusive"],
     size = "medium",
     srcs = ["utils/tests/test_actor_manager.py"],
     data = ["utils/tests/random_numbers.pkl"],
