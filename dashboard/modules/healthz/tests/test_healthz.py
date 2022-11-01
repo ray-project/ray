@@ -43,6 +43,7 @@ def test_healthz_agent_2(pull_based, monkeypatch, ray_start_cluster):
     if pull_based:
         monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
         monkeypatch.setenv("RAY_health_check_timeout_ms", "100")
+        monkeypatch.setenv("RAY_health_check_period_ms", "1000")
         monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
     else:
         monkeypatch.setenv("RAY_num_heartbeats_timeout", "3")
