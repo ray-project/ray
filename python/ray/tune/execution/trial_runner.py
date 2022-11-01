@@ -66,15 +66,17 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
 
 
 def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+    # Update trial checkpoint with kwargs passed in
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
+    trial_cp.update(kwargs)
     new_trial.__setstate__(trial_cp)
     return new_trial
 
 
 def _load_trials_from_experiment_checkpoint(
-    experiment_checkpoint: Mapping[str, Any], stub: bool = False
+    experiment_checkpoint: Mapping[str, Any], stub: bool = False, **kwargs
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
@@ -87,7 +89,7 @@ def _load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub, **kwargs))
 
     return trials
 
@@ -751,11 +753,20 @@ class TrialRunner:
             )
         )
 
+        trial_runner_data = runner_state["runner_data"]
+        # Don't overwrite the current `_local_checkpoint_dir`
+        # The current directory could be different from the checkpointed
+        # directory, if the experiment directory has changed.
+        trial_runner_data.pop("_local_checkpoint_dir", None)
+
         self.__setstate__(runner_state["runner_data"])
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = _load_trials_from_experiment_checkpoint(runner_state)
+        # Load trials with respect to the `_local_checkpoint_dir`
+        trials = _load_trials_from_experiment_checkpoint(
+            runner_state, local_dir=self._local_checkpoint_dir
+        )
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
