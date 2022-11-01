@@ -18,9 +18,6 @@ class ResultOrError:
 
     This is used to return data from FaultTolerantActorManager
     that allows us to distinguish between error and actual results.
-
-    Users of this class should always use ResultOrError.Result() and
-    ResultOrError.Error() to construct instances of this class.
     """
 
     def __init__(self, result: Any = None, error: Exception = None):
@@ -117,7 +114,7 @@ class RemoteCallResults:
     def ignore_errors(self) -> Iterator[ResultOrError]:
         """Return an iterator over the results, skipping errors."""
         return self._Iterator(
-            [r for r in self.result_or_errors if r.result_or_error.ok]
+            [r for r in self.result_or_errors if r.ok]
         )
 
 
