@@ -1,32 +1,52 @@
 import copy
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
-
 import gym
+from gym.spaces import Space
+import logging
+import math
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
+import ray
+from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
+    MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
+    PolicyID,
     ResultDict,
+    SampleBatchType,
 )
 from ray.tune.logger import Logger
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
 
+logger = logging.getLogger(__name__)
+
 
 class AlgorithmConfig:
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
@@ -36,16 +56,17 @@ class AlgorithmConfig:
         ...              .rollouts(num_rollout_workers=4)
         ...              .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
-        >>> rllib_trainer = config.build()
+        >>> rllib_algo = config.build()
 
     Example:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.run()`.
-        >>> tune.run("[registered trainer class]", config=config.to_dict())
+        >>> # for usage with `tune.Tuner().fit()`.
+        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -104,7 +125,7 @@ class AlgorithmConfig:
         self.disable_env_checking = False
 
         # `self.rollouts()`
-        self.num_workers = 2
+        self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
@@ -152,13 +173,15 @@ class AlgorithmConfig:
         }
 
         # `self.multi_agent()`
-        self.policies = {}
+        self._is_multi_agent = False
+        self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_map_cache = None
-        self.policy_mapping_fn = None
+        self.policy_mapping_fn = (
+            lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
+        )
         self.policies_to_train = None
         self.observation_fn = None
-        self.replay_mode = "independent"
         self.count_steps_by = "env_steps"
 
         # `self.offline_data()`
@@ -171,6 +194,7 @@ class AlgorithmConfig:
         self.output_config = {}
         self.output_compress_columns = ["obs", "new_obs"]
         self.output_max_file_size = 64 * 1024 * 1024
+        self.offline_sampling = False
 
         # `self.evaluation()`
         self.evaluation_interval = None
@@ -178,11 +202,13 @@ class AlgorithmConfig:
         self.evaluation_duration_unit = "episodes"
         self.evaluation_sample_timeout_s = 180.0
         self.evaluation_parallel_to_training = False
-        self.evaluation_config = {}
+        self.evaluation_config = None
         self.off_policy_estimation_methods = {}
+        self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -195,6 +221,9 @@ class AlgorithmConfig:
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
+
+        # `self.checkpointing()`
+        self.export_native_model_files = False
 
         # `self.debugging()`
         self.logger_creator = None
@@ -209,6 +238,9 @@ class AlgorithmConfig:
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
+
+        # Has this config object been frozen (cannot alter its attributes anymore).
+        self._is_frozen = False
 
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
@@ -227,6 +259,7 @@ class AlgorithmConfig:
         self.replay_batch_size = DEPRECATED_VALUE
         # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
         self.replay_sequence_length = None
+        self.replay_mode = DEPRECATED_VALUE
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
@@ -240,10 +273,11 @@ class AlgorithmConfig:
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.run()`.
+            use cases, e.g. w/ `tune.Tuner().fit()`.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
+        config.pop("_is_frozen")
 
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
@@ -255,18 +289,9 @@ class AlgorithmConfig:
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
-        # Setup legacy multiagent sub-dict:
+        # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
-        for k in [
-            "policies",
-            "policy_map_capacity",
-            "policy_map_cache",
-            "policy_mapping_fn",
-            "policies_to_train",
-            "observation_fn",
-            "replay_mode",
-            "count_steps_by",
-        ]:
+        for k in self.multiagent.keys():
             config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
@@ -275,15 +300,165 @@ class AlgorithmConfig:
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+        config["num_workers"] = config.pop("num_rollout_workers", 0)
+
+        for dep_k in [
+            "monitor",
+            "evaluation_num_episodes",
+            "metrics_smoothing_episodes",
+            "timesteps_per_iteration",
+            "min_iter_time_s",
+            "collect_metrics_timeout",
+            "buffer_size",
+            "prioritized_replay",
+            "learning_starts",
+            "replay_batch_size",
+            "replay_mode",
+            "prioritized_replay_alpha",
+            "prioritized_replay_beta",
+            "prioritized_replay_eps",
+            "min_time_s_per_reporting",
+            "min_train_timesteps_per_reporting",
+            "min_sample_timesteps_per_reporting",
+            "input_evaluation",
+        ]:
+            if config.get(dep_k) == DEPRECATED_VALUE:
+                config.pop(dep_k, None)
 
         return config
+
+    @classmethod
+    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
+        """Creates an AlgorithmConfig from a legacy python config dict.
+
+        Examples:
+            >>> from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG, PPOConfig
+            >>> ppo_config = PPOConfig.from_dict(DEFAULT_CONFIG)
+            >>> ppo = ppo_config.build(env="Pendulum-v1")
+
+        Args:
+            config_dict: The legacy formatted python config dict for some algorithm.
+
+        Returns:
+             A new AlgorithmConfig object that matches the given python config dict.
+        """
+        # Create a default config object of this class.
+        config_obj = cls()
+        # Remove `_is_frozen` flag from config dict in case the AlgorithmConfig that
+        # the dict was derived from was already frozen (we don't want to copy the
+        # frozenness).
+        config_dict.pop("_is_frozen", None)
+        config_obj.update_from_dict(config_dict)
+        return config_obj
+
+    def update_from_dict(
+        self,
+        config_dict: PartialAlgorithmConfigDict,
+    ) -> "AlgorithmConfig":
+        """Modifies this AlgorithmConfig via the provided python config dict.
+
+        Warns if `config_dict` contains deprecated keys.
+        Silently sets even properties of `self` that do NOT exist. This way, this method
+        may be used to configure custom Policies which do not have their own specific
+        AlgorithmConfig classes, e.g.
+        `ray.rllib.examples.policy.random_policy::RandomPolicy`.
+
+        Args:
+            config_dict: The old-style python config dict (PartialAlgorithmConfigDict)
+                to use for overriding some properties defined in there.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        eval_call = {}
+
+        # Modify our properties one by one.
+        for key, value in config_dict.items():
+            key = self._translate_special_keys(key, warn_deprecated=False)
+
+            # Set our multi-agent settings.
+            if key == "multiagent":
+                kwargs = {
+                    k: value[k]
+                    for k in [
+                        "policies",
+                        "policy_map_capacity",
+                        "policy_map_cache",
+                        "policy_mapping_fn",
+                        "policies_to_train",
+                        "observation_fn",
+                        "count_steps_by",
+                    ]
+                    if k in value
+                }
+                self.multi_agent(**kwargs)
+            # Some keys specify config sub-dicts and therefore should go through the
+            # correct methods to properly `.update()` those from given config dict
+            # (to not lose any sub-keys).
+            elif key == "callbacks_class":
+                self.callbacks(callbacks_class=value)
+            elif key == "env_config":
+                self.environment(env_config=value)
+            elif key.startswith("evaluation_"):
+                eval_call[key] = value
+            elif key == "exploration_config":
+                self.exploration(exploration_config=value)
+            elif key in ["model", "optimizer", "replay_buffer_config"]:
+                self.training(**{key: value})
+            # If config key matches a property, just set it, otherwise, warn and set.
+            else:
+                if not hasattr(self, key) and log_once(
+                    "unknown_property_in_algo_config"
+                ):
+                    logger.warning(
+                        f"Cannot create {type(self).__name__} from given "
+                        f"`config_dict`! Property {key} not supported."
+                    )
+                setattr(self, key, value)
+
+        self.evaluation(**eval_call)
+
+        return self
+
+    def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
+        """Creates a deep copy of this config and (un)freezes if necessary.
+
+        Args:
+            copy_frozen: Whether the created deep copy will be frozen or not. If None,
+                keep the same frozen status that `self` currently has.
+
+        Returns:
+            A deep copy of `self` that is (un)frozen.
+        """
+        cp = copy.deepcopy(self)
+        if copy_frozen is True:
+            cp.freeze()
+        elif copy_frozen is False:
+            cp._is_frozen = False
+            if isinstance(cp.evaluation_config, AlgorithmConfig):
+                cp.evaluation_config._is_frozen = False
+        return cp
+
+    def freeze(self) -> None:
+        """Freezes this config object, such that no attributes can be set anymore.
+
+        Algorithms should use this method to make sure that their config objects
+        remain read-only after this.
+        """
+        if self._is_frozen:
+            return
+        self._is_frozen = True
+        # Also freeze underlying eval config, if applicable.
+        if isinstance(self.evaluation_config, AlgorithmConfig):
+            self.evaluation_config.freeze()
 
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
+        use_copy: bool = True,
     ) -> "Algorithm":
-        """Builds an Algorithm from the AlgorithmConfig.
+        """Builds an Algorithm from this AlgorithmConfig (or a copy thereof).
 
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
@@ -293,6 +468,10 @@ class AlgorithmConfig:
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
+                (instead of `self`) as config. This is useful in case you would like to
+                recycle the same AlgorithmConfig over and over, e.g. in a test case, in
+                which we loop over different DL-frameworks.
 
         Returns:
             A ray.rllib.algorithms.algorithm.Algorithm object.
@@ -304,9 +483,12 @@ class AlgorithmConfig:
         if logger_creator is not None:
             self.logger_creator = logger_creator
 
-        return self.algo_class(
-            config=self.to_dict(),
-            env=self.env,
+        algo_class = self.algo_class
+        if isinstance(self.algo_class, str):
+            algo_class = get_algorithm_class(self.algo_class)
+
+        return algo_class(
+            config=self if not use_copy else copy.deepcopy(self),
             logger_creator=self.logger_creator,
         )
 
@@ -338,7 +520,7 @@ class AlgorithmConfig:
         *,
         num_gpus: Optional[Union[float, int]] = None,
         _fake_gpus: Optional[bool] = None,
-        num_cpus_per_worker: Optional[int] = None,
+        num_cpus_per_worker: Optional[Union[float, int]] = None,
         num_gpus_per_worker: Optional[Union[float, int]] = None,
         num_cpus_for_local_worker: Optional[int] = None,
         custom_resources_per_worker: Optional[dict] = None,
@@ -425,7 +607,7 @@ class AlgorithmConfig:
                 methods inside the `..._eager_traced` Policy, which could slow down
                 execution by a factor of 4, without the user noticing what the root
                 cause for this slowdown could be.
-                Only necessary for framework=[tf2|tfe].
+                Only necessary for framework=tf2.
                 Set to None to ignore the re-trace count and never throw an error.
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
@@ -435,6 +617,12 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
         if framework is not None:
+            if framework == "tfe":
+                raise deprecation_warning(
+                    old="AlgorithmConfig.framework('tfe')",
+                    new="AlgorithmConfig.framework('tf2')",
+                    error=True,
+                )
             self.framework_str = framework
         if eager_tracing is not None:
             self.eager_tracing = eager_tracing
@@ -449,8 +637,8 @@ class AlgorithmConfig:
 
     def environment(
         self,
-        *,
         env: Optional[Union[str, EnvType]] = None,
+        *,
         env_config: Optional[EnvConfigDict] = None,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -471,8 +659,8 @@ class AlgorithmConfig:
                 a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
                 Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
-                object (which is a dict plus the properties: num_workers, worker_index,
-                vector_index, and remote).
+                object (which is a dict plus the properties: num_rollout_workers,
+                worker_index, vector_index, and remote).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
             env_task_fn: A callable taking the last train results, the base env and the
@@ -480,8 +668,8 @@ class AlgorithmConfig:
                 The env must be a `TaskSettableEnv` sub-class for this to work.
                 See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
-                worker 1 (if num_workers > 0). For vectorized envs, this usually means
-                that only the first sub-environment will be rendered.
+                worker 1 (if num_rollout_workers > 0). For vectorized envs, this usually
+                means that only the first sub-environment will be rendered.
                 In order for this to work, your env will have to implement the
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
@@ -507,7 +695,11 @@ class AlgorithmConfig:
         if env is not None:
             self.env = env
         if env_config is not None:
-            self.env_config = env_config
+            deep_update(
+                self.env_config,
+                env_config,
+                True,
+            )
         if observation_space is not None:
             self.observation_space = observation_space
         if action_space is not None:
@@ -569,7 +761,7 @@ class AlgorithmConfig:
                 retrieve environment-, model-, and sampler data. Override the
                 SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
-            create_env_on_local_worker: When `num_workers` > 0, the driver
+            create_env_on_local_worker: When `num_rollout_workers` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
@@ -597,15 +789,23 @@ class AlgorithmConfig:
             batch_mode: How to build per-Sampler (RolloutWorker) batches, which are then
                 usually concat'd to form the train batch. Note that "steps" below can
                 mean different things (either env- or agent-steps) and depends on the
-                `count_steps_by` (multiagent) setting below.
-                "truncate_episodes": Each produced batch (when calling
-                RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
-                steps. This mode guarantees evenly sized batches, but increases
+                `count_steps_by` setting, adjustable via
+                `AlgorithmConfig.multi_agent(count_steps_by=..)`:
+                1) "truncate_episodes": Each call to sample() will return a
+                batch of at most `rollout_fragment_length * num_envs_per_worker` in
+                size. The batch will be exactly `rollout_fragment_length * num_envs`
+                in size if postprocessing does not change batch sizes. Episodes
+                may be truncated in order to meet this size requirement.
+                This mode guarantees evenly sized batches, but increases
                 variance as the future return must now be estimated at truncation
                 boundaries.
-                "complete_episodes": Each unroll happens exactly over one episode, from
-                beginning to end. Data collection will not stop unless the episode
-                terminates or a configured horizon (hard or soft) is hit.
+                2) "complete_episodes": Each call to sample() will return a
+                batch of at least `rollout_fragment_length * num_envs_per_worker` in
+                size. Episodes will not be truncated, but multiple episodes
+                may be packed within one batch to meet the (minimum) batch size.
+                Note that when `num_envs_per_worker > 1`, episode steps will be buffered
+                until the episode completes, and hence batches may contain
+                significant amounts of off-policy data.
             remote_worker_envs: If using num_envs_per_worker > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
                 This adds overheads, but can make sense if your envs can take much
@@ -677,8 +877,13 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
         if num_rollout_workers is not None:
-            self.num_workers = num_rollout_workers
+            self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not None:
+            if num_envs_per_worker <= 0:
+                raise ValueError(
+                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be "
+                    f"larger than 0!"
+                )
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not None:
             self.sample_collector = sample_collector
@@ -690,8 +895,16 @@ class AlgorithmConfig:
             self.enable_connectors = enable_connectors
         if rollout_fragment_length is not None:
             self.rollout_fragment_length = rollout_fragment_length
+
+        # Check batching/sample collection settings.
         if batch_mode is not None:
+            if batch_mode not in ["truncate_episodes", "complete_episodes"]:
+                raise ValueError(
+                    "`config.batch_mode` must be one of [truncate_episodes|"
+                    "complete_episodes]! Got {}".format(batch_mode)
+                )
             self.batch_mode = batch_mode
+
         if remote_worker_envs is not None:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not None:
@@ -717,6 +930,7 @@ class AlgorithmConfig:
         if no_done_at_end is not None:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not None:
+            assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not None:
             self.observation_filter = observation_filter
@@ -747,6 +961,7 @@ class AlgorithmConfig:
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
+                TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
 
         Returns:
@@ -759,7 +974,7 @@ class AlgorithmConfig:
         if train_batch_size is not None:
             self.train_batch_size = train_batch_size
         if model is not None:
-            self.model = model
+            self.model.update(model)
         if optimizer is not None:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
 
@@ -777,6 +992,15 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
+        if callbacks_class is None:
+            callbacks_class = DefaultCallbacks
+        # Check, whether given `callbacks` is a callable.
+        if not callable(callbacks_class):
+            raise ValueError(
+                "`config.callbacks_class` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got "
+                f"{callbacks_class}!"
+            )
         self.callbacks_class = callbacks_class
 
         return self
@@ -818,7 +1042,7 @@ class AlgorithmConfig:
         self,
         *,
         evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[int] = None,
+        evaluation_duration: Optional[Union[int, str]] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
@@ -826,9 +1050,13 @@ class AlgorithmConfig:
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
         off_policy_estimation_methods: Optional[Dict] = None,
+        ope_split_batch_by_episode: Optional[bool] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
+        # Deprecated args.
+        evaluation_num_episodes=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -878,6 +1106,11 @@ class AlgorithmConfig:
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
+            ope_split_batch_by_episode: Whether to use SampleBatch.split_by_episode() to
+                split the input batch to episodes before estimating the ope metrics. In
+                case of bandits you should make this False to see improvements in ope
+                evaluation speed. In case of bandits, it is ok to not split by episode,
+                since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
                 be run in the algorithm process (only if evaluation_interval is not
@@ -893,10 +1126,23 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
+                the evaluation workers and use this manager to send `sample()` requests
+                to the evaluation workers. This way, the Algorithm becomes more robust
+                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if evaluation_num_episodes != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
+                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
+                "evaluation_duration_unit='episodes')",
+                error=False,
+            )
+            evaluation_duration = evaluation_num_episodes
+
         if evaluation_interval is not None:
             self.evaluation_interval = evaluation_interval
         if evaluation_duration is not None:
@@ -908,19 +1154,68 @@ class AlgorithmConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            # Convert another AlgorithmConfig into dict.
-            if isinstance(evaluation_config, AlgorithmConfig):
-                self.evaluation_config = evaluation_config.to_dict()
-            else:
-                self.evaluation_config = evaluation_config
+            from ray.rllib.algorithms.algorithm import Algorithm
+
+            self.evaluation_config = deep_update(
+                self.evaluation_config or {},
+                evaluation_config,
+                True,
+                Algorithm._allow_unknown_subkeys,
+                Algorithm._override_all_subkeys_if_type_changes,
+                Algorithm._override_all_key_list,
+            )
         if off_policy_estimation_methods is not None:
             self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results:
+        if always_attach_evaluation_results is not None:
             self.always_attach_evaluation_results = always_attach_evaluation_results
+        if enable_async_evaluation is not None:
+            self.enable_async_evaluation = enable_async_evaluation
+        if ope_split_batch_by_episode is not None:
+            self.ope_split_batch_by_episode = ope_split_batch_by_episode
+
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None (also set `evaluation_interval` to 1).
+        if self.evaluation_num_workers > 0 and not self.evaluation_interval:
+            logger.warning(
+                f"You have specified {self.evaluation_num_workers} "
+                "evaluation workers, but your `evaluation_interval` is None! "
+                "Therefore, evaluation will not occur automatically with each"
+                " call to `Algorithm.train()`. Instead, you will have to call "
+                "`Algorithm.evaluate()` manually in order to trigger an "
+                "evaluation run."
+            )
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
+        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+            raise ValueError(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Try setting "
+                "`config.evaluation_parallel_to_training` to False."
+            )
+
+        # If `evaluation_duration=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if self.evaluation_duration == "auto":
+            if not self.evaluation_parallel_to_training:
+                raise ValueError(
+                    "`evaluation_duration=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!"
+                )
+        # Make sure, it's an int otherwise.
+        elif (
+            not isinstance(self.evaluation_duration, int)
+            or self.evaluation_duration <= 0
+        ):
+            raise ValueError(
+                f"`evaluation_duration` ({self.evaluation_duration}) must be an "
+                f"int and >0!"
+            )
 
         return self
 
@@ -937,6 +1232,7 @@ class AlgorithmConfig:
         output_config=None,
         output_compress_columns=None,
         output_max_file_size=None,
+        offline_sampling=None,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
@@ -944,7 +1240,7 @@ class AlgorithmConfig:
           under input and input_config keys. E.g.
           input: sample
           input_config {
-            env: Cartpole-v0
+            env: CartPole-v1
           }
           or:
           input: json_reader
@@ -994,6 +1290,11 @@ class AlgorithmConfig:
                 output data.
             output_max_file_size: Max output file size before rolling over to a
                 new file.
+            offline_sampling: Whether sampling for the Algorithm happens via
+                reading from offline data. If True, RolloutWorkers will NOT limit the
+                number of collected batches within the same `sample()` call based on
+                the number of sub-environments within the worker (no sub-environments
+                present).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1025,6 +1326,8 @@ class AlgorithmConfig:
             self.output_compress_columns = output_compress_columns
         if output_max_file_size is not None:
             self.output_max_file_size = output_max_file_size
+        if offline_sampling is not None:
+            self.offline_sampling = offline_sampling
 
         return self
 
@@ -1037,21 +1340,27 @@ class AlgorithmConfig:
         policy_mapping_fn=None,
         policies_to_train=None,
         observation_fn=None,
-        replay_mode=None,
         count_steps_by=None,
+        replay_mode=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
+        Validates the new multi-agent settings and translates everything into
+        a unified multi-agent setup format. For example a `policies` list or set
+        of IDs is properly converted into a dict mapping these IDs to PolicySpecs.
+
         Args:
-            policies: Map of type MultiAgentPolicyConfigDict from policy ids to tuples
-                of (policy_cls, obs_space, act_space, config). This defines the
-                observation and action spaces of the policies and any extra config.
+            policies: Map of type MultiAgentPolicyConfigDict from policy ids to either
+                4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
+                These tuples or PolicySpecs define the class of the policy, the
+                observation- and action spaces of the policies, and any extra config.
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_map_cache: Where to store overflowing (least-recently used) policies?
                 Could be a directory (str) or an S3 location. None for using the
                 default output dir.
-            policy_mapping_fn: Function mapping agent ids to policy ids.
+            policy_mapping_fn: Function mapping agent ids to policy ids. The signature
+                is: (agent_id, episode, worker, **kwargs) -> PolicyID.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for all policies.
@@ -1064,11 +1373,6 @@ class AlgorithmConfig:
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
-            replay_mode: When replay_mode=lockstep, RLlib will replay all the agent
-                transitions at a particular timestep together in a batch. This allows
-                the policy to implement differentiable shared computations between
-                agents it controls at that timestep. When replay_mode=independent,
-                transitions are replayed independently per policy.
             count_steps_by: Which metric to use as the "batch size" when building a
                 MultiAgentBatch. The two supported values are:
                 "env_steps": Count each time the env is "stepped" (no matter how many
@@ -1080,23 +1384,111 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
         if policies is not None:
+            # Make sure our Policy IDs are ok (this should work whether `policies`
+            # is a dict or just any Sequence).
+            for pid in policies:
+                validate_policy_id(pid, error=False)
+                # Policy IDs must be strings.
+                if not isinstance(pid, str):
+                    raise KeyError(
+                        f"Policy IDs must always be of type `str`, got {type(pid)}"
+                    )
+            # Validate each policy spec in a given dict.
+            if isinstance(policies, dict):
+                for pid, spec in policies.items():
+                    # If not a PolicySpec object, values must be lists/tuples of len 4.
+                    if not isinstance(spec, PolicySpec):
+                        if not isinstance(spec, (list, tuple)) or len(spec) != 4:
+                            raise ValueError(
+                                "Policy specs must be tuples/lists of "
+                                "(cls or None, obs_space, action_space, config), "
+                                f"got {spec} for PolicyID={pid}"
+                            )
+                    # TODO: Switch from dict to AlgorithmConfigOverride, once available.
+                    # Config not a dict.
+                    elif (
+                        not isinstance(spec.config, (AlgorithmConfig, dict))
+                        and spec.config is not None
+                    ):
+                        raise ValueError(
+                            f"Multi-agent policy config for {pid} must be a dict or "
+                            f"AlgorithmConfig object, but got {type(spec.config)}!"
+                        )
             self.policies = policies
+
         if policy_map_capacity is not None:
             self.policy_map_capacity = policy_map_capacity
+
         if policy_map_cache is not None:
             self.policy_map_cache = policy_map_cache
+
         if policy_mapping_fn is not None:
+            # Attempt to create a `policy_mapping_fn` from config dict. Helpful
+            # is users would like to specify custom callable classes in yaml files.
+            if isinstance(policy_mapping_fn, dict):
+                policy_mapping_fn = from_config(policy_mapping_fn)
             self.policy_mapping_fn = policy_mapping_fn
-        if policies_to_train is not None:
-            self.policies_to_train = policies_to_train
+
         if observation_fn is not None:
             self.observation_fn = observation_fn
-        if replay_mode is not None:
-            self.replay_mode = replay_mode
+
+        if replay_mode != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(replay_mode=..)",
+                new="AlgorithmConfig.training("
+                "replay_buffer_config={'replay_mode': ..})",
+                error=True,
+            )
+
         if count_steps_by is not None:
+            if count_steps_by not in ["env_steps", "agent_steps"]:
+                raise ValueError(
+                    "config.multi_agent(count_steps_by=..) must be one of "
+                    f"[env_steps|agent_steps], not {count_steps_by}!"
+                )
             self.count_steps_by = count_steps_by
 
+        if policies_to_train is not None:
+            assert isinstance(policies_to_train, (list, set, tuple)) or callable(
+                policies_to_train
+            ), (
+                "ERROR: `policies_to_train`must be a [list|set|tuple] or a "
+                "callable taking PolicyID and SampleBatch and returning "
+                "True|False (trainable or not?)."
+            )
+            # Check `policies_to_train` for invalid entries.
+            if isinstance(policies_to_train, (list, set, tuple)):
+                if len(policies_to_train) == 0:
+                    logger.warning(
+                        "`config.multi_agent(policies_to_train=..)` is empty! "
+                        "Make sure - if you would like to learn at least one policy - "
+                        "to add its ID to that list."
+                    )
+                for pid in policies_to_train:
+                    if pid not in self.policies:
+                        raise ValueError(
+                            "`config.multi_agent(policies_to_train=..)` contains "
+                            f"policy ID ({pid}) that was not defined in "
+                            f"`config.multi_agent(policies=..)`!"
+                        )
+            self.policies_to_train = policies_to_train
+
+        # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
+        # PolicyID found in policies dict.
+        self._is_multi_agent = (
+            len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+        )
+
         return self
+
+    def is_multi_agent(self) -> bool:
+        """Returns whether this config specifies a multi-agent setup.
+
+        Returns:
+            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
+            DEFAULT_POLICY_ID.
+        """
+        return self._is_multi_agent
 
     def reporting(
         self,
@@ -1163,6 +1555,29 @@ class AlgorithmConfig:
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not None:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+
+        return self
+
+    def checkpointing(
+        self,
+        export_native_model_files: Optional[bool] = None,
+    ) -> "AlgorithmConfig":
+        """Sets the config's checkpointing settings.
+
+        Args:
+            export_native_model_files: Whether an individual Policy-
+                or the Algorithm's checkpoints also contain (tf or torch) native
+                model files. These could be used to restore just the NN models
+                from these files w/o requiring RLlib. These files are generated
+                by calling the tf- or torch- built-in saving utility methods on
+                the actual models.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+
+        if export_native_model_files is not None:
+            self.export_native_model_files = export_native_model_files
 
         return self
 
@@ -1262,3 +1677,394 @@ class AlgorithmConfig:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
+
+    def get_evaluation_config_object(
+        self,
+    ) -> Optional["AlgorithmConfig"]:
+        """Creates a full AlgorithmConfig object from `self.evaluation_config`.
+
+        Returns:
+            A fully valid AlgorithmConfig object that can be used for the evaluation
+            WorkerSet. If `self` is already an evaluation config object, return None.
+        """
+        if self.in_evaluation:
+            assert self.evaluation_config is None
+            return None
+
+        # Convert AlgorithmConfig into dict (for later updating from dict).
+        evaluation_config = self.evaluation_config
+        if isinstance(evaluation_config, AlgorithmConfig):
+            evaluation_config = evaluation_config.to_dict()
+
+        # Create unfrozen copy of self to be used as the to-be-returned eval
+        # AlgorithmConfig.
+        eval_config_obj = self.copy(copy_frozen=False)
+        # Switch on the `in_evaluation` flag and remove `evaluation_config`
+        # (set to None).
+        eval_config_obj.in_evaluation = True
+        eval_config_obj.evaluation_config = None
+        # Update with evaluation settings:
+        eval_config_obj.update_from_dict(evaluation_config or {})
+
+        # Evaluation duration unit: episodes.
+        # Switch on `complete_episode` rollouts. Also, make sure
+        # rollout fragments are short so we never have more than one
+        # episode in one rollout.
+        if self.evaluation_duration_unit == "episodes":
+            eval_config_obj.batch_mode = "complete_episodes"
+            eval_config_obj.rollout_fragment_length = 1
+        # Evaluation duration unit: timesteps.
+        # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
+        #   strictly along episode borders.
+        # Set `rollout_fragment_length` such that desired steps are divided
+        # equally amongst workers or - in "auto" duration mode - set it
+        # to a reasonably small number (10), such that a single `sample()`
+        # call doesn't take too much time and we can stop evaluation as soon
+        # as possible after the train step is completed.
+        else:
+            eval_config_obj.batch_mode = "truncate_episodes"
+            eval_config_obj.rollout_fragment_length = (
+                10
+                if self.evaluation_duration == "auto"
+                else int(
+                    math.ceil(
+                        self.evaluation_duration / (self.evaluation_num_workers or 1)
+                    )
+                )
+            )
+
+        return eval_config_obj
+
+    def get_multi_agent_setup(
+        self,
+        *,
+        policies: Optional[MultiAgentPolicyConfigDict] = None,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        default_policy_class: Optional[Type[Policy]] = None,
+    ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
+        """Infers the observation- and action spaces in a multi-agent policy dict.
+
+        Args:
+            policies: The multi-agent `policies` dict mapping policy IDs
+                to PolicySpec objects. Note that the `policy_class`,
+                `observation_space`, and `action_space` properties in these PolicySpecs
+                may be None and must therefore be inferred here.
+            env: An optional env instance, from which to infer the different spaces for
+                the different policies.
+            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+                and 2) action space that should be used for the respective policy.
+                These spaces were usually provided by an already instantiated remote
+                worker.
+            default_policy_class: The Policy class to use should a PolicySpec have its
+                policy_class property set to None.
+
+        Returns:
+            A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
+            `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
+        """
+        policies = copy.deepcopy(policies or self.policies)
+
+        # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy
+        # automatically via empty PolicySpec (will make RLlib infer observation- and
+        # action spaces as well as the Policy's class).
+        if isinstance(policies, (set, list, tuple)):
+            policies = {pid: PolicySpec() for pid in policies}
+
+        # Try extracting spaces from env or from given spaces dict.
+        env_obs_space = None
+        env_act_space = None
+
+        # Env is a ray.remote: Get spaces via its (automatically added)
+        # `_get_spaces()` method.
+        if isinstance(env, ray.actor.ActorHandle):
+            env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
+        # Normal env (gym.Env or MultiAgentEnv): These should have the
+        # `observation_space` and `action_space` properties.
+        elif env is not None:
+            if hasattr(env, "observation_space") and isinstance(
+                env.observation_space, gym.Space
+            ):
+                env_obs_space = env.observation_space
+
+            if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
+                env_act_space = env.action_space
+        # Last resort: Try getting the env's spaces from the spaces
+        # dict's special __env__ key.
+        if spaces is not None:
+            if env_obs_space is None:
+                env_obs_space = spaces.get("__env__", [None])[0]
+            if env_act_space is None:
+                env_act_space = spaces.get("__env__", [None, None])[1]
+
+        # Check each defined policy ID and unify its spec.
+        for pid, policy_spec in policies.copy().items():
+            # Convert to PolicySpec if plain list/tuple.
+            if not isinstance(policy_spec, PolicySpec):
+                policies[pid] = policy_spec = PolicySpec(*policy_spec)
+
+            # Infer policy classes for policies dict, if not provided (None).
+            if policy_spec.policy_class is None and default_policy_class is not None:
+                policies[pid].policy_class = default_policy_class
+
+            # Infer observation space.
+            if policy_spec.observation_space is None:
+                if spaces is not None and pid in spaces:
+                    obs_space = spaces[pid][0]
+                elif env_obs_space is not None:
+                    # Multi-agent case AND different agents have different spaces:
+                    # Need to reverse map spaces (for the different agents) to certain
+                    # policy IDs.
+                    if (
+                        isinstance(env, MultiAgentEnv)
+                        and hasattr(env, "_spaces_in_preferred_format")
+                        and env._spaces_in_preferred_format
+                    ):
+                        obs_space = None
+                        mapping_fn = self.policy_mapping_fn
+                        if mapping_fn:
+                            for aid in env.get_agent_ids():
+                                # Match: Assign spaces for this agentID to the PolicyID.
+                                if mapping_fn(aid, None, None) == pid:
+                                    # Make sure, different agents that map to the same
+                                    # policy don't have different spaces.
+                                    if (
+                                        obs_space is not None
+                                        and env_obs_space[aid] != obs_space
+                                    ):
+                                        raise ValueError(
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different observation spaces!"
+                                        )
+                                    obs_space = env_obs_space[aid]
+                    # Otherwise, just use env's obs space as-is.
+                    else:
+                        obs_space = env_obs_space
+                # Space given directly in config.
+                elif self.observation_space:
+                    obs_space = self.observation_space
+                else:
+                    raise ValueError(
+                        "`observation_space` not provided in PolicySpec for "
+                        f"{pid} and env does not have an observation space OR "
+                        "no spaces received from other workers' env(s) OR no "
+                        "`observation_space` specified in config!"
+                    )
+
+                policies[pid].observation_space = obs_space
+
+            # Infer action space.
+            if policy_spec.action_space is None:
+                if spaces is not None and pid in spaces:
+                    act_space = spaces[pid][1]
+                elif env_act_space is not None:
+                    # Multi-agent case AND different agents have different spaces:
+                    # Need to reverse map spaces (for the different agents) to certain
+                    # policy IDs.
+                    if (
+                        isinstance(env, MultiAgentEnv)
+                        and hasattr(env, "_spaces_in_preferred_format")
+                        and env._spaces_in_preferred_format
+                    ):
+                        act_space = None
+                        mapping_fn = self.policy_mapping_fn
+                        if mapping_fn:
+                            for aid in env.get_agent_ids():
+                                # Match: Assign spaces for this AgentID to the PolicyID.
+                                if mapping_fn(aid, None, None) == pid:
+                                    # Make sure, different agents that map to the same
+                                    # policy don't have different spaces.
+                                    if (
+                                        act_space is not None
+                                        and env_act_space[aid] != act_space
+                                    ):
+                                        raise ValueError(
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different action spaces!"
+                                        )
+                                    act_space = env_act_space[aid]
+                    # Otherwise, just use env's action space as-is.
+                    else:
+                        act_space = env_act_space
+                elif self.action_space:
+                    act_space = self.action_space
+                else:
+                    raise ValueError(
+                        "`action_space` not provided in PolicySpec for "
+                        f"{pid} and env does not have an action space OR "
+                        "no spaces received from other workers' env(s) OR no "
+                        "`action_space` specified in config!"
+                    )
+                policies[pid].action_space = act_space
+
+            # Config is None -> Set to {}.
+            if policies[pid].config is None:
+                policies[pid].config = {}
+
+        # If container given, construct a simple default callable returning True
+        # if the PolicyID is found in the list/set of IDs.
+        is_policy_to_train = self.policies_to_train
+        if self.policies_to_train is not None and not callable(self.policies_to_train):
+            pols = set(self.policies_to_train)
+
+            def is_policy_to_train(pid, batch=None):
+                return pid in pols
+
+        return policies, is_policy_to_train
+
+    def __setattr__(self, key, value):
+        if hasattr(self, "_is_frozen") and self._is_frozen:
+            # TODO: Remove `simple_optimizer` entirely.
+            #  Remove need to set `worker_index` in RolloutWorker's c'tor.
+            if key not in ["simple_optimizer", "worker_index", "_is_frozen"]:
+                raise AttributeError(
+                    f"Cannot set attribute ({key}) of an already frozen "
+                    "AlgorithmConfig!"
+                )
+        super().__setattr__(key, value)
+
+    def __getitem__(self, item):
+        # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
+        #  hood (as well as Ray Tune).
+        # if log_once("algo_config_getitem"):
+        #    logger.warning(
+        #        "AlgorithmConfig objects should NOT be used as dict! "
+        #        f"Try accessing `{item}` directly as a property."
+        #    )
+        item = self._translate_special_keys(item)
+        return getattr(self, item)
+
+    def __setitem__(self, key, value):
+        # TODO: Remove comments once all methods/functions only support
+        #  AlgorithmConfigs and there is no more ambiguity anywhere in the code
+        #  on whether an AlgorithmConfig is used or an old python config dict.
+        # raise AttributeError(
+        #    "AlgorithmConfig objects should not have their values set like dicts"
+        #    f"(`config['{key}'] = {value}`), "
+        #    f"but via setting their properties directly (config.{prop} = {value})."
+        # )
+        if key == "multiagent":
+            raise AttributeError(
+                "Cannot set `multiagent` key in an AlgorithmConfig!\nTry setting "
+                "the multi-agent components of your AlgorithmConfig object via the "
+                "`multi_agent()` method and its arguments.\nE.g. `config.multi_agent("
+                "policies=.., policy_mapping_fn.., policies_to_train=..)`."
+            )
+        super().__setattr__(key, value)
+
+    def __contains__(self, item) -> bool:
+        prop = self._translate_special_keys(item, warn_deprecated=False)
+        return hasattr(self, prop)
+
+    def get(self, key, default=None):
+        prop = self._translate_special_keys(key, warn_deprecated=False)
+        return getattr(self, prop, default)
+
+    def pop(self, key, default=None):
+        return self.get(key, default)
+
+    def keys(self):
+        return self.to_dict().keys()
+
+    def values(self):
+        return self.to_dict().values()
+
+    def items(self):
+        return self.to_dict().items()
+
+    @staticmethod
+    def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
+        # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
+        if key == "callbacks":
+            key = "callbacks_class"
+        elif key == "create_env_on_driver":
+            key = "create_env_on_local_worker"
+        elif key == "custom_eval_function":
+            key = "custom_evaluation_function"
+        elif key == "framework":
+            key = "framework_str"
+        elif key == "input":
+            key = "input_"
+        elif key == "lambda":
+            key = "lambda_"
+        elif key == "num_cpus_for_driver":
+            key = "num_cpus_for_local_worker"
+        elif key == "num_workers":
+            key = "num_rollout_workers"
+
+        # Deprecated keys.
+        if warn_deprecated:
+            if key == "collect_metrics_timeout":
+                deprecation_warning(
+                    old="collect_metrics_timeout",
+                    new="metrics_episode_collection_timeout_s",
+                    error=True,
+                )
+            elif key == "metrics_smoothing_episodes":
+                deprecation_warning(
+                    old="config.metrics_smoothing_episodes",
+                    new="config.metrics_num_episodes_for_smoothing",
+                    error=True,
+                )
+            elif key == "min_iter_time_s":
+                deprecation_warning(
+                    old="config.min_iter_time_s",
+                    new="config.min_time_s_per_iteration",
+                    error=True,
+                )
+            elif key == "min_time_s_per_reporting":
+                deprecation_warning(
+                    old="config.min_time_s_per_reporting",
+                    new="config.min_time_s_per_iteration",
+                    error=True,
+                )
+            elif key == "min_sample_timesteps_per_reporting":
+                deprecation_warning(
+                    old="config.min_sample_timesteps_per_reporting",
+                    new="config.min_sample_timesteps_per_iteration",
+                    error=True,
+                )
+            elif key == "min_train_timesteps_per_reporting":
+                deprecation_warning(
+                    old="config.min_train_timesteps_per_reporting",
+                    new="config.min_train_timesteps_per_iteration",
+                    error=True,
+                )
+            elif key == "timesteps_per_iteration":
+                deprecation_warning(
+                    old="config.timesteps_per_iteration",
+                    new="`config.min_sample_timesteps_per_iteration` OR "
+                    "`config.min_train_timesteps_per_iteration`",
+                    error=True,
+                )
+            elif key == "evaluation_num_episodes":
+                deprecation_warning(
+                    old="config.evaluation_num_episodes",
+                    new="`config.evaluation_duration` and "
+                    "`config.evaluation_duration_unit=episodes`",
+                    error=True,
+                )
+
+        return key
+
+    @property
+    def multiagent(self):
+        return {
+            "policies": self.policies,
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "policies_to_train": self.policies_to_train,
+            "policy_map_capacity": self.policy_map_capacity,
+            "policy_map_cache": self.policy_map_cache,
+            "count_steps_by": self.count_steps_by,
+            "observation_fn": self.observation_fn,
+        }
+
+    @property
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
+    def num_workers(self):
+        """For backward-compatibility purposes only."""
+        return self.num_rollout_workers

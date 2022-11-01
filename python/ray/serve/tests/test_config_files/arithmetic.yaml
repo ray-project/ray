@@ -1,7 +1,7 @@
 import_path: "dir.subdir.a.add_and_sub.serve_dag"
 
 runtime_env:
-  working_dir: "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+  working_dir: "https://github.com/ray-project/test_dag/archive/40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
 
 deployments:
   - name: "Subtract"

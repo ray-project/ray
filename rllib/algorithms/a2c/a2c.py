@@ -3,6 +3,7 @@ import math
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -35,13 +36,16 @@ class A2CConfig(A3CConfig):
         >>> from ray import tune
         >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=2)
+        ...     .rollouts(num_rollout_workers=2)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
+        >>> import ray.air as air
+        >>> from ray import tune
         >>> config = A2CConfig()
         >>> # Print out some default values.
         >>> print(config.sample_async)
@@ -51,11 +55,11 @@ class A2CConfig(A3CConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A2C",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -69,6 +73,7 @@ class A2CConfig(A3CConfig):
         self.microbatch_size = None
 
         # Override some of A3CConfig's default values with A2C-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10
@@ -105,8 +110,8 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A2CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A2CConfig()
 
     @override(A3C)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -130,8 +135,34 @@ class A2C(A3C):
 
             if config["num_gpus"] > 1:
                 raise AttributeError(
-                    "A2C does not support micro-batching and multiple GPUs "
-                    "at the same time."
+                    "A2C does not support multiple GPUs when micro-batching is set."
+                )
+        else:
+            sample_batch_size = (
+                config["rollout_fragment_length"]
+                * config["num_workers"]
+                * config["num_envs_per_worker"]
+            )
+            if config["train_batch_size"] < sample_batch_size:
+                logger.warning(
+                    f"`train_batch_size` ({config['train_batch_size']}) "
+                    "cannot be smaller than sample_batch_size "
+                    "(`rollout_fragment_length` x `num_workers` x "
+                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
+                    " is not set. This is to"
+                    " ensure that only on gradient update is applied to policy in every"
+                    " iteration on the entire collected batch. As a result of we do not"
+                    " change the policy too much before we sample again and stay on"
+                    " policy as much as possible. This will help the learning"
+                    " stability."
+                    f" Setting train_batch_size = {sample_batch_size}."
+                )
+                config["train_batch_size"] = sample_batch_size
+
+            if "sgd_minibatch_size" in config:
+                raise AttributeError(
+                    "A2C does not support sgd mini batching as it will instabilize the"
+                    " training. Use `train_batch_size` instead."
                 )
 
     @override(Algorithm)
@@ -230,7 +261,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

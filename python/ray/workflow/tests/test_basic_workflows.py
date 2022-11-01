@@ -173,7 +173,7 @@ def test_dynamic_output(workflow_start_regular_shared):
             if n < 3:
                 raise Exception("Failed intentionally")
             return workflow.continuation(
-                exponential_fail.options(**workflow.options(name=f"task_{n}")).bind(
+                exponential_fail.options(**workflow.options(task_id=f"task_{n}")).bind(
                     k * 2, n - 1
                 )
             )
@@ -183,7 +183,7 @@ def test_dynamic_output(workflow_start_regular_shared):
     # latest successful task.
     try:
         workflow.run(
-            exponential_fail.options(**workflow.options(name="task_0")).bind(3, 10),
+            exponential_fail.options(**workflow.options(task_id="task_0")).bind(3, 10),
             workflow_id="dynamic_output",
         )
     except Exception:

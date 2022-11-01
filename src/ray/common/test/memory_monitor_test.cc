@@ -16,34 +16,54 @@
 
 #include <sys/sysinfo.h>
 
+#include <fstream>
+
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/util/process.h"
 
 namespace ray {
-class MemoryMonitorTest : public ::testing::Test {};
+class MemoryMonitorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::io_context::work work(io_context_);
+      io_context_.run();
+    });
+  }
+  void TearDown() override {
+    io_context_.stop();
+    thread_->join();
+  }
+  std::unique_ptr<std::thread> thread_;
+  instrumented_io_context io_context_;
+};
 
 TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
-  MemoryMonitor monitor(
-      0 /*usage_threshold*/,
-      0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
-  ASSERT_TRUE(monitor.IsUsageAboveThreshold());
+  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({1, 10}, 0));
 }
 
 TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
-  MemoryMonitor monitor(
-      1 /*usage_threshold*/,
-      0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
-  ASSERT_FALSE(monitor.IsUsageAboveThreshold());
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({9, 10}, 10));
+}
+
+TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsFalse) {
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({4, 10}, 5));
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({5, 10}, 5));
+  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({6, 10}, 5));
 }
 
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
     MemoryMonitor monitor(
+        MemoryMonitorTest::io_context_,
         0 /*usage_threshold*/,
+        -1 /*min_memory_free_bytes*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+        [](bool is_usage_above_threshold,
+           MemorySnapshot system_memory,
+           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
     auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     ASSERT_GT(total_bytes, 0);
     ASSERT_GT(total_bytes, used_bytes);
@@ -53,9 +73,13 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
 TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
     MemoryMonitor monitor(
+        MemoryMonitorTest::io_context_,
         0 /*usage_threshold*/,
+        -1 /*min_memory_free_bytes*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+        [](bool is_usage_above_threshold,
+           MemorySnapshot system_memory,
+           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
     auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
 
@@ -79,16 +103,268 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   }
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
+TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted) {
   std::condition_variable callback_ran;
   std::mutex callback_ran_mutex;
 
-  MemoryMonitor monitor(
-      1 /*usage_threshold*/,
-      1 /*refresh_interval_ms*/,
-      [&callback_ran](bool is_usage_above_threshold) { callback_ran.notify_all(); });
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        1 /*usage_threshold*/,
+                        -1 /*min_memory_free_bytes*/,
+                        1 /*refresh_interval_ms*/,
+                        [&callback_ran](bool is_usage_above_threshold,
+                                        MemorySnapshot system_memory,
+                                        float usage_threshold) {
+                          ASSERT_EQ(1.0f, usage_threshold);
+                          ASSERT_GT(system_memory.total_bytes, 0);
+                          ASSERT_GT(system_memory.used_bytes, 0);
+                          callback_ran.notify_all();
+                        });
   std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
   callback_ran.wait(callback_ran_mutex_lock);
+}
+
+TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
+  std::condition_variable callback_ran;
+  std::mutex callback_ran_mutex;
+
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        0.4 /*usage_threshold*/,
+                        -1 /*min_memory_free_bytes*/,
+                        1 /*refresh_interval_ms*/,
+                        [&callback_ran](bool is_usage_above_threshold,
+                                        MemorySnapshot system_memory,
+                                        float usage_threshold) {
+                          ASSERT_EQ(0.4f, usage_threshold);
+                          ASSERT_GT(system_memory.total_bytes, 0);
+                          ASSERT_GT(system_memory.used_bytes, 0);
+                          callback_ran.notify_all();
+                        });
+  std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
+  callback_ran.wait(callback_ran_mutex_lock);
+}
+
+TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
+  std::condition_variable callback_ran;
+  std::mutex callback_ran_mutex;
+
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        0.4 /*usage_threshold*/,
+                        0 /*min_memory_free_bytes*/,
+                        1 /*refresh_interval_ms*/,
+                        [&callback_ran](bool is_usage_above_threshold,
+                                        MemorySnapshot system_memory,
+                                        float usage_threshold) {
+                          ASSERT_EQ(1.0f, usage_threshold);
+                          ASSERT_GT(system_memory.total_bytes, 0);
+                          ASSERT_GT(system_memory.used_bytes, 0);
+                          callback_ran.notify_all();
+                        });
+  std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
+  callback_ran.wait(callback_ran_mutex_lock);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
+  std::string file_name = UniqueID::FromRandom().Hex();
+
+  std::ofstream mem_file;
+  mem_file.open(file_name);
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
+  mem_file << "total_inactive_file "
+           << "821" << std::endl;
+  mem_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  std::remove(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 8571 + 918757 - 821);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
+  std::string file_name = UniqueID::FromRandom().Hex();
+
+  std::ofstream mem_file;
+  mem_file.open(file_name);
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
+  mem_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  std::remove(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull) {
+  std::string file_name = UniqueID::FromRandom().Hex();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet) {
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream stat_file;
+  stat_file.open(stat_file_name);
+  stat_file << "random_key "
+            << "random_value" << std::endl;
+  stat_file << "inactive_file "
+            << "123" << std::endl;
+  stat_file << "another_random_key "
+            << "some_value" << std::endl;
+  stat_file.close();
+
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream curr_file;
+  curr_file.open(curr_file_name);
+  curr_file << "300" << std::endl;
+  curr_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+
+  std::remove(stat_file_name.c_str());
+  std::remove(curr_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 300 - 123);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet) {
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream stat_file;
+  stat_file.open(stat_file_name);
+  stat_file << "random_key "
+            << "random_value" << std::endl;
+  stat_file << "inactive_file "
+            << "123" << std::endl;
+  stat_file.close();
+
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream curr_file;
+  curr_file.open(curr_file_name);
+  curr_file << "300" << std::endl;
+  curr_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+
+  std::remove(stat_file_name.c_str());
+  std::remove(curr_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 300 - 123);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet) {
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream stat_file;
+  stat_file.open(stat_file_name);
+  stat_file << "random_key "
+            << "random_value" << std::endl;
+  stat_file << "inactive_file "
+            << "300" << std::endl;
+  stat_file.close();
+
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream curr_file;
+  curr_file.open(curr_file_name);
+  curr_file << "123" << std::endl;
+  curr_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+
+  std::remove(stat_file_name.c_str());
+  std::remove(curr_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 123 - 300);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull) {
+  std::string file_name = UniqueID::FromRandom().Hex();
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream stat_file;
+  stat_file.open(stat_file_name);
+  stat_file << "random_key "
+            << "random_value" << std::endl;
+  stat_file << "another_random_key "
+            << "123" << std::endl;
+  stat_file.close();
+
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream curr_file;
+  curr_file.open(curr_file_name);
+  curr_file << "300" << std::endl;
+  curr_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+
+  std::remove(stat_file_name.c_str());
+  std::remove(curr_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2NonexistentStatFileReturnskNull) {
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream curr_file;
+  curr_file.open(curr_file_name);
+  curr_file << "300" << std::endl;
+  curr_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+  std::remove(curr_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull) {
+  std::string curr_file_name = UniqueID::FromRandom().Hex();
+
+  std::string stat_file_name = UniqueID::FromRandom().Hex();
+  std::ofstream stat_file;
+  stat_file.open(stat_file_name);
+  stat_file << "random_key "
+            << "random_value" << std::endl;
+  stat_file << "inactive_file "
+            << "300" << std::endl;
+  stat_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV2MemoryUsedBytes(stat_file_name.c_str(),
+                                                                 curr_file_name.c_str());
+  std::remove(stat_file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 0), 100);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 60), 50);
+
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, 10), 100);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, 100), 100);
+
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.1, 100), 10);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, 10), 90);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, 100), 0);
+
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, MemoryMonitor::kNull), 0);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, MemoryMonitor::kNull), 50);
+  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, MemoryMonitor::kNull), 100);
 }
 
 }  // namespace ray

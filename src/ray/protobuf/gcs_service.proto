@@ -36,8 +36,7 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {
-}
+message GetAllJobInfoRequest {}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -51,8 +50,7 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
-message GetNextJobIDRequest {
-}
+message GetNextJobIDRequest {}
 message GetNextJobIDReply {
   GcsStatus status = 1;
   int32 job_id = 2;
@@ -172,8 +170,7 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {
-}
+message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
@@ -198,8 +195,7 @@ message CheckAliveReply {
   repeated bool raylet_alive = 3;
 }
 
-message GetInternalConfigRequest {
-}
+message GetInternalConfigRequest {}
 
 message GetInternalConfigReply {
   GcsStatus status = 1;
@@ -219,8 +215,7 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {
-}
+message GetAllAvailableResourcesRequest {}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
@@ -235,12 +230,18 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
+message GetGcsSchedulingStatsRequest {}
+
+message GetGcsSchedulingStatsReply {
+  GcsStatus status = 1;
+  repeated TaskSpec infeasible_tasks = 2;
+  repeated TaskSpec ready_tasks = 3;
+}
+
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Check alive.
-  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message AddProfileDataRequest {
@@ -251,8 +252,7 @@ message AddProfileDataReply {
   GcsStatus status = 1;
 }
 
-message GetAllProfileInfoRequest {
-}
+message GetAllProfileInfoRequest {}
 
 message GetAllProfileInfoReply {
   GcsStatus status = 1;
@@ -330,6 +330,8 @@ message CreateActorReply {
   Address actor_address = 2;
   // Info about any refs that the created actor is borrowing.
   repeated ObjectReferenceCount borrowed_refs = 3;
+  // The cause of this actor's death if creation was cancelled.
+  optional ActorDeathCause death_cause = 4;
 }
 
 message RegisterActorRequest {
@@ -582,12 +584,15 @@ service InternalPubSubGcsService {
       returns (GcsSubscriberCommandBatchReply);
 }
 
-message GetAllResourceUsageRequest {
-}
+message GetAllResourceUsageRequest {}
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
+  /// True if gcs finds infeasible or pending actor creation tasks
+  /// locally (when gcs actor scheduler is enabled). This field is
+  /// expected to help triggering auto-scaling.
+  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 // Service for node resource info access.
@@ -601,6 +606,9 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get current scheduling stats (e.g., pending tasks) of gcs server.
+  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
+      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
@@ -622,5 +630,7 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

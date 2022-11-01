@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <boost/bimap.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -44,24 +47,29 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// Handle register rpc request come from raylet.
-  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+  void HandleRegisterNode(rpc::RegisterNodeRequest request,
                           rpc::RegisterNodeReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
-  void HandleDrainNode(const rpc::DrainNodeRequest &request,
+  void HandleDrainNode(rpc::DrainNodeRequest request,
                        rpc::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.
-  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+  void HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get internal config.
-  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle check alive request for GCS.
+  void HandleCheckAlive(rpc::CheckAliveRequest request,
+                        rpc::CheckAliveReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   void OnNodeFailure(const NodeID &node_id);
 
@@ -159,6 +167,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     CountType_MAX = 4,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  /// A map of NodeId <-> ip:port of raylet
+  using NodeIDAddrBiMap =
+      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
+                   boost::bimaps::unordered_set_of<std::string>>;
+  NodeIDAddrBiMap node_map_;
 };
 
 }  // namespace gcs

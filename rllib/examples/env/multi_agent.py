@@ -11,7 +11,7 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False,
+    error=True,
 )
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
@@ -227,7 +227,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
-MultiAgentCartPole = make_multi_agent("CartPole-v0")
+MultiAgentCartPole = make_multi_agent("CartPole-v1")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
 MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

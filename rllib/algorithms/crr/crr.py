@@ -53,11 +53,16 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # overriding the trainer config default
+        # Overriding the trainer config default:
+        # Only PyTorch supported thus far. Make this the default framework.
+        self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
-        self.num_workers = 4
+        self.num_rollout_workers = 4
         self.offline_sampling = True
-        self.min_iter_time_s = 10.0
+        self.min_time_s_per_iteration = 10.0
+
+        self.td_error_loss_fn = "mse"
+        self.categorical_distribution_temperature = 1.0
 
     def training(
         self,
@@ -74,10 +79,12 @@ class CRRConfig(AlgorithmConfig):
         critic_hiddens: Optional[List[int]] = None,
         critic_hidden_activation: Optional[str] = None,
         tau: Optional[float] = None,
+        td_error_loss_fn: Optional[str] = None,
+        categorical_distribution_temperature: Optional[float] = None,
         **kwargs,
     ) -> "CRRConfig":
 
-        """
+        r"""
         === CRR configs
 
         Args:
@@ -115,6 +122,12 @@ class CRRConfig(AlgorithmConfig):
             critic_hidden_activation: The activation used in the critic's fc network.
             tau: Polyak averaging coefficient
                 (making it 1 is reduces it to a hard update).
+            td_error_loss_fn: "huber" or "mse".
+                Loss function for calculating critic error.
+            categorical_distribution_temperature: Set the temperature parameter used
+                by Categorical action distribution. A valid temperature is in the range
+                of [0, 1]. Note that this mostly affects evaluation since critic error
+                uses selected action for return calculation.
             **kwargs: forward compatibility kwargs
 
         Returns:
@@ -146,6 +159,16 @@ class CRRConfig(AlgorithmConfig):
             self.critic_hidden_activation = critic_hidden_activation
         if tau is not None:
             self.tau = tau
+        if td_error_loss_fn is not None:
+            self.td_error_loss_fn = td_error_loss_fn
+            assert self.td_error_loss_fn in [
+                "huber",
+                "mse",
+            ], "td_error_loss_fn must be 'huber' or 'mse'."
+        if categorical_distribution_temperature is not None:
+            self.categorical_distribution_temperature = (
+                categorical_distribution_temperature
+            )
 
         return self
 
@@ -172,8 +195,8 @@ class CRR(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CRRConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CRRConfig()
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

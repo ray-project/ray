@@ -91,7 +91,7 @@ class UserChoiceModel(nn.Module):
 
         This function outputs user click scores for candidate documents. The
         exponentials of these scores are proportional user click probabilities.
-        Here we return the scores unnormalized because because only some of the
+        Here we return the scores unnormalized because only some of the
         documents will be selected and shown to the user.
 
         Args:

@@ -226,7 +226,7 @@ class VTraceOptimizer:
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         config = self.config
         if config["opt_type"] == "adam":
-            if config["framework"] in ["tf2", "tfe"]:
+            if config["framework"] == "tf2":
                 optim = tf.keras.optimizers.Adam(self.cur_lr)
                 if config["_separate_vf_optimizer"]:
                     return optim, tf.keras.optimizers.Adam(config["_lr_vf"])
@@ -277,7 +277,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -293,7 +293,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

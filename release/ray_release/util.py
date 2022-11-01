@@ -42,7 +42,11 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 
 
 def url_exists(url: str) -> bool:
-    return requests.head(url, allow_redirects=True).status_code == 200
+    try:
+        return requests.head(url, allow_redirects=True).status_code == 200
+    except requests.exceptions.RequestException:
+        logger.exception(f"Failed to check url exists: {url}")
+        return False
 
 
 def resolve_url(url: str) -> str:
@@ -132,8 +136,9 @@ def run_bash_script(bash_script: str) -> None:
 def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
 
+    # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
-        "pip install -U anyscale",
+        "pip install -U anyscale==0.5.51",
         shell=True,
         text=True,
     )

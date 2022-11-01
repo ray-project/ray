@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstdio>
 #include <filesystem>
 
 #include "gtest/gtest.h"
@@ -24,7 +23,7 @@ namespace plasma {
 namespace {
 const int64_t kMB = 1024 * 1024;
 std::string CreateTestDir() {
-  path directory = std::tmpnam(nullptr);
+  path directory = std::filesystem::temp_directory_path() / GenerateUUIDV4();
   create_directories(directory);
   return directory.string();
 }

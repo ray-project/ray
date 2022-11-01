@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 
 import numpy as np
 import pytest
@@ -34,7 +35,6 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
@@ -174,7 +174,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.terminate()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # No error should be reported for graceful termination.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -195,7 +195,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The raylet should be dead if agent exits.
     agent_proc.kill()
     agent_proc.wait()
-    raylet_proc.wait(5)
+    raylet_proc.wait(15)
 
 
 def test_agent_report_unexpected_raylet_death(shutdown_only):
@@ -218,7 +218,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
@@ -228,7 +228,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     assert "Raylet logs:" in err.error_message, err.error_message
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
-        < 1 * 1024 ** 2
+        < 1 * 1024**2
     )
 
 
@@ -253,12 +253,12 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     with open(
         os.path.join(node.get_session_dir_path(), "logs", "raylet.out"), "a"
     ) as f:
-        f.write("test data\n" * 1024 ** 2)
+        f.write("test data\n" * 1024**2)
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # Reading and publishing logs should still work.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -892,7 +892,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
 
 @pytest.mark.skipif(
@@ -964,7 +964,7 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     response = None
 
     with pytest.raises(ServerUnavailable):
-        client = StateApiClient(address=DEFAULT_DASHBOARD_ADDRESS)
+        client = StateApiClient()
         response = client.list(
             StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
         )
@@ -1011,6 +1011,37 @@ def test_dashboard_module_load(tmpdir):
     loaded_modules = head._load_modules()
     loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
     assert loaded_modules_actual == loaded_modules_expected
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 10, 0),
+    reason=(
+        "six >= 1.16 and urllib3 >= 1.26.5 "
+        "(it has its own forked six internally that's version 1.12) "
+        "are required to pass this test on Python 3.10. "
+        "It's because six < 1.16 doesn't have a `find_spec` API, "
+        "which is required from Python 3.10 "
+        "(otherwise, it warns that it fallbacks to use `find_modules` "
+        "that is deprecated from Python 3.10). "
+        "This test failure doesn't affect the user at all "
+        "and it is too much to introduce version restriction and new "
+        "dependencies requirement just for this test. "
+        "So instead of fixing it, we just skip it."
+    ),
+)
+def test_dashboard_module_no_warnings(enable_test_module):
+    # Disable log_once so we will get all warnings
+    from ray.util import debug
+
+    old_val = debug._logged
+    debug._logged = set()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
+            dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
+    finally:
+        debug._disabled = old_val
 
 
 if __name__ == "__main__":

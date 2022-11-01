@@ -79,15 +79,14 @@ class CheckpointManager(CommonCheckpointManager):
         if self._checkpoint_strategy.checkpoint_score_attribute is None:
             self._checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
 
-    # TODO(xwjiang): Legacy Ray Train trainer clean up!
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
-    ) -> Optional[Union[Dict, Checkpoint]]:
+    ) -> Optional[Checkpoint]:
         """Load the checkpoint dictionary from the input dict or path."""
         if checkpoint_to_load is None:
             return None
         if isinstance(checkpoint_to_load, Dict):
-            return checkpoint_to_load
+            return Checkpoint.from_dict(checkpoint_to_load)
         if isinstance(checkpoint_to_load, Checkpoint):
             return checkpoint_to_load
         else:
@@ -102,13 +101,15 @@ class CheckpointManager(CommonCheckpointManager):
         """Ray Train entrypoint. Perform all processing for a checkpoint."""
         # Get checkpoint from first worker.
         checkpoint_data = checkpoint_results[0].data
+        checkpoint_metadata = checkpoint_results[0].metadata or {}
 
-        # Decode checkpoint.
-        checkpoint_data = decode_checkpoint_fn(checkpoint_data)
+        # TODO(ml-team): Remove once we remove Backend.decode_data
+        checkpoint_data = decode_checkpoint_fn(checkpoint_data).to_dict()
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (
             self._checkpoint_strategy.num_to_keep != 0
+            and score_attr not in checkpoint_metadata
             and score_attr not in checkpoint_data
         ):
             raise ValueError(
@@ -123,7 +124,11 @@ class CheckpointManager(CommonCheckpointManager):
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
-            metrics={score_attr: checkpoint_data.get(score_attr, 0.0)},
+            metrics={
+                score_attr: checkpoint_metadata.get(
+                    score_attr, checkpoint_data.get(score_attr, 0.0)
+                )
+            },
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
 
@@ -208,14 +213,14 @@ class TuneCheckpointManager(CheckpointManager):
         if isinstance(loaded_checkpoint, Checkpoint):
             # The new logic
             checkpoint_dict = loaded_checkpoint.to_dict()
-            self._latest_checkpoint_id = checkpoint_dict[TUNE_CHECKPOINT_ID]
+            self._latest_checkpoint_id = checkpoint_dict.get(TUNE_CHECKPOINT_ID, 0)
             return loaded_checkpoint
         # legacy path...
         if loaded_checkpoint is not None:
             # If the Tune trial is restarted, a new Trainer is instantiated.
             # However, we want the checkpoint_id to continue incrementing
             # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
+            self._latest_checkpoint_id = loaded_checkpoint.get(TUNE_CHECKPOINT_ID, 0)
         return loaded_checkpoint
 
     def add_tune_checkpoint_id(self, checkpoint: Dict):

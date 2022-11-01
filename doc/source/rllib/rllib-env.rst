@@ -5,7 +5,7 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.ml/>`__, user-defined, multi-agent, and also batched environments.
+RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.dev/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
@@ -18,7 +18,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.ml/>`__.
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.dev/>`__.
 Custom env classes passed directly to the algorithm must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
@@ -368,7 +368,7 @@ PettingZoo Multi-Agent Environments
     # you can pass arguments to the environment creator with the env_config option in the config
     config['env_config'] = {"num_floors": 5}
 
-A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__
+A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__
 
 
 Rock Paper Scissors Example

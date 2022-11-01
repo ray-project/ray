@@ -1,10 +1,14 @@
 import logging
 import logging.handlers
+import os
 import sys
 import urllib
 import urllib.request
 from pathlib import Path
 from queue import Queue
+from urllib.parse import urlparse
+import yaml
+
 
 import requests
 import scipy.linalg  # noqa: F401
@@ -18,57 +22,14 @@ from sphinx.util.console import red  # type: ignore
 import mock
 
 __all__ = [
-    "fix_xgb_lgbm_docs",
     "DownloadAndPreprocessEcosystemDocs",
     "mock_modules",
     "update_context",
     "LinkcheckSummarizer",
+    "build_gallery",
 ]
 
-try:
-    FileNotFoundError
-except NameError:
-    FileNotFoundError = IOError
-
-
-def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
-    """Fix XGBoost-Ray and LightGBM-Ray docstrings.
-
-    For ``app.connect('autodoc-process-docstring')``.
-    See https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
-
-    Removes references to XGBoost ``callback_api`` and sets explicit module
-    references to classes and functions that are named the same way in both
-    XGBoost-Ray and LightGBM-Ray.
-    """
-
-    def _remove_xgboost_refs(replacements: list):
-        """Remove ``callback_api`` ref to XGBoost docs.
-
-        Fixes ``undefined label: callback_api (if the link has no caption
-        the label must precede a section header)``
-        """
-        if name.startswith("xgboost_ray"):
-            replacements.append((":ref:`callback_api`", "Callback API"))
-
-    def _replace_ray_params(replacements: list):
-        """Replaces references to ``RayParams`` with module-specific ones.
-
-        Fixes ``more than one target found for cross-reference 'RayParams'``.
-        """
-        if name.startswith("xgboost_ray"):
-            replacements.append(("RayParams", "xgboost_ray.RayParams"))
-        elif name.startswith("lightgbm_ray"):
-            replacements.append(("RayParams", "lightgbm_ray.RayParams"))
-
-    replacements = []
-    _remove_xgboost_refs(replacements)
-    _replace_ray_params(replacements)
-    if replacements:
-        for i, _ in enumerate(lines):
-            for replacement in replacements:
-                lines[i] = lines[i].replace(*replacement)
-
+GALLERIES = ["ray-overview/eco-gallery.yml"]
 
 # Taken from https://github.com/edx/edx-documentation
 FEEDBACK_FORM_FMT = (
@@ -104,6 +65,7 @@ MOCK_MODULES = [
     "dask.distributed",
     "datasets",
     "datasets.iterable_dataset",
+    "datasets.load",
     "gym",
     "gym.spaces",
     "horovod",
@@ -134,6 +96,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "ray.serve.generated",
     "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
@@ -146,7 +109,15 @@ MOCK_MODULES = [
     "tensorflow.contrib.slim",
     "tree",
     "wandb",
+    "wandb.data_types",
+    "wandb.util",
     "zoopt",
+    "composer",
+    "composer.trainer",
+    "composer.loggers",
+    "composer.loggers.logger_destination",
+    "composer.core",
+    "composer.core.state",
 ]
 
 
@@ -162,6 +133,9 @@ def make_typing_mock(module, name):
 
 
 def mock_modules():
+    if os.environ.get("RAY_MOCK_MODULES", "1") == "0":
+        return
+
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
         mock_module.__spec__ = mock.MagicMock()
@@ -172,21 +146,7 @@ def mock_modules():
 
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
-EXTERNAL_MARKDOWN_FILES = [
-    ("ray-project/xgboost_ray", "master", "README.md", "ray-more-libs/xgboost-ray.md"),
-    (
-        "ray-project/lightgbm_ray",
-        "master",
-        "README.md",
-        "ray-more-libs/lightgbm-ray.md",
-    ),
-    (
-        "ray-project/ray_lightning",
-        "6aed848f757a03c03166c1a9bddfeea5153e7b90",
-        "README.md",
-        "ray-more-libs/ray-lightning.md",
-    ),
-]
+EXTERNAL_MARKDOWN_FILES = []
 
 
 class DownloadAndPreprocessEcosystemDocs:
@@ -314,3 +274,70 @@ class LinkcheckSummarizer:
 
         if not has_broken_links:
             self.logger.info("No broken links found!")
+
+
+def build_gallery(app):
+    for gallery in GALLERIES:
+        panel_items = []
+        source = yaml.safe_load((Path(app.srcdir) / gallery).read_text())
+
+        meta = source["meta"]
+        is_titled = True if meta.get("section-titles") else False
+        meta.pop("section-titles")
+        projects = source["projects"]
+        buttons = source["buttons"]
+
+        for item in projects:
+            ref = ":type: url"
+            website = item["website"]
+            if "://" not in website:  # if it has no http/s protocol, it's a "ref"
+                ref = ref.replace("url", "ref")
+
+            if not item.get("image"):
+                item["image"] = "https://docs.ray.io/_images/ray_logo.png"
+            gh_stars = ""
+            if item["repo"]:
+                try:
+                    url = urlparse(item["repo"])
+                    if url.netloc == "github.com":
+                        _, org, repo = url.path.rstrip("/").split("/")
+                        gh_stars = (
+                            f".. image:: https://img.shields.io/github/"
+                            f"stars/{org}/{repo}?style=social)]\n"
+                            f"\t\t:target: {item['repo']}"
+                        )
+                except Exception:
+                    pass
+
+            item = f"""
+        ---
+        :img-top: {item["image"]}
+
+        {item["description"]}
+
+        {gh_stars}
+
+        +++
+        .. link-button:: {item["website"]}
+            {ref}
+            :text: {item["name"]}
+            :classes: {buttons["classes"]}
+            """
+            panel_items.append(item)
+
+        panel_header = ".. panels::\n"
+        for k, v in meta.items():
+            panel_header += f"\t:{k}: {v}\n"
+
+        if is_titled:
+            panels = ""
+            for item, panel in zip(projects, panel_items):
+                title = item["section_title"]
+                underline_title = "-" * len(title)
+                panels += f"{title}\n{underline_title}\n\n{panel_header}{panel}\n\n"
+        else:
+            panel_items = "\n".join(panel_items)
+            panels = panel_header + panel_items
+
+        gallery_out = gallery.replace(".yml", ".txt")
+        (Path(app.srcdir) / gallery_out).write_text(panels)

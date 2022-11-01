@@ -4,18 +4,17 @@ and use it in a serving/inference setting.
 
 import argparse
 import gym
+from pathlib import Path
 
-from ray.rllib.utils.policy import (
-    load_policies_from_checkpoint,
-    local_policy_inference,
-)
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.policy import local_policy_inference
 
 
 parser = argparse.ArgumentParser()
 # This should a checkpoint created with connectors enabled.
 parser.add_argument(
     "--checkpoint_file",
-    help="Path to an RLlib checkpoint file.",
+    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
 )
 parser.add_argument(
     "--policy_id",
@@ -27,13 +26,17 @@ args = parser.parse_args()
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
-def run():
+def run(checkpoint_path):
+    # __sphinx_doc_begin__
     # Restore policy.
-    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
+    policies = Policy.from_checkpoint(
+        checkpoint=checkpoint_path,
+        policy_ids=[args.policy_id],
+    )
     policy = policies[args.policy_id]
 
     # Run CartPole.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     obs = env.reset()
     done = False
     step = 0
@@ -42,6 +45,7 @@ def run():
 
         # Use local_policy_inference() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
+        # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
         policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
         assert len(policy_outputs) == 1
         action, _, _ = policy_outputs[0]
@@ -49,7 +53,11 @@ def run():
 
         # Step environment forward one more step.
         obs, _, done, _ = env.step(action[0])
+    # __sphinx_doc_end__
 
 
 if __name__ == "__main__":
-    run()
+    checkpoint_path = str(
+        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
+    )
+    run(checkpoint_path)

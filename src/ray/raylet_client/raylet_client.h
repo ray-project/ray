@@ -53,7 +53,8 @@ class PinObjectsInterface {
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
-      const std::vector<ActorID> &global_owner_ids,
+      const ObjectID &generator_id,
+	  const std::vector<ActorID> &global_owner_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   virtual ~PinObjectsInterface(){};
@@ -105,6 +106,10 @@ class WorkerLeaseInterface {
   virtual void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+
+  virtual void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -412,6 +417,11 @@ class RayletClient : public RayletClientInterface {
                            bool disconnect_worker,
                            bool worker_exiting) override;
 
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override;
+
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
@@ -452,7 +462,8 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
-      const std::vector<ActorID> &global_owner_ids,
+      const ObjectID &generator_id,
+	  const std::vector<ActorID> &global_owner_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(

@@ -17,10 +17,6 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    _concatenate_extension_column,
-    _is_column_extension_type,
-)
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
     TableBlockAccessor,
@@ -41,9 +37,6 @@ from ray.data.row import TableRow
 
 try:
     import pyarrow
-
-    # This import is necessary to load the tensor extension type.
-    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
 except ImportError:
     pyarrow = None
 
@@ -103,7 +96,8 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(pyarrow.Table)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
             if col_name == VALUE_COL_NAME or isinstance(
                 next(iter(col), None), np.ndarray
@@ -113,11 +107,9 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
         return pyarrow.Table.from_pydict(columns)
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
-        if len(tables) > 1:
-            return pyarrow.concat_tables(tables, promote=True)
-        else:
-            return tables[0]
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
+        return transform_pyarrow.concat(tables)
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
@@ -160,7 +152,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         new_batch = {}
         for col_name, col in batch.items():
             # Use Arrow's native *List types for 1-dimensional ndarrays.
-            if col.ndim > 1:
+            if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
                     col = ArrowTensorArray.from_numpy(col)
                 except pa.ArrowNotImplementedError as e:
@@ -175,7 +167,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
-        # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
@@ -192,11 +183,22 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        return self._table.to_pandas()
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
+        df = self._table.to_pandas()
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_tensor_columns_to_ndarrays(df)
+        return df
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        from ray.air.util.transform_pyarrow import (
+            _concatenate_extension_column,
+            _is_column_extension_type,
+        )
+
         if columns is None:
             columns = self._table.column_names
         if not isinstance(columns, list):
@@ -268,6 +270,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         extension arrays.
         """
         return transform_pyarrow.take_table(self._table, indices)
+
+    def select(self, columns: List[KeyFn]) -> "pyarrow.Table":
+        if not all(isinstance(col, str) for col in columns):
+            raise ValueError(
+                "Columns must be a list of column name strings when aggregating on "
+                f"Arrow blocks, but got: {columns}."
+            )
+        return self._table.select(columns)
 
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
@@ -593,6 +603,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
     import pyarrow as pa
+    from ray.air.util.transform_pyarrow import (
+        _concatenate_extension_column,
+        _is_column_extension_type,
+    )
 
     # Copy the table by copying each column and constructing a new table with
     # the same schema.

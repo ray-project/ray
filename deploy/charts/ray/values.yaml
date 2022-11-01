@@ -18,6 +18,8 @@ headPodType: rayHeadType
 # serviceAccountName is used for the Ray head and each Ray worker.
 # It can be set to your particular service account instead of using the default.
 # serviceAccountName: ...
+# imagePullSecrets is used to authenticate to private docker registry, when you have a custom image.
+imagePullSecrets: []
 # podTypes is the list of pod configurations available for use as Ray nodes.
 podTypes:
     # The key for each podType is a user-defined string.

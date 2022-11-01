@@ -4,6 +4,7 @@ import warnings
 import pytest
 
 import ray
+from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
@@ -38,7 +39,10 @@ def test_placement_ready(ray_start_regular, connect_to_client):
     with connect_to_client_or_not(connect_to_client):
         pg = ray.util.placement_group(bundles=[{"CPU": 1}])
         ray.get(pg.ready())
-        a = Actor.options(num_cpus=1, placement_group=pg).remote()
+        a = Actor.options(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+        ).remote()
         ray.get(a.v.remote())
         ray.get(pg.ready())
 
@@ -64,12 +68,20 @@ def test_placement_group_invalid_resource_request(shutdown_only):
     # The actor cannot be scheduled with the default because
     # it requires 1 cpu for the placement, but the pg doesn't have it.
     with pytest.raises(ValueError):
-        a = A.options(placement_group=pg).remote()
+        a = A.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
     # Shouldn't work with 1 CPU because pg doesn't contain CPUs.
     with pytest.raises(ValueError):
-        a = A.options(num_cpus=1, placement_group=pg).remote()
+        a = A.options(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+        ).remote()
     # 0 CPU should work.
-    a = A.options(num_cpus=0, placement_group=pg).remote()
+    a = A.options(
+        num_cpus=0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+    ).remote()
     ray.get(a.ready.remote())
     del a
 
@@ -84,16 +96,25 @@ def test_placement_group_invalid_resource_request(shutdown_only):
     # When resources are given to the placement group,
     # it automatically adds 1 CPU to resources, so it should fail.
     with pytest.raises(ValueError):
-        b = B.options(placement_group=pg).remote()
+        b = B.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
     # If 0 cpu is given, it should work.
-    b = B.options(num_cpus=0, placement_group=pg).remote()
+    b = B.options(
+        num_cpus=0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+    ).remote()
     ray.get(b.ready.remote())
     del b
     # If resources are requested too much, it shouldn't work.
     with pytest.raises(ValueError):
         # The actor cannot be scheduled with no resource specified.
         # Note that the default actor has 0 cpu.
-        B.options(num_cpus=0, resources={"a": 2}, placement_group=pg).remote()
+        B.options(
+            num_cpus=0,
+            resources={"a": 2},
+            schduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+        ).remote()
 
     #
     # Test a function with 1 CPU.
@@ -104,9 +125,16 @@ def test_placement_group_invalid_resource_request(shutdown_only):
 
     # 1 CPU shouldn't work because the pg doesn't have CPU bundles.
     with pytest.raises(ValueError):
-        f.options(placement_group=pg).remote()
+        f.options(
+            schduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
     # 0 CPU should work.
-    ray.get(f.options(placement_group=pg, num_cpus=0).remote())
+    ray.get(
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+            num_cpus=0,
+        ).remote()
+    )
 
     #
     # Test a function with 0 CPU.
@@ -116,7 +144,11 @@ def test_placement_group_invalid_resource_request(shutdown_only):
         pass
 
     # 0 CPU should work.
-    ray.get(g.options(placement_group=pg).remote())
+    ray.get(
+        g.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
 
     placement_group_assert_no_leak([pg])
 
@@ -158,10 +190,14 @@ def test_placement_group_pack(
         )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=0
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            )
         ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=1
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=1
+            )
         ).remote()
 
         ray.get(actor_1.value.remote())
@@ -214,10 +250,14 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=0
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            )
         ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=1
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=1
+            )
         ).remote()
 
         ray.get(actor_1.value.remote())
@@ -274,8 +314,9 @@ def test_placement_group_spread(
         ray.get(placement_group.ready())
         actors = [
             Actor.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=i,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group, placement_group_bundle_index=i
+                ),
                 num_cpus=2,
             ).remote()
             for i in range(num_nodes)
@@ -330,8 +371,9 @@ def test_placement_group_strict_spread(
         ray.get(placement_group.ready())
         actors = [
             Actor.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=i,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group, placement_group_bundle_index=i
+                ),
                 num_cpus=1,
             ).remote()
             for i in range(num_nodes)
@@ -350,7 +392,9 @@ def test_placement_group_strict_spread(
 
         actors_no_special_bundle = [
             Actor.options(
-                placement_group=placement_group,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group
+                ),
                 num_cpus=1,
             ).remote()
             for _ in range(num_nodes)
@@ -358,7 +402,9 @@ def test_placement_group_strict_spread(
         [ray.get(actor.value.remote()) for actor in actors_no_special_bundle]
 
         actor_no_resource = Actor.options(
-            placement_group=placement_group,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group
+            ),
             num_cpus=2,
         ).remote()
         with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -382,7 +428,9 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
 
     with connect_to_client_or_not(connect_to_client):
         g1 = ray.util.placement_group([{"CPU": 2}])
-        a1 = F.options(placement_group=g1).remote()
+        a1 = F.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
+        ).remote()
         resources = ray.get(a1.f.remote())
         assert len(resources) == 1, resources
         assert "CPU_group_" in list(resources.keys())[0], resources
@@ -403,14 +451,20 @@ def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client)
 
     with connect_to_client_or_not(connect_to_client):
         g1 = ray.util.placement_group([{"CPU": 2}])
-        o1 = f.options(placement_group=g1).remote()
+        o1 = f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
+        ).remote()
         resources = ray.get(o1)
         assert len(resources) == 1, resources
         assert "CPU_group_" in list(resources.keys())[0], resources
         assert "CPU_group_0_" not in list(resources.keys())[0], resources
 
         # Now retry with a bundle index constraint.
-        o1 = f.options(placement_group=g1, placement_group_bundle_index=0).remote()
+        o1 = f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=g1, placement_group_bundle_index=0
+            )
+        ).remote()
         resources = ray.get(o1)
         assert len(resources) == 2, resources
         keys = list(resources.keys())
@@ -440,13 +494,22 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         g1 = ray.util.placement_group([{"CPU": 2}])
         # This will start out infeasible. The placement group will then be
         # created and it transitions to feasible.
-        o1 = f.options(placement_group=g1).remote()
+        o1 = f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
+        ).remote()
 
         resources = ray.get(o1)
         assert len(resources) == 1, resources
         assert "CPU_group_" in list(resources.keys())[0], resources
 
         placement_group_assert_no_leak([g1])
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client):
+    with connect_to_client_or_not(connect_to_client):
+        with pytest.raises(ValueError):
+            ray.util.placement_group([])
 
 
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
@@ -471,7 +534,10 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
         "placement_group parameter is deprecated" in str(warning.message)
         for warning in w
     )
-    assert any("docs.ray.io/en/master" in str(warning.message) for warning in w)
+    assert any(
+        f"docs.ray.io/en/{get_ray_doc_version()}" in str(warning.message)
+        for warning in w
+    )
 
     # Pointing to the same doc version as ray.__version__.
     ray.__version__ = "1.13.0"
@@ -484,8 +550,9 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     # No warning when scheduling_strategy is specified.
     with warnings.catch_warnings(record=True) as w:
         Foo.options(
-            placement_group_bundle_index=0,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=0
+            ),
         ).remote()
     assert not w
 

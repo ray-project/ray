@@ -45,7 +45,9 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 
 ## Papers
 
--   [Ray 1.0 Architecture whitepaper](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Ray 2.0 Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
+-   [Ray 1.0 Architecture whitepaper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Ray AIR Technical whitepaper](https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview)
 -   [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
 -   [RLlib paper](https://arxiv.org/abs/1712.09381)
 -   [RLlib flow paper](https://arxiv.org/abs/2011.12719)

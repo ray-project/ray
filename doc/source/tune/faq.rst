@@ -280,6 +280,24 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
+You can also allocate specific resources to a trial based on a custom rule via lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your config:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
+
+You can also use the :ref:`ScalingConfig <train-config>` to specify your lambda function:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_scalingconfig_start__
+    :end-before: __resources_scalingconfig_end__
+
+
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -707,7 +725,7 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 13
+    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__
@@ -715,3 +733,35 @@ If `grid_search` is provided as an argument, the grid will be repeated ``num_sam
 Note that search spaces may not be interoperable across different search algorithms.
 For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.
 Read about this in the :ref:`Search Space API <tune-search-space>` page.
+
+.. _tune-working-dir:
+
+How do I access relative filepaths in my Tune training function?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's say you launch a Tune experiment from ``~/code/my_script.py``. By default, Tune
+changes the working directory of each worker from ``~/code`` to its corresponding trial
+directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
+guarantees separate working directories for each worker process, avoiding conflicts when
+saving trial-specific outputs.
+
+You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig`.
+This explicitly tells Tune to not change the working directory
+to the trial directory, giving access to paths relative to the original working directory.
+One caveat is that the working directory is now shared between workers, so the
+:meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
+API should be used to get the path for saving trial-specific outputs.
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :emphasize-lines: 3, 10, 11, 12, 16
+    :language: python
+    :start-after: __no_chdir_start__
+    :end-before: __no_chdir_end__
+
+.. warning::
+
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.

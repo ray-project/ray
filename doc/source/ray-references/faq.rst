@@ -8,7 +8,6 @@ FAQ
     :caption: Frequently Asked Questions
 
     ./../tune/faq.rst
-    ./../serve/faq.rst
 
 
 Further Questions or Issues?

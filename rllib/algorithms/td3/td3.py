@@ -3,10 +3,10 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
@@ -23,6 +23,7 @@ class TD3Config(DDPGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
+        >>> from ray import air
         >>> from ray import tune
         >>> config = TD3Config()
         >>> # Print out some default values.
@@ -34,11 +35,11 @@ class TD3Config(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "TD3",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -71,9 +72,12 @@ class TD3Config(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
-            "learning_starts": 10000,
             "worker_side_prioritization": False,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 10000
 
         # .exploration()
         # TD3 uses Gaussian Noise by default.
@@ -101,8 +105,8 @@ class TD3Config(DDPGConfig):
 class TD3(DDPG):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return TD3Config().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return TD3Config()
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg..td3.TD3Config instead!
@@ -113,7 +117,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

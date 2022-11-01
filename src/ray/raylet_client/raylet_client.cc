@@ -398,6 +398,21 @@ Status raylet::RayletClient::ReturnWorker(int worker_port,
   return Status::OK();
 }
 
+void raylet::RayletClient::GetTaskFailureCause(
+    const TaskID &task_id,
+    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
+  rpc::GetTaskFailureCauseRequest request;
+  request.set_task_id(task_id.Binary());
+  grpc_client_->GetTaskFailureCause(
+      request,
+      [callback](const Status &status, const rpc::GetTaskFailureCauseReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error getting task result: " << status;
+        }
+        callback(status, reply);
+      });
+}
+
 void raylet::RayletClient::ReleaseUnusedWorkers(
     const std::vector<WorkerID> &workers_in_use,
     const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
@@ -483,7 +498,8 @@ void raylet::RayletClient::ReleaseUnusedBundles(
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,
-    const std::vector<ActorID> &global_owner_ids,
+    const ObjectID &generator_id,
+	const std::vector<ActorID> &global_owner_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   RAY_CHECK(object_ids.size() == global_owner_ids.size());
   rpc::PinObjectIDsRequest request;
@@ -491,6 +507,9 @@ void raylet::RayletClient::PinObjectIDs(
   for (size_t index = 0; index < object_ids.size(); index++) {
     request.add_object_ids(object_ids[index].Binary());
     request.add_global_owner_ids(global_owner_ids[index].Binary());
+  }
+  if (!generator_id.IsNil()) {
+    request.set_generator_id(generator_id.Binary());
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](

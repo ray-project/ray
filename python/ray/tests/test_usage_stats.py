@@ -94,6 +94,12 @@ def print_dashboard_log():
 
 
 @pytest.fixture
+def gcs_storage_type():
+    storage = "redis" if os.environ.get("RAY_REDIS_ADDRESS") else "memory"
+    yield storage
+
+
+@pytest.fixture
 def reset_usage_stats():
     yield
     # Remove the lib usage so that it will be reset for each test.
@@ -116,7 +122,7 @@ def reset_ray_version_commit():
 
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_get_extra_usage_tags_to_report(
-    monkeypatch, call_ray_start, reset_usage_stats, ray_client
+    monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
     with monkeypatch.context() as m:
         # Test a normal case.
@@ -172,13 +178,23 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result == {"key": "val", "_test1": "val1", "_test2": "val2"}
+        assert result == {
+            "key": "val",
+            "_test1": "val1",
+            "_test2": "val2",
+            "gcs_storage": gcs_storage_type,
+        }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result == {"key": "val", "_test1": "val1", "_test2": "val3"}
+        assert result == {
+            "key": "val",
+            "_test1": "val1",
+            "_test2": "val3",
+            "gcs_storage": gcs_storage_type,
+        }
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -550,10 +566,41 @@ from ray import serve
 
 serve.start()
 serve.shutdown()
+
+class Actor:
+    def get_actor_metadata(self):
+        return "metadata"
+
+from ray.util.actor_group import ActorGroup
+actor_group = ActorGroup(Actor)
+
+actor_pool = ray.util.actor_pool.ActorPool([])
+
+from ray.util.multiprocessing import Pool
+pool = Pool()
+
+from ray.util.queue import Queue
+queue = Queue()
+
+import joblib
+from ray.util.joblib import register_ray
+register_ray()
+with joblib.parallel_backend("ray"):
+    pass
 """.format(
         "ray://127.0.0.1:10001" if ray_client else address
     )
     run_string_as_driver(driver)
+
+    job_submission_client = ray.job_submission.JobSubmissionClient(
+        "http://127.0.0.1:8265"
+    )
+    job_id = job_submission_client.submit_job(entrypoint="ls")
+    wait_for_condition(
+        lambda: job_submission_client.get_job_status(job_id)
+        == ray.job_submission.JobStatus.SUCCEEDED
+    )
+
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
@@ -567,7 +614,15 @@ serve.shutdown()
         "dataset",
         "workflow",
         "serve",
+        "util.ActorGroup",
+        "util.ActorPool",
+        "util.multiprocessing.Pool",
+        "util.Queue",
+        "util.joblib",
+        "job_submission",
     }
+    if ray_client:
+        expected.add("client")
     assert set(library_usages) == expected
     if not ray_client:
         assert set(lib_usages_from_home_folder) == expected
@@ -627,7 +682,7 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(
@@ -703,9 +758,11 @@ available_node_types:
     assert cluster_config_to_report.min_workers == 1
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
-    assert cluster_config_to_report.worker_node_instance_types == list(
-        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
-    )
+    assert set(cluster_config_to_report.worker_node_instance_types) == {
+        "m3.large",
+        "Standard_D2s_v3",
+        "n1-standard-2",
+    }
 
     cluster_config_file_path.write_text(
         """
@@ -751,6 +808,19 @@ available_node_types:
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
+
+    monkeypatch.setenv("RAY_USAGE_STATS_KUBERAY_IN_USE", "1")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "kuberay"
+
+    monkeypatch.delenv("RAY_USAGE_STATS_KUBERAY_IN_USE")
+    monkeypatch.setenv("RAY_USAGE_STATS_LEGACY_OPERATOR_IN_USE", "1")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "legacy_ray_operator"
 
 
 @pytest.mark.skipif(
@@ -843,7 +913,9 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats):
+def test_usage_report_e2e(
+    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+):
     """
     Test usage report works e2e with env vars.
     """
@@ -868,7 +940,6 @@ provider:
         cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import train  # noqa: F401
-            from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
@@ -876,6 +947,15 @@ provider:
         ray.init(address=cluster.address)
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
+
+        if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import tune  # noqa: F401
+
+            def objective(*args):
+                pass
+
+            tuner = tune.Tuner(objective)
+            tuner.fit()
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -957,6 +1037,7 @@ provider:
             "_test2": "extra_v3",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
+            "gcs_storage": gcs_storage_type,
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1108,10 +1189,16 @@ import ray
 import os
 if os.environ.get("RAY_MINIMAL") != "1":
     from ray import train  # noqa: F401
-    from ray import tune  # noqa: F401
     from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
 ray.init(address="{addr}")
+
+if os.environ.get("RAY_MINIMAL") != "1":
+    from ray import tune  # noqa: F401
+    def objective(*args):
+        pass
+
+    tune.run(objective)
 """
         # Run a script in a separate process. It is a workaround to
         # reimport libraries. Without this, `import train`` will become
@@ -1161,11 +1248,15 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
         class ActorWithLibImport:
             def __init__(self):
                 from ray import train  # noqa: F401
-                from ray import tune  # noqa: F401
                 from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
             def ready(self):
-                pass
+                from ray import tune  # noqa: F401
+
+                def objective(*args):
+                    pass
+
+                tune.run(objective)
 
         # Use a runtime env to run tests in minimal installation.
         a = ActorWithLibImport.options(
@@ -1210,6 +1301,11 @@ from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
 # Start a instance that disables usage stats.
 ray.init()
+
+def objective(*args):
+    pass
+
+tune.run(objective)
 """
 
     run_string_as_driver(script)
@@ -1248,7 +1344,9 @@ ray.init()
         wait_for_condition(verify)
 
 
-def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_stats_tags(
+    monkeypatch, ray_start_cluster, reset_usage_stats, gcs_storage_type
+):
     """
     Test usage tags are correctly reported.
     """
@@ -1272,7 +1370,11 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_usage_stats):
         def verify():
             tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
             num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
-            assert tags == {"key": "val", "key2": "val2"}
+            assert tags == {
+                "key": "val",
+                "key2": "val2",
+                "gcs_storage": gcs_storage_type,
+            }
             assert num_nodes == 2
             return True
 

@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple
+import logging
 
 import grpc
 
@@ -10,6 +11,8 @@ from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated
 from ray.util.client import ray
 from ray._private.utils import get_ray_doc_version
+
+logger = logging.getLogger(__name__)
 
 
 @Deprecated(
@@ -31,6 +34,13 @@ def connect(
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if ray.is_connected():
+        ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
+        if ignore_reinit_error:
+            logger.info(
+                "Calling ray.init() again after it has already been called. "
+                "Reusing the existing Ray client connection."
+            )
+            return ray.get_context().client_worker.connection_info()
         raise RuntimeError(
             "Ray Client is already connected. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'

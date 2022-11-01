@@ -14,8 +14,7 @@ from scipy.stats import sem
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms import slateq
-from ray.rllib.algorithms import dqn
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
@@ -34,7 +33,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -45,7 +44,7 @@ parser.add_argument(
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
 )
-parser.add_argument("--learning-starts", type=int, default=20000)
+
 parser.add_argument(
     "--random-test-episodes",
     type=int,
@@ -71,6 +70,15 @@ parser.add_argument(
     "`--env-slate-size` from each timestep. These candidates will be "
     "sampled by the environment's built-in document sampler model.",
 )
+
+parser.add_argument(
+    "--num-steps-sampled-before-learning_starts",
+    type=int,
+    default=20000,
+    help="Number of timesteps to collect from rollout workers before we start "
+    "sampling from replay buffers for learning..",
+)
+
 parser.add_argument(
     "--env-slate-size",
     type=int,
@@ -114,22 +122,25 @@ def main():
         "convert_to_discrete_action_space": args.run == "DQN",
     }
 
-    config = {
-        "env": (
+    config = (
+        AlgorithmConfig(algo_class=args.run)
+        .environment(
             InterestEvolutionRecSimEnv
             if args.env == "interest-evolution"
             else InterestExplorationRecSimEnv
             if args.env == "interest-exploration"
-            else LongTermSatisfactionRecSimEnv
-        ),
-        "framework": args.framework,
-        "num_gpus": args.num_gpus,
-        "num_workers": args.num_workers,
-        "env_config": env_config,
-        "replay_buffer_config": {
-            "learning_starts": args.learning_starts,
-        },
-    }
+            else LongTermSatisfactionRecSimEnv,
+            env_config=env_config,
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=args.num_workers)
+        .resources(num_gpus=args.num_gpus)
+    )
+
+    if args.run in ["DQN", "SlateQ"]:
+        config.num_steps_sampled_before_learning_starts = (
+            args.num_steps_sampled_before_learning_starts
+        )
 
     # Perform a test run on the env with a random agent to see, what
     # the random baseline reward is.
@@ -181,14 +192,15 @@ def main():
             check_learning_achieved(results, args.stop_reward)
 
     else:
-        # Directly run using the trainer interface (good for debugging).
-        if args.run == "DQN":
-            trainer = dqn.DQN(config=config)
-        else:
-            trainer = slateq.SlateQ(config=config)
+        # Directly run using the Algorithm interface (good for debugging).
+        algo = config.build()
+
         for i in range(10):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
+
+        algo.stop()
+
     ray.shutdown()
 
 

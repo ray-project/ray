@@ -35,11 +35,12 @@ class A3CConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = A3CConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        ...     .rollouts(num_rollout_workers=4)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> config = A3CConfig()
@@ -51,11 +52,11 @@ class A3CConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A3C",
         ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -77,6 +78,7 @@ class A3CConfig(AlgorithmConfig):
         self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
@@ -153,8 +155,8 @@ class A3CConfig(AlgorithmConfig):
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A3CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A3CConfig()
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -278,7 +280,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.a3c.a3c.A3CConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

@@ -23,6 +23,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 
+
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = SampleBatch(
     {
@@ -102,19 +103,17 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
-            )
-            .rollouts(
-                num_rollout_workers=1,
-                # Test with compression.
-                compress_observations=True,
-            )
-            .training(
                 train_batch_size=128,
                 model=dict(
                     # Settings in case we use an LSTM.
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
@@ -124,7 +123,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -134,9 +133,9 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = config.build(env=env)
-                    policy = trainer.get_policy()
-                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
                     if fw == "tf":
                         entropy_coeff, lr = policy.get_session().run(
@@ -146,20 +145,21 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
-                        results = trainer.train()
+                        results = algo.train()
                         check_train_results(results)
                         print(results)
 
                     check_compute_single_action(
-                        trainer, include_prev_action_reward=True, include_state=lstm
+                        algo, include_prev_action_reward=True, include_state=lstm
                     )
-                    trainer.stop()
+                    algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
             .environment(
+                "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
             )
             .rollouts(
@@ -172,7 +172,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
@@ -208,6 +208,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -223,7 +224,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -238,7 +239,10 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            # linter yells at you if you don't pass in the parameters.
+            # reason: https://docs.python-guide.org/writing/gotchas/
+            # #late-binding-closures
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
                 if fw == "tf":
                     return policy.get_session().run(log_std_var)[0]
                 elif fw == "torch":
@@ -259,19 +263,11 @@ class TestPPO(unittest.TestCase):
             assert post_std != 0.0, post_std
             trainer.stop()
 
-    def test_ppo_legacy_config(self):
-        """Tests, whether the old PPO config dict is still functional."""
-        ppo_config = ppo.DEFAULT_CONFIG
-        # Expect warning.
-        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Algorithm.
-        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
-        print(ppo_trainer.train())
-
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -286,7 +282,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check no free log std var by default.
@@ -312,7 +308,7 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw in ["tf2", "tfe"]:
+            if fw == "tf2":
                 PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(

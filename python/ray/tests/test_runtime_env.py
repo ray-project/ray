@@ -39,6 +39,7 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
+    # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
@@ -52,6 +53,7 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
+    # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
     test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
     for sys_platform in ["darwin", "linux", "win32"]:
@@ -289,44 +291,6 @@ def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
         ray.get(f.remote())
 
 
-@pytest.fixture
-def set_agent_failure_env_var():
-    os.environ["_RAY_AGENT_FAILING"] = "1"
-    yield
-    del os.environ["_RAY_AGENT_FAILING"]
-
-
-# TODO(SongGuyang): Fail the agent which is in different node from driver.
-@pytest.mark.skip(
-    reason="Agent failure will lead to raylet failure and driver failure."
-)
-@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_runtime_env_broken(
-    set_agent_failure_env_var, runtime_env_class, ray_start_cluster_head
-):
-    @ray.remote
-    class A:
-        def ready(self):
-            pass
-
-    @ray.remote
-    def f():
-        pass
-
-    runtime_env = runtime_env_class(env_vars={"TF_WARNINGS": "none"})
-    """
-    Test task raises an exception.
-    """
-    with pytest.raises(ray.exceptions.LocalRayletDiedError):
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    """
-    Test actor task raises an exception.
-    """
-    a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.ready.remote())
-
-
 class TestURICache:
     def test_zero_cache_size(self):
         uris_to_sizes = {"5": 5, "3": 3}
@@ -450,6 +414,10 @@ def enable_dev_mode(local_env_var_enabled):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 10, 0),
+    reason=("Currently not passing for Python 3.10"),
 )
 @pytest.mark.parametrize("local_env_var_enabled", [False, True])
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])

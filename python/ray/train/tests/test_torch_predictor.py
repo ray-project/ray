@@ -13,23 +13,11 @@ from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
 )
-from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        return df * 2
+from dummy_preprocessor import DummyPreprocessor
 
 
 class DummyModelSingleTensor(torch.nn.Module):
@@ -110,11 +98,21 @@ def test_predict(batch_type):
 
 
 @pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TorchPredictor, model=DummyModelMultiInput()
-    )
+@pytest.mark.parametrize("use_state_dict", [True, False])
+def test_predict_batch(ray_start_4_cpus, batch_type, use_state_dict):
+    if use_state_dict:
+        checkpoint = TorchCheckpoint.from_state_dict({})
+        # Notice here that predictor needs to take in additional information
+        # of "model".
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint, TorchPredictor, model=DummyModelMultiInput()
+        )
+    else:  # directly using model
+        checkpoint = TorchCheckpoint.from_model(DummyModelMultiInput())
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint,
+            TorchPredictor,
+        )
 
     dummy_data = pd.DataFrame(
         [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["X0", "X1"]
@@ -155,7 +153,8 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [4, 8, 12]
+    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
