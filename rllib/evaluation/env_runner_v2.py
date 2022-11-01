@@ -1072,12 +1072,15 @@ class EnvRunnerV2:
                 input_dict: TensorStructType = eval_data[i].data.raw_dict
 
                 rnn_states: List[StateBatches] = [c[i] for c in rnn_out]
-                fetches: Dict = {k: v[i] for k, v in extra_action_out.items()}
+
+                # extra_action_out could be a nested dict
+                fetches: Dict = tree.map_structure(lambda x: x[i], extra_action_out)
 
                 # Post-process policy output by running them through action connectors.
                 ac_data = ActionConnectorDataType(
                     env_id, agent_id, input_dict, (action, rnn_states, fetches)
                 )
+
                 action_to_send, rnn_states, fetches = policy.action_connectors(
                     ac_data
                 ).output
