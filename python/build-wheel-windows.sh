@@ -34,7 +34,7 @@ is_python_version() {
 
 refreshenv() {
   # https://gist.github.com/jayvdb/1daf8c60e20d64024f51ec333f5ce806
-  powershell -NonInteractive - <<\EOF
+  powershell -NonInteractive - <<\REFRESHENV_OUTER_EOF
 Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 
 Update-SessionEnvironment
@@ -51,14 +51,15 @@ Get-ChildItem env:* | %{
       $value = $value -replace ';',':'
     }
     # Use heredocs to wrap values. This fixes problems with environment variables containing single quotes.
-    # An environment variable containing the string REFRESHENV_EOF could still cause problems, but is
+    # An environment variable containing the string REFRESHENV_INNER_EOF could still cause problems, but is
     # far less likely than a single quote.
-    Write-Output ("export " + $_.Name + "=$`(cat <<- 'REFRESHENV_EOF'`n" + $value + "`nREFRESHENV_EOF`)")
+    Write-Output ("export " + $_.Name + "=$`(cat <<- 'REFRESHENV_INNER_EOF'`n" + $value + "`nREFRESHENV_INNER_EOF`)")
   }
 } | Out-File -Encoding ascii $env:TEMP\refreshenv.sh
 
-EOF
+REFRESHENV_OUTER_EOF
 
+  cat "$TEMP/refreshenv.sh"
   source "$TEMP/refreshenv.sh"
 }
 
