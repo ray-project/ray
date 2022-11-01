@@ -75,7 +75,7 @@ class EagerTFPolicyV2(Policy):
             )
         )
 
-        Policy.__init__(self, observation_space, action_space, config)
+        super(EagerTFPolicyV2, self).__init__(observation_space, action_space, config)
 
         self._is_training = False
         # Global timestep should be a tensor.
