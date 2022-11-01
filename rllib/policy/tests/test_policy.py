@@ -7,9 +7,6 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.framework import try_import_tf
-
-tf1, tf, tfv = try_import_tf()
 
 
 class TestPolicy(unittest.TestCase):
