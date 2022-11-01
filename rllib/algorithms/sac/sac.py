@@ -138,7 +138,7 @@ class SACConfig(AlgorithmConfig):
                 MODEL_DEFAULTS. This is treated just as the top-level `model` dict in
                 setting up the Q-network(s) (2 if twin_q=True).
                 That means, you can do for different observation spaces:
-                obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
+                `obs=Box(1D)` -> `Tuple(Box(1D) + Action)` -> `concat` -> `post_fcnet`
                 obs=Box(3D) -> Tuple(Box(3D) + Action) -> vision-net -> concat w/ action
                 -> post_fcnet
                 obs=Tuple(Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action)
@@ -153,7 +153,7 @@ class SACConfig(AlgorithmConfig):
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             initial_alpha: Initial value to use for the entropy weight alpha.
             target_entropy: Target entropy lower bound. If "auto", will be set
-                to -|A| (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
+                to `-|A|` (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
@@ -162,9 +162,9 @@ class SACConfig(AlgorithmConfig):
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                 - This is True AND restoring from a checkpoint that contains no buffer
-                    data.
+                data.
                 - This is False AND restoring from a checkpoint that does contain
-                    buffer data.
+                buffer data.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
