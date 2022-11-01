@@ -1815,6 +1815,7 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
+                    returned_object_owner_address,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1825,6 +1826,10 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             c_string serialized_retry_exception_allowlist
+            unique_ptr[CAddress] c_returned_object_owner_address
+
+        c_returned_object_owner_address = move(
+            self._convert_python_address(returned_object_owner_address))
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1861,6 +1866,7 @@ cdef class CoreWorker:
                     c_scheduling_strategy,
                     debugger_breakpoint,
                     serialized_retry_exception_allowlist,
+                    move(c_returned_object_owner_address),
                 )
 
             # These arguments were serialized and put into the local object

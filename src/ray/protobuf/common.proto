@@ -371,6 +371,8 @@ message TaskSpec {
   // first execution, we do not yet know whether the task has dynamic return
   // objects.
   repeated bytes dynamic_return_ids = 31;
+  // The address of the returned object owner.
+  optional Address returned_object_owner_address = 32;
 }
 
 message TaskInfoEntry {

@@ -2871,6 +2871,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
+    _owner: Optional["ray.actor.ActorHandle"] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3049,6 +3050,22 @@ def remote(
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 
     """
+
+    _owner = kwargs.pop("_owner")
+    if isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray._private.state.state.global_state_accessor` is not None
+        ray._private.state.state._check_connected()
+        owner_address = gcs_utils.ActorTableData.FromString(
+            ray._private.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id
+            )
+        ).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
+        kwargs["returned_object_owner_address"] = owner_address.SerializeToString()
+    else:
+        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
+
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.

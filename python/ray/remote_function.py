@@ -387,6 +387,7 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
+                self._returned_object_owner_address,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

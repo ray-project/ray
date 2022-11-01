@@ -1731,7 +1731,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const std::unique_ptr<rpc::Address> &returned_object_owner_address) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1769,6 +1770,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
                             scheduling_strategy);
+  if (returned_object_owner_address) {
+    builder.SetReturnedObjectOwnerAddressTaskSpec(*returned_object_owner_address);
+  }
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;

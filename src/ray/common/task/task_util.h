@@ -258,6 +258,14 @@ class TaskSpecBuilder {
     return *this;
   }
 
+  TaskSpecBuilder &SetReturnedObjectOwnerAddressTaskSpec(
+      const rpc::Address &owner_address) {
+    if (!WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
+      message_->mutable_returned_object_owner_address()->CopyFrom(owner_address);
+    }
+    return *this;
+  }
+
  private:
   std::shared_ptr<rpc::TaskSpec> message_;
 };

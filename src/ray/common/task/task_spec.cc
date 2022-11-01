@@ -377,6 +377,13 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+const rpc::Address &TaskSpecification::ReturnedObjectOwnerAddress() const {
+  if (message_->has_returned_object_owner_address()) {
+    return message_->returned_object_owner_address();
+  }
+  return CallerAddress();
+}
+
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
