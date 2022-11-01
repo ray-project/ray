@@ -348,6 +348,45 @@ def test_seal_memory(shutdown_only):
     )
 
 
+# @pytest.mark.skipif(
+#     sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+# )
+def test_worker_heap_memory(shutdown_only):
+    """Test objects allocated in shared memory"""
+    import numpy as np
+
+    info = ray.init(
+        object_store_memory=100 * MiB,
+        _system_config={**_SYSTEM_CONFIG, **{
+            "max_direct_call_object_size": 100 * MiB,
+            "task_rpc_inlined_bytes_limit": 100 * MiB, 
+        }}
+    )
+
+    # Allocate 4MiB data
+    @ray.remote
+    def func():
+        return np.zeros(4 * MiB, dtype=np.uint8)
+
+    tasks_with_inlined_return = [func.remote() for _ in range(10)]
+
+    expected = {
+        "MMAP_SHM": 0,
+        "MMAP_DISK": 0,
+        "SPILLED": 0,
+        "WORKER_HEAP": 40 * MiB
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    del tasks_with_inlined_return
+
+
 if __name__ == "__main__":
     import sys
     import os
