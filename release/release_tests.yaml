@@ -629,7 +629,7 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
