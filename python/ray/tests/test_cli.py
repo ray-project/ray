@@ -168,6 +168,7 @@ def _die_on_error(result):
 
 
 def _debug_check_line_by_line(result, expected_lines):
+    """Print the result and expected output line-by-line."""
     output_lines = result.output.split("\n")
     i = 0
 
@@ -195,7 +196,7 @@ def _debug_check_line_by_line(result, expected_lines):
 
             print(repr(line))
 
-    assert False
+    assert False, (result.output, expected_lines)
 
 
 @contextmanager
@@ -235,6 +236,8 @@ def _load_output_pattern(name):
 
 def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
+
+    print(expected_lines)
 
     if result.exception is not None:
         raise result.exception from None

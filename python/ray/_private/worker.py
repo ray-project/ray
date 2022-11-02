@@ -58,6 +58,7 @@ import ray.actor
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
+import ray.log
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -69,7 +70,7 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -87,6 +88,7 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
+
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1053,9 +1055,6 @@ def init(
     dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
     dashboard_port: Optional[int] = None,
     job_config: "ray.job_config.JobConfig" = None,
-    configure_logging: bool = True,
-    logging_level: int = ray_constants.LOGGER_LEVEL,
-    logging_format: Optional[str] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1143,15 +1142,6 @@ def init(
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
         job_config (ray.job_config.JobConfig): The job configuration.
-        configure_logging: True (default) if configuration of logging is
-            allowed here. Otherwise, the user may want to configure it
-            separately.
-        logging_level: Logging level, defaults to logging.INFO. Ignored unless
-            "configure_logging" is true.
-        logging_format: Logging format, defaults to string containing a
-            timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details. Ignored unless "configure_logging"
-            is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1204,8 +1194,18 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    if configure_logging:
-        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
+    deprecated_kwargs = ["configure_logging", "logging_level", "logging_format"]
+    for key in deprecated_kwargs:
+        if key in kwargs:
+            del kwargs[key]
+            warnings.warn(
+                (
+                    "Logging configuration in `ray.init` is deprecated. "
+                    f"{key} parameter will be ignored."
+                ),
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(

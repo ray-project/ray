@@ -382,6 +382,13 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
+    # Rich log handler is intended for human-readability. There are a lot of tests
+    # which inspect subprocess output for validity, so force plain logging here.
+    if not env:
+        env = {}
+    if "FORCE_PLAIN_LOGGING" not in env:
+        env["FORCE_PLAIN_LOGGING"] = "1"
+
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -418,6 +425,12 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
             'exec("del script\\n" + script)',
         ]
     )
+    # Rich log handler is intended for human-readability. There are a lot of tests
+    # which inspect subprocess output for validity, so force plain logging here.
+    if not env:
+        env = {}
+    if "FORCE_PLAIN_LOGGING" not in env:
+        env["FORCE_PLAIN_LOGGING"] = "1"
     proc = subprocess.Popen(
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
@@ -1810,3 +1823,33 @@ def safe_write_to_results_json(
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
     os.replace(test_output_json_tmp, test_output_json)
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))
