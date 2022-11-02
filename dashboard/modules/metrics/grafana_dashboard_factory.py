@@ -10,12 +10,36 @@ from typing import List
 
 @dataclass
 class Target:
+    """Defines a Grafana target (time-series query) within a panel.
+
+    A panel will have one or more targets. By default, all targets are rendered as
+    stacked area charts, with the exception of legend="MAX", which is rendered as
+    a blue dotted line.
+
+    Attributes:
+        expr: The prometheus query to evaluate.
+        legend: The legend string to format for each time-series.
+    """
+
     expr: str
     legend: str
 
 
 @dataclass
 class Panel:
+    """Defines a Grafana panel (graph) for the Ray dashboard page.
+
+    A panel contains one or more targets (time-series queries).
+
+    Attributes:
+        title: Short name of the graph. Note: please keep this in sync with the title
+            definitions in Metrics.tsx.
+        description: Long form description of the graph.
+        id: Integer id used to reference the graph from Metrics.tsx.
+        unit: The unit to display on the y-axis of the graph.
+        targets: List of query targets.
+    """
+
     title: str
     description: str
     id: int
@@ -370,7 +394,7 @@ PANEL_TEMPLATE = {
 }
 
 
-def generate_grafana_dashboard():
+def generate_grafana_dashboard() -> str:
     base_json = json.load(
         open(
             os.path.join(
@@ -382,7 +406,7 @@ def generate_grafana_dashboard():
     return json.dumps(base_json, indent=4)
 
 
-def _generate_grafana_panels():
+def _generate_grafana_panels() -> dict:
     panels = []
     for i, panel in enumerate(GRAFANA_PANELS):
         template = copy.deepcopy(PANEL_TEMPLATE)
@@ -401,7 +425,7 @@ def _generate_grafana_panels():
     return panels
 
 
-def _generate_targets(panel):
+def _generate_targets(panel: Panel) -> dict:
     targets = []
     for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
         template = copy.deepcopy(TARGET_TEMPLATE)

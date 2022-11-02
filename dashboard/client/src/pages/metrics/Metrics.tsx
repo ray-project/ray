@@ -63,6 +63,7 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
+// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
 const METRICS_CONFIG = [
   {
     title: "Scheduler Task State",
