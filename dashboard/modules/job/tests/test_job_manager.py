@@ -36,14 +36,16 @@ TEST_NAMESPACE = "jobs_test_namespace"
     ["""ray start --head"""],
     indirect=True,
 )
-async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F811
+async def test_get_scheduling_strategy(
+    call_ray_start, monkeypatch, tmp_path  # noqa: F811
+):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
 
-    job_manager = JobManager(gcs_aio_client)
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_aio_client.internal_kv_del(
@@ -73,14 +75,14 @@ async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F8
     ["""ray start --head --resources={"TestResourceKey":123}"""],
     indirect=True,
 )
-async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
+async def test_submit_no_ray_address(call_ray_start, tmp_path):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    job_manager = JobManager(gcs_aio_client)
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     init_ray_no_address_script = """
 import ray
@@ -120,12 +122,12 @@ def shared_ray_instance():
 
 @pytest.mark.asyncio
 @pytest.fixture
-async def job_manager(shared_ray_instance):
+async def job_manager(shared_ray_instance, tmp_path):
     address_info = shared_ray_instance
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    yield JobManager(gcs_aio_client)
+    yield JobManager(gcs_aio_client, tmp_path)
 
 
 def _driver_script_path(file_name: str) -> str:
