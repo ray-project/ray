@@ -16,7 +16,7 @@ def test_custom_resource(algorithm):
     )
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         "num_workers": 1,
         "num_gpus": 0,
         "framework": "torch",

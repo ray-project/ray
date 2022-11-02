@@ -28,6 +28,7 @@ from ray.air.callbacks.wandb import (
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from wandb.util import json_dumps_safer
 
 
 class Trial(
@@ -64,6 +65,15 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
             result_type, result_content = self.queue.get()
             if result_type == _QueueItem.END:
                 break
+            try:
+                # check if wandb can actually serialize
+                # we check that before _handle_result as we do not
+                # call that for wandb.init
+                json_dumps_safer(result_content)
+            except Exception:
+                self.logs.put("error")
+                break
+
             log, config_update = self._handle_result(result_content)
             self.config_updates.put(config_update)
             self.logs.put(log)
@@ -272,6 +282,30 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertIn("metric4", logged)
         self.assertNotIn("const", logged)
         self.assertNotIn("config", logged)
+
+        # Testing for https://github.com/ray-project/ray/issues/28541
+        rllib_result = {
+            "env": "simple_spread",
+            "framework": "torch",
+            "num_gpus": 1,
+            "num_workers": 20,
+            "num_envs_per_worker": 1,
+            "compress_observations": True,
+            "lambda": 0.99,
+            "train_batch_size": 512,
+            "sgd_minibatch_size": 32,
+            "num_sgd_iter": 5,
+            "batch_mode": "truncate_episodes",
+            "entropy_coeff": 0.01,
+            "lr": 2e-05,
+            "multiagent": {
+                "policies": {"shared_policy"},
+                "policy_mapping_fn": lambda x: x,
+            },
+        }
+        logger.on_trial_result(0, [], trial, rllib_result)
+        logged = logger.trial_processes[trial].logs.get(timeout=10)
+        self.assertNotEqual(logged, "error")
 
         del logger
 

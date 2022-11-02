@@ -154,7 +154,7 @@ def ParallelRollouts(
         >>> rollouts = ParallelRollouts(workers, mode="bulk_sync") # doctest: +SKIP
         >>> batch = next(rollouts) # doctest: +SKIP
         >>> print(batch.count) # doctest: +SKIP
-        200  # config.rollout_fragment_length * config.num_workers
+        200  # config.rollout_fragment_length * config.num_rollout_workers
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """
@@ -369,7 +369,10 @@ class SelectExperiences:
                     {
                         pid: batch
                         for pid, batch in samples.policy_batches.items()
-                        if self.local_worker.is_policy_to_train(pid, batch)
+                        if (
+                            self.local_worker.is_policy_to_train is None
+                            or self.local_worker.is_policy_to_train(pid, batch)
+                        )
                     },
                     samples.count,
                 )

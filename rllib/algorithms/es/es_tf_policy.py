@@ -109,10 +109,10 @@ class ESTFPolicy(Policy):
             self.sess = self.inputs = None
             if config.get("seed") is not None:
                 # Tf2.x.
-                if config.get("framework") == "tf2":
+                if tfv == 2:
                     tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
+                # Tf1.x.
+                else:
                     tf1.set_random_seed(config["seed"])
 
         # Policy network.
@@ -147,12 +147,10 @@ class ESTFPolicy(Policy):
         )
 
     @override(Policy)
-    def _compute_actions_without_connectors(
-        self, observation, add_noise=False, update=True, **kwargs
-    ):
+    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
+        observation = obs_batch[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.

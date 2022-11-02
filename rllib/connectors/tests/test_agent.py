@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 from gym.spaces import Box
 
-from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig, PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -368,13 +368,16 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .rollouts(create_env_on_local_worker=True)
         )
-        algo = PPO(config)
-        rollout_worker = algo.workers.local_worker()
-        policy = rollout_worker.get_policy()
-        env = rollout_worker.env
+
+        env = gym.make("CartPole-v1")
+        policy = PPOTorchPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            config=config.to_dict(),
+        )
 
         # create a connector context
         ctx = ConnectorContext(

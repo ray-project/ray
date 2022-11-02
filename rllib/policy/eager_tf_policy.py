@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,7 +26,12 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TensorStructType,
+)
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -142,7 +147,7 @@ def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
-    framework=[tf2|tfe].
+    framework=tf2.
     """
 
     class TracedEagerPolicy(eager_policy_cls):
@@ -298,8 +303,8 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
-    it automatically be converted to an eager policy.
+    graph policy and use set `.framework("tf2", eager_tracing=False) in your
+    AlgorithmConfig to have it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
 
@@ -324,7 +329,7 @@ def _build_eager_tf_policy(
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            self.framework = config.get("framework", "tfe")
+            self.framework = config.get("framework", "tf2")
             EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
@@ -501,16 +506,16 @@ def _build_eager_tf_policy(
         @override(Policy)
         def _compute_actions_without_connectors(
             self,
-            obs_batch,
-            state_batches=None,
-            prev_action_batch=None,
-            prev_reward_batch=None,
-            info_batch=None,
-            episodes=None,
-            explore=None,
-            timestep=None,
+            obs_batch: Union[List[TensorStructType], TensorStructType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["Episode"]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
             **kwargs,
-        ):
+        ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             # Create input dict to simply pass the entire call to
             # self.compute_actions_from_input_dict().
             input_dict = SampleBatch(

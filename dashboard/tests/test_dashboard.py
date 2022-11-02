@@ -174,7 +174,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.terminate()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # No error should be reported for graceful termination.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -195,7 +195,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     # The raylet should be dead if agent exits.
     agent_proc.kill()
     agent_proc.wait()
-    raylet_proc.wait(5)
+    raylet_proc.wait(15)
 
 
 def test_agent_report_unexpected_raylet_death(shutdown_only):
@@ -218,7 +218,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
@@ -228,7 +228,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     assert "Raylet logs:" in err.error_message, err.error_message
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
-        < 1 * 1024 ** 2
+        < 1 * 1024**2
     )
 
 
@@ -253,12 +253,12 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     with open(
         os.path.join(node.get_session_dir_path(), "logs", "raylet.out"), "a"
     ) as f:
-        f.write("test data\n" * 1024 ** 2)
+        f.write("test data\n" * 1024**2)
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
     # Reading and publishing logs should still work.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
@@ -892,7 +892,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
     raylet_proc.wait()
-    agent_proc.wait(5)
+    agent_proc.wait(15)
 
 
 @pytest.mark.skipif(

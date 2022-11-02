@@ -6,7 +6,7 @@ from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import torch
 
 import ray
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchPredictor, TorchTrainer

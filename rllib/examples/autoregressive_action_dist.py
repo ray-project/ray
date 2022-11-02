@@ -40,7 +40,6 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,
@@ -53,6 +52,7 @@ from ray.rllib.examples.models.autoregressive_action_dist import (
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 
 def get_cli_args():
@@ -73,7 +73,7 @@ def get_cli_args():
     )
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -135,20 +135,25 @@ if __name__ == "__main__":
         else BinaryAutoregressiveDistribution,
     )
 
-    # standard config
-    config = {
-        "env": CorrelatedActionsEnv,
-        "gamma": 0.5,
+    # Generic config.
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment(CorrelatedActionsEnv)
+        .framework(args.framework)
+        .training(gamma=0.5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
-    # use registered model and dist in config
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    # Use registered model and dist in config.
     if not args.no_autoreg:
-        config["model"] = {
-            "custom_model": "autoregressive_model",
-            "custom_action_dist": "binary_autoreg_dist",
-        }
+        config.model.update(
+            {
+                "custom_model": "autoregressive_model",
+                "custom_action_dist": "binary_autoreg_dist",
+            }
+        )
 
     # use stop conditions passed via CLI (or defaults)
     stop = {
@@ -161,9 +166,10 @@ if __name__ == "__main__":
     if args.no_tune:
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
-        ppo_config = ppo.DEFAULT_CONFIG.copy()
-        ppo_config.update(config)
-        algo = ppo.PPO(config=ppo_config, env=CorrelatedActionsEnv)
+        # Have to specify this here are we are working with a generic AlgorithmConfig
+        # object, not a specific one (e.g. PPOConfig).
+        config.algo_class = args.run
+        algo = config.build()
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = algo.train()
@@ -188,6 +194,7 @@ if __name__ == "__main__":
             obs = next_obs
             total_reward += reward
         print(f"Total reward in test episode: {total_reward}")
+        algo.stop()
 
     # run with Tune for auto env and Algorithm creation and TensorBoard
     else:

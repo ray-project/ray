@@ -28,7 +28,7 @@ pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 pytorch-lightning==1.5.10
 shortuuid==1.0.1
-scikit-optimize==0.8.1
+scikit-optimize==0.9.0
 sigopt==7.5.0
 timm==0.4.5
 transformers==4.18.0; python_version <= '3.6'

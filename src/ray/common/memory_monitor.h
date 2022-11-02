@@ -133,7 +133,8 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted);
+  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
+  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
 
   /// Memory usage fraction between [0, 1]

@@ -46,12 +46,13 @@ class ARSTFPolicy(Policy):
                 tf1.enable_eager_execution()
             self.sess = self.inputs = None
             if config.get("seed") is not None:
-                # Tf2.x.
+                # Non-static-graph TF.
                 if config.get("framework") == "tf2":
-                    tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
-                    tf1.set_random_seed(config["seed"])
+                    # Tf1.x.
+                    if tf1:
+                        tf1.set_random_seed(config["seed"])
+                    else:
+                        tf.random.set_seed(config["seed"])
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -84,12 +85,10 @@ class ARSTFPolicy(Policy):
             for _, variable in self.variables.variables.items()
         )
 
-    def _compute_actions_without_connectors(
-        self, observation, add_noise=False, update=True, **kwargs
-    ):
+    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
+        observation = obs_batch[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 

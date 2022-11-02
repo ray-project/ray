@@ -654,7 +654,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         }
         out = get_autodetected_resources(sample_container)
         expected_memory = int(
-            2 ** 30 * (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            2**30 * (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
         )
         expected_out = {"CPU": 2, "memory": expected_memory, "GPU": 0}
         assert out == expected_out
