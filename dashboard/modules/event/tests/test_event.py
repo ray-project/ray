@@ -30,6 +30,7 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.job_submission import JobSubmissionClient
+from pprint import pprint
 
 logger = logging.getLogger(__name__)
 
@@ -399,7 +400,6 @@ def test_jobs_cluster_events(shutdown_only):
 
     def verify():
         events = list_cluster_events()
-        print(events)
         assert len(list_cluster_events()) == 2
         start_event = events[0]
         completed_event = events[1]
@@ -417,12 +417,13 @@ def test_jobs_cluster_events(shutdown_only):
 
     print("Test successful job run.")
     wait_for_condition(verify)
+    pprint(list_cluster_events())
 
     # Test the failure case. In this part, job fails because the runtime env
     # creation fails.
     submission_id = client.submit_job(
         entrypoint="ls",
-        runtime_env={"working_dir": "s3://does_not_exist.zip"},
+        runtime_env={"pip": ["nonexistent_dep"]},
     )
 
     def verify():
@@ -443,21 +444,19 @@ def test_jobs_cluster_events(shutdown_only):
         assert failed_start["source_type"] == "JOBS"
         assert f"Started a ray job {submission_id}" in failed_start["message"]
         assert failed_completed["source_type"] == "JOBS"
+        assert failed_completed["severity"] == "ERROR"
         assert (
             f"Completed a ray job {submission_id} with a status FAILED."
             in failed_completed["message"]
         )
-        print(failed_completed["message"])
-        # TODO(sang): Reenable it.
-        # # Make sure the error message is included.
-        # assert (
-        #     "An error occurred (ExpiredToken) when calling the "
-        #     "GetObject operation:" in failed_completed["message"]
-        # )
+
+        # Make sure the error message is included.
+        assert "ERROR: No matching distribution found" in failed_completed["message"]
         return True
 
     print("Test failed (runtime_env failure) job run.")
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=30)
+    pprint(list_cluster_events())
 
 
 if __name__ == "__main__":

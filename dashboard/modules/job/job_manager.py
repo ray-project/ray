@@ -417,6 +417,7 @@ class JobManager:
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
         except Exception:
@@ -452,6 +453,19 @@ class JobManager:
         This is necessary because we need to handle the case where the
         JobSupervisor dies unexpectedly.
         """
+        if job_id in self.monitored_jobs:
+            logger.debug(f"Job {job_id} is already being monitored.")
+            return
+
+        self.monitored_jobs.add(job_id)
+        try:
+            await self._monitor_job_internal(job_id, job_supervisor)
+        finally:
+            self.monitored_jobs.remove(job_id)
+
+    async def _monitor_job_internal(
+        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+    ):
         is_alive = True
         if job_supervisor is None:
             job_supervisor = self._get_actor_for_job(job_id)
@@ -499,11 +513,15 @@ class JobManager:
                     )
 
                 # Log events
-                event_log = f"Completed a ray job {job_id} with a status {job_status}."
-                if job_error_message:
-                    event_log += f" {job_error_message}"
                 if self.event_logger:
-                    self.event_logger.info(event_log, submission_id=job_id)
+                    event_log = (
+                        f"Completed a ray job {job_id} with a status {job_status}."
+                    )
+                    if job_error_message:
+                        event_log += f" {job_error_message}"
+                        self.event_logger.error(event_log, submission_id=job_id)
+                    else:
+                        self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
