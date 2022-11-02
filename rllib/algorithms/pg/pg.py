@@ -39,9 +39,9 @@ class PGConfig(AlgorithmConfig):
         ... ).fit()
     """
 
-    def __init__(self):
+    def __init__(self, algo_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(algo_class=PG)
+        super().__init__(algo_class=algo_class or PG)
 
         # fmt: off
         # __sphinx_doc_begin__
