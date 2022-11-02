@@ -1,5 +1,6 @@
 # flake8: noqa E501
 
+import copy
 import json
 import os
 from dataclasses import dataclass
@@ -78,145 +79,193 @@ GRAFANA_PANELS = [
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
-        description="",
-        unit="",
+        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
+        unit="cores",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='sum(ray_resources{Name="CPU",State="USED"}) by (instance)',
+                legend="CPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{Name="CPU"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=29,
         title="Object Store Memory",
-        description="",
-        unit="",
+        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
+        unit="gbytes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr="sum(ray_object_store_memory / 1e9) by (Location)",
+                legend="{{Location}}",
+            ),
+            Target(
+                expr='sum(ray_resources{Name="object_store_memory"} / 1e9)',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=28,
         title="Scheduler GPUs (logical slots)",
-        description="",
-        unit="",
+        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
+        unit="GPUs",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_resources{Name="GPU",State="USED"}',
+                legend="GPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{Name="GPU"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=2,
-        title="Node CPU",
+        title="Node CPU (hardware utilization)",
         description="",
-        unit="",
+        unit="cores",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_cpu_utilization{instance=~"$Instance",cluster_id="$cluster_id"} * ray_node_cpu_count{instance=~"$Instance",cluster_id="$cluster_id"} / 100',
+                legend="CPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_node_cpu_count{cluster_id="$cluster_id"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=8,
-        title="Node GPU",
-        description="",
-        unit="",
+        title="Node GPU (hardware utilization)",
+        description="Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
+        unit="GPUs",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_gpus_utilization{instance=~"$Instance",cluster_id="$cluster_id"} / 100',
+                legend="GPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_node_gpus_available{cluster_id="$cluster_id"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=6,
         title="Node Disk",
-        description="",
-        unit="",
+        description="Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
+        unit="bytes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_disk_usage{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Disk Used: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_node_disk_free{cluster_id="$cluster_id"}) + sum(ray_node_disk_usage{cluster_id="$cluster_id"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=32,
         title="Node Disk IO Speed",
-        description="",
-        unit="",
+        description="Disk IO per node.",
+        unit="bytes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_disk_io_write_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Write: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_disk_io_read_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Read: {{instance}}",
+            ),
         ],
     ),
     Panel(
         id=4,
-        title="Node Memory",
-        description="",
-        unit="",
+        title="Node Memory (heap + object store)",
+        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
+        unit="bytes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_mem_used{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Memory Used: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_node_mem_total{cluster_id="$cluster_id"})',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=34,
         title="Node Memory by Component",
-        description="",
-        unit="",
+        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component.",
+        unit="bytes",
         targets=[
             Target(
-                expr="",
-                legend="",
+                expr="sum(ray_component_uss_mb * 1e6) by (Component)",
+                legend="{{Component}}",
             )
         ],
     ),
     Panel(
         id=18,
-        title="Node GPU Memory",
-        description="",
-        unit="",
+        title="Node GPU Memory (GRAM)",
+        description="The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
+        unit="bytes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_gram_used{instance=~"$Instance",cluster_id="$cluster_id"} * 1024 * 1024',
+                legend="Used GRAM: {{instance}}",
+            ),
+            Target(
+                expr='(sum(ray_node_gram_available{cluster_id="$cluster_id"}) + sum(ray_node_gram_used{cluster_id="$cluster_id"})) * 1024 * 1024',
+                legend="MAX",
+            ),
         ],
     ),
     Panel(
         id=20,
         title="Node Network",
-        description="",
-        unit="",
+        description="Network speed per node",
+        unit="Bps",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_node_network_receive_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Recv: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_network_send_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                legend="Send: {{instance}}",
+            ),
         ],
     ),
     Panel(
         id=24,
-        title="Instance count",
-        description="",
-        unit="",
+        title="Node Count",
+        description="A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
+        unit="nodes",
         targets=[
             Target(
-                expr="",
-                legend="",
-            )
+                expr='ray_cluster_active_nodes{cluster_id="$cluster_id"}',
+                legend="Active Nodes: {{node_type}})",
+            ),
+            Target(
+                expr='ray_cluster_failed_nodes{cluster_id="$cluster_id"}',
+                legend="Failed Nodes: {{node_type}}",
+            ),
+            Target(
+                expr='ray_cluster_pending_nodes{cluster_id="$cluster_id"}',
+                legend="Pending Nodes: {{node_type}}",
+            ),
         ],
     ),
 ]
@@ -242,7 +291,7 @@ PANEL_TEMPLATE = {
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,
     "fillGradient": 0,
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
     "hiddenSeries": False,
     "id": 26,
     "legend": {
@@ -269,7 +318,15 @@ PANEL_TEMPLATE = {
     "pointradius": 2,
     "points": False,
     "renderer": "flot",
-    "seriesOverrides": [],
+    "seriesOverrides": [
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX",
+            "dashes": True,
+            "fill": 0,
+            "stack": False,
+        }
+    ],
     "spaceLength": 10,
     "stack": True,
     "steppedLine": False,
@@ -326,8 +383,8 @@ def generate_grafana_dashboard():
 
 def _generate_grafana_panels():
     panels = []
-    for panel in GRAFANA_PANELS:
-        template = PANEL_TEMPLATE.copy()
+    for i, panel in enumerate(GRAFANA_PANELS):
+        template = copy.deepcopy(PANEL_TEMPLATE)
         template.update(
             {
                 "title": panel.title,
@@ -336,6 +393,7 @@ def _generate_grafana_panels():
                 "targets": _generate_targets(panel),
             }
         )
+        template["gridPos"]["y"] = i
         template["yaxes"][0]["format"] = panel.unit
         panels.append(template)
     return panels
@@ -343,12 +401,13 @@ def _generate_grafana_panels():
 
 def _generate_targets(panel):
     targets = []
-    for target in panel.targets:
-        template = TARGET_TEMPLATE.copy()
+    for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
+        template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {
                 "expr": target.expr,
                 "legendFormat": target.legend,
+                "refId": ref_id,
             }
         )
         targets.append(template)
