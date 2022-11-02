@@ -35,7 +35,8 @@ from ray.tune.result import (
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
-from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.node import _force_on_current_node
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.queue import Empty, Queue
 
@@ -1534,13 +1535,46 @@ def _detect_progress_metrics(
 
     return getattr(trainable, "_progress_metrics", None)
 
-def run_remote_with_string_queue(remote_future: ray.ObjectRef, progress_reporter: ProgressReporter, string_queue: Optional[Queue] = None):
+
+def prepare_progress_reporter_for_ray_client(
+    progress_reporter: ProgressReporter,
+    verbosity: Union[int, Verbosity],
+    string_queue: Optional[Queue] = None,
+) -> Tuple[ProgressReporter, Queue]:
+    """Prepares progress reported for Ray Client by setting the string queue.
+
+    The string queue will be created if it's None."""
+    set_verbosity(verbosity)
+    progress_reporter = progress_reporter or _detect_reporter()
+
+    # JupyterNotebooks don't work with remote tune runs out of the box
+    # (e.g. via Ray client) as they don't have access to the main
+    # process stdout. So we introduce a queue here that accepts
+    # strings, which will then be displayed on the driver side.
+    if isinstance(progress_reporter, RemoteReporterMixin):
+        if string_queue is None:
+            string_queue = Queue(
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+            )
+        progress_reporter.output_queue = string_queue
+
+    return progress_reporter, string_queue
+
+
+def get_remote_with_string_queue(
+    remote_future: ray.ObjectRef,
+    progress_reporter: ProgressReporter,
+    string_queue: Queue,
+) -> Any:
+    """Get result of remote future while checking the string queue."""
     if string_queue is not None:
+
         def get_next_queue_item():
             try:
                 return string_queue.get(block=False)
             except Empty:
                 return None
+
     else:
         # If we don't need a queue, use this dummy get fn instead of
         # scheduling an unneeded actor

@@ -9,17 +9,12 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
-from ray.tune.utils.log import set_verbosity
 from ray.tune.progress_reporter import (
-    ProgressReporter,
-    RemoteReporterMixin,
-    _detect_reporter,
-    _detect_progress_metrics,
-    run_remote_with_string_queue,
+    prepare_progress_reporter_for_ray_client,
+    get_remote_with_string_queue,
 )
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
-from ray.util.queue import Queue
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -149,28 +144,6 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        self._ray_client_remote_string_queue = None
-        self._progress_reporter = None
-        if self._is_ray_client:
-
-            run_config = run_config or RunConfig()
-            set_verbosity(run_config.verbose)
-            progress_reporter = run_config.progress_reporter or _detect_reporter()
-
-            if isinstance(progress_reporter, RemoteReporterMixin):
-                self._ray_client_remote_string_queue = Queue(
-                    actor_options={"num_cpus": 0, **_force_on_current_node(None)}
-                )
-                progress_reporter.output_queue = self._ray_client_remote_string_queue
-
-            run_config.progress_reporter = progress_reporter
-            self._progress_reporter = progress_reporter
-
-            _tuner_kwargs = _tuner_kwargs or {}
-            _tuner_kwargs["_remote_string_queue"] = self._ray_client_remote_string_queue
-            kwargs["_tuner_kwargs"] = _tuner_kwargs
-            kwargs["run_config"] = run_config
-
 
         if _tuner_internal:
             if not self._is_ray_client:
@@ -249,6 +222,20 @@ class Tuner:
             ).remote(restore_path=path, resume_config=resume_config)
             return Tuner(_tuner_internal=tuner_internal)
 
+    def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
+        run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
+        progress_reporter, string_queue = prepare_progress_reporter_for_ray_client(
+            run_config.progress_reporter, run_config.verbose
+        )
+        run_config.progress_reporter = progress_reporter
+        ray.get(
+            self._remote_tuner.set_run_config_and_remote_string_queue.remote(
+                run_config, string_queue
+            )
+        )
+
+        return progress_reporter, string_queue
+
     def fit(self) -> ResultGrid:
         """Executes hyperparameter tuning job as configured and returns result.
 
@@ -283,8 +270,16 @@ class Tuner:
             experiment_checkpoint_dir = ray.get(
                 self._remote_tuner.get_experiment_checkpoint_dir.remote()
             )
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
             try:
-                return run_remote_with_string_queue(self._remote_tuner.fit.remote(), self._progress_reporter, self._ray_client_remote_string_queue)
+                return get_remote_with_string_queue(
+                    self._remote_tuner.fit.remote(),
+                    progress_reporter,
+                    string_queue,
+                )
             except Exception as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
@@ -313,4 +308,12 @@ class Tuner:
         if not self._is_ray_client:
             return self._local_tuner.get_results()
         else:
-            return run_remote_with_string_queue(self._remote_tuner.fit.remote(), self._progress_reporter, self._ray_client_remote_string_queue)
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
+            return get_remote_with_string_queue(
+                self._remote_tuner.fit.remote(),
+                progress_reporter,
+                string_queue,
+            )
