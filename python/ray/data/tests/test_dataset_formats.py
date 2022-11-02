@@ -217,7 +217,7 @@ def test_tensorflow_datasource(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_from_torch(ray_start_regular_shared, tmp_path):
+def test_from_torch(shutdown_only, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
