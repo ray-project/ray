@@ -432,7 +432,7 @@ def with_resources(
         inspect.isclass(trainable) and not issubclass(trainable, Trainable)
     ):
         raise ValueError(
-            f"`tune.with_parameters() only works with function trainables "
+            f"`tune.with_resources() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}."
         )
