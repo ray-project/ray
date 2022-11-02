@@ -8,7 +8,6 @@ import time
 import ray
 from ray.air._internal.util import StartTraceback
 from ray.air import session
-from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
