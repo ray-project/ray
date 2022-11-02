@@ -93,11 +93,11 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
-    title: "Node CPU",
+    title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
   {
-    title: "Node GPU",
+    title: "Node GPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
   },
   {
@@ -109,7 +109,7 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
   },
   {
-    title: "Node Memory",
+    title: "Node Memory (heap + object store)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
   },
   {
@@ -117,7 +117,7 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
   },
   {
-    title: "Node GPU Memory",
+    title: "Node GPU Memory (GRAM)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
   },
   {
@@ -125,7 +125,7 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
   },
   {
-    title: "Instance count",
+    title: "Node Count",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
   },
 ];
