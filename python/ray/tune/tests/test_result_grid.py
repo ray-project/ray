@@ -336,7 +336,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         assert checkpoint
         assert "moved_ray_results" in checkpoint._local_path
         checkpoint_data.append(checkpoint.to_dict()["it"])
-    assert set(checkpoint_data) == set([5, 6])
+    assert set(checkpoint_data) == {5, 6}
 
 
 if __name__ == "__main__":
