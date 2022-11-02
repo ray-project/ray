@@ -838,7 +838,7 @@ class EnvRunnerV2:
                 policy_id: PolicyID = new_episode.policy_for(agent_id)
                 per_policy_resetted_obs[policy_id].append((agent_id, raw_obs, env_infos.get(agent_id, {})))
 
-            for policy_id, agents_obs, agents_infos in per_policy_resetted_obs.items():
+            for policy_id, agents_obs_and_infos in per_policy_resetted_obs.items():
                 policy = self._worker.policy_map[policy_id]
                 acd_list: List[AgentConnectorDataType] = [
                     AgentConnectorDataType(
@@ -846,11 +846,11 @@ class EnvRunnerV2:
                         agent_id,
                         {
                             SampleBatch.NEXT_OBS: obs,
-                            SampleBatch.INFOS: agents_infos[agent_id],
+                            SampleBatch.INFOS: infos[agent_id],
                             SampleBatch.T: new_episode.length - 1,
                         },
                     )
-                    for agent_id, obs in agents_obs
+                    for agent_id, obs, infos in agents_obs_and_infos
                 ]
                 # Call agent connectors on these initial obs.
                 processed = policy.agent_connectors(acd_list)
