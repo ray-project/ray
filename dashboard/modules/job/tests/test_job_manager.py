@@ -36,14 +36,16 @@ TEST_NAMESPACE = "jobs_test_namespace"
     ["""ray start --head"""],
     indirect=True,
 )
-async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F811
+async def test_get_scheduling_strategy(
+    call_ray_start, monkeypatch, tmp_path
+):  # noqa: F811
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
 
-    job_manager = JobManager(gcs_aio_client)
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_aio_client.internal_kv_del(
