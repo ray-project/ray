@@ -75,7 +75,6 @@ class RayLogger(LoggerDestination):
     def _report(self, state: State):
         # get last checkpoint from the checkpoint saver.
         filename = self.filename.format(state, is_model_deepspeed(state.model))
-        print("filename : ", filename)
         saved_path = checkpoint.save_checkpoint(
             state=state,
             filename=filename,
@@ -84,7 +83,6 @@ class RayLogger(LoggerDestination):
         mosaic_checkpoint = MosaicCheckpoint.from_dict({"state": None})
         if saved_path:
             saved_path = os.path.join(os.getcwd(), saved_path)
-            # print(saved_path,"*******\n\n\n*******")
             mosaic_checkpoint = MosaicCheckpoint.from_path(saved_path)
 
         session.report(self.data, checkpoint=mosaic_checkpoint)
