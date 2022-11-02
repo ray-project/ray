@@ -1467,7 +1467,7 @@ class Algorithm(Trainable):
             return action
 
     @PublicAPI
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         observations: TensorStructType,
         state: Optional[List[TensorStructType]] = None,

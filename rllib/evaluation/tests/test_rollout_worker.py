@@ -40,21 +40,7 @@ from ray.tune.registry import register_env
 
 class MockPolicy(RandomPolicy):
     @override(RandomPolicy)
-    def _compute_actions_without_connectors(
-        self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        episodes=None,
-        explore=None,
-        timestep=None,
-        **kwargs
-    ):
-        return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
-
-    @override(RandomPolicy)
-    def _compute_actions_with_connectors(
+    def compute_actions(
         self,
         obs_batch,
         state_batches=None,
@@ -76,7 +62,7 @@ class MockPolicy(RandomPolicy):
 
 class BadPolicy(RandomPolicy):
     @override(RandomPolicy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch,
         state_batches=None,

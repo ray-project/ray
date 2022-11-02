@@ -281,7 +281,7 @@ class TFPolicy(Policy):
             )
 
     @override(Policy)
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorType]],
         explore: bool = None,
@@ -321,7 +321,7 @@ class TFPolicy(Policy):
         return fetched
 
     @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorType], TensorType],
         state_batches: Optional[List[TensorType]] = None,

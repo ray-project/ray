@@ -61,7 +61,7 @@ class LastInfoCallback(DefaultCallbacks):
 
 class EchoPolicy(Policy):
     @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,

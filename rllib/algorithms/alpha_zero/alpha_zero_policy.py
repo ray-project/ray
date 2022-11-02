@@ -40,7 +40,7 @@ class AlphaZeroPolicy(TorchPolicy):
         self.obs_space = observation_space
 
     @override(TorchPolicy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch,
         state_batches=None,
@@ -57,14 +57,14 @@ class AlphaZeroPolicy(TorchPolicy):
         if prev_reward_batch is not None:
             input_dict["prev_rewards"] = prev_reward_batch
 
-        return self._compute_actions_without_connectors_from_input_dict(
+        return self.compute_actions_from_input_dict(
             input_dict=input_dict,
             episodes=episodes,
             state_batches=state_batches,
         )
 
     @override(Policy)
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
     ):
         with torch.no_grad():

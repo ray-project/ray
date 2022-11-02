@@ -459,7 +459,7 @@ class TorchPolicyV2(Policy):
         return model, dist_class
 
     @override(Policy)
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
         explore: bool = None,
@@ -492,7 +492,7 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,

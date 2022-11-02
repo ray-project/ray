@@ -896,7 +896,7 @@ class Policy(metaclass=ABCMeta):
         )
 
     @DeveloperAPI
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
@@ -953,7 +953,7 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,

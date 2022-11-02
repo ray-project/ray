@@ -182,7 +182,7 @@ def local_policy_inference(
         policy: Policy.
         env_id: Environment ID.
         agent_id: Agent ID.
-        obs: Env observation.
+        obs: Env obseration.
 
     Returns:
         List of outputs from policy forward pass.

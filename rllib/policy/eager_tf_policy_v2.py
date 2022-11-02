@@ -423,7 +423,7 @@ class EagerTFPolicyV2(Policy):
         self._loss_initialized = True
 
     @override(Policy)
-    def _compute_actions_without_connectors_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
         explore: bool = None,
@@ -469,7 +469,7 @@ class EagerTFPolicyV2(Policy):
     # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
     # only canonical entry point for inference.
     @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch,
         state_batches=None,
@@ -499,7 +499,7 @@ class EagerTFPolicyV2(Policy):
         if info_batch is not None:
             input_dict[SampleBatch.INFOS] = info_batch
 
-        return self._compute_actions_without_connectors_from_input_dict(
+        return self.compute_actions_from_input_dict(
             input_dict=input_dict,
             explore=explore,
             timestep=timestep,
