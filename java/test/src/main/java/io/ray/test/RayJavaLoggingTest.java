@@ -42,6 +42,9 @@ public class RayJavaLoggingTest extends BaseTest {
     final JobId jobId = Ray.getRuntimeContext().getCurrentJobId();
     String currLogDir = "/tmp/ray/session_latest/logs";
     for (int i = 1; i <= 3; ++i) {
+      // Note(qwang): Due to log4j2 is async, once the `log()` actor method returned, we
+      // still have no confident to make sure all log messages are printed to the log files,
+      // especially on slow CI machine.
       boolean rotated =
           TestUtils.waitForCondition(
               () -> {
