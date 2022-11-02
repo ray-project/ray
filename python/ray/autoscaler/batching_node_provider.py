@@ -2,8 +2,6 @@ from collections import (
     dataclass,
     defaultdict
 )
-from copy import copy
-from enum import Enum
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -11,10 +9,12 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_NODE_KIND,
 )
 from ray.autoscaler._private.util import (
     NodeID,
     NodeIP,
+    NodeKind,
     NodeType,
 )
 
@@ -36,11 +36,6 @@ class ScaleRequest:
     workers_to_delete: List[NodeID] = []
 
 
-class NodeKind(Enum):
-    HEAD = "head"
-    WORKER = "worker"
-
-
 @dataclass
 class NodeData:
     """Stores all data about a Ray node needed by the autoscaler.
@@ -52,11 +47,10 @@ class NodeData:
             has not yet been assigned.
         status (str): The status of the node. You must adhere to the following semantics
             for status:
-            * The value for "tag-ray-node-status" must be "up-to-date" if and only if
-                the node is running.
-            * The value for "tag-ray-node-status" must be "update-failed" if and only if
-                the node is in an unknown or failed state.
-            * If the node is in a pending (starting-up) state, the value should be
+            * The status must be "up-to-date" if and only if the node is running.
+            * The status must be "update-failed" if and only if the node is in an
+                unknown or failed state.
+            * If the node is in a pending (starting-up) state, the status should be
                 a brief user-facing description of why the node is pending.
     """
     kind: NodeKind
@@ -68,24 +62,30 @@ class NodeData:
 class BatchingNodeProvider(NodeProvider):
     """Abstract subclass of NodeProvider meant for use with external cluster managers.
 
-    Implementing a concrete subclass of BatchingNodeProvider requires overriding two
-    methods:
+    Batches reads of cluster state into a single method, get_node_data, called at the
+    start of an autoscaling update.
 
-        get_node_data(): Queries cluster manager for node info. Returns a mapping from
-            node id to NodeData.
+    Batches modifications to cluster state into a single method, submit_scale_request,
+    called at the end of an autoscaling update.
 
-        submit_scale_request(): Submits a request to create and delete nodes.
+    Implementing a concrete subclass of BatchingNodeProvider only requires overriding
+    get_node_data() and submit_scale_request().
 
-    In addition, the following optional method is available:
-
-        safe_to_scale(): Whether we should submit the scale request. If False is
-            returned, we will not submit a scale request for this autoscaler iteration.
+    The scale request for an autoscaling update may be conditionally
+    cancelled using the optional method safe_to_scale().
 
     See the method docstrings for more information.
     """
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.node_data_dict: Dict[NodeID, NodeData] = {}
+
+        # scale_change_needed tracks whether we need to update scale.
+        # set to True in create_node and terminate_nodes calls
+        # reset to False in non_terminated_nodes, which occurs at the start of the
+        #   autoscaling update. For good measure, also set to false in post_process.
+        self.scale_change_needed = False
+
         self.scale_request = ScaleRequest()
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
@@ -128,18 +128,23 @@ class BatchingNodeProvider(NodeProvider):
     def post_process(self) -> None:
         """Submit a scale request if it is safe to do so.
         """
-        if self.safe_to_scale():
+        if self.scale_change_needed and self.safe_to_scale():
             self.submit_scale_request(self.scale_request)
+        self.scale_change_needed = False
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
+        self.scale_change_needed = False
         self.node_data_dict = self.get_node_data()
+
+        # Initialize ScaleRequest
         self.scale_request = ScaleRequest(
-            desired_num_workers=self.get_num_workers(self.node_data_dict),
-            workers_to_delete=[]
+            desired_num_workers=self.cur_num_workers,  # Current scale
+            workers_to_delete=[]  # No workers to delete yet
         )
         return list(self.node_data_dict.keys())
 
-    def get_num_workers(self, node_data_dict: Dict[str, Any]):
+    @property
+    def cur_num_workers(self, node_data_dict: Dict[str, Any]):
         num_workers_dict = defaultdict(int)
         for node_data in node_data_dict.values():
             node_type = node_data.node_tags[TAG_RAY_USER_NODE_TYPE]
@@ -148,18 +153,21 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
-        tags = copy(node_data.tags)
-        tags[TAG_RAY_NODE_STATUS] = node_data.status
-        return tags
+        return {
+            TAG_RAY_NODE_KIND: node_data.kind,
+            TAG_RAY_NODE_STATUS: node_data.status,
+            TAG_RAY_USER_NODE_TYPE: node_data.type,
+        }
 
     def internal_ip(self, node_id: str) -> str:
-        return self.node_data_dict[node_id].internal_ip
+        return self.node_data_dict[node_id].ip
 
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Optional[Dict[str, Any]]:
         node_type = tags[TAG_RAY_USER_NODE_TYPE]
         self.scale_request.desired_num_workers[node_type] += count
+        self.scale_change_needed = True
 
     def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Terminates the specified node.
@@ -169,4 +177,10 @@ class BatchingNodeProvider(NodeProvider):
         """
         node_type = self.node_tags(node_id)[TAG_RAY_USER_NODE_TYPE]
         self.scale_request.desired_num_workers[node_type] -= 1
+        if self.scale_request.desired_num_workers[node_type] < 0:
+            raise ValueError(
+                "NodeProvider attempted to request less than 0 workers of type "
+                f"{node_type}."
+            )
         self.scale_request.workers_to_terminate.append(node_id)
+        self.scale_change_needed = True
