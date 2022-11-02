@@ -839,6 +839,7 @@ def run_learning_tests_from_yaml(
         "last_update": float(time.time()),
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
+        "not_passed": [k for k, exp in checks.items() if not exp["passed"]],
         "failures": {
             k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
         },
