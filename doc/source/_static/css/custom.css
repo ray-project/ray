@@ -1,7 +1,4 @@
 /* Styling the "Try Anyscale" button */
-.topbar-main {
-  overflow: hidden;
-}
 .topbar-main > button.try-anyscale {
   float: right;
   border-radius: 6px;
@@ -11,6 +8,11 @@
   margin-left: 12px;
   height: 40px;
   border: none;
+}
+@media (max-width: 900px) {
+  .topbar-main > button.try-anyscale {
+    display: none;
+  }
 }
 .topbar-main > button.try-anyscale > span {
   margin-right: 12px;

@@ -533,16 +533,27 @@ class BackendExecutor:
             self._restart()
             raise TrainingWorkerError
 
-    def shutdown(self):
-        """Shuts down the workers in the worker group."""
-        try:
-            self._backend.on_shutdown(self.worker_group, self._backend_config)
-        except RayActorError:
-            logger.warning(
-                "Graceful shutdown of backend failed. This is "
-                "expected if one of the workers has crashed."
-            )
-        self.worker_group.shutdown()
+    def shutdown(self, graceful_termination: bool = True):
+        """Shuts down the workers in the worker group.
+
+        Args:
+            graceful_termination: If set to True, attempt to clean up the backend
+                before terminating the Ray actors.
+
+        """
+        if graceful_termination:
+            try:
+                self._backend.on_shutdown(self.worker_group, self._backend_config)
+            except RayActorError:
+                logger.warning(
+                    "Graceful shutdown of backend failed. This is "
+                    "expected if one of the workers has crashed."
+                )
+
+        if graceful_termination:
+            self.worker_group.shutdown()
+        else:
+            self.worker_group.shutdown(patience_s=0)
         self.worker_group = InactiveWorkerGroup()
 
         if self._placement_group:
@@ -568,14 +579,15 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            exc = RuntimeError(
-                "Training has failed after "
-                f"{self._num_failures} "
-                "attempts. You can change the number of max "
-                "failure attempts by setting the "
-                "`max_retries` arg in your `Trainer`."
-            )
-            raise exc.with_traceback(None) from self._last_failure
+            failure = self._last_failure
+            self._last_failure = None
+            if self._max_failures > 0:
+                exc = RuntimeError(
+                    "Training has failed after " f"{self._num_failures} " "attempts."
+                )
+                raise exc.with_traceback(None) from failure
+            else:
+                raise failure
 
     def get_worker_group(self):
         return self.worker_group
