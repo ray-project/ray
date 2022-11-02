@@ -62,8 +62,13 @@ def parse_runtime_env_args(
         if OmegaConf is not None:
             runtime_cfg = OmegaConf.load(runtime_env)
             if runtime_cfg.get("config", {}).get("resolvers"):
-                for resolver_name, resolver_function in runtime_cfg.config.resolvers.items():
-                    OmegaConf.register_new_resolver(resolver_name, _load_class(resolver_function))
+                for (
+                    resolver_name,
+                    resolver_function,
+                ) in runtime_cfg.config.resolvers.items():
+                    OmegaConf.register_new_resolver(
+                        resolver_name, _load_class(resolver_function)
+                    )
             final_runtime_env = OmegaConf.to_container(runtime_cfg, resolve=True)
             if "config" in final_runtime_env:
                 del final_runtime_env["config"]

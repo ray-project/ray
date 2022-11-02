@@ -62,6 +62,7 @@ class TestParseRuntimeEnvArgs:
     def test_all_none(self):
         assert parse_runtime_env_args() == {}
 
+
 @pytest.fixture
 def set_runtime_env_vars():
     os.environ["RAY_TEST_RUNTIME_ENV_foo"] = "bar"
@@ -69,24 +70,26 @@ def set_runtime_env_vars():
     os.environ.pop("RAY_TEST_RUNTIME_ENV_foo", None)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="File path incorrect on Windows."
-)
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize(
     "runtime_env_filepath, runtime_env",
     [
-        ("omegaconf/basic_oc_runtime_env.yaml", {
-            "working_dir": "/home/wd", "env_vars": {"foo": "bar"}
-        }),
-        ("omegaconf/advanced_oc_runtime_env.yaml", {
-            "py_modules":["p1", "p2", "p3"], "env_vars": {"foo": "bar"}
-        }),
+        (
+            "omegaconf/basic_oc_runtime_env.yaml",
+            {"working_dir": "/home/wd", "env_vars": {"foo": "bar"}},
+        ),
+        (
+            "omegaconf/advanced_oc_runtime_env.yaml",
+            {"py_modules": ["p1", "p2", "p3"], "env_vars": {"foo": "bar"}},
+        ),
     ],
 )
-def test_parse_omegaconf_runtime_env(runtime_env_filepath, runtime_env, set_runtime_env_vars):
+def test_parse_omegaconf_runtime_env(
+    runtime_env_filepath, runtime_env, set_runtime_env_vars
+):
     """Test runtime env YAMLs that use omegaconf syntax including custom resolvers."""
     config_file_name = os.path.join(
-            os.path.dirname(__file__), "test_config_files", runtime_env_filepath
+        os.path.dirname(__file__), "test_config_files", runtime_env_filepath
     )
     assert parse_runtime_env_args(runtime_env=config_file_name) == runtime_env
 
