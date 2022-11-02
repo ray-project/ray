@@ -563,7 +563,7 @@ class JobManager:
 
         Args:
             resources_specified: Whether the job specified any resources
-                (CPUs, GPUs, or custom).
+                (CPUs, GPUs, or custom resources).
 
         Returns:
             The scheduling strategy to use for the job.
@@ -612,9 +612,9 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        resources: Optional[Dict[str, float]] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -637,12 +637,15 @@ class JobManager:
                 env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
-            num_cpus: The quantity of CPU cores to reserve for the execution
-                of the entrypoint command. Defaults to 0.
-            num_gpus: The quantity of GPUs to reserve for
-                the entrypoint command. Defaults to 0.
-            resources: The quantity of various custom resources
-                to reserve for the entrypoint command.
+            entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_num_gpus: The quantity of GPUs to reserve for
+                the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_resources: The quantity of various custom resources
+                to reserve for the entrypoint command, separately from any tasks or actors
+                launched by it.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -651,10 +654,10 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
-        if num_cpus is None:
-            num_cpus = 0
-        if num_gpus is None:
-            num_gpus = 0
+        if entrypoint_num_cpus is None:
+            entrypoint_num_cpus = 0
+        if entrypoint_num_gpus is None:
+            entrypoint_num_gpus = 0
         if submission_id is None:
             submission_id = generate_job_id()
         elif await self._job_info_client.get_status(submission_id) is not None:
@@ -667,9 +670,9 @@ class JobManager:
             start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
         )
         await self._job_info_client.put_info(submission_id, job_info)
 
@@ -679,9 +682,9 @@ class JobManager:
         try:
             resources_specified = any(
                 [
-                    num_cpus is not None and num_cpus > 0,
-                    num_gpus is not None and num_gpus > 0,
-                    resources not in [None, {}],
+                    entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
+                    entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                    entrypoint_resources not in [None, {}],
                 ]
             )
             scheduling_strategy = await self._get_scheduling_strategy(
@@ -690,9 +693,9 @@ class JobManager:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                resources=resources,
+                num_cpus=entrypoint_num_cpus,
+                num_gpus=entrypoint_num_gpus,
+                resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,

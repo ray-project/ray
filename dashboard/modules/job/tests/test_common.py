@@ -108,14 +108,14 @@ def test_uri_to_http_and_back():
 
 
 def test_dynamic_status_message():
-    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", num_cpus=1)
+    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_cpus=1)
     assert "may be waiting for resources" in info.message
 
-    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", num_gpus=1)
+    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_num_gpus=1)
     assert "may be waiting for resources" in info.message
 
     info = JobInfo(
-        status=JobStatus.PENDING, entrypoint="echo hi", resources={"Custom": 1}
+        status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_resources={"Custom": 1}
     )
     assert "may be waiting for resources" in info.message
 

@@ -76,16 +76,16 @@ def test_error_message():
     )
     wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
-    # `num_cpus`, `num_gpus`, and `resources` are not supported in ray<2.2.0.
+    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources` are not supported in ray<2.2.0.
     for unsupported_submit_kwargs in [
-        {"num_cpus": 1},
-        {"num_gpus": 1},
-        {"resources": {"custom": 1}},
+        {"entrypoint_num_cpus": 1},
+        {"entrypoint_num_gpus": 1},
+        {"entrypoint_resources": {"custom": 1}},
     ]:
         with pytest.raises(
             Exception,
             match="Ray version 2.0.1 is running on the cluster. "
-            "`num_cpus`, `num_gpus`, and `resources` kwargs"
+            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources` kwargs"
             " are not supported on the Ray cluster. Please ensure the cluster is "
             "running Ray 2.2 or higher.",
         ):

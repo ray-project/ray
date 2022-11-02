@@ -71,9 +71,9 @@ def test_submit_job_with_resources(shutdown_only):
     client = JobSubmissionClient(format_web_url(address))
     # Check the case of too many resources.
     for kwargs in [
-        {"num_cpus": 2},
-        {"num_gpus": 2},
-        {"resources": {"Custom": 2}},
+        {"entrypoint_num_cpus": 2},
+        {"entrypoint_num_gpus": 2},
+        {"entrypoint_resources": {"Custom": 2}},
     ]:
         job_id = client.submit_job(entrypoint="echo hello", **kwargs)
         data = client.get_job_info(job_id)
@@ -81,7 +81,7 @@ def test_submit_job_with_resources(shutdown_only):
 
     # Check the case of sufficient resources.
     job_id = client.submit_job(
-        entrypoint="echo hello", num_cpus=1, num_gpus=1, resources={"Custom": 1}
+        entrypoint="echo hello", entrypoint_num_cpus=1, entrypoint_num_gpus=1, entrypoint_resources={"Custom": 1}
     )
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
 

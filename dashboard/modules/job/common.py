@@ -242,14 +242,17 @@ class JobSubmitRequest:
     # Metadata to pass in to the JobConfig.
     metadata: Optional[Dict[str, str]] = None
     # The quantity of CPU cores to reserve for the execution
-    # of the entrypoint command.
-    num_cpus: Optional[Union[int, float]] = None
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_cpus: Optional[Union[int, float]] = None
     # The quantity of GPUs to reserve for the execution
-    # of the entrypoint command.
-    num_gpus: Optional[Union[int, float]] = None
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_gpus: Optional[Union[int, float]] = None
     # The quantity of various custom resources
-    # to reserve for the entrypoint command.
-    resources: Optional[Dict[str, float]] = None
+    # to reserve for the entrypoint command, separately from any Ray tasks
+    # or actors that are created by it.
+    entrypoint_resources: Optional[Dict[str, float]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -291,25 +294,25 @@ class JobSubmitRequest:
                             f"metadata values must be strings, got {type(v)}"
                         )
 
-        if self.num_cpus is not None and not isinstance(self.num_cpus, (int, float)):
-            raise TypeError(f"num_cpus must be a number, got {type(self.num_cpus)}")
+        if self.entrypoint_num_cpus is not None and not isinstance(self.entrypoint_num_cpus, (int, float)):
+            raise TypeError(f"entrypoint_num_cpus must be a number, got {type(self.entrypoint_num_cpus)}")
 
-        if self.num_gpus is not None and not isinstance(self.num_gpus, (int, float)):
-            raise TypeError(f"num_gpus must be a number, got {type(self.num_gpus)}")
+        if self.entrypoint_num_gpus is not None and not isinstance(self.entrypoint_num_gpus, (int, float)):
+            raise TypeError(f"entrypoint_num_gpus must be a number, got {type(self.entrypoint_num_gpus)}")
 
-        if self.resources is not None:
-            if not isinstance(self.resources, dict):
-                raise TypeError(f"resources must be a dict, got {type(self.resources)}")
+        if self.entrypoint_resources is not None:
+            if not isinstance(self.entrypoint_resources, dict):
+                raise TypeError(f"entrypoint_resources must be a dict, got {type(self.entrypoint_resources)}")
             else:
-                for k in self.resources.keys():
+                for k in self.entrypoint_resources.keys():
                     if not isinstance(k, str):
                         raise TypeError(
-                            f"resources keys must be strings, got {type(k)}"
+                            f"entrypoint_resources keys must be strings, got {type(k)}"
                         )
-                for v in self.resources.values():
+                for v in self.entrypoint_resources.values():
                     if not isinstance(v, (int, float)):
                         raise TypeError(
-                            f"resources values must be numbers, got {type(v)}"
+                            f"entrypoint_resources values must be numbers, got {type(v)}"
                         )
 
 

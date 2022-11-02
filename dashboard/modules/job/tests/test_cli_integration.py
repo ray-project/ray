@@ -214,9 +214,9 @@ def test_resources(shutdown_only):
 
     # Check the case of too many resources.
     for id, arg in [
-        ("num_cpus", "--num-cpus=2"),
-        ("num_gpus", "--num-gpus=2"),
-        ("resources", "--resources='{\"Custom\": 2}'"),
+        ("entrypoint_num_cpus", "--entrypoint-num-cpus=2"),
+        ("entrypoint_num_gpus", "--entrypoint-num-gpus=2"),
+        ("entrypoint_resources", "--entrypoint-resources='{\"Custom\": 2}'"),
     ]:
         _run_cmd(f"ray job submit --submission-id={id} --no-wait {arg} -- echo hi")
         stdout, _ = _run_cmd(f"ray job status {id}")
@@ -224,7 +224,7 @@ def test_resources(shutdown_only):
 
     # Check the case of sufficient resources.
     stdout, _ = _run_cmd(
-        "ray job submit --num-cpus=1 --num-gpus=1 --resources='{"
+        "ray job submit --entrypoint-num-cpus=1 --entrypoint-num-gpus=1 --entrypoint-resources='{"
         '"Custom": 1}\' -- echo hello',
     )
     assert "hello" in stdout

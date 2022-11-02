@@ -129,9 +129,9 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         submission_id: Optional[str] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        resources: Optional[Dict[str, float]] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -158,12 +158,15 @@ class JobSubmissionClient(SubmissionClient):
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
             job_id: DEPRECATED. This has been renamed to submission_id
-            num_cpus: The quantity of CPU cores to reserve for the execution
-                of the entrypoint command. Defaults to 0.
-            num_gpus: The quantity of GPUs to reserve for the execution
-                of the entrypoint command. Defaults to 0.
-            resources: The quantity of custom resources to reserve for the
-                execution of the entrypoint command.
+            entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_num_gpus: The quantity of GPUs to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_resources: The quantity of custom resources to reserve for the
+                execution of the entrypoint command, separately from any tasks or
+                actors launched by it.
 
         Returns:
             The submission ID of the submitted job.  If not specified,
@@ -178,11 +181,12 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
-        if num_cpus or num_gpus or resources:
+        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_resources:
             self._check_connection_and_version(
                 min_version="2.2",
-                version_error_message="`num_cpus`, `num_gpus`, and `resources` kwargs"
-                " are not supported on the Ray cluster. Please ensure the cluster is "
+                version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
+                "and `entrypoint_resources` kwargs "
+                "are not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.2 or higher.",
             )
 
@@ -202,9 +206,9 @@ class JobSubmissionClient(SubmissionClient):
             submission_id=submission_id,
             runtime_env=runtime_env,
             metadata=metadata,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
         )
 
         # Remove keys with value None so that new clients with new optional fields

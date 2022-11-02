@@ -143,9 +143,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -157,9 +157,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -170,9 +170,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
@@ -190,9 +190,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             # Test passing via json.
@@ -205,9 +205,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             # Test passing both throws an error.
@@ -245,9 +245,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -267,9 +267,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
     def test_job_id(self, mock_sdk_client):
@@ -283,9 +283,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -297,58 +297,58 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id="my_job_id",
                 runtime_env={},
-                num_cpus=None,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
-    def test_num_cpus(self, mock_sdk_client):
+    def test_entrypoint_num_cpus(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
 
         with set_env_var("RAY_ADDRESS", "env_addr"):
             result = runner.invoke(
                 job_cli_group,
-                ["submit", "--num-cpus=2", "--", "echo hello"],
+                ["submit", "--entrypoint-num-cpus=2", "--", "echo hello"],
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
-                num_cpus=2,
-                num_gpus=None,
-                resources=None,
+                entrypoint_num_cpus=2,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
-    def test_num_gpus(self, mock_sdk_client):
+    def test_entrypoint_num_gpus(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
 
         with set_env_var("RAY_ADDRESS", "env_addr"):
             result = runner.invoke(
                 job_cli_group,
-                ["submit", "--num-gpus=2", "--", "echo hello"],
+                ["submit", "--entrypoint-num-gpus=2", "--", "echo hello"],
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
-                num_cpus=None,
-                num_gpus=2,
-                resources=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=2,
+                entrypoint_resources=None,
             )
 
     @pytest.mark.parametrize(
         "resources",
         [
-            ("--num-cpus=2", {"num_cpus": 2}),
-            ("--num-gpus=2", {"num_gpus": 2}),
-            ("""--resources={"Custom":3}""", {"resources": {"Custom": 3}}),
+            ("--entrypoint-num-cpus=2", {"entrypoint_num_cpus": 2}),
+            ("--entrypoint-num-gpus=2", {"entrypoint_num_gpus": 2}),
+            ("""--entrypoint-resources={"Custom":3}""", {"entrypoint_resources": {"Custom": 3}}),
         ],
     )
-    def test_resources(self, mock_sdk_client, resources):
+    def test_entrypoint_resources(self, mock_sdk_client, resources):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
 
@@ -363,9 +363,9 @@ class TestSubmit:
                 "entrypoint": '"echo hello"',
                 "submission_id": None,
                 "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "resources": None,
+                "entrypoint_num_cpus": None,
+                "entrypoint_num_gpus": None,
+                "entrypoint_resources": None,
             }
             expected_kwargs.update(resources[1])
             mock_client_instance.submit_job.assert_called_with(**expected_kwargs)

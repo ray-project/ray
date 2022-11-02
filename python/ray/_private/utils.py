@@ -1389,16 +1389,16 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
-def parse_resources_json(resources: str, cli_logger, cf) -> Dict[str, float]:
+def parse_resources_json(resources: str, cli_logger, cf, command_arg="--resources") -> Dict[str, float]:
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
             raise ValueError
     except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold("--resources"))
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold('--resources=\'{"CustomResource3": 1, ' '"CustomResource2": 2}\''),
+            cf.bold(f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''),
         )
     return resources
 

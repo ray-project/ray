@@ -124,23 +124,26 @@ def job_cli_group():
     ),
 )
 @click.option(
-    "--num-cpus",
+    "--entrypoint-num-cpus",
     required=False,
     type=float,
-    help="the quantity of CPU cores to reserve for the entrypoint command",
+    help="the quantity of CPU cores to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
 )
 @click.option(
-    "--num-gpus",
+    "--entrypoint-num-gpus",
     required=False,
     type=float,
-    help="the quantity of GPUs to reserve for the entrypoint command",
+    help="the quantity of GPUs to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
 )
 @click.option(
-    "--resources",
+    "--entrypoint-resources",
     required=False,
     type=str,
     help="a JSON-serialized dictionary mapping resource name to resource quantity "
-    "describing resources to reserve for the entrypoint command",
+    "describing resources to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
 )
 @click.option(
     "--no-wait",
@@ -160,9 +163,9 @@ def submit(
     runtime_env_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
-    num_cpus: Optional[Union[int, float]],
-    num_gpus: Optional[Union[int, float]],
-    resources: Optional[str],
+    entrypoint_num_cpus: Optional[Union[int, float]],
+    entrypoint_num_gpus: Optional[Union[int, float]],
+    entrypoint_resources: Optional[str],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.
@@ -173,10 +176,10 @@ def submit(
 
     if job_id:
         cli_logger.warning(
-            "--job-id option is deprecated. " "Please use --submission-id instead."
+            "--job-id option is deprecated. Please use --submission-id instead."
         )
-    if resources is not None:
-        resources = parse_resources_json(resources, cli_logger, cf)
+    if entrypoint_resources is not None:
+        entrypoint_resources = parse_resources_json(entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources")
 
     submission_id = submission_id or job_id
 
@@ -190,9 +193,9 @@ def submit(
             runtime_env_json=runtime_env_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
             no_wait=no_wait,
         )
 
@@ -207,9 +210,9 @@ def submit(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
+        entrypoint_num_cpus=entrypoint_num_cpus,
+        entrypoint_num_gpus=entrypoint_num_gpus,
+        entrypoint_resources=entrypoint_resources,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
