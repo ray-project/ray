@@ -197,6 +197,9 @@ identically to the ``num_cpus``, ``num_gpus``, and ``resources`` arguments to ``
 
 The same arguments are also available as options ``--entrypoint-num-cpus``, ``--entrypoint-num-gpus``, and ``--entrypoint-resources`` to ``ray job submit`` in the Jobs CLI; see :ref:`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
 
+If ``num_gpus`` is not specified, GPUs will still be available to the entrypoint script, but Ray will not provide isolation in terms of visible devices. 
+To be precies, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set in the entrypoint script; it will only be set inside tasks and actors that have `num_gpus` specified in their ``@ray.remote()`` decorator.
+
 .. note::
 
     Resources specified by ``entrypoint_num_cpus``, ``entrypoint_num_gpus``, and ``entrypoint_resources`` are separate from any resources specified
