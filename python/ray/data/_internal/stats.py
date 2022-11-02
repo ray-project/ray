@@ -228,13 +228,13 @@ class DatasetStats:
         return DatasetStats(stages={"TODO": []}, parent=None)
 
     def summary_string(
-        self, already_printed: Set[str] = None, log_parent: bool = True
+        self, already_printed: Set[str] = None, include_parent: bool = True
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
         Args:
         `already_printed`: Set of stage IDs that have already had its stats printed out.
-        `log_parent`: If true, also log parent stats; otherwise, only log stats of the
+        `include_parent`: If true, also include parent stats summary; otherwise, only log stats of the
         latest stage.
         """
         if already_printed is None:
@@ -252,7 +252,7 @@ class DatasetStats:
                 for i, metadata in stats_map.items():
                     self.stages["read"][i] = metadata[0]
         out = ""
-        if self.parents and log_parent:
+        if self.parents and include_parent:
             for p in self.parents:
                 parent_sum = p.summary_string(already_printed)
                 if parent_sum:

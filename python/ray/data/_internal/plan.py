@@ -320,7 +320,7 @@ class ExecutionPlan:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
                 if context.enable_auto_log_stats:
-                    logger.info(self._snapshot_stats.summary_string(log_parent=False))
+                    logger.info(stats.summary_string(include_parent=False))
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
