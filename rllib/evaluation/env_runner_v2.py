@@ -398,31 +398,31 @@ class EnvRunnerV2:
 
         self._perf_stats.incr("iters", 1)
 
-            t0 = time.time()
-            # Get observations from all ready agents.
-            # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-            (
-                unfiltered_obs,
-                rewards,
-                dones,
-                truncateds,
-                infos,
-                off_policy_actions,
-            ) = self._base_env.poll()
-            env_poll_time = time.time() - t0
+        t0 = time.time()
+        # Get observations from all ready agents.
+        # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
+        (
+            unfiltered_obs,
+            rewards,
+            dones,
+            truncateds,
+            infos,
+            off_policy_actions,
+        ) = self._base_env.poll()
+        env_poll_time = time.time() - t0
 
-            # Process observations and prepare for policy evaluation.
-            t1 = time.time()
-            # types: Set[EnvID], Dict[PolicyID, List[AgentConnectorDataType]],
-            #       List[Union[RolloutMetrics, SampleBatchType]]
-            to_eval, outputs = self._process_observations(
-                unfiltered_obs=unfiltered_obs,
-                rewards=rewards,
-                dones=dones,
-                truncateds=truncateds,
-                infos=infos,
-            )
-            self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
+        # Process observations and prepare for policy evaluation.
+        t1 = time.time()
+        # types: Set[EnvID], Dict[PolicyID, List[AgentConnectorDataType]],
+        #       List[Union[RolloutMetrics, SampleBatchType]]
+        to_eval, outputs = self._process_observations(
+            unfiltered_obs=unfiltered_obs,
+            rewards=rewards,
+            dones=dones,
+            truncateds=truncateds,
+            infos=infos,
+        )
+        self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
