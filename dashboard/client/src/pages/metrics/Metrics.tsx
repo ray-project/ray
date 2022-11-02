@@ -69,8 +69,16 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
   },
   {
+    title: "Active Tasks by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+  },
+  {
     title: "Scheduler Actor State",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+  },
+  {
+    title: "Active Actors by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
   },
   {
     title: "Scheduler CPUs (logical slots)",
@@ -103,6 +111,10 @@ const METRICS_CONFIG = [
   {
     title: "Node Memory",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+  },
+  {
+    title: "Node Memory by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
   },
   {
     title: "Node GPU Memory",
