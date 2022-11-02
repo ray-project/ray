@@ -164,9 +164,9 @@ class Algorithm(Trainable):
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
     or any of its built-in sub-classes.
-    This allows you to override the `execution_plan` method to implement
+    This allows you to override the `training_step` method to implement
     your own algorithm logic. You can find the different built-in
-    algorithms' execution plans in their respective main py files,
+    algorithms' `training_step()` methods in their respective main .py files,
     e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
 
     The most important API methods a Algorithm exposes are `train()`,
@@ -3028,10 +3028,7 @@ class TrainIterCtx:
             # a (tolerable) failure.
             return False
 
-        # Stopping criteria: Only when using the `training_iteration`
-        # API, b/c for the `exec_plan` API, the logic to stop is
-        # already built into the execution plans via the
-        # `StandardMetricsReporting` op.
+        # Stopping criteria.
         elif self.algo.config._disable_execution_plan_api:
             if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (

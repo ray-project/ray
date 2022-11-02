@@ -258,8 +258,8 @@ class MADDPGConfig(AlgorithmConfig):
     def validate(self) -> None:
         """Adds the `before_learn_on_batch` hook to the config.
 
-        This hook is called explicitly prior to TrainOneStep() in the execution
-        setups for DQN and APEX.
+        This hook is called explicitly prior to `train_one_step()` in the
+        `training_step()` methods of DQN and APEX.
         """
         # Call super's validation method.
         super().validate()

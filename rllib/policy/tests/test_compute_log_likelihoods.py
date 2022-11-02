@@ -135,10 +135,10 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
-        config = dqn.DEFAULT_CONFIG.copy()
+        config = dqn.DQNConfig()
         # Soft-Q for DQN.
-        config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
-        config["seed"] = 42
+        config.exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
+        config.debugging(seed=42)
         do_test_log_likelihood(dqn.DQN, config)
 
     def test_pg_cont(self):
