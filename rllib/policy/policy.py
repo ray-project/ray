@@ -504,8 +504,7 @@ class Policy(metaclass=ABCMeta):
                     "Calling compute_action<s>() on policy {} without "
                     "specifying agent_ids. This will default to "
                     '`agent_id="0"`. Ignore this if this policy '
-                    "represents a "
-                    "single agent.".format(self)
+                    "represents a single agent.".format(self)
                 )
             return False
 
@@ -514,7 +513,7 @@ class Policy(metaclass=ABCMeta):
             if log_once("policy_{}_called_without_env_ids".format(self)):
                 logger.info(
                     "Calling compute_action<s>() on policy {} without "
-                    "specifying an agent_id. This will default to "
+                    "specifying an env_id. This will default to "
                     '`env_id="0"`. Ignore this when dealing with '
                     "single environment.".format(self)
                 )
