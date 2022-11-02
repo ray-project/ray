@@ -33,6 +33,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -49,7 +50,6 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
@@ -363,7 +363,7 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
-    @DeveloperAPI
+    @PublicAPI(stability="alpha")
     def compute_actions_from_raw_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
@@ -426,7 +426,7 @@ class Policy(metaclass=ABCMeta):
             # Interpret observation as next observation if need be here
             input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
 
-        return self.compute_actions_from_raw_inputs(
+        return self.compute_actions_from_raw_input(
             next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
             reward_batch=input_dict.get(SampleBatch.REWARDS),
             dones_batch=input_dict.get(SampleBatch.DONES),
@@ -501,7 +501,7 @@ class Policy(metaclass=ABCMeta):
             env_id = "0"
 
         # Share logic with compute_actions_from_raw_inputs
-        result = self.compute_actions_from_raw_inputs(
+        result = self.compute_actions_from_raw_input(
             obs_batch=[obs],
             reward_batch=[reward],
             info_batch=[info],
@@ -513,8 +513,8 @@ class Policy(metaclass=ABCMeta):
 
         return result[0]
 
-    # method after we have migrated to connectors
-    def compute_actions_from_raw_inputs(
+    @PublicAPI(stability="alpha")
+    def compute_actions_from_raw_input(
         self,
         next_obs_batch: List[TensorStructType],
         reward_batch: Optional[List[TensorStructType]] = None,
@@ -528,6 +528,11 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from observations.
 
+        The inputs are meant to be the outputs of an environment.
+        This can be used to implement a direct policy/environment loop.
+        Calls to policy models and action distribution functions are wrapped with
+        connectors.
+
         Args:
             next_obs_batch: Batch of observations, one per agent.
             reward_batch: Batch of rewards, one per agent.
@@ -537,9 +542,6 @@ class Policy(metaclass=ABCMeta):
                 subsequent timestep when building trajectories from this input data.
             explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
             agent_ids: Batch of agent_ids, matching the agents that generated the
                 observations.
             env_ids: Batch of env_ids, matching the environments that generated the
@@ -716,7 +718,11 @@ class Policy(metaclass=ABCMeta):
         for key, value in fetches.items():
             fetches[key] = np.array(value)
 
-        return np.array(actions), rnn_states, fetches
+        return (
+            np.array(actions),
+            convert_to_numpy(rnn_states),
+            convert_to_numpy(fetches),
+        )
 
     @property
     def action_connectors_created(self):

@@ -317,7 +317,7 @@ def check_compute_single_action(
 
     action_space = pol.action_space
 
-    def _test(
+    def _test_compute_actions(
         what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
@@ -431,6 +431,56 @@ def check_compute_single_action(
                     "for that!"
                 )
 
+    def _test_compute_actions_from_raw_data(
+        what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
+    ):
+        call_kwargs = {}
+        if what is algorithm:
+            return True
+
+        obs = obs_space.sample()
+        if isinstance(obs_space, Box):
+            obs = np.clip(obs, -1.0, 1.0)
+
+        if method_to_test == "input_dict":
+            action, _, _ = pol.compute_actions_from_raw_input_dict(
+                input_dict={SampleBatch.NEXT_OBS: [obs]},
+                explore=explore,
+                timestep=timestep,
+                **call_kwargs,
+            )
+            # Unbatch everything to be able to compare against single
+            # action below.
+            # ARS and ES return action batches as lists.
+            if isinstance(action, list):
+                action = np.array(action)
+            action = tree.map_structure(lambda s: s[0], action)
+            assert action_space.contains(action)
+
+            try:
+                action2 = pol.compute_actions_from_raw_input(
+                    next_obs_batch=[obs],
+                    explore=explore,
+                    timestep=timestep,
+                    **call_kwargs,
+                )[0]
+                # Make sure these are the same, unless we have exploration
+                # switched on (or noisy layers).
+                if not explore and not pol.config.get("noisy"):
+                    check(action, action2)
+            except TypeError:
+                pass
+        else:
+            action = what.compute_actions_from_raw_input(
+                next_obs_batch=[obs],
+                explore=explore,
+                timestep=timestep,
+                unsquash_action=unsquash,
+                clip_action=clip,
+                **call_kwargs,
+            )[0][0]
+            assert action_space.contains(action)
+
     # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
     for what in [pol, algorithm]:
@@ -455,7 +505,17 @@ def check_compute_single_action(
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
-                            _test(
+                            _test_compute_actions(
+                                what,
+                                method_to_test,
+                                obs_space,
+                                full_fetch,
+                                explore,
+                                timestep,
+                                unsquash,
+                                clip,
+                            )
+                            _test_compute_actions_from_raw_data(
                                 what,
                                 method_to_test,
                                 obs_space,
