@@ -5,7 +5,7 @@ from ray.air.integrations.wandb import _setup_wandb
 from ray.tune import Trainable
 from ray.tune.trainable import FunctionTrainable
 
-from ray.air.callbacks.wandb import (
+from ray.air.integrations.wandb import (
     wandb,
     WandbLoggerCallback as _WandbLoggerCallback,
 )
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 callback_deprecation_message = (
     "`ray.tune.integration.wandb.WandbLoggerCallback` "
     "is deprecated and will be removed in "
-    "the future. Please use `ray.air.callbacks.wandb.WandbLoggerCallback` "
+    "the future. Please use `ray.air.integrations.wandb.WandbLoggerCallback` "
     "instead."
 )
 

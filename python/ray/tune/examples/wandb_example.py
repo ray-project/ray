@@ -7,7 +7,7 @@ import numpy as np
 from ray import air, tune
 from ray.air import session
 from ray.air.integrations.wandb import setup_wandb
-from ray.air.callbacks.wandb import WandbLoggerCallback
+from ray.air.integrations.wandb import WandbLoggerCallback
 
 
 def train_function(config):

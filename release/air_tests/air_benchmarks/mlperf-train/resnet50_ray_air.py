@@ -194,7 +194,7 @@ def train_loop_for_worker(config):
             )
         )
 
-        # You can also use ray.air.callbacks.keras.Callback
+        # You can also use ray.air.integrations.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
         session.report(
             {

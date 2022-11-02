@@ -16,7 +16,7 @@ from ray.tune.integration.wandb import (
     WandbTrainableMixin,
     wandb_mixin,
 )
-from ray.air.callbacks.wandb import (
+from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
     _QueueItem,
@@ -128,11 +128,11 @@ class WandbIntegrationTest(unittest.TestCase):
         os.environ["WANDB_PROCESS_RUN_INFO_HOOK"] = "mock_wandb_process_run_info_hook"
 
         with patch.multiple(
-            "ray.air.callbacks.wandb.wandb", init=mock_init, finish=mock_finish
+            "ray.air.integrations.wandb.wandb", init=mock_init, finish=mock_finish
         ), patch.multiple(
-            "ray.air.callbacks.wandb", _load_class=mock_load_class
+            "ray.air.integrations.wandb", _load_class=mock_load_class
         ), patch.multiple(
-            "ray.air.callbacks.wandb.os", chdir=Mock()
+            "ray.air.integrations.wandb.os", chdir=Mock()
         ):
             logging_process = _WandbLoggingProcess(
                 logdir="mock_logdir", queue=mock_queue, exclude=[], to_config=[]
