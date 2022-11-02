@@ -170,11 +170,11 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # Create a traced version of `self.compute_actions_helper`.
+            # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                self.compute_actions_helper = _convert_eager_inputs(
+                self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
-                        super(TracedEagerPolicy, self).compute_actions_helper,
+                        super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
                         experimental_relax_shapes=True,
                     )
@@ -346,7 +346,7 @@ def _build_eager_tf_policy(
 
             # Only for `config.eager_tracing=True`: A counter to keep track of
             # how many times an eager-traced method (e.g.
-            # `self.compute_actions_helper`) has been re-traced by tensorflow.
+            # `self._compute_actions_helper`) has been re-traced by tensorflow.
             # We will raise an error if more than n re-tracings have been
             # detected, since this would considerably slow down execution.
             # The variable below should only get incremented during the
@@ -489,7 +489,7 @@ def _build_eager_tf_policy(
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-            ret = self.compute_actions_helper(
+            ret = self._compute_actions_helper(
                 input_dict,
                 state_batches,
                 # TODO: Passing episodes into a traced method does not work.
