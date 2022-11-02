@@ -108,6 +108,8 @@ class ObjectManagerInterface {
                         const std::string &task_name) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
+  virtual int64_t PullManagerNumInactivePullsByTaskName(
+      const std::string &task_name) const = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -152,6 +154,11 @@ class ObjectManager : public ObjectManagerInterface,
 
   bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
     return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
+  }
+
+  int64_t PullManagerNumInactivePullsByTaskName(
+      const std::string &task_name) const override {
+    return pull_manager_->NumInactivePulls(task_name);
   }
 
  public:

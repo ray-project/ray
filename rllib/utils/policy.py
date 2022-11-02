@@ -45,12 +45,13 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
         ValueError: If the given `policy_id` is not a valid one and `error` is True.
     """
     if (
-        len(policy_id) == 0
+        not isinstance(policy_id, str)
+        or len(policy_id) == 0
         or re.search('[<>:"/\\\\|?]', policy_id)
         or policy_id[-1] in (" ", ".")
     ):
         msg = (
-            f"PolicyID `{policy_id}` not valid! IDs must not be an empty string, "
+            f"PolicyID `{policy_id}` not valid! IDs must be a non-empty string, "
             "must not contain characters that are also disallowed file- or directory "
             "names on Unix/Windows and must not end with a dot `.` or a space ` `."
         )
@@ -83,9 +84,14 @@ def create_policy_for_framework(
         session_creator: An optional tf1.Session creation callable.
         seed: Optional random seed.
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    if isinstance(merged_config, AlgorithmConfig):
+        merged_config = merged_config.to_dict()
+
     framework = merged_config.get("framework", "tf")
     # Tf.
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         var_scope = policy_id + (f"_wk{worker_index}" if worker_index else "")
         # For tf static graph, build every policy in its own graph
         # and create a new session for it.

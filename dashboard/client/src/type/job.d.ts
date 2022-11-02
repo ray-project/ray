@@ -55,14 +55,6 @@ export type JobDetail = {
   jobWorkers: Worker[];
 };
 
-export type JobDetailRsp = {
-  data: {
-    detail: JobDetail;
-  };
-  msg: string;
-  result: boolean;
-};
-
 export type JobListRsp = UnifiedJob[];
 
 export type UnifiedJob = {
@@ -100,6 +92,18 @@ export type TaskProgress = {
 export type JobProgressRsp = {
   data: {
     detail: TaskProgress;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type JobProgressByTaskName = {
+  tasks: { name: string; progress: TaskProgress }[];
+};
+
+export type JobProgressByTaskNameRsp = {
+  data: {
+    detail: JobProgressByTaskName;
   };
   msg: string;
   result: boolean;

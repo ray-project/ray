@@ -63,22 +63,21 @@ class ScopedTaskMetricSetter {
                          TaskCounter &ctr,
                          rpc::TaskStatus status)
       : status_(status), ctr_(ctr) {
-    task_spec_ = ctx.GetCurrentTask();
-    if (task_spec_ != nullptr) {
-      ctr_.SetMetricStatus(task_spec_->GetName(), status);
+    auto task_spec = ctx.GetCurrentTask();
+    if (task_spec != nullptr) {
+      task_name_ = task_spec->GetName();
+    } else {
+      task_name_ = "Unknown task";
     }
+    ctr_.SetMetricStatus(task_name_, status);
   }
 
-  ~ScopedTaskMetricSetter() {
-    if (task_spec_ != nullptr) {
-      ctr_.UnsetMetricStatus(task_spec_->GetName(), status_);
-    }
-  }
+  ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_); }
 
  private:
   rpc::TaskStatus status_;
   TaskCounter &ctr_;
-  std::shared_ptr<const TaskSpecification> task_spec_;
+  std::string task_name_;
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
@@ -548,6 +547,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms());
 
+  periodical_runner_.RunFnPeriodically(
+      [this] { RecordMetrics(); },
+      RayConfig::instance().metrics_report_interval_ms() / 2);
+
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
   // registering with Raylet can finish with higher priority.
@@ -626,6 +629,8 @@ void CoreWorker::Disconnect(
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
+  RecordMetrics();
+
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
@@ -643,7 +648,8 @@ void CoreWorker::Exit(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
-                << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
+                << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
+                << ", detail=" << detail;
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
@@ -826,6 +832,13 @@ void CoreWorker::InternalHeartbeat() {
   if (options_.worker_type == WorkerType::DRIVER && options_.interactive) {
     memory_store_->NotifyUnhandledErrors();
   }
+}
+
+void CoreWorker::RecordMetrics() {
+  // Record metrics for owned tasks.
+  task_manager_->RecordMetrics();
+  // Record metrics for executed tasks.
+  task_counter_.RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2293,6 +2306,7 @@ Status CoreWorker::ExecuteTask(
     return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
     {
       std::unique_ptr<ActorHandle> self_actor_handle(
           new ActorHandle(task_spec.GetSerializedActorHandle()));
@@ -3091,16 +3105,24 @@ void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
 void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
-  bool requested_task_running = main_thread_task_id_ == task_id;
+  bool requested_task_running;
+  {
+    absl::MutexLock lock(&mutex_);
+    requested_task_running = main_thread_task_id_ == task_id;
+  }
   bool success = requested_task_running;
 
-  // Try non-force kill
+  // Try non-force kill.
+  // NOTE(swang): We do not hold the CoreWorker lock here because the kill
+  // callback requires the GIL, which can cause a deadlock with the main task
+  // thread. This means that the currently executing task can change by the time
+  // the kill callback runs; the kill callback is responsible for also making
+  // sure it cancels the right task.
+  // See https://github.com/ray-project/ray/issues/29739.
   if (requested_task_running && !request.force_kill()) {
-    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_name_
-                  << " thread id: " << main_thread_task_id_;
-    success = options_.kill_main();
+    RAY_LOG(INFO) << "Cancelling a running task with id: " << task_id;
+    success = options_.kill_main(task_id);
   } else if (!requested_task_running) {
     RAY_LOG(INFO) << "Cancelling a task " << task_id
                   << " that's not running. Tasks will be removed from a queue.";
@@ -3116,19 +3138,22 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     }
   }
 
-  // TODO: fix race condition to avoid using this hack
-  requested_task_running = main_thread_task_id_ == task_id;
-
   reply->set_attempt_succeeded(success);
   reply->set_requested_task_running(requested_task_running);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  // Do force kill after reply callback sent
-  if (requested_task_running && request.force_kill()) {
-    ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
-              absl::StrCat("The worker exits because the task ",
-                           main_thread_task_name_,
-                           " has received a force ray.cancel request."));
+  // Do force kill after reply callback sent.
+  if (request.force_kill()) {
+    // We grab the lock again to make sure that we are force-killing the correct
+    // task. This is guaranteed not to deadlock because ForceExit should not
+    // require any other locks.
+    absl::MutexLock lock(&mutex_);
+    if (main_thread_task_id_ == task_id) {
+      ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                absl::StrCat("The worker exits because the task ",
+                             main_thread_task_name_,
+                             " has received a force ray.cancel request."));
+    }
   }
 }
 

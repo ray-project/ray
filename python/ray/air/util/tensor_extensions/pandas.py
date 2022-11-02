@@ -728,15 +728,13 @@ class TensorArray(
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
         if isinstance(values, ABCSeries):
-            values = np.array(values, copy=False)
+            values = _create_possibly_ragged_ndarray(values)
         elif isinstance(values, Sequence):
-            values = np.array(
-                [
-                    np.asarray(v) if isinstance(v, TensorArrayElement) else v
-                    for v in values
-                ],
-                copy=False,
-            )
+            values = [
+                np.asarray(v) if isinstance(v, TensorArrayElement) else v
+                for v in values
+            ]
+            values = _create_possibly_ragged_ndarray(values)
         elif isinstance(values, TensorArrayElement):
             values = np.array([np.asarray(values)], copy=False)
 
@@ -750,9 +748,10 @@ class TensorArray(
                     and not isinstance(v, str)
                     for v in values
                 ):
+                    values = [np.asarray(v) for v in values]
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
-                    values = np.array([np.asarray(v) for v in values], copy=False)
+                    values = _create_possibly_ragged_ndarray(values)
                 else:
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
@@ -1420,6 +1419,33 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
+
+
+def _create_possibly_ragged_ndarray(
+    values: Union[
+        np.ndarray, ABCSeries, Sequence[Union[np.ndarray, TensorArrayElement]]
+    ]
+) -> np.ndarray:
+    """
+    Create a possibly ragged ndarray.
+
+    Using the np.array() constructor will fail to construct a ragged ndarray that has a
+    uniform first dimension (e.g. uniform channel dimension in imagery). This function
+    catches this failure and tries a create-and-fill method to construct the ragged
+    ndarray.
+    """
+    try:
+        return np.array(values, copy=False)
+    except ValueError as e:
+        if "could not broadcast input array from shape" in str(e):
+            # Create an empty object-dtyped 1D array.
+            arr = np.empty(len(values), dtype=object)
+            # Try to fill the 1D array of pointers with the (ragged) tensors.
+            arr[:] = list(values)
+            return arr
+        else:
+            # Re-raise original error if the failure wasn't a broadcast error.
+            raise e from None
 
 
 @PublicAPI(stability="beta")

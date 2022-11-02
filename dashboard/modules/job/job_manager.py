@@ -12,12 +12,16 @@ import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, Iterator, List, Optional, Tuple
-
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    SchedulingStrategyT,
+)
 import ray
 from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -29,7 +33,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +253,13 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
+        # RAY_ADDRESS may be the dashboard URL but not the gcs address,
+        # so when the environment variable is not empty, we force set RAY_ADDRESS
+        # to "auto" to avoid function `canonicalize_bootstrap_address_or_die` returning
+        # the wrong GCS address.
+        # TODO(Jialing He, Archit Kulkarni): Definition of Specification RAY_ADDRESS
+        if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
+            os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
             "auto", ray.worker._global_node._ray_params.temp_dir
         )
@@ -309,7 +320,21 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        await self._job_info_client.put_status(self._job_id, JobStatus.RUNNING)
+        driver_agent_http_address = (
+            "http://"
+            f"{ray.worker.global_worker.node.node_ip_address}:"
+            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
+        )
+        driver_node_id = ray.worker.global_worker.current_node_id.hex()
+
+        await self._job_info_client.put_status(
+            self._job_id,
+            JobStatus.RUNNING,
+            jobinfo_replace_kwargs={
+                "driver_agent_http_address": driver_agent_http_address,
+                "driver_node_id": driver_node_id,
+            },
+        )
 
         try:
             # Configure environment variables for the child process. These
@@ -517,6 +542,38 @@ class JobManager:
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
+    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
+        if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
+            logger.info(
+                f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
+                "Using Ray's default actor scheduling strategy for the job "
+                "driver instead of running it on the head node."
+            )
+            scheduling_strategy = "DEFAULT"
+        else:
+            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
+                "head_node_id".encode(),
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=30,
+            )
+            if head_node_id_bytes is None:
+                logger.info(
+                    "Head node ID not found in GCS. Using Ray's default actor "
+                    "scheduling strategy for the job driver instead of running "
+                    "it on the head node."
+                )
+                scheduling_strategy = "DEFAULT"
+            else:
+                head_node_id = head_node_id_bytes.decode()
+                logger.info(
+                    "Head node ID found in GCS; scheduling job driver on "
+                    f"head node {head_node_id}"
+                )
+                scheduling_strategy = NodeAffinitySchedulingStrategy(
+                    node_id=head_node_id, soft=False
+                )
+        return scheduling_strategy
+
     async def submit_job(
         self,
         *,
@@ -525,7 +582,6 @@ class JobManager:
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
-        _driver_on_current_node: bool = True,
     ) -> str:
         """
         Job execution happens asynchronously.
@@ -550,8 +606,6 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
-            _driver_on_current_node: whether force driver run on current node,
-                the default value is True.
 
         Returns:
             job_id: Generated uuid for further job management. Only valid
@@ -576,14 +630,7 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            scheduling_strategy = "DEFAULT"
-            if _driver_on_current_node:
-                # If JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().node_id,
-                    soft=False,
-                )
+            scheduling_strategy = await self._get_scheduling_strategy()
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
@@ -620,6 +667,9 @@ class JobManager:
         else:
             return False
 
+    def job_info_client(self) -> JobInfoStorageClient:
+        return self._job_info_client
+
     async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""
         return await self._job_info_client.get_status(job_id)
@@ -645,7 +695,7 @@ class JobManager:
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
-                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                if status.is_terminal():
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)

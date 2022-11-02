@@ -101,13 +101,15 @@ class CheckpointManager(CommonCheckpointManager):
         """Ray Train entrypoint. Perform all processing for a checkpoint."""
         # Get checkpoint from first worker.
         checkpoint_data = checkpoint_results[0].data
+        checkpoint_metadata = checkpoint_results[0].metadata or {}
 
-        # Decode checkpoint.
-        checkpoint_data = decode_checkpoint_fn(checkpoint_data)
+        # TODO(ml-team): Remove once we remove Backend.decode_data
+        checkpoint_data = decode_checkpoint_fn(checkpoint_data).to_dict()
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (
             self._checkpoint_strategy.num_to_keep != 0
+            and score_attr not in checkpoint_metadata
             and score_attr not in checkpoint_data
         ):
             raise ValueError(
@@ -122,7 +124,11 @@ class CheckpointManager(CommonCheckpointManager):
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
-            metrics={score_attr: checkpoint_data.get(score_attr, 0.0)},
+            metrics={
+                score_attr: checkpoint_metadata.get(
+                    score_attr, checkpoint_data.get(score_attr, 0.0)
+                )
+            },
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
 

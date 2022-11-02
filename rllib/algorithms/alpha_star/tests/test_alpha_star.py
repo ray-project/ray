@@ -52,13 +52,14 @@ class TestAlphaStar(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build()
+            config.policies = None
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 print(results)
                 check_train_results(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
 
 if __name__ == "__main__":
