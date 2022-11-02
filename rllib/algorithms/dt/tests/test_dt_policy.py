@@ -186,7 +186,7 @@ class TestDTPolicy(unittest.TestCase):
 
     def test_torch_action(self):
         """Test policy's action_distribution_fn and extra_action_out methods by
-        calling _compute_actions_from_input_dict which works those
+        calling compute_actions_from_input_dict which works those
         two methods in conjunction.
         """
         config = _default_config()

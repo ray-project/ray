@@ -365,7 +365,7 @@ class Policy(metaclass=ABCMeta):
 
     # TODO: (Artur) Resolve this logic once we have fully migrated
     @DeveloperAPI
-    def compute_actions_from_input_dict(
+    def compute_actions_from_raw_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
@@ -377,7 +377,9 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        This will either use call _compute_actions_from_input_dict or
+        This will either use call compute_actions_from_input_dict or
+        compute_actions_with_connectors, depending on whether we are using connectors
+        or not.
 
         Args:
             input_dict: A SampleBatch or input dict containing the Tensors
@@ -457,7 +459,7 @@ class Policy(metaclass=ABCMeta):
                 **kwargs,
             )
 
-    def _compute_actions_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,

@@ -160,7 +160,7 @@ def _traced_eager_policy(eager_policy_cls):
 
         @_check_too_many_retraces
         @override(Policy)
-        def _compute_actions_from_input_dict(
+        def compute_actions_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
             explore: bool = None,
@@ -454,7 +454,7 @@ def _build_eager_tf_policy(
             self.global_timestep.assign(0)
 
         @override(Policy)
-        def _compute_actions_from_input_dict(
+        def compute_actions_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
             explore: bool = None,

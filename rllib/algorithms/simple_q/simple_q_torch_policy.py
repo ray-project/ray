@@ -60,7 +60,7 @@ class SimpleQTorchPolicy(
         return model
 
     @override(TorchPolicyV2)
-    def _compute_actions_from_input_dict(
+    def compute_actions_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
         explore: bool = True,
