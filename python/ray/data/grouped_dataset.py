@@ -133,7 +133,7 @@ class GroupedDataset(Generic[T]):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(dataset={self._dataset}, "
-            f"key={repr(self._key)})"
+            f"key={self._key!r})"
         )
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
