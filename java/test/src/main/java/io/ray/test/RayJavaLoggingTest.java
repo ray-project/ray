@@ -55,8 +55,12 @@ public class RayJavaLoggingTest extends BaseTest {
                   return false;
                 }
                 long fileSize = rotatedFile.length();
-                return fileSize > 1024 && fileSize < 1024 * 2;
+                boolean fileSizeExpected = fileSize > 1024 && fileSize < 1024 * 2;
+                if (!fileSizeExpected) {
+                  return false;
+                }
               }
+              return true;
             },
             10 * 1000);
     Assert.assertTrue(rotated);
