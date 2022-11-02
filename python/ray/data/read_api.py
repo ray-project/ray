@@ -1351,8 +1351,24 @@ def from_tf(
         >>> dataset = ray.data.from_tf(dataset)
         >>> dataset
         Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
-        >>> dataset.take(1)
-        # TODO add output. Blocked on #29590.
+        >>> dataset.take(1)  # doctest: +SKIP
+        [{'id': b'train_16399', 'image': array([[[143,  96,  70],
+        [141,  96,  72],
+        [135,  93,  72],
+        ...,
+        [ 96,  37,  19],
+        [105,  42,  18],
+        [104,  38,  20]],
+
+       ...,
+
+       [[195, 161, 126],
+        [187, 153, 123],
+        [186, 151, 128],
+        ...,
+        [212, 177, 147],
+        [219, 185, 155],
+        [221, 187, 157]]], dtype=uint8), 'label': 7}]
 
     Args:
         dataset: A TensorFlow dataset.
@@ -1361,6 +1377,7 @@ def from_tf(
         A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
     """
     return from_items(list(dataset.as_numpy_iterator()))
+
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     stats = BlockExecStats.builder()
