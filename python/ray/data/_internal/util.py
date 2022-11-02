@@ -24,7 +24,8 @@ MIN_PYARROW_VERSION = "6.0.1"
 MAX_PYARROW_VERSION = "7.0.0"
 RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
-_LOCAL_SCHEME = "local://"
+_LOCAL_SCHEME = "local"
+_EXAMPLE_SCHEME = "example"
 
 
 LazyModule = Union[None, bool, ModuleType]
@@ -209,11 +210,22 @@ def _check_import(obj, *, module: str, package: str) -> None:
         )
 
 
-def _resolve_local_scheme(path: str) -> str:
-    """Returns the resolved path if the given path following the local scheme.
-    Othewise, returns the path unchanged."""
-    if path.startswith(_LOCAL_SCHEME):
-        path = path[len(_LOCAL_SCHEME) :]
+def _resolve_custom_scheme(path: str) -> str:
+    """Returns the resolved path if the given path following a Ray-specific custom
+    scheme. Othewise, returns the path unchanged.
+
+    The supported custom schemes are: "local", "example".
+    """
+    import pathlib
+    import urllib.parse
+
+    parsed_uri = urllib.parse.urlparse(path)
+    if parsed_uri.scheme == _LOCAL_SCHEME:
+        path = parsed_uri.netloc + parsed_uri.path
+    elif parsed_uri.scheme == _EXAMPLE_SCHEME:
+        example_data_path = pathlib.Path(__file__).parent.parent / "examples" / "data"
+        path = example_data_path / parsed_uri.netloc
+        path = str(path.resolve())
     return path
 
 
@@ -223,6 +235,7 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     will raise error if paths are mixed with different schemes.
     """
     import pathlib
+    import urllib.parse
 
     if isinstance(paths, str):
         paths = [paths]
@@ -234,7 +247,7 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
         raise ValueError("Must provide at least one path.")
     is_local = None
     for path in paths:
-        current = path.startswith(_LOCAL_SCHEME)
+        current = urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME
         if not is_local:
             is_local = current
         elif is_local != current:
