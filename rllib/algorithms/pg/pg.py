@@ -48,6 +48,7 @@ class PGConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with PG-specific values.
         self.lr_schedule = None
         self.lr = 0.0004
+        self.rollout_fragment_length = "auto"
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
@@ -82,6 +83,44 @@ class PGConfig(AlgorithmConfig):
             self.lr_schedule = lr_schedule
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Check for mismatches between `train_batch_size` and
+        # `rollout_fragment_length` (if not "auto")..
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        if (
+            self.rollout_fragment_length != "auto"
+            and not self.in_evaluation
+            and self.train_batch_size > 0
+        ):
+            min_batch_size = (
+                max(self.num_rollout_workers, 1)
+                * self.num_envs_per_worker
+                * self.rollout_fragment_length
+            )
+            batch_size = min_batch_size
+            while batch_size < self.train_batch_size:
+                batch_size += min_batch_size
+            if (
+                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+                or batch_size - min_batch_size - self.train_batch_size > (
+                    0.1 * self.train_batch_size
+                )
+            ):
+                suggested_rollout_fragment_length = self.train_batch_size // (
+                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                )
+                raise ValueError(
+                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
+                    "value 10% off of that cannot be achieved with your other "
+                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length})! "
+                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    f"{suggested_rollout_fragment_length}."
+                )
 
 
 class PG(Algorithm):

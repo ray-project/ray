@@ -40,9 +40,8 @@ class TestPG(unittest.TestCase):
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(
             num_rollout_workers=1,
-            rollout_fragment_length=500,
             observation_filter="MeanStdFilter",
-        )
+        ).training(train_batch_size=500)
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))

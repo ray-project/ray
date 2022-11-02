@@ -316,7 +316,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
-            .training(model={"max_seq_len": max_seq_len})
+            .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010)
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=rollout_fragment_length,
@@ -337,7 +337,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # Env setup.
         config.environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
         config.rollouts(num_rollout_workers=2, rollout_fragment_length=21)
-        config.training(num_sgd_iter=2, train_batch_size=147)
+        config.training(num_sgd_iter=2, train_batch_size=168)
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
