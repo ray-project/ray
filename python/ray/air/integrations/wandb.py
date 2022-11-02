@@ -326,6 +326,8 @@ class _WandbLoggingProcess(Process):
     ):
         super(_WandbLoggingProcess, self).__init__()
 
+        self._wandb = wandb
+
         os.chdir(logdir)
         self.queue = queue
         self._exclude = set(exclude)
@@ -339,7 +341,7 @@ class _WandbLoggingProcess(Process):
     def run(self):
         # Since we're running in a separate process already, use threads.
         os.environ["WANDB_START_METHOD"] = "thread"
-        run = wandb.init(*self.args, **self.kwargs)
+        run = self._wandb.init(*self.args, **self.kwargs)
         run.config.trial_log_path = self._logdir
 
         # Run external hook to process information about wandb run
@@ -363,18 +365,20 @@ class _WandbLoggingProcess(Process):
             assert item_type == _QueueItem.RESULT
             log, config_update = self._handle_result(item_content)
             try:
-                wandb.config.update(config_update, allow_val_change=True)
-                wandb.log(log)
+                self._wandb.config.update(config_update, allow_val_change=True)
+                self._wandb.log(log)
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warn("Failed to log result to w&b: {}".format(str(e)))
-        wandb.finish()
+        self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
-        artifact = wandb.Artifact(name=f"checkpoint_{self._trial_name}", type="model")
+        artifact = self._wandb.Artifact(
+            name=f"checkpoint_{self._trial_name}", type="model"
+        )
         artifact.add_dir(checkpoint_path)
-        wandb.log_artifact(artifact)
+        self._wandb.log_artifact(artifact)
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -393,6 +397,9 @@ class _WandbLoggingProcess(Process):
 
         config_update.pop("callbacks", None)  # Remove callbacks
         return log, config_update
+
+    def __reduce__(self):
+        raise RuntimeError("_WandbLoggingProcess is not pickleable.")
 
 
 class WandbLoggerCallback(LoggerCallback):
@@ -578,6 +585,6 @@ class WandbLoggerCallback(LoggerCallback):
         for trial in self._trial_processes:
             if trial in self._trial_queues:
                 self._trial_queues[trial].put((_QueueItem.END, None))
-                del self._trial_queues[trial]
             self._trial_processes[trial].join(timeout=2)
-            del self._trial_processes[trial]
+        self._trial_processes = {}
+        self._trial_queues = {}
