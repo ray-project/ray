@@ -11,6 +11,11 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_NODE_KIND,
 )
+from ray.autoscaler._private.constants import (
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler._private.util import (
     NodeID,
     NodeIP,
@@ -76,11 +81,36 @@ class BatchingNodeProvider(NodeProvider):
 
     See the method docstrings for more information.
     """
-    def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
+    def __init__(
+        self,
+        provider_config: Dict[str, Any],
+        cluster_name: str,
+        _allow_multiple: bool = False
+    ) -> None:
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.node_data_dict: Dict[NodeID, NodeData] = {}
 
-        # scale_change_needed tracks whether we need to update scale.
+        # Disallow multiple node providers, unless explicitly allowed for testing.
+        global provider_exists
+        if not _allow_multiple:
+            assert (
+                not provider_exists
+            ), "Only one BatchingNodeProvider allowed per process."
+
+        # These flags enforce correct behavior for single-threaded node providers
+        # which interact with external cluster managers:
+        assert (
+            provider_config.get(DISABLE_NODE_UPDATERS_KEY, False) is True
+        ), f"To use BatchingNodeProvider, must set `{DISABLE_NODE_UPDATERS_KEY}:True`."
+        assert provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, False) is True, (
+            "To use BatchingNodeProvider, must set "
+            f"`{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:True`."
+        )
+        assert (
+            provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
+        ), f"To use BatchingNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
+
+        # self.scale_change_needed tracks whether we need to update scale.
         # set to True in create_node and terminate_nodes calls
         # reset to False in non_terminated_nodes, which occurs at the start of the
         #   autoscaling update. For good measure, also set to false in post_process.

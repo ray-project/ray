@@ -436,6 +436,10 @@ class StandardAutoscaler:
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
 
+        # Execute optional end-of-update logic.
+        # Keep this method call at the end of autoscaler._update().
+        self.provider.post_process()
+
         # Record the amount of time the autoscaler took for
         # this _update() iteration.
         update_time = time.time() - self.last_update_time
