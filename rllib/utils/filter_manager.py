@@ -32,6 +32,7 @@ class FilterManager:
             update_remote: Whether to push updates to remote filters.
             timeout_seconds: How long to wait for filter to get or set filters
         """
+        remote_filters = []
         try:
             remote_filters = ray.get(
                 [r.get_filters.remote(flush_after=True) for r in remotes],

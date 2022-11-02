@@ -20,7 +20,7 @@ TIME_SWAPS: Optional[float] = None
 class TestPolicyMap(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -141,14 +141,28 @@ class TestPolicyMap(unittest.TestCase):
     def test_very_large_policy_map_with_swaps(self):
         """Tests, whether PolicyMap can hold 1000 policies and train some of them."""
         register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
-        num_policies = 1000
-        num_trainable = 100
+        num_policies = 100
+        num_trainable = 10
         config = (
-            APPOConfig()
+            PPOConfig()
             .environment("multi_cartpole")
-            .training(model={"fcnet_hiddens": [10]})
+            .rollouts(
+                num_rollout_workers=4,
+                num_envs_per_worker=5,#5
+                observation_filter="MeanStdFilter",
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [32],
+                    "fcnet_activation": "linear",
+                    #"vf_share_layers": True,
+                },
+                #vf_loss_coeff=0.01,
+                #vtrace=True,
+                #vtrace_drop_last_ts=False,
+            )
             .multi_agent(
-                policy_map_capacity=5,
+                policy_map_capacity=10,
                 policies_swappable=True,
                 policies={f"pol{i}" for i in range(num_policies)},
                 # Train only the first n policies.
@@ -160,10 +174,11 @@ class TestPolicyMap(unittest.TestCase):
                         else np.random.randint(num_trainable, num_policies)
                     )
                 ),
+                #policy_mapping_fn=lambda aid, eps, worker, **kw: "pol0" if aid == 0 else "pol1"
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch", "tf"), with_eager_tracing=True):
+        for _ in framework_iterator(config, frameworks=("tf2"), with_eager_tracing=True):  # , "torch", "tf"
             algo = config.build()
             reward = 0.0
             iter = 0
@@ -173,9 +188,14 @@ class TestPolicyMap(unittest.TestCase):
                 results = algo.train()
                 reward = np.mean([
                     r for pid, r in results["policy_reward_mean"].items()
-                    if int(pid[3:]) < 100
+                    if int(pid[3:]) < num_trainable
                 ])
-                print(f"iter={iter} reward={reward}")
+                print(f"iter={iter} reward={reward} timesteps-sampled={results['num_agent_steps_sampled']}")
+                print(ray.get(
+                    algo.workers.remote_workers()[0].apply.remote(
+                        lambda w: w.policy_map.counters
+                    )
+                ))
                 iter += 1
 
             assert reward >= required_reward, "Not learnt!"

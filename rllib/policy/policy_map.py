@@ -82,6 +82,7 @@ class PolicyMap(dict):
         from ray.util.timer import _Timer
         from collections import defaultdict
         self.timers = defaultdict(_Timer)
+        self.counters = defaultdict(int)
 
     @with_lock
     @override(dict)
@@ -97,6 +98,7 @@ class PolicyMap(dict):
             # Item already in cache -> Rearrange deque (promote `item` to
             # "most recently used") and return it.
             if item in self.cache:
+                self.counters["already_cached"] += 1
                 with self.timers["getitem->cached"]:
                     self.deque.remove(item)
                     self.deque.append(item)
@@ -105,6 +107,7 @@ class PolicyMap(dict):
             # Item not currently in cache -> Get from stash and - if at capacity -
             # remove leftmost one.
             else:
+                self.counters["swaps"] += 1
                 with self.timers["getitem->NON-cached"]:
                     assert item in self._policy_state_refs
                     with self.timers["getitem->NON-cached->ray.get"]:
@@ -131,8 +134,10 @@ class PolicyMap(dict):
                         # config).
                         policy = Policy.from_state(policy_state)
                         self.cache[item] = policy
+
                     with self.timers["getitem->NON-cached->deque.append"]:
                         self.deque.append(item)
+
                     return policy
 
     @with_lock
