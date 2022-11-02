@@ -1,7 +1,6 @@
 import math
 import os
 from unittest.mock import patch
-from typing import Callable, Dict, Optional, Tuple, Type
 
 import pytest
 import time
@@ -10,7 +9,6 @@ import ray
 from ray.air._internal.util import StartTraceback
 from ray.air import session
 from ray.cluster_utils import Cluster
-from ray.exceptions import RayActorError
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -152,42 +150,6 @@ class MockWorkerGroup(WorkerGroup):
             )
 
 
-class MockBackendExecuter(BackendExecutor):
-    def start(
-        self,
-        initialization_hook: Optional[Callable[[], None]] = None,
-        train_cls: Optional[Type] = None,
-        train_cls_args: Optional[Tuple] = None,
-        train_cls_kwargs: Optional[Dict] = None,
-    ):
-        """Starts the worker group.
-
-        Use MockWorkerGroup Instead of WorkerGroup in order to have hardcoded actor
-        metadata. This function omits gpu related variable setup from the original code
-        as it is not relevant to the mock use case.
-        """
-        self._create_placement_group()
-        placement_group = self._placement_group or "default"
-        self.worker_group = MockWorkerGroup(
-            num_workers=self._num_workers,
-            num_cpus_per_worker=self._num_cpus_per_worker,
-            num_gpus_per_worker=self._num_gpus_per_worker,
-            additional_resources_per_worker=self._additional_resources_per_worker,
-            actor_cls=train_cls,
-            actor_cls_args=train_cls_args,
-            actor_cls_kwargs=train_cls_kwargs,
-            placement_group=placement_group,
-        )
-        try:
-            if initialization_hook:
-                self._initialization_hook = initialization_hook
-                self.worker_group.execute(initialization_hook)
-            self._backend.on_start(self.worker_group, self._backend_config)
-        except RayActorError:
-            self._increment_failures()
-            self._restart()
-
-
 EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
 
 
@@ -253,26 +215,28 @@ def test_local_ranks(ray_start_2_cpus):
 
 def test_local_world_size(ray_2_node_2_cpu):
     config = TestConfig()
-    e = MockBackendExecuter(config, num_workers=4)
-    e.start()
+    with patch.object(WorkerGroup, "add_workers", MockWorkerGroup.add_workers):
+        e = BackendExecutor(config, num_workers=4)
+        e.start()
 
-    def train_func():
-        return session.get_local_world_size()
+        def train_func():
+            return session.get_local_world_size()
 
-    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-    assert set(e.finish_training()) == {2, 2, 2, 2}
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+        assert set(e.finish_training()) == {2, 2, 2, 2}
 
 
 def test_node_ranks(ray_2_node_2_cpu):
     config = TestConfig()
-    e = MockBackendExecuter(config, num_workers=4)
-    e.start()
+    with patch.object(WorkerGroup, "add_workers", MockWorkerGroup.add_workers):
+        e = BackendExecutor(config, num_workers=4)
+        e.start()
 
-    def train_func():
-        return session.get_node_rank()
+        def train_func():
+            return session.get_node_rank()
 
-    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-    assert set(e.finish_training()) == {0, 1, 0, 1}
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+        assert set(e.finish_training()) == {0, 1, 0, 1}
 
 
 def test_train_failure(ray_start_2_cpus):
