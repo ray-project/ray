@@ -279,23 +279,24 @@ def get_local_rank() -> int:
 def get_local_world_size() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
-    .. code-block:: python
-
-        import time
-        from ray.air import session
-        from ray.air.config import ScalingConfig
-
-        def train_loop_per_worker():
-            if torch.cuda.is_available():
-                torch.cuda.set_device(session.get_local_rank())
-            ...
-
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": train_dataset})
-        trainer.fit()
+    Example:
+        >>> import time
+        >>> import os
+        >>>
+        >>> import ray
+        >>> from ray.air import session
+        >>> from ray.air.config import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>>
+        >>> def train_loop_per_worker():
+        ...     return session.get_local_world_size()
+        >>>
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> trainer.fit()
     """
     session = _get_session()
     if not isinstance(session, _TrainSessionImpl):
@@ -311,23 +312,24 @@ def get_local_world_size() -> int:
 def get_node_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
-    .. code-block:: python
-
-        import time
-        from ray.air import session
-        from ray.air.config import ScalingConfig
-
-        def train_loop_per_worker():
-            if torch.cuda.is_available():
-                torch.cuda.set_device(session.get_local_rank())
-            ...
-
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": train_dataset})
-        trainer.fit()
+    Example:
+        >>> import time
+        >>> import os
+        >>>
+        >>> import ray
+        >>> from ray.air import session
+        >>> from ray.air.config import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>>
+        >>> def train_loop_per_worker():
+        ...     return session.get_node_rank()
+        >>>
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> trainer.fit()
     """
     session = _get_session()
     if not isinstance(session, _TrainSessionImpl):

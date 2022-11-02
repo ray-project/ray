@@ -286,7 +286,7 @@ class BackendExecutor:
             }
 
         """
-        rank_mapping = {}  # map from world rank to local rank
+        local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
         node_rank_map = {}  # map from world rank to node rank
         node_ips = {}  # map from node ip to node index
@@ -296,7 +296,7 @@ class BackendExecutor:
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
             node_ip = worker.metadata.node_ip
-            rank_mapping[world_rank] = ip_dict[node_ip]
+            local_rank_map[world_rank] = ip_dict[node_ip]
             ip_dict[node_ip] += 1
 
             if node_ip not in node_ips:
@@ -309,7 +309,7 @@ class BackendExecutor:
             node_ip = worker.metadata.node_ip
             local_world_size_map[world_rank] = ip_dict[node_ip]
 
-        return rank_mapping, local_world_size_map, node_rank_map
+        return local_rank_map, local_world_size_map, node_rank_map
 
     def _get_local_world_size(self) -> Dict:
         pass
@@ -379,7 +379,7 @@ class BackendExecutor:
 
         (
             local_rank_map,
-            local_world_map,
+            local_world_size_map,
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
@@ -392,7 +392,7 @@ class BackendExecutor:
                     world_rank=index,
                     local_rank=local_rank_map[index],
                     node_rank=node_rank_map[index],
-                    local_world_size=local_world_map[index],
+                    local_world_size=local_world_size_map[index],
                     world_size=len(self.worker_group),
                     trial_info=self._trial_info,
                     train_func=train_func,
