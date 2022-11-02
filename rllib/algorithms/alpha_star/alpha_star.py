@@ -327,16 +327,16 @@ class AlphaStar(appo.APPO):
         return AlphaStarConfig()
 
     @override(appo.APPO)
-    def setup(self, config: AlgorithmConfig):
-        # Call super's setup to validate config, create RolloutWorkers
-        # (train and eval), etc..
-        super().setup(config)
-
+    def setup(self, config: AlphaStarConfig):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
         self.league_builder = from_config(
             self.config.league_builder_config, algo=self, algo_config=self.config
         )
+
+        # Call super's setup to validate config, create RolloutWorkers
+        # (train and eval), etc..
+        super().setup(config)
 
         local_worker = self.workers.local_worker()
 
