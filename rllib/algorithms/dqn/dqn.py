@@ -158,6 +158,8 @@ class DQNConfig(SimpleQConfig):
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length = "auto"
         # fmt: on
         # __sphinx_doc_end__
 
@@ -305,13 +307,17 @@ class DQNConfig(SimpleQConfig):
         # Call super's validation method.
         super().validate()
 
-        # Update effective batch size to include n-step.
-        if self.rollout_fragment_length < self.n_step:
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
                 f"smaller than `n_step` ({self.n_step})! "
                 f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
             )
+
         if self.exploration_config["type"] == "ParameterNoise":
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
@@ -324,6 +330,12 @@ class DQNConfig(SimpleQConfig):
                     "ParameterNoise Exploration and `noisy` network cannot be"
                     " used at the same time!"
                 )
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
 
 
 def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:

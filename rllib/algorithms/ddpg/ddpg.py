@@ -122,7 +122,7 @@ class DDPGConfig(SimpleQConfig):
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
-        self.rollout_fragment_length = 1
+        self.rollout_fragment_length = "auto"
         self.compress_observations = False
 
         # __sphinx_doc_end__
@@ -259,6 +259,17 @@ class DDPGConfig(SimpleQConfig):
         # Call super's validation method.
         super().validate()
 
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
         if self.model["custom_model"]:
             raise ValueError(
                 "Try setting config.training(use_state_preprocessor=True) "
@@ -275,6 +286,12 @@ class DDPGConfig(SimpleQConfig):
                     "'complete_episodes'. Try seting "
                     "config.training(batch_mode='complete_episodes')."
                 )
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
 
 
 class DDPG(SimpleQ):
