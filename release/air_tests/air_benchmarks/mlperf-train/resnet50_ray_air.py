@@ -267,7 +267,8 @@ def build_synthetic_dataset(batch_size):
     image_dims = IMAGE_DIMS[1:]
     empty = np.empty(image_dims, dtype=np.uint8)
     ds = ray.data.from_items(
-        [{"image": empty, "label": 1} for _ in range(int(batch_size))], parallelism=1,
+        [{"image": empty, "label": 1} for _ in range(int(batch_size))],
+        parallelism=1,
     )
     return ds
 
