@@ -171,8 +171,10 @@ class BatchingNodeProvider(NodeProvider):
     def cur_num_workers(self, node_data_dict: Dict[str, Any]):
         num_workers_dict = defaultdict(int)
         for node_data in node_data_dict.values():
-            node_type = node_data.node_tags[TAG_RAY_USER_NODE_TYPE]
-            num_workers_dict[node_type] += 1
+            if node_data.kind == NodeKind.HEAD:
+                # Only track workers.
+                continue
+            num_workers_dict[node_data.type] += 1
         return num_workers_dict
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
