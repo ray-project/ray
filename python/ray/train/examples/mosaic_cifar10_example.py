@@ -76,12 +76,12 @@ def trainer_init_per_worker(config):
     )
 
 
-def train_mosaic_cifar10(num_workers=2, use_gpu=False):
+def train_mosaic_cifar10(num_workers=2, use_gpu=False, max_duration="5ep"):
     from composer.algorithms import LabelSmoothing
     from ray.train.mosaic import MosaicTrainer
 
     trainer_init_config = {
-        "max_duration": "5ep",
+        "max_duration": max_duration,
         "algorithms": [LabelSmoothing()],
         "should_eval": False,
     }

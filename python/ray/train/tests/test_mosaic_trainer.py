@@ -83,7 +83,7 @@ trainer_init_per_worker.__test__ = False
 def test_mosaic_cifar10(ray_start_4_cpus):
     from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
-    result = train_mosaic_cifar10().metrics_dataframe
+    result = train_mosaic_cifar10(max_duration="5ep").metrics_dataframe
 
     # check the max epoch value
     assert result["epoch"][result.index[-1]] == 4
