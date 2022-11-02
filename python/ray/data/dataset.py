@@ -79,6 +79,7 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
+    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -89,6 +90,7 @@ from ray.data.datasource import (
     NumpyDatasource,
     ParquetDatasource,
     ReadTask,
+    TFRecordDatasource,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -320,7 +322,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -1998,7 +2000,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
-    def take_all(self, limit: int = 100000) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
         This will move the entire dataset to the caller's machine; if the
@@ -2016,7 +2018,7 @@ class Dataset(Generic[T]):
         output = []
         for row in self.iter_rows():
             output.append(row)
-            if len(output) > limit:
+            if limit is not None and len(output) > limit:
                 raise ValueError(
                     "The dataset has more than the given limit of {} records.".format(
                         limit
@@ -2308,6 +2310,70 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
             **arrow_csv_args,
+        )
+
+    def write_tfrecords(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to TFRecord files.
+
+        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
+        files will contain
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
+        records, with one Example record for each row in the dataset.
+
+        .. warning::
+            tf.train.Feature only natively stores ints, floats, and bytes,
+            so this function only supports datasets with these data types,
+            and will error if the dataset contains unsupported types.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
+
+        Unless a custom block path provider is given, the format of the output
+        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
+        for the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     { "name": "foo", "score": 42 },
+            ...     { "name": "bar", "score": 43 },
+            ... ])
+            >>> ds.write_tfrecords("s3://bucket/path") # doctest: +SKIP
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where tfrecords
+                files will be written to.
+            filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+
+        """
+
+        self.write_datasource(
+            TFRecordDatasource(),
+            ray_remote_args=ray_remote_args,
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
         )
 
     def write_numpy(

@@ -155,8 +155,8 @@ class A3CConfig(AlgorithmConfig):
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A3CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A3CConfig()
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):

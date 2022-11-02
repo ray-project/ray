@@ -4,6 +4,7 @@ import random
 
 import ray
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -103,14 +104,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 
-    config = {
-        "env": "CartPole-v1",
+    config = (
+        AlgorithmConfig()
+        .environment("CartPole-v1")
+        .framework("tf2")
+        .rollouts(num_rollout_workers=0)
+        .training(model={"custom_model": "eager_model"})
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "model": {"custom_model": "eager_model"},
-        "framework": "tf2",
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     stop = {
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
@@ -118,7 +121,9 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        MyAlgo, run_config=air.RunConfig(stop=stop, verbose=1), param_space=config
+        MyAlgo,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

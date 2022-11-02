@@ -14,13 +14,14 @@ import random
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.pg import (
     PG,
+    PGConfig,
     PGTF2Policy,
     PGTF1Policy,
     PGTorchPolicy,
 )
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
     BeatLastHeuristic,
@@ -71,10 +72,7 @@ register_env("RockPaperScissors", lambda config: PettingZooEnv(env_creator(confi
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
-    config = {
-        "env": "RockPaperScissors",
-        "framework": args.framework,
-    }
+    config = PGConfig().environment("RockPaperScissors").framework(args.framework)
 
     results = tune.Tuner(
         "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
@@ -100,19 +98,21 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
         else:
             return random.choice(["always_same", "beat_last"])
 
-    config = {
-        "env": "RockPaperScissors",
-        "gamma": 0.9,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "num_envs_per_worker": 4,
-        "rollout_fragment_length": 10,
-        "train_batch_size": 200,
-        "metrics_num_episodes_for_smoothing": 200,
-        "multiagent": {
-            "policies_to_train": ["learned"],
-            "policies": {
+    config = (
+        AlgorithmConfig(algo_class=algorithm)
+        .environment("RockPaperScissors")
+        .framework(args.framework)
+        .rollouts(
+            num_rollout_workers=0,
+            num_envs_per_worker=4,
+            rollout_fragment_length=10,
+        )
+        .training(
+            train_batch_size=200,
+            gamma=0.9,
+        )
+        .multi_agent(
+            policies={
                 "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
                 "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
                 "learned": PolicySpec(
@@ -122,12 +122,16 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
                     }
                 ),
             },
-            "policy_mapping_fn": select_policy,
-        },
-        "framework": args.framework,
-    }
-    cls = get_algorithm_class(algorithm) if isinstance(algorithm, str) else algorithm
-    algo = cls(config=config)
+            policy_mapping_fn=select_policy,
+            policies_to_train=["learned"],
+        )
+        .reporting(metrics_num_episodes_for_smoothing=200)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    algo = config.build()
+
     for _ in range(args.stop_iters):
         results = algo.train()
         # Timesteps reached.

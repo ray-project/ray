@@ -101,7 +101,7 @@ class TestAlgorithm(unittest.TestCase):
                 else:
                     new_pol = algo.add_policy(
                         pid,
-                        algo.get_default_policy_class(config.to_dict()),
+                        algo.get_default_policy_class(config),
                         # Test changing the mapping fn.
                         policy_mapping_fn=new_mapping_fn,
                         # Change the list of policies to train.

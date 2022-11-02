@@ -10,12 +10,12 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.agents import with_common_config
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -64,20 +64,8 @@ parser.add_argument(
 )
 
 
-# Define new Algorithm with custom execution_plan/workflow.
+# Define new Algorithm with custom `training_step()` method (training workflow).
 class MyAlgo(Algorithm):
-    @classmethod
-    @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        # Run this Algorithm with new `training_step` API and set some PPO-specific
-        # parameters.
-        return with_common_config(
-            {
-                "num_sgd_iter": 10,
-                "sgd_minibatch_size": 128,
-            }
-        )
-
     @override(Algorithm)
     def setup(self, config):
         # Call super's `setup` to create rollout workers.
@@ -168,13 +156,6 @@ if __name__ == "__main__":
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
 
-    # framework can be changed, so removed the hardcoded framework key
-    # from policy configs.
-    ppo_config = PPO_CONFIG
-    del ppo_config["framework"]
-    dqn_config = DQN_CONFIG
-    del dqn_config["framework"]
-
     # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
@@ -182,13 +163,13 @@ if __name__ == "__main__":
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
             None,
             None,
-            ppo_config,
+            PPOConfig().training(num_sgd_iter=10, sgd_minibatch_size=128),
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
-            dqn_config,
+            DQNConfig(),
         ),
     }
 
@@ -198,19 +179,15 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    config = {
-        "rollout_fragment_length": 50,
-        "num_workers": 0,
-        "env": "multi_agent_cartpole",
-        "multiagent": {
-            "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
-            "policies_to_train": ["dqn_policy", "ppo_policy"],
-        },
+    config = (
+        AlgorithmConfig()
+        .environment("multi_agent_cartpole")
+        .framework("torch" if args.torch else "tf")
+        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
+        .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "torch" if args.torch else "tf",
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -219,7 +196,7 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        MyAlgo, param_space=config, run_config=air.RunConfig(stop=stop)
+        MyAlgo, param_space=config.to_dict(), run_config=air.RunConfig(stop=stop)
     ).fit()
 
     if args.as_test:

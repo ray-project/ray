@@ -18,8 +18,6 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
@@ -380,34 +378,6 @@ def make_learner_thread(local_worker, config):
     return learner_thread
 
 
-def gather_experiences_directly(workers, config):
-    rollouts = ParallelRollouts(
-        workers,
-        mode="async",
-        num_async=config["max_requests_in_flight_per_sampler_worker"],
-    )
-
-    # Augment with replay and concat to desired train batch size.
-    train_batches = (
-        rollouts.for_each(lambda batch: batch.decompress_if_needed())
-        .for_each(
-            MixInReplay(
-                num_slots=config["replay_buffer_num_slots"],
-                replay_proportion=config["replay_proportion"],
-            )
-        )
-        .flatten()
-        .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
-        )
-    )
-
-    return train_batches
-
-
 # Update worker weights as they finish generating experiences.
 class BroadcastUpdateLearnerWeights:
     def __init__(self, learner_thread, workers, broadcast_interval):
@@ -451,8 +421,8 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ImpalaConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ImpalaConfig()
 
     @override(Algorithm)
     def get_default_policy_class(

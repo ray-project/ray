@@ -1,9 +1,12 @@
 from collections import defaultdict
 import copy
+from gym.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
+import numpy as np
 import os
 import platform
+import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -18,10 +21,6 @@ from typing import (
     Type,
     Union,
 )
-
-from gym.spaces import Discrete, MultiDiscrete, Space
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -1912,15 +1911,15 @@ class RolloutWorker(ParallelIteratorWorker):
         # Loop through given policy-dict and add each entry to our map.
         for name, policy_spec in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            # Update the general config with the specific config
-            # for this particular policy.
-            merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
-            update_dict = (
-                policy_spec.config.to_dict()
-                if isinstance(policy_spec.config, AlgorithmConfig)
-                else policy_spec.config
-            )
-            merged_conf.update_from_dict(update_dict or {})
+
+            # Policy brings its own complete AlgorithmConfig -> Use it for this policy.
+            if isinstance(policy_spec.config, AlgorithmConfig):
+                merged_conf = policy_spec.config
+            else:
+                # Update the general config with the specific config
+                # for this particular policy.
+                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
             merged_conf.worker_index = self.worker_index

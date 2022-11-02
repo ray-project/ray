@@ -13,10 +13,18 @@ from ray.train._internal.worker_group import WorkerGroup, Worker
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
-from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 from ray.util import PublicAPI
+
+try:
+    from ray.train.torch.torch_checkpoint import TorchCheckpoint
+except ImportError:
+    TorchCheckpoint = None
+
+try:
+    from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+except ImportError:
+    TensorflowCheckpoint = None
 
 
 @PublicAPI(stability="beta")
