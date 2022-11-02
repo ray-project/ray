@@ -61,6 +61,10 @@ class _TuneSessionImpl(Session):
     def trial_resources(self) -> "PlacementGroupFactory":
         return self._status_reporter.trial_resources
 
+    @property
+    def trial_dir(self) -> str:
+        return self._status_reporter.logdir
+
 
 @Deprecated(message=_deprecation_msg)
 def is_session_enabled() -> bool:

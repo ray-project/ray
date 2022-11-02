@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import ray
-from ray.cluster_utils import Cluster
 from ray.air import Checkpoint, session
 
 from ray.air.config import ScalingConfig
@@ -10,10 +8,10 @@ from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.torch_fashion_mnist_example import (
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.horovod.horovod_trainer import HorovodTrainer
@@ -23,41 +21,6 @@ from ray.train.tests.test_tune import (
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-
-
-@pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_1_cpu_1_gpu():
-    address_info = ray.init(num_cpus=1, num_gpus=1)
-    yield address_info
-    ray.shutdown()
-
-
-@pytest.fixture
-def shutdown_only():
-    yield None
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_2_node_2_gpu():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
@@ -136,7 +99,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.air.examples.pytorch.torch_regression_example import train_regression
+    from ray.train.examples.pytorch.torch_regression_example import train_regression
 
     assert train_regression(num_workers=2, use_gpu=True)
 

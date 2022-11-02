@@ -1,4 +1,3 @@
-
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,11 +47,6 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void HandleReportHeartbeat(rpc::ReportHeartbeatRequest request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle check alive request for GCS.
-  void HandleCheckAlive(rpc::CheckAliveRequest request,
-                        rpc::CheckAliveReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.

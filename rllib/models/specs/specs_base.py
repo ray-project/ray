@@ -28,7 +28,7 @@ class SpecsAbstract(abc.ABC):
 
 
 @DeveloperAPI
-class TensorSpecs(SpecsAbstract):
+class TensorSpec(SpecsAbstract):
     """A base class that specifies the shape and dtype of a tensor.
 
     Args:
@@ -230,11 +230,11 @@ class TensorSpecs(SpecsAbstract):
     def __repr__(self) -> str:
         return f"TensorSpec(shape={tuple(self.shape)}, dtype={self.dtype})"
 
-    def __eq__(self, other: "TensorSpecs") -> bool:
+    def __eq__(self, other: "TensorSpec") -> bool:
         """Checks if the shape and dtype of two specs are equal."""
-        if not isinstance(other, TensorSpecs):
+        if not isinstance(other, TensorSpec):
             return False
         return self.shape == other.shape and self.dtype == other.dtype
 
-    def __ne__(self, other: "TensorSpecs") -> bool:
+    def __ne__(self, other: "TensorSpec") -> bool:
         return not self == other

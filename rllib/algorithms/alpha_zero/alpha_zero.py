@@ -4,25 +4,13 @@ from typing import List, Optional, Type, Union
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.replay_ops import (
-    SimpleReplayBuffer,
-    Replay,
-    StoreToReplayBuffer,
-    WaitUntilTimestepsElapsed,
-)
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    ConcatBatches,
     synchronous_parallel_sample,
 )
-from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
-    TrainOneStep,
 )
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -38,7 +26,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
-from ray.util.iter import LocalIterator
 
 from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.algorithms.alpha_zero.mcts import MCTS
@@ -70,11 +57,11 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
+        ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -144,16 +131,17 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.framework_str = "torch"
         self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.batch_mode = "complete_episodes"
         # Extra configuration that disables exploration.
-        self.evaluation_config = {
+        self.evaluation(evaluation_config={
             "mcts_config": {
                 "argmax_tree_policy": True,
                 "add_dirichlet_noise": False,
             },
-        }
+        })
         # __sphinx_doc_end__
         # fmt: on
 
@@ -250,13 +238,22 @@ class AlphaZeroConfig(AlgorithmConfig):
         if mcts_config is not None:
             self.mcts_config = mcts_config
         if ranked_rewards is not None:
-            self.ranked_rewards = ranked_rewards
+            self.ranked_rewards.update(ranked_rewards)
         if num_steps_sampled_before_learning_starts is not None:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
 
         return self
+
+    def update_from_dict(self, config_dict) -> "AlphaZeroConfig":
+        config_dict = config_dict.copy()
+
+        if "ranked_rewards" in config_dict:
+            value = config_dict.pop("ranked_rewards")
+            self.training(ranked_rewards=value)
+
+        return super().update_from_dict(config_dict)
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
@@ -319,8 +316,8 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return AlphaZeroConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaZeroConfig()
 
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings."""
@@ -395,49 +392,6 @@ class AlphaZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    @staticmethod
-    @override(Algorithm)
-    def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "Alpha zero execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        if config["simple_optimizer"]:
-            train_op = rollouts.combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            ).for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-        else:
-            replay_buffer = SimpleReplayBuffer(config["buffer_size"])
-
-            store_op = rollouts.for_each(
-                StoreToReplayBuffer(local_buffer=replay_buffer)
-            )
-
-            replay_op = (
-                Replay(local_buffer=replay_buffer)
-                .filter(WaitUntilTimestepsElapsed(config["learning_starts"]))
-                .combine(
-                    ConcatBatches(
-                        min_batch_size=config["train_batch_size"],
-                        count_steps_by=config["multiagent"]["count_steps_by"],
-                    )
-                )
-                .for_each(TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-            )
-
-            train_op = Concurrently(
-                [store_op, replay_op], mode="round_robin", output_indexes=[1]
-            )
-
-        return StandardMetricsReporting(train_op, workers, config)
 
 
 # Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!

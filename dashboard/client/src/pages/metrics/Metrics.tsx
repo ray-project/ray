@@ -63,10 +63,23 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
+// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
 const METRICS_CONFIG = [
   {
     title: "Scheduler Task State",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
+  },
+  {
+    title: "Active Tasks by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+  },
+  {
+    title: "Scheduler Actor State",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+  },
+  {
+    title: "Active Actors by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
   },
   {
     title: "Scheduler CPUs (logical slots)",
@@ -81,11 +94,11 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
-    title: "Node CPU",
+    title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
   {
-    title: "Node GPU",
+    title: "Node GPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
   },
   {
@@ -93,11 +106,19 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
   },
   {
-    title: "Node Memory",
+    title: "Node Disk IO Speed",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
+  },
+  {
+    title: "Node Memory (heap + object store)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
   },
   {
-    title: "Node GPU Memory",
+    title: "Node Memory by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
+  },
+  {
+    title: "Node GPU Memory (GRAM)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
   },
   {
@@ -105,7 +126,7 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
   },
   {
-    title: "Instance count",
+    title: "Node Count",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
   },
 ];
@@ -115,7 +136,7 @@ export const Metrics = () => {
   const { grafanaHost } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.ONE_HOUR,
+    TimeRangeOptions.THIRTY_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,

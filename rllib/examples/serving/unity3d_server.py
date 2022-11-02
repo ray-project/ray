@@ -31,9 +31,9 @@ import argparse
 import os
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray.tune.registry import get_trainable_cls
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -48,7 +48,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -123,30 +123,27 @@ if __name__ == "__main__":
     # The entire config will be sent to connecting clients so they can
     # build their own samplers (and also Policy objects iff
     # `inference_mode=local` on clients' command line).
-    config = {
-        # Indicate that the Trainer we setup here doesn't need an actual env.
-        # Allow spaces to be determined by user (see below).
-        "env": None,
-        # Use the `PolicyServerInput` to generate experiences.
-        "input": _input,
-        # Use n worker processes to listen on different ports.
-        "num_workers": args.num_workers,
-        # Disable OPE, since the rollouts are coming from online clients.
-        "off_policy_estimation_methods": {},
-        # Other settings.
-        "train_batch_size": 256,
-        "rollout_fragment_length": 20,
-        # Multi-agent setup for the given env.
-        "multiagent": {
-            "policies": policies,
-            "policy_mapping_fn": policy_mapping_fn,
-        },
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
         # DL framework to use.
-        "framework": args.framework,
-    }
+        .framework(args.framework)
+        # Use n worker processes to listen on different ports.
+        .rollouts(
+            num_rollout_workers=args.num_workers,
+            rollout_fragment_length=20,
+        )
+        .training(train_batch_size=256)
+        # Multi-agent setup for the given env.
+        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
+        # Use the `PolicyServerInput` to generate experiences.
+        .offline_data(input_=_input)
+        # Disable OPE, since the rollouts are coming from online clients.
+        .evaluation(off_policy_estimation_methods={})
+    )
 
     # Create the Trainer used for Policy serving.
-    algo = get_algorithm_class(args.run)(config=config)
+    algo = config.build()
 
     # Attempt to restore from checkpoint if possible.
     checkpoint_path = CHECKPOINT_FILE.format(args.env)

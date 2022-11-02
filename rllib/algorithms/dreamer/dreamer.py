@@ -11,7 +11,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
@@ -41,8 +40,8 @@ class DreamerConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray import air
@@ -99,7 +98,6 @@ class DreamerConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
-        self.num_workers = 0
         self.num_envs_per_worker = 1
         self.horizon = 1000
         self.batch_mode = "complete_episodes"
@@ -113,11 +111,10 @@ class DreamerConfig(AlgorithmConfig):
         self.num_steps_sampled_before_learning_starts = 0
 
         # .environment()
-        self.env_config = {
+        self.env_config.update({
             # Repeats action send by policy for frame_skip times in env
             "frame_skip": 2,
-        }
-
+        })
         # __sphinx_doc_end__
         # fmt: on
 
@@ -300,8 +297,8 @@ class DreamerIteration:
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DreamerConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DreamerConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -334,55 +331,19 @@ class Dreamer(Algorithm):
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        # `training_iteration` implementation: Setup buffer in `setup`, not
-        # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = EpisodeSequenceBuffer(
-                replay_sequence_length=config["batch_length"]
-            )
 
-            # Prefill episode buffer with initial exploration (uniform sampling)
-            while (
-                total_sampled_timesteps(self.workers.local_worker())
-                < self.config["prefill_timesteps"]
-            ):
-                samples = self.workers.local_worker().sample()
-                self.local_replay_buffer.add(samples)
-
-    @staticmethod
-    @override(Algorithm)
-    def execution_plan(workers, config, **kwargs):
-        assert (
-            len(kwargs) == 0
-        ), "Dreamer execution_plan does NOT take any additional parameters"
-
-        # Special replay buffer for Dreamer agent.
-        episode_buffer = EpisodeSequenceBuffer(
+        # Setup buffer.
+        self.local_replay_buffer = EpisodeSequenceBuffer(
             replay_sequence_length=config["batch_length"]
         )
 
-        local_worker = workers.local_worker()
-
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
-            samples = local_worker.sample()
-            episode_buffer.add(samples)
-
-        batch_size = config["batch_size"]
-        dreamer_train_iters = config["dreamer_train_iters"]
-        act_repeat = config["action_repeat"]
-
-        rollouts = ParallelRollouts(workers)
-        rollouts = rollouts.for_each(
-            DreamerIteration(
-                local_worker,
-                episode_buffer,
-                dreamer_train_iters,
-                batch_size,
-                act_repeat,
-            )
-        )
-        return rollouts
+        while (
+            total_sampled_timesteps(self.workers.local_worker())
+            < self.config["prefill_timesteps"]
+        ):
+            samples = self.workers.local_worker().sample()
+            self.local_replay_buffer.add(samples)
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:

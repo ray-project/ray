@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -11,8 +12,9 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
+from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
@@ -317,6 +319,98 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
         ),
     )
     tuner.fit()
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_tuner_no_chdir_to_trial_dir(runtime_env):
+    """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
+    reading relatives paths to the original working directory.
+    Also tests that `session.get_trial_dir()` env variable can be used as the directory
+    to write data to within the Trainable.
+    """
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=1, runtime_env=runtime_env)
+
+    # Write a data file that we want to read in our training loop
+    with open("./read.txt", "w") as f:
+        f.write("data")
+
+    def train_func(config):
+        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
+        assert orig_working_dir == os.getcwd(), (
+            "Working directory should not have changed from "
+            f"{orig_working_dir} to {os.getcwd()}"
+        )
+        # Make sure we can access the data from the original working dir
+        assert os.path.exists("./read.txt") and open("./read.txt", "r").read() == "data"
+
+        # Write operations should happen in each trial's independent logdir to
+        # prevent write conflicts
+        trial_dir = Path(session.get_trial_dir())
+        with open(trial_dir / "write.txt", "w") as f:
+            f.write(f"{config['id']}")
+        # Make sure we didn't write to the working dir
+        assert not os.path.exists(orig_working_dir / "write.txt")
+        # Make sure that the file we wrote to isn't overwritten
+        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
+
+    tuner = Tuner(
+        train_func,
+        tune_config=TuneConfig(
+            chdir_to_trial_dir=False,
+        ),
+        param_space={"id": tune.grid_search(list(range(4)))},
+    )
+    tuner.fit()
+    ray.shutdown()
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_tuner_relative_pathing_with_env_vars(runtime_env):
+    """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
+    relative paths to the original working directory.
+    """
+    # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
+    # Tune should still chdir to the trial directory, since we didn't disable the
+    # `chdir_to_trial_dir` flag.
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=1, runtime_env=runtime_env)
+
+    # Write a data file that we want to read in our training loop
+    with open("./read.txt", "w") as f:
+        f.write("data")
+
+    def train_func(config):
+        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
+        assert (
+            str(orig_working_dir) != os.getcwd()
+        ), f"Working directory should have changed from {orig_working_dir}"
+
+        # Make sure we can access the data from the original working dir
+        # Different from above: create an absolute path using the env variable
+        data_path = orig_working_dir / "read.txt"
+        assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
+
+        trial_dir = Path(session.get_trial_dir())
+        # Tune should have changed the working directory to the trial directory
+        assert str(trial_dir) == os.getcwd()
+
+        with open(trial_dir / "write.txt", "w") as f:
+            f.write(f"{config['id']}")
+        assert not os.path.exists(orig_working_dir / "write.txt")
+        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
+
+    tuner = Tuner(
+        train_func,
+        tune_config=TuneConfig(
+            chdir_to_trial_dir=True,
+        ),
+        param_space={"id": tune.grid_search(list(range(4)))},
+    )
+    tuner.fit()
+    ray.shutdown()
 
 
 if __name__ == "__main__":
