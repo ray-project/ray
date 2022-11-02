@@ -18,8 +18,7 @@ class TestWorkerSet(unittest.TestCase):
         ray.shutdown()
 
     def test_foreach_worker(self):
-        """Test to make sure basic sychronous calls to remote workers work.
-        """
+        """Test to make sure basic sychronous calls to remote workers work."""
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
@@ -47,9 +46,8 @@ class TestWorkerSet(unittest.TestCase):
 
         ws.stop()
 
-    def test_foreach_worker(self):
-        """Test to make sure basic asychronous calls to remote workers work.
-        """
+    def test_foreach_worker_async(self):
+        """Test to make sure basic asychronous calls to remote workers work."""
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,

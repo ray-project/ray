@@ -652,6 +652,7 @@ class WorkerSet:
         func: Callable[[RolloutWorker], T],
         *,
         local_worker=True,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
         remote_worker_indices: List[int] = None,
         timeout_seconds=None,
@@ -688,6 +689,7 @@ class WorkerSet:
         self,
         func: Callable[[RolloutWorker], T],
         *,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
         remote_worker_indices: List[int] = None,
     ) -> int:
@@ -751,10 +753,7 @@ class WorkerSet:
         results = []
         if self.local_worker() is not None:
             results = self.local_worker().foreach_policy(func)
-        remote_results = self.foreach_worker(
-            lambda w: w.foreach_policy(func),
-            healthy_only=True,
-        )
+        remote_results = self.foreach_worker(lambda w: w.foreach_policy(func))
         for r in remote_results:
             results.extend(r)
         return results
@@ -775,10 +774,7 @@ class WorkerSet:
         results = []
         if self.local_worker() is not None:
             results = self.local_worker().foreach_policy_to_train(func)
-        remote_results = self.foreach_worker(
-            lambda w: w.foreach_policy_to_train(func),
-            healthy_only=True,
-        )
+        remote_results = self.foreach_worker(lambda w: w.foreach_policy_to_train(func))
         for r in remote_results:
             results.extend(r)
         return results
@@ -803,9 +799,7 @@ class WorkerSet:
         local_results = []
         if self.local_worker() is not None:
             local_results = [self.local_worker().foreach_env(func)]
-        remote_results = self.foreach_worker(
-            lambda w: w.foreach_env(func), healthy_only=True
-        )
+        remote_results = self.foreach_worker(lambda w: w.foreach_env(func))
         return local_results + remote_results
 
     @DeveloperAPI
@@ -831,9 +825,7 @@ class WorkerSet:
         local_results = []
         if self.local_worker() is not None:
             local_results = [self.local_worker().foreach_env_with_context(func)]
-        remote_results = self.foreach_worker(
-            lambda w: w.foreach_env_with_context(func), healthy_only=True
-        )
+        remote_results = self.foreach_worker(lambda w: w.foreach_env_with_context(func))
         return local_results + remote_results
 
     @staticmethod
