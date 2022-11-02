@@ -1,0 +1,14 @@
+# Custom "add" resolver defined below
+py_modules: "${add: ${config.default_modules}, ${config.additional_modules}}"
+# Read env var from local environment
+env_vars:
+  foo: ${oc.env:RAY_TEST_RUNTIME_ENV_foo}
+
+config:
+  additional_modules:
+    - p3
+  default_modules:
+    - p1
+    - p2
+  resolvers:
+    add: operator.add

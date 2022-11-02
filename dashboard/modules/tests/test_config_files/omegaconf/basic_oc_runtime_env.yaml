@@ -1,0 +1,8 @@
+working_dir: ${config.folder}/wd
+
+env_vars:
+  foo: ${config.foo_value}
+
+config:
+  foo_value: bar
+  folder: /home

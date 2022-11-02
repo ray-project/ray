@@ -14,6 +14,11 @@ try:
 except ImportError:
     requests = None
 
+try:
+    from omegaconf import OmegaConf
+except ImportError:
+    OmegaConf = None
+
 
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -25,6 +30,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.storage import _load_class
 from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -53,8 +59,17 @@ def parse_runtime_env_args(
             raise ValueError(
                 "Only one of --runtime_env and --runtime-env-json can be provided."
             )
-        with open(runtime_env, "r") as f:
-            final_runtime_env = yaml.safe_load(f)
+        if OmegaConf is not None:
+            runtime_cfg = OmegaConf.load(runtime_env)
+            if runtime_cfg.get("config", {}).get("resolvers"):
+                for resolver_name, resolver_function in runtime_cfg.config.resolvers.items():
+                    OmegaConf.register_new_resolver(resolver_name, _load_class(resolver_function))
+            final_runtime_env = OmegaConf.to_container(runtime_cfg, resolve=True)
+            if "config" in final_runtime_env:
+                del final_runtime_env["config"]
+        else:
+            with open(runtime_env, "r") as f:
+                final_runtime_env = yaml.safe_load(f)
 
     elif runtime_env_json is not None:
         final_runtime_env = json.loads(runtime_env_json)
