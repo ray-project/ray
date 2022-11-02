@@ -33,7 +33,8 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-
+from ray._private.event.event_logger import get_event_logger
+from ray.core.generated.event_pb2 import Event
 
 logger = logging.getLogger(__name__)
 
@@ -410,12 +411,17 @@ class JobManager:
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
 
-    def __init__(self, gcs_aio_client: GcsAioClient):
+    def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self.monitored_jobs = set()
+        try:
+            self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
+        except Exception:
+            self.event_logger = None
 
         create_task(self._recover_running_jobs())
 
@@ -447,6 +453,19 @@ class JobManager:
         This is necessary because we need to handle the case where the
         JobSupervisor dies unexpectedly.
         """
+        if job_id in self.monitored_jobs:
+            logger.debug(f"Job {job_id} is already being monitored.")
+            return
+
+        self.monitored_jobs.add(job_id)
+        try:
+            await self._monitor_job_internal(job_id, job_supervisor)
+        finally:
+            self.monitored_jobs.remove(job_id)
+
+    async def _monitor_job_internal(
+        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+    ):
         is_alive = True
         if job_supervisor is None:
             job_supervisor = self._get_actor_for_job(job_id)
@@ -467,26 +486,42 @@ class JobManager:
             except Exception as e:
                 is_alive = False
                 job_status = await self._job_info_client.get_status(job_id)
+                job_error_message = None
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
+                    job_error_message = f"runtime_env setup failed: {e}"
+                    job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
-                        JobStatus.FAILED,
-                        message=f"runtime_env setup failed: {e}",
+                        job_status,
+                        message=job_error_message,
                     )
                 else:
                     logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
+                    job_error_message = f"Unexpected error occurred: {e}"
+                    job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
-                        JobStatus.FAILED,
-                        message=f"Unexpected error occurred: {e}",
+                        job_status,
+                        message=job_error_message,
                     )
+
+                # Log events
+                if self.event_logger:
+                    event_log = (
+                        f"Completed a ray job {job_id} with a status {job_status}."
+                    )
+                    if job_error_message:
+                        event_log += f" {job_error_message}"
+                        self.event_logger.error(event_log, submission_id=job_id)
+                    else:
+                        self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
@@ -631,6 +666,10 @@ class JobManager:
         # up.
         try:
             scheduling_strategy = await self._get_scheduling_strategy()
+            if self.event_logger:
+                self.event_logger.info(
+                    f"Started a ray job {submission_id}.", submission_id=submission_id
+                )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
