@@ -547,6 +547,9 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
     by a function contains the provided list of strings.
     Raises an exception if the stdout doesn't have the expected output in time.
 
+    Note: The decorated function should not block!
+    (It should return soon after being called.)
+
     Args:
         strings_to_match: Wait until stdout contains all of these string.
         timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
@@ -560,7 +563,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Redirect stdout to an in-memory stream.
                 out_stream = io.StringIO()
                 sys.stdout = out_stream
-                # Execute the func.
+                # Execute the func. (Make sure the function doesn't block!)
                 out = func(*args, **kwargs)
                 # Check out_stream once a second until the timeout.
                 # Raise a RuntimeError if we timeout.
@@ -575,6 +578,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # out_stream has the expected strings
                 success = True
                 return out
+            # Exception raised on failure.
             finally:
                 sys.stdout = sys.__stdout__
                 if success:
