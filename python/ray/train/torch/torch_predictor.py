@@ -8,7 +8,6 @@ from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
 

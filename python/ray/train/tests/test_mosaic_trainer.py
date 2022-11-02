@@ -10,7 +10,7 @@ import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
-from ray.train.mosaic.mosaic_predictor import MosaicPredictor
+from ray.train.torch import TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 
 
@@ -467,7 +467,7 @@ def test_batch_predict(ray_start_4_cpus):
 
     predictor = BatchPredictor.from_checkpoint(
         checkpoint=result.checkpoint,
-        predictor_cls=MosaicPredictor,
+        predictor_cls=TorchPredictor,
         model=model,
     )
 
