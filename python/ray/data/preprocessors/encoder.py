@@ -536,12 +536,14 @@ def _get_unique_value_indices(
         return Counter(col.value_counts(dropna=False).to_dict())
 
     def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+        df_columns = df.columns.tolist()
+        result = {}
         for col in columns:
-            if col in df.columns.tolist():
-                result = [{col: get_pd_value_counts_per_column(df[col])}]
+            if col in df_columns:
+                result[col] = get_pd_value_counts_per_column(df[col])
             else:
-                raise ValueError(f"'{col}' does not exist as a label name in df")
-        return result
+                raise ValueError(f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}")
+        return [result]
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
