@@ -25,14 +25,13 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
@@ -244,52 +243,7 @@ class UpdateKL:
         self.workers.local_worker().foreach_policy_to_train(update)
 
 
-def warn_about_bad_reward_scales(config, result):
-    if result["policy_reward_mean"]:
-        return result  # Punt on handling multiagent case.
-
-    # Warn about excessively high VF loss.
-    learner_info = result["info"][LEARNER_INFO]
-    if DEFAULT_POLICY_ID in learner_info:
-        scaled_vf_loss = (
-            config["vf_loss_coeff"]
-            * learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
-        )
-
-        policy_loss = learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["policy_loss"]
-        if config.get("model", {}).get("vf_share_layers") and scaled_vf_loss > 100:
-            logger.warning(
-                "The magnitude of your value function loss is extremely large "
-                "({}) compared to the policy loss ({}). This can prevent the "
-                "policy from learning. Consider scaling down the VF loss by "
-                "reducing vf_loss_coeff, or disabling vf_share_layers.".format(
-                    scaled_vf_loss, policy_loss
-                )
-            )
-
-    # Warn about bad clipping configs
-    if config["vf_clip_param"] <= 0:
-        rew_scale = float("inf")
-    else:
-        rew_scale = round(
-            abs(result["episode_reward_mean"]) / config["vf_clip_param"], 0
-        )
-    if rew_scale > 200:
-        logger.warning(
-            "The magnitude of your environment rewards are more than "
-            "{}x the scale of `vf_clip_param`. ".format(rew_scale)
-            + "This means that it will take more than "
-            "{} iterations for your value ".format(rew_scale)
-            + "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`."
-        )
-
-    return result
-
-
 class PPO(Algorithm):
-    # TODO: Change the return value of this method to return a AlgorithmConfig object
-    #  instead.
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

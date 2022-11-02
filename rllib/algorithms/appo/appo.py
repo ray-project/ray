@@ -207,16 +207,9 @@ class APPO(Impala):
 
     @override(Impala)
     def setup(self, config: PartialAlgorithmConfigDict):
-        # Before init: Add the update target and kl hook.
-        # This hook is called explicitly after each learner step in the
-        # execution setup for IMPALA.
-        if config.get("_disable_execution_plan_api", True) is False:
-            config["after_train_step"] = UpdateTargetAndKL
-
         super().setup(config)
 
-        if self.config["_disable_execution_plan_api"] is True:
-            self.update_kl = UpdateKL(self.workers)
+        self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
