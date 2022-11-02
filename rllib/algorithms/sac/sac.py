@@ -293,7 +293,8 @@ class SACConfig(AlgorithmConfig):
 
         # Check rollout_fragment_length to be compatible with n_step.
         if (
-            self.rollout_fragment_length != "auto"
+            not self.in_evaluation
+            and self.rollout_fragment_length != "auto"
             and self.rollout_fragment_length < self.n_step
         ):
             raise ValueError(
