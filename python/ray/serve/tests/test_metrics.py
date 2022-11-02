@@ -12,7 +12,7 @@ import ray.experimental.state.api as state_api
 
 
 @pytest.fixture
-def start_and_stop_serve():
+def serve_start_shutdown():
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
         _metrics_export_port=9999,
@@ -26,7 +26,7 @@ def start_and_stop_serve():
     ray.shutdown()
 
 
-def test_serve_metrics_for_successful_connection(serve_instance):
+def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     @serve.deployment(name="metrics")
     async def f(request):
         return "hello"
@@ -83,7 +83,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         verify_metrics(do_assert=True)
 
 
-def test_http_metrics(serve_instance):
+def test_http_metrics(serve_start_shutdown):
 
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -170,7 +170,7 @@ def test_http_metrics(serve_instance):
         verify_error_count(do_assert=True)
 
 
-def test_http_metrics_fields(start_and_stop_serve):
+def test_http_metrics_fields(serve_start_shutdown):
     """Tests the http metrics' fields' behavior."""
 
     @serve.deployment(route_prefix="/real_route")
