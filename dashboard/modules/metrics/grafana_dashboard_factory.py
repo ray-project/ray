@@ -406,7 +406,7 @@ def generate_grafana_dashboard() -> str:
     return json.dumps(base_json, indent=4)
 
 
-def _generate_grafana_panels() -> dict:
+def _generate_grafana_panels() -> List[dict]:
     panels = []
     for i, panel in enumerate(GRAFANA_PANELS):
         template = copy.deepcopy(PANEL_TEMPLATE)
@@ -425,7 +425,7 @@ def _generate_grafana_panels() -> dict:
     return panels
 
 
-def _generate_targets(panel: Panel) -> dict:
+def _generate_targets(panel: Panel) -> List[dict]:
     targets = []
     for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
         template = copy.deepcopy(TARGET_TEMPLATE)
