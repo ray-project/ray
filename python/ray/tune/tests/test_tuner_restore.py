@@ -59,6 +59,13 @@ def _train_fn_sometimes_failing(config, checkpoint_dir=None):
     session.report(state, checkpoint=Checkpoint.from_dict(state))
 
 
+class MockData:
+    def __init__(self):
+        import numpy as np
+
+        self.data = np.random.rand((2 * 1024 * 1024))
+
+
 class _FailOnStats(Callback):
     """Fail when at least num_trials exist and num_finished have finished."""
 
@@ -495,6 +502,100 @@ def test_retore_retry(ray_start_4_cpus, retry_num):
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
+
+
+def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
+    class FailingTrainable(Trainable):
+        def setup(self, config, data_str=None, data_obj=None):
+            assert data_str is not None and data_obj is not None
+            self.idx = 0
+            self._is_restored = False
+            self.fail_idx = config.get("fail_idx", 1)
+
+        def step(self):
+            if self.idx == self.fail_idx and not self._is_restored:
+                raise RuntimeError(
+                    f"===== First run fails at idx={self.fail_idx} ====="
+                )
+            self.idx += 1
+            return {"score": self.idx}
+
+        def save_checkpoint(self, checkpoint_dir):
+            return {"idx": self.idx}
+
+        def load_checkpoint(self, checkpoint_dict):
+            self._is_restored = True
+            self.idx = checkpoint_dict["idx"]
+
+    data = MockData()
+    tuner = Tuner(
+        tune.with_parameters(FailingTrainable, data_str="data", data_obj=data),
+        run_config=RunConfig(
+            name="restore_with_params",
+            local_dir=str(tmp_path),
+            stop={"training_iteration": 3},
+            failure_config=FailureConfig(max_failures=0),
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        ),
+    )
+    tuner.fit()
+
+    ray.shutdown()
+    ray.init(num_cpus=4, configure_logging=False)
+
+    # Restoring should fail if we don't re-specify all the attached objects
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmp_path / "restore_with_params"),
+            with_parameters=dict(data_str="data"),
+            resume_errored=True,
+        )
+
+    tuner = Tuner.restore(
+        str(tmp_path / "restore_with_params"),
+        with_parameters=dict(data_str="data", data_obj=data),
+        resume_errored=True,
+    )
+    results = tuner.fit()
+    assert not results.errors
+
+
+def test_restore_with_parameters_fn(ray_start_4_cpus, tmp_path):
+    def train_func(config, data_str=None, data_obj=None):
+        assert data_str is not None and data_obj is not None
+        _train_fn_sometimes_failing(config)
+
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    data = MockData()
+    tuner = Tuner(
+        tune.with_parameters(train_func, data_str="data", data_obj=data),
+        param_space={"failing_hanging": (fail_marker, None)},
+        run_config=RunConfig(name="restore_with_params", local_dir=str(tmp_path)),
+    )
+    tuner.fit()
+
+    ray.shutdown()
+    ray.init(num_cpus=4, configure_logging=False)
+    fail_marker.unlink()
+
+    # Restoring should fail if we don't re-specify all the attached objects
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmp_path / "restore_with_params"),
+            with_parameters=dict(data_str="data"),
+            resume_errored=True,
+        )
+
+    tuner = Tuner.restore(
+        str(tmp_path / "restore_with_params"),
+        with_parameters=dict(data_str="data", data_obj=data),
+        resume_errored=True,
+    )
+    results = tuner.fit()
+
+    assert not results.errors
 
 
 if __name__ == "__main__":
