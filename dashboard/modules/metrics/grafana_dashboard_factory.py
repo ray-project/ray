@@ -336,7 +336,7 @@ PANEL_TEMPLATE = {
     "timeFrom": None,
     "timeRegions": [],
     "timeShift": None,
-    "title": "Scheduler Task State",
+    "title": "<Title>",
     "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
     "type": "graph",
     "xaxis": {
@@ -349,7 +349,7 @@ PANEL_TEMPLATE = {
     "yaxes": [
         {
             "$$hashKey": "object:628",
-            "format": "tasks",
+            "format": "units",
             "label": "",
             "logBase": 1,
             "max": None,
