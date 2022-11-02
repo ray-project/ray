@@ -331,8 +331,13 @@ def test_autoscaler_cluster_events(shutdown_only):
         def g():
             print("cpu ok")
 
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 2)
         ray.get(f.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 4)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
         ray.get(g.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 8)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
 
         # Trigger an infeasible task
         g.options(num_cpus=0, num_gpus=5).remote()
