@@ -73,7 +73,7 @@ class A2CConfig(A3CConfig):
 
         # Override some of A3CConfig's default values with A2C-specific values.
         self.num_rollout_workers = 2
-        self.rollout_fragment_length = 20
+        self.rollout_fragment_length = "auto"
         self.sample_async = False
         self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
@@ -111,44 +111,33 @@ class A2CConfig(A3CConfig):
         super().validate()
 
         if self.microbatch_size:
-            # Train batch size needs to be significantly larger than microbatch_size.
-            if self.train_batch_size / self.microbatch_size < 3:
-                logger.warning(
-                    "`train_batch_size` should be considerably larger (at least 3x) "
-                    "than `microbatch_size` for a microbatching setup to make sense!"
-                )
-            # Rollout fragment length needs to be less than microbatch_size.
-            if self.rollout_fragment_length > self.microbatch_size:
-                logger.warning(
-                    "`rollout_fragment_length` should not be larger than "
-                    "`microbatch_size` (try setting them to the same value)! "
-                    "Otherwise, microbatches of desired size won't be achievable."
-                )
+            if self.train_batch_size != "auto":
+                # Train batch size needs to be significantly larger than microbatch
+                # size.
+                if self.train_batch_size / self.microbatch_size < 3:
+                    logger.warning(
+                        "`train_batch_size` should be considerably larger (at least 3x)"
+                        " than `microbatch_size` for a microbatching setup to make "
+                        "sense!"
+                    )
+                # Rollout fragment length needs to be less than microbatch_size.
+                if self.rollout_fragment_length > self.microbatch_size:
+                    logger.warning(
+                        "`rollout_fragment_length` should not be larger than "
+                        "`microbatch_size` (try setting them to the same value)! "
+                        "Otherwise, microbatches of desired size won't be achievable."
+                    )
 
             if self.num_gpus > 1:
                 raise AttributeError(
                     "A2C does not support multiple GPUs when micro-batching is set."
                 )
-        else:
-            sample_batch_size = (
-                self.rollout_fragment_length
-                * self.num_rollout_workers
-                * self.num_envs_per_worker
-            )
-            if self.train_batch_size < sample_batch_size:
-                raise ValueError(
-                    f"`train_batch_size` ({self.train_batch_size}) "
-                    "cannot be smaller than sample_batch_size "
-                    "(`rollout_fragment_length` x `num_workers` x "
-                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
-                    " is not set. This is to"
-                    " ensure that only on gradient update is applied to policy in every"
-                    " iteration on the entire collected batch. As a result of we do not"
-                    " change the policy too much before we sample again and stay on"
-                    " policy as much as possible. This will help the learning"
-                    " stability."
-                    f" Try setting `train_batch_size` to {sample_batch_size}."
-                )
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            if self.microbatch_size:
+                return self.microbatch_size
+        return super().get_rollout_fragment_length(worker_index)
 
 
 class A2C(A3C):
