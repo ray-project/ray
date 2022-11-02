@@ -318,6 +318,8 @@ class _WandbLoggingProcess(Process):
     ):
         super(_WandbLoggingProcess, self).__init__()
 
+        import wandb
+
         self._wandb = wandb
 
         os.chdir(logdir)
@@ -570,6 +572,9 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues[trial].put((_QueueItem.END, None))
         self._trial_processes[trial].join(timeout=10)
 
+        if self._trial_processes[trial].is_alive():
+            self._trial_processes[trial].kill()
+
         del self._trial_queues[trial]
         del self._trial_processes[trial]
 
@@ -578,5 +583,9 @@ class WandbLoggerCallback(LoggerCallback):
             if trial in self._trial_queues:
                 self._trial_queues[trial].put((_QueueItem.END, None))
             self._trial_processes[trial].join(timeout=2)
+
+            if self._trial_processes[trial].is_alive():
+                self._trial_processes[trial].kill()
+
         self._trial_processes = {}
         self._trial_queues = {}
