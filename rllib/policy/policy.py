@@ -890,7 +890,7 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()},
         )
 
-
+    @DeveloperAPI
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
