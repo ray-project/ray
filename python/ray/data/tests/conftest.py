@@ -4,12 +4,15 @@ import posixpath
 import pytest
 import pyarrow as pa
 import pandas as pd
+import numpy as np
 
 import ray
 
 from ray.data.block import BlockAccessor
 from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -262,3 +265,84 @@ def enable_automatic_tensor_extension_cast(request):
     ctx.enable_tensor_extension_casting = request.param
     yield request.param
     ctx.enable_tensor_extension_casting = original
+
+
+# ===== Pandas dataset formats =====
+@pytest.fixture(scope="function")
+def ds_pandas_single_column_format():
+    in_df = pd.DataFrame({"column_1": [1, 2, 3, 4]})
+    yield ray.data.from_pandas(in_df)
+
+
+@pytest.fixture(scope="function")
+def ds_pandas_multi_column_format():
+    in_df = pd.DataFrame({"column_1": [1, 2, 3, 4], "column_2": [1, -1, 1, -1]})
+    yield ray.data.from_pandas(in_df)
+
+
+@pytest.fixture(scope="function")
+def ds_pandas_list_multi_column_format():
+    in_df = pd.DataFrame({"column_1": [1], "column_2": [1]})
+    yield ray.data.from_pandas([in_df] * 4)
+
+
+# ===== Arrow dataset formats =====
+@pytest.fixture(scope="function")
+def ds_arrow_single_column_format():
+    yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
+
+
+@pytest.fixture(scope="function")
+def ds_arrow_single_column_tensor_format():
+    yield ray.data.from_arrow(
+        pa.table(
+            {
+                TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
+                    np.arange(16).reshape((4, 2, 2))
+                )
+            }
+        )
+    )
+
+
+@pytest.fixture(scope="function")
+def ds_arrow_multi_column_format():
+    yield ray.data.from_arrow(
+        pa.table(
+            {
+                "column_1": [1, 2, 3, 4],
+                "column_2": [1, -1, 1, -1],
+            }
+        )
+    )
+
+
+@pytest.fixture(scope="function")
+def ds_list_arrow_multi_column_format():
+    yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
+
+
+# ===== Numpy dataset formats =====
+@pytest.fixture(scope="function")
+def ds_numpy_single_column_tensor_format():
+    yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))
+
+
+@pytest.fixture(scope="function")
+def ds_numpy_list_of_ndarray_tensor_format():
+    yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
+
+
+@pytest.fixture(params=["5.0.0", "7.0.0"])
+def unsupported_pyarrow_version(request):
+    orig_version = pa.__version__
+    pa.__version__ = request.param
+    yield request.param
+    pa.__version__ = orig_version
+
+
+@pytest.fixture
+def disable_pyarrow_version_check():
+    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
+    yield
+    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
