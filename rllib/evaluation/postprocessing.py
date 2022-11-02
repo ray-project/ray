@@ -178,18 +178,18 @@ def compute_gae_for_sample_batch(
         input_dict = sample_batch.get_single_step_input_dict(
             policy.model.view_requirements, index="last"
         )
-        
+
         if is_overridden(policy.make_rl_module):
-            # TODO (Kourosh) This is a hack which I don't like at all. We need a 
+            # TODO (Kourosh) This is a hack which I don't like at all. We need a
             # permanent solution.
-            # Note: During sampling you are using the parameters at the beginning of 
-            # the sampling process. If I'll be using this advantages during training 
-            # should it not be the latest parameters during training for this to be 
-            # correct? Does this mean that I need to preserve the trajectory 
-            # information during training and compute the advantages inside the loss 
+            # Note: During sampling you are using the parameters at the beginning of
+            # the sampling process. If I'll be using this advantages during training
+            # should it not be the latest parameters during training for this to be
+            # correct? Does this mean that I need to preserve the trajectory
+            # information during training and compute the advantages inside the loss
             # function?
-            # Another thing I need to figure out is which end point to call here? 
-            # forward_exploration? what if this method is getting called inside the 
+            # Another thing I need to figure out is which end point to call here?
+            # forward_exploration? what if this method is getting called inside the
             # learner loop? forward_postprocess_trajectory?
             input_dict = policy._lazy_tensor_dict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)

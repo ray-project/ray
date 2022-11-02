@@ -5,7 +5,7 @@ import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
-    compute_gae_for_sample_batch
+    compute_gae_for_sample_batch,
 )
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,7 +14,6 @@ from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
-    ValueNetworkMixin,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
@@ -27,14 +26,17 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_rl_module import (
+    SimplePPOModule,
+    PPOModuleConfig,
+    FCConfig,
+)
+
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_rl_module import (
-    SimplePPOModule, PPOModuleConfig, FCConfig
-)
 
 class PPOTorchPolicyV2(
     LearningRateSchedule,
@@ -43,13 +45,15 @@ class PPOTorchPolicyV2(
     TorchPolicyV2,
 ):
     """PyTorch policy class used with PPO.
-    
+
     This class is copied from PPOTorchPolicy (V1) and is modified to support RLModules.
     Some subtle differences:
-    - if make_rl_module is implemented by the policy the policy is assumed to be v2 and self.model would be an RLModule
+    - if make_rl_module is implemented by the policy the policy is assumed to be v2 and
+        self.model would be an RLModule
     - Tower stats no longer belongs to the RLModule
     - Connectors should be enabled to use this policy
-    - So far it only works for CartPole and Pendulum (needs model catalog to work for other obs and action spaces)
+    - So far it only works for CartPole and Pendulum (needs model catalog to work for
+        other obs and action spaces)
 
     """
 
@@ -142,7 +146,9 @@ class PPOTorchPolicyV2(
             reduce_mean_valid = torch.mean
 
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(**train_batch[SampleBatch.ACTION_DIST_INPUTS])
+        prev_action_dist = action_dist_class(
+            **train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
         logp_ratio = torch.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
@@ -173,7 +179,7 @@ class PPOTorchPolicyV2(
         # Compute a value function loss.
         if self.config["use_critic"]:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = (value_fn_out - train_batch[Postprocessing.VALUE_TARGETS])**2
+            vf_loss = (value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]) ** 2
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
@@ -192,7 +198,7 @@ class PPOTorchPolicyV2(
         if self.config["kl_coeff"] > 0.0:
             total_loss += self.kl_coeff * mean_kl_loss
 
-        # TODO (Kourosh) Where would tower_stats go? How should stats_fn be implemented 
+        # TODO (Kourosh) Where would tower_stats go? How should stats_fn be implemented
         # here?
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
@@ -242,7 +248,7 @@ class PPOTorchPolicyV2(
     @override(TorchPolicyV2)
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
-    ):  
+    ):
         # Do all post-processing always with no_grad().
         # Not using this here will introduce a memory leak
         # in torch (issue #6962).

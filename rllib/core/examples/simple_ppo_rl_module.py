@@ -259,7 +259,9 @@ class SimplePPOModule(TorchRLModule):
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         """PPO forward pass during exploration.
 
-        Besides the action distribution, this method also returns the parameters of the policy distribution to be used for computing KL divergence between the old policy and the new policy during training.
+        Besides the action distribution, this method also returns the parameters of the
+        policy distribution to be used for computing KL divergence between the old
+        policy and the new policy during training.
         """
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:

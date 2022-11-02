@@ -486,7 +486,7 @@ class Policy(metaclass=ABCMeta):
         return (
             single_action,
             [s[0] for s in state_out],
-            tree.map_structure(lambda x: x[0], info)
+            tree.map_structure(lambda x: x[0], info),
         )
 
     @DeveloperAPI
@@ -1251,7 +1251,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # with RL modules you want the explore to be True for initialization of the 
+        # with RL modules you want the explore to be True for initialization of the
         # tensors and placeholder you'd need for training
         explore = is_overridden(self.make_rl_module)
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
@@ -1288,17 +1288,14 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
                 self.view_requirements[key].used_for_compute_actions = False
-            # TODO (kourosh) Ideally you should not make used_for_compute_actions true here if 
-            # self.view_requirements[key].used_for_compute_actions = True
-        new_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size
-        )
-        # try to re-use the output of the previous run to avoid overriding things that 
-        # would break (e.g. scale = 0 of Normal distribution cannot be zero) 
+            # TODO (kourosh) Why did we use to make used_for_compute_actions True here?
+        new_batch = self._get_dummy_batch_from_view_requirements(sample_batch_size)
+        # try to re-use the output of the previous run to avoid overriding things that
+        # would break (e.g. scale = 0 of Normal distribution cannot be zero)
         for k in new_batch:
             if k not in self._dummy_batch:
                 self._dummy_batch[k] = new_batch[k]
-                
+
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -1555,17 +1552,21 @@ class Policy(metaclass=ABCMeta):
         return self.get_exploration_state()
 
 
-
 def get_gym_space_from_struct_of_tensors(value: TensorStructType) -> gym.spaces.Dict:
     value_dict = NestedDict(value)
-    struct = tree.map_structure(lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype), value_dict)
+    struct = tree.map_structure(
+        lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
+        value_dict,
+    )
     space = get_gym_space_from_struct_of_spaces(struct.asdict())
     return space
 
 
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
     if isinstance(value, dict):
-        return gym.spaces.Dict({k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()})
+        return gym.spaces.Dict(
+            {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
+        )
     elif isinstance(value, tuple):
         return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
     else:

@@ -59,7 +59,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
-    
+
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
@@ -82,7 +82,7 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=1,
                 # Test with compression.
                 compress_observations=True,
-                enable_connectors=True
+                enable_connectors=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
@@ -90,7 +90,9 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         # TODO (Kourosh): for now just do torch
-        for fw in framework_iterator(config, frameworks=("torch"), with_eager_tracing=True):
+        for fw in framework_iterator(
+            config, frameworks=("torch"), with_eager_tracing=True
+        ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
@@ -169,7 +171,6 @@ class TestPPO(unittest.TestCase):
                 )
             check(np.mean(actions), 1.5, atol=0.2)
             trainer.stop()
-
 
 
 if __name__ == "__main__":

@@ -167,8 +167,10 @@ def _import_ppo():
 
     return ppo.PPO, ppo.PPOConfig().to_dict()
 
+
 def _import_ppo_v2():
     import ray.rllib.algorithms.ppo_v2 as ppo
+
     # everything is v2 here
     return ppo.PPO, ppo.PPOConfig().to_dict()
 

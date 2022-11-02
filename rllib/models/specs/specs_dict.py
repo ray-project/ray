@@ -217,7 +217,6 @@ def check_specs(
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, input_data, **kwargs):
-
             if cache and not hasattr(self, "__checked_specs_cache__"):
                 self.__checked_specs_cache__ = {}
 

@@ -1,9 +1,3 @@
-"""
-Notes: 
-- "simple_optimizer" is not supported anymore.
--
-"""
-
 import logging
 from typing import List, Optional, Type, Union
 import math
@@ -476,10 +470,12 @@ class PPO(Algorithm):
                 ):
                     self.warned_vf_clip = True
                     logger.warning(
-                        f"The mean reward returned from the environment is {mean_reward}"
-                        f" but the vf_clip_param is set to {self.config['vf_clip_param']}."
-                        f" Consider increasing it for policy: {policy_id} to improve"
-                        " value function convergence."
+                        f"The mean reward returned from the environment "
+                        f"is {mean_reward} "
+                        f"but the vf_clip_param is set "
+                        f"to {self.config['vf_clip_param']}. "
+                        f"Consider increasing it for policy: {policy_id} to "
+                        f"improve value function convergence."
                     )
 
         # Update global vars on local worker as well.

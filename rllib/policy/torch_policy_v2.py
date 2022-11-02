@@ -204,8 +204,8 @@ class TorchPolicyV2(Policy):
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
 
-
-        # if model is an RLModule it won't have tower_stats instead there will be a self.tower_state[model] -> dict for each tower
+        # if model is an RLModule it won't have tower_stats instead there will be a
+        # self.tower_state[model] -> dict for each tower
         self.tower_stats = {}
         if not hasattr(self.model, "tower_stats"):
             for model in self.model_gpu_towers:
@@ -861,10 +861,10 @@ class TorchPolicyV2(Policy):
             if stats_name in tower_stats:
                 data.append(
                     tree.map_structure(
-                        lambda s: s.to(self.device), tower_stats[stats_name] 
+                        lambda s: s.to(self.device), tower_stats[stats_name]
                     )
                 )
-            
+
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
             f"{len(self.model_gpu_towers)} towers in total)! Make "
