@@ -880,7 +880,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
