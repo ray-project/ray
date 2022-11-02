@@ -1,6 +1,6 @@
 import contextlib
 import pytest
-from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
+import time
 import torch
 import os
 
@@ -9,6 +9,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.tune import TuneError
 from ray.air.config import ScalingConfig
@@ -181,6 +182,24 @@ def test_torch_session_errors(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
+
+
+def test_single_worker_failure(ray_start_4_cpus):
+    """Tests if training fails upon any worker failure."""
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=single_worker_fail,
+        scaling_config=scaling_config,
+    )
+    with pytest.raises(ValueError):
+        trainer.fit()
 
 
 # See comment in backend.py::_warn_about_bad_checkpoint_type
