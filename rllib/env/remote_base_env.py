@@ -460,7 +460,14 @@ class _RemoteSingleAgentEnv:
         return obs, rew, done, truncated, info
 
     def step(self, action):
-        obs, rew, done, truncated, info = self.env.step(action[_DUMMY_AGENT_ID])
+        results = self.env.step(action[_DUMMY_AGENT_ID])
+
+        if check_old_gym_env(self.env, step_results=results):
+            obs, rew, done, info = results
+            truncated = False
+        else:
+            obs, rew, done, truncated, info = results
+
         obs, rew, done, truncated, info = [
             {_DUMMY_AGENT_ID: x} for x in [obs, rew, done, truncated, info]
         ]
