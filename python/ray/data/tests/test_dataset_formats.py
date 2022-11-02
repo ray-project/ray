@@ -192,29 +192,22 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
 
 
 def test_from_tf(ray_start_regular_shared):
+    import tensorflow as tf
     import tensorflow_datasets as tfds
 
-    tf_dataset = tfds.load("mnist", split=["train"])[0]
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
     tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    def is_equal(record, other_record) -> bool:
-        if record.keys() != other_record.keys():
-            return False
-
-        for key in record:
-            if not np.array_equal(record[key], other_record[key]):
-                return False
-        return True
-
     actual_data = ray_dataset.take_all()
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
-    assert all(
-        is_equal(actual_record, expected_record)
-        for actual_record, expected_record in zip(actual_data, expected_data)
-    )
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
 
 
 def test_torch_datasource(ray_start_regular_shared, local_path):

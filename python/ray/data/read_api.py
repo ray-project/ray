@@ -1375,7 +1375,7 @@ def from_tf(
 
     Returns:
         A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
-    """
+    """  # noqa: E501
     return from_items(list(dataset.as_numpy_iterator()))
 
 
