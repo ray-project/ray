@@ -1,9 +1,11 @@
 import asyncio
 import aiohttp
+import json
 import logging
 import os
 import shutil
 
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, List
 
 import psutil
@@ -237,8 +239,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         data_sources_path = os.path.join(
             grafana_config_output_path, "provisioning", "datasources"
         )
+        dashboards_path = os.path.join(grafana_config_output_path, "dashboards")
         os.makedirs(
             data_sources_path,
+            exist_ok=True,
+        )
+        os.makedirs(
+            dashboards_path,
             exist_ok=True,
         )
         with open(
@@ -249,19 +256,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
-
-        # Output the dashboards in a special directory
-        if self._grafana_dashboard_output_dir:
-            grafana_dashboards_dir = os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards"
-            )
-            # Copy all dashboard jsons from directory
-            for root, _, files in os.walk(grafana_dashboards_dir):
-                for file in files:
-                    shutil.copy2(
-                        os.path.join(root, file),
-                        os.path.join(self._grafana_dashboard_output_dir, file),
-                    )
+        with open(
+            os.path.join(
+                dashboards_path,
+                "default_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            f.write(_generate_grafana_dashboard())
 
     def _create_default_prometheus_configs(self):
         """
@@ -397,3 +399,175 @@ def _format_prometheus_output_by_task_names(
     ]
 
     return TaskProgressByTaskNameResponse(tasks=tasks)
+
+
+def _generate_grafana_dashboard():
+    base_json = json.load(
+        open(os.path.join(GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"))
+    )
+    base_json["panels"] = _generate_grafana_panels()
+    return json.dumps(base_json)
+
+
+@dataclass
+class Target:
+    expr: str
+    legend: str
+
+
+@dataclass
+class Panel:
+    title: str
+    description: str
+    id: int
+    unit: str
+    targets: List[Target]
+
+
+GRAFANA_PANELS = [
+    Panel(
+        id=26,
+        title="Scheduler Task State",
+        description="Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='sum(max_over_time(ray_tasks{State=~"FINISHED|FAILED"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~"FINISHED|FAILED"}) by (State), 0)',
+                legend="{{State}}",
+            )
+        ],
+    ),
+    Panel(
+        id=35,
+        title="Active Tasks by Name",
+        description="Current number of (live) tasks with a particular name.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='sum(ray_tasks{State!~"FINISHED|FAILED"}) by (Name)',
+                legend="{{Name}}",
+            )
+        ],
+    ),
+]
+
+
+def _generate_grafana_panels():
+    panels = []
+    for panel in GRAFANA_PANELS:
+        template = PANEL_TEMPLATE.copy()
+        template.update(
+            {
+                "title": panel.title,
+                "description": panel.description,
+                "id": panel.id,
+                "targets": _generate_targets(panel),
+            }
+        )
+        template["yaxes"][0]["format"] = panel.unit
+        panels.append(template)
+    return panels
+
+
+def _generate_targets(panel):
+    targets = []
+    for target in panel.targets:
+        template = TARGET_TEMPLATE.copy()
+        template.update(
+            {
+                "expr": target.expr,
+                "legendFormat": target.legend,
+            }
+        )
+        targets.append(template)
+    return targets
+
+
+TARGET_TEMPLATE = {
+    "exemplar": True,
+    "expr": "0",
+    "interval": "",
+    "legendFormat": "",
+    "queryType": "randomWalk",
+    "refId": "A",
+}
+
+
+PANEL_TEMPLATE = {
+    "aliasColors": {},
+    "bars": False,
+    "dashLength": 10,
+    "dashes": False,
+    "datasource": "Prometheus",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    "fill": 10,
+    "fillGradient": 0,
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+    "hiddenSeries": False,
+    "id": 26,
+    "legend": {
+        "alignAsTable": True,
+        "avg": False,
+        "current": True,
+        "hideEmpty": False,
+        "hideZero": True,
+        "max": False,
+        "min": False,
+        "rightSide": False,
+        "show": True,
+        "sort": "current",
+        "sortDesc": True,
+        "total": False,
+        "values": True,
+    },
+    "lines": True,
+    "linewidth": 1,
+    "nullPointMode": "null",
+    "options": {"alertThreshold": True},
+    "percentage": False,
+    "pluginVersion": "7.5.17",
+    "pointradius": 2,
+    "points": False,
+    "renderer": "flot",
+    "seriesOverrides": [],
+    "spaceLength": 10,
+    "stack": True,
+    "steppedLine": False,
+    "targets": [],
+    "thresholds": [],
+    "timeFrom": None,
+    "timeRegions": [],
+    "timeShift": None,
+    "title": "Scheduler Task State",
+    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
+    "type": "graph",
+    "xaxis": {
+        "buckets": None,
+        "mode": "time",
+        "name": None,
+        "show": True,
+        "values": [],
+    },
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "tasks",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+    "yaxis": {"align": False, "alignLevel": None},
+}
