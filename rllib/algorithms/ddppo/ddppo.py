@@ -21,6 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -41,7 +42,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -55,11 +55,11 @@ class DDPPOConfig(PPOConfig):
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
         >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
         ...             .resources(num_gpus=1)\
-        ...             .rollouts(num_workers=10)
+        ...             .rollouts(num_rollout_workers=10)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -92,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -181,7 +182,7 @@ class DDPPO(PPO):
             config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
-        if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
+        if "train_batch_size" in config and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
                 "Set rollout_fragment_length instead of train_batch_size for DDPPO."
@@ -189,14 +190,14 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        config["train_batch_size"] = config.get(
-            "rollout_fragment_length", DEFAULT_CONFIG["rollout_fragment_length"]
-        ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
+        self.config["train_batch_size"] = (
+            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
+        )
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
     def validate_config(self, config):
@@ -237,7 +238,10 @@ class DDPPO(PPO):
                 "num_gpus_per_worker=1."
             )
         # `batch_mode` must be "truncate_episodes".
-        if config["batch_mode"] != "truncate_episodes":
+        if (
+            not config.get("in_evaluation")
+            and config["batch_mode"] != "truncate_episodes"
+        ):
             raise ValueError(
                 "Distributed data parallel requires truncate_episodes batch mode."
             )
@@ -254,31 +258,30 @@ class DDPPO(PPO):
         super().setup(config)
 
         # Initialize torch process group for
-        if self.config["_disable_execution_plan_api"] is True:
-            self._curr_learner_info = {}
-            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-            logger.info("Creating torch process group with leader {}".format(address))
+        self._curr_learner_info = {}
+        ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
+        port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        logger.info("Creating torch process group with leader {}".format(address))
 
-            # Get setup tasks in order to throw errors on failure.
-            ray.get(
-                [
-                    worker.setup_torch_data_parallel.remote(
-                        url=address,
-                        world_rank=i,
-                        world_size=len(self.workers.remote_workers()),
-                        backend=self.config["torch_distributed_backend"],
-                    )
-                    for i, worker in enumerate(self.workers.remote_workers())
-                ]
-            )
-            logger.info("Torch process group init completed")
-            self._ddppo_worker_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
-                max_remote_requests_in_flight_per_worker=1,
-                ray_wait_timeout_s=0.03,
-            )
+        # Get setup tasks in order to throw errors on failure.
+        ray.get(
+            [
+                worker.setup_torch_data_parallel.remote(
+                    url=address,
+                    world_rank=i,
+                    world_size=len(self.workers.remote_workers()),
+                    backend=self.config["torch_distributed_backend"],
+                )
+                for i, worker in enumerate(self.workers.remote_workers())
+            ]
+        )
+        logger.info("Torch process group init completed")
+        self._ddppo_worker_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=1,
+            ray_wait_timeout_s=0.03,
+        )
 
     @override(PPO)
     def training_step(self) -> ResultDict:
@@ -375,7 +378,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

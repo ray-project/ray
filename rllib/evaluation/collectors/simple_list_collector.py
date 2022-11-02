@@ -216,11 +216,12 @@ class SimpleListCollector(SampleCollector):
     @override(SampleCollector)
     def add_init_obs(
         self,
+        *,
         episode: Episode,
         agent_id: AgentID,
         env_id: EnvID,
         policy_id: PolicyID,
-        t: int,
+        t: int = -1,
         init_obs: TensorType,
         init_infos: Optional[Dict[str, TensorType]] = None,
     ) -> None:

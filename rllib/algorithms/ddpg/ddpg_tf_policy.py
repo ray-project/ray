@@ -1,6 +1,5 @@
 from functools import partial
 import logging
-import numpy as np
 import gym
 from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
@@ -20,9 +19,9 @@ from ray.rllib.models.tf.tf_action_dist import (
 )
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin
 from ray.rllib.utils.annotations import override
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
@@ -62,40 +61,6 @@ class ComputeTDErrorMixin:
             return self.td_error
 
         self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    def __init__(self: Union[DynamicTFPolicyV2, EagerTFPolicyV2]):
-        @make_tf_callable(self.get_session())
-        def update_target_fn(tau):
-            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            update_target_expr = []
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
-            assert len(model_vars) == len(target_model_vars), (
-                model_vars,
-                target_model_vars,
-            )
-            for var, var_target in zip(model_vars, target_model_vars):
-                update_target_expr.append(
-                    var_target.assign(tau * var + (1.0 - tau) * var_target)
-                )
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        # Hard initial update.
-        self._do_update = update_target_fn
-        self.update_target(tau=1.0)
-
-    # Support both hard and soft sync.
-    def update_target(
-        self: Union[DynamicTFPolicyV2, EagerTFPolicyV2], tau: int = None
-    ) -> None:
-        self._do_update(np.float32(tau or self.config.get("tau")))
-
-    @override(TFPolicy)
-    def variables(self: Union[DynamicTFPolicyV2, EagerTFPolicyV2]) -> List[TensorType]:
-        return self.model.variables() + self.target_model.variables()
 
 
 # We need this builder function because we want to share the same
@@ -155,7 +120,7 @@ def get_ddpg_tf_policy(
             self,
         ) -> List["tf.keras.optimizers.Optimizer"]:
             """Create separate optimizers for actor & critic losses."""
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 self.global_step = get_variable(0, tf_name="global_step")
                 self._actor_optimizer = tf.keras.optimizers.Adam(
                     learning_rate=self.config["actor_lr"]
@@ -178,7 +143,7 @@ def get_ddpg_tf_policy(
         def compute_gradients_fn(
             self, optimizer: LocalOptimizer, loss: TensorType
         ) -> ModelGradients:
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 tape = optimizer.tape
                 pol_weights = self.model.policy_variables()
                 actor_grads_and_vars = list(
@@ -238,7 +203,7 @@ def get_ddpg_tf_policy(
                 self._critic_grads_and_vars
             )
             # Increment global step & apply ops.
-            if self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2":
                 self.global_step.assign_add(1)
                 return tf.no_op()
             else:
@@ -300,7 +265,7 @@ def get_ddpg_tf_policy(
             model_out_tp1, _ = model(input_dict_next, [], None)
             target_model_out_tp1, _ = self.target_model(input_dict_next, [], None)
 
-            self.target_q_func_vars = self.target_model.variables()
+            self._target_q_func_vars = self.target_model.variables()
 
             # Policy network evaluation.
             policy_t = model.get_policy_output(model_out_t)
@@ -361,7 +326,7 @@ def get_ddpg_tf_policy(
             # Compute RHS of bellman equation.
             q_t_selected_target = tf.stop_gradient(
                 tf.cast(train_batch[SampleBatch.REWARDS], tf.float32)
-                + gamma ** n_step * q_tp1_best_masked
+                + gamma**n_step * q_tp1_best_masked
             )
 
             # Compute the error (potentially clipped).

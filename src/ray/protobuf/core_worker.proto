@@ -133,6 +133,8 @@ message PushTaskReply {
   repeated ObjectReferenceCount borrowed_refs = 4;
   // Whether the result contains a retryable application-level error.
   bool is_retryable_error = 5;
+  // Whether the result contains an application-level error.
+  bool is_application_error = 6;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

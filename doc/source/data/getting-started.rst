@@ -41,8 +41,9 @@ can be used to specify file locations. See more at :ref:`Creating Datasets <crea
    :end-before: __create_from_files_end__
 
 Once you have a Dataset (potentially after transformation), you can save it to local
-or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and
-``.write_parquet()``. See more at :ref:`Saving Datasets <saving_datasets>`.
+or remote storage in desired format using methods such as :meth:`~ray.data.Dataset.write_csv`,
+:meth:`~ray.data.Dataset.write_json`, and :meth:`~ray.data.Dataset.write_parquet`.
+See more at :ref:`Saving Datasets <saving_datasets>`.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
@@ -68,7 +69,9 @@ for performance at scale.
 
 .. tip::
 
-    Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`, :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`, which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but may be useful for development.
+    Datasets also provide the convenience transformation methods :meth:`~ray.data.Dataset.map`, 
+    :meth:`~ray.data.Dataset.flat_map`, and :meth:`~ray.data.Dataset.filter`, which are not 
+    vectorized (slower than :meth:`~ray.data.Dataset.map_batches`), but may be useful for development.
 
 These transformations are composable. You can further apply transformations on the
 output Dataset, forming a chain of transformations to express more complex logic.
@@ -87,8 +90,8 @@ Accessing and exchanging datasets
 ---------------------------------
 
 Datasets can be passed to Ray tasks or actors and accessed with
-:meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or
-:meth:`.iter_rows() <ray.data.Dataset.iter_rows>`.
+:meth:`~ray.data.Dataset.iter_batches` or
+:meth:`~ray.data.Dataset.iter_rows`.
 This does not incur a copy, since the blocks of the Dataset are passed by reference
 as Ray objects:
 
@@ -99,7 +102,7 @@ as Ray objects:
 
 Datasets can be split up into disjoint sub-datasets.
 Locality-aware splitting is supported if you pass in a list of actor handles to the
-:meth:`split() <ray.data.Dataset.split>` function along with the number of desired
+:meth:`~ray.data.Dataset.split` function along with the number of desired
 splits.
 This is a common pattern useful for loading and splitting data between distributed
 training actors:

@@ -721,8 +721,8 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
 
         import psutil
 
-        total_gb = psutil.virtual_memory().total / (1024 ** 3)
-        used_gb = total_gb - psutil.virtual_memory().available / (1024 ** 3)
+        total_gb = psutil.virtual_memory().total / (1024**3)
+        used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
         if used_gb > total_gb * 0.9:
             message = (
                 ": ***LOW MEMORY*** less than 10% of the memory on "
@@ -755,7 +755,7 @@ def _memory_debug_str() -> str:
     if np.isnan(used_gb):
         return message
     else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB{message}"
+        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:

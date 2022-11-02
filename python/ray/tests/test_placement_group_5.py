@@ -224,6 +224,39 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
     ray.get(pg2.ready())
 
 
+@pytest.mark.parametrize(
+    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
+)
+def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
+    @ray.remote(resources={"custom_resource": 1})
+    def task(input):
+        return input
+
+    @ray.remote
+    def manage_tasks(input):
+        pg = ray.util.placement_group(
+            [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy
+        )
+        ray.get(pg.ready())
+        pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+            placement_group=pg
+        )
+
+        obj_ref = task.options(scheduling_strategy=pg_strategy).remote(input)
+        ray.get(obj_ref)
+
+        ray.util.remove_placement_group(pg)
+        return "OK"
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"custom_resource": 20})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Test all tasks will not hang
+    ray.get([manage_tasks.remote(i) for i in range(20)], timeout=50)
+
+
 if __name__ == "__main__":
     import os
 

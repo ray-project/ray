@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import tree  # dm_tree
@@ -48,7 +48,6 @@ class StateBufferConnector(AgentConnector):
 
         action, states, fetches = self._states[env_id][agent_id]
 
-        # TODO(jungong): Support buffering more than 1 prev actions.
         if action is not None:
             d[SampleBatch.ACTIONS] = action  # Last action
         else:
@@ -75,7 +74,7 @@ class StateBufferConnector(AgentConnector):
         return StateBufferConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return StateBufferConnector(ctx)
 
 

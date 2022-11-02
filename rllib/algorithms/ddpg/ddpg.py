@@ -20,8 +20,8 @@ class DDPGConfig(SimpleQConfig):
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="Pendulum-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="Pendulum-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
@@ -259,8 +259,8 @@ class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)
     # TODO make this return a AlgorithmConfig
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPGConfig()
 
     @override(SimpleQ)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -311,7 +311,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.ddpg::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddpg.ddpg.DDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

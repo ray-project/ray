@@ -72,7 +72,7 @@ class PytorchTrainable(tune.Trainable):
         return checkpoint_dir
 
     def load_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
+        path = os.path.join(checkpoint_dir, "checkpoint.pt")
         checkpoint = torch.load(path)
         self.netD.load_state_dict(checkpoint["netDmodel"])
         self.netG.load_state_dict(checkpoint["netGmodel"])
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         },
     )
 
-    tune_iter = 5 if args.smoke_test else 300
+    tune_iter = 10 if args.smoke_test else 300
     tuner = tune.Tuner(
         PytorchTrainable,
         run_config=air.RunConfig(

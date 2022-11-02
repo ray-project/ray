@@ -48,6 +48,11 @@ Text
 
 .. autofunction:: ray.data.read_text
 
+Images (experimental)
+---------------------
+
+.. autofunction:: ray.data.read_images
+
 Binary
 ------
 
@@ -57,6 +62,9 @@ TFRecords
 ---------
 
 .. autofunction:: ray.data.read_tfrecords
+
+.. autofunction:: ray.data.Dataset.write_tfrecords
+    :noindex:
 
 
 Pandas
@@ -151,6 +159,9 @@ Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+.. autoclass:: ray.data.datasource.Reader
+    :members:
+
 
 Built-in Datasources
 ####################
@@ -164,7 +175,7 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
 
-.. autoclass:: ray.data.datasource.ImageFolderDatasource
+.. autoclass:: ray.data.datasource.ImageDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.JSONDatasource

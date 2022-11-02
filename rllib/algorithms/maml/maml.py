@@ -34,8 +34,8 @@ class MAMLConfig(AlgorithmConfig):
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
@@ -79,6 +79,7 @@ class MAMLConfig(AlgorithmConfig):
         self.use_meta_env = True
 
         # Override some of AlgorithmConfig's default values with MAML-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.create_env_on_local_worker = True
         self.lr = 1e-3
@@ -256,8 +257,8 @@ def inner_adaptation(workers, samples):
 class MAML(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MAMLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MAMLConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -379,7 +380,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maml.maml.MAMLConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

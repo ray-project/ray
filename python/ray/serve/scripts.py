@@ -326,11 +326,12 @@ def run(
     try:
         if is_config:
             client.deploy_app(config, _blocking=gradio)
+            cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+            cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
@@ -445,6 +446,12 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
+    "--kubernetes_format",
+    "-k",
+    is_flag=True,
+    help="Print Serve config in Kubernetes format.",
+)
+@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -454,7 +461,9 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def build(import_path: str, app_dir: str, output_path: Optional[str]):
+def build(
+    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -465,13 +474,18 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         )
 
     app = build_app(node)
+    schema = ServeApplicationSchema(
+        import_path=import_path,
+        runtime_env={},
+        host="0.0.0.0",
+        port=8000,
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
+    )
 
-    config = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-    ).dict()
-    config["import_path"] = import_path
-    config["host"] = "0.0.0.0"
-    config["port"] = 8000
+    if kubernetes_format:
+        config = schema.kubernetes_dict(exclude_unset=True)
+    else:
+        config = schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -480,6 +494,9 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
+
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)

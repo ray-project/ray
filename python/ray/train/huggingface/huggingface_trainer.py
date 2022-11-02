@@ -7,6 +7,7 @@ import tempfile
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 try:
     from packaging.version import Version
@@ -128,6 +129,13 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         # add tune checkpoint id
         with open(path.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
             f.write(str(self.id))
+
+        # Add checkpoint class metadata
+        # A bit of a hack but this will be removed with the rest
+        # of this special case eventually
+        # TODO(ml-team): remove this when HF checkpointing is refactored
+        checkpoint = HuggingFaceCheckpoint.from_directory(path)
+        checkpoint._save_checkpoint_metadata_in_directory(path)
 
 
 class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
@@ -432,7 +440,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                 )
             )
 
-    def as_trainable(self) -> Type[Trainable]:
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
         original_param_dict = self._param_dict.copy()
         resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
             "resume_from_checkpoint", None
@@ -444,7 +452,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                 resume_from_checkpoint
             )
         try:
-            ret = super().as_trainable()
+            ret = super()._generate_trainable_cls()
         finally:
             self._param_dict = original_param_dict
         return ret

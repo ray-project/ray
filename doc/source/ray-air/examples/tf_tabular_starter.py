@@ -82,7 +82,7 @@ def train_loop_per_worker(config):
 
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
-    train_data = train.get_dataset_shard("train")
+    train_data = session.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -98,15 +98,13 @@ def train_loop_per_worker(config):
             ],
         )
 
-    results = []
     for _ in range(epochs):
         tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
-        history = multi_worker_model.fit(
+        multi_worker_model.fit(
             tf_dataset,
             callbacks=[KerasCallback()],
             verbose=0,
         )
-    return results
 
 
 num_features = len(train_dataset.schema().names) - 1

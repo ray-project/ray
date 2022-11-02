@@ -1,23 +1,8 @@
-from ray.train._internal.results_preprocessors.index import IndexedResultsPreprocessor
-from ray.train._internal.results_preprocessors.keys import (
-    ExcludedKeysResultsPreprocessor,
+raise DeprecationWarning(
+    "`ray.train.callbacks.results_preprocessors` and the `ray.train.Trainer` API are "
+    "deprecated in Ray "
+    "2.0, and are replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "provides greater functionality and a unified API "
+    "compared to the old Ray Train API. "
 )
-from ray.train._internal.results_preprocessors.aggregate import (
-    AverageResultsPreprocessor,
-    MaxResultsPreprocessor,
-    WeightedAverageResultsPreprocessor,
-)
-from ray.train._internal.results_preprocessors.preprocessor import (
-    SequentialResultsPreprocessor,
-    ResultsPreprocessor,
-)
-
-__all__ = [
-    "ExcludedKeysResultsPreprocessor",
-    "IndexedResultsPreprocessor",
-    "ResultsPreprocessor",
-    "SequentialResultsPreprocessor",
-    "AverageResultsPreprocessor",
-    "MaxResultsPreprocessor",
-    "WeightedAverageResultsPreprocessor",
-]

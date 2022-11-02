@@ -18,12 +18,10 @@ from ray.util.annotations import PublicAPI
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
 ) -> JobSubmissionClient:
-
-    if address is None and "RAY_ADDRESS" in os.environ:
-        address = os.environ["RAY_ADDRESS"]
-
-    cli_logger.labeled_value("Job submission server address", address)
-    return JobSubmissionClient(address, create_cluster_if_needed)
+    client = JobSubmissionClient(address, create_cluster_if_needed)
+    client_address = client.get_address()
+    cli_logger.labeled_value("Job submission server address", client_address)
+    return client
 
 
 def _log_big_success_msg(success_msg):

@@ -76,6 +76,11 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: Driver agent http address
+    driver_agent_http_address: Optional[str] = None
+    #: The node id that driver running on. It will be None only when the job status
+    # is PENDING, and this field will not be deleted or modified even if the driver dies
+    driver_node_id: Optional[str] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -114,10 +119,11 @@ class JobInfoStorageClient:
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    async def get_info(self, job_id: str) -> Optional[JobInfo]:
+    async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         pickled_info = await self._gcs_aio_client.internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         if pickled_info is None:
             return None
@@ -125,19 +131,26 @@ class JobInfoStorageClient:
             return pickle.loads(pickled_info)
 
     async def put_status(
-        self, job_id: str, status: JobStatus, message: Optional[str] = None
+        self,
+        job_id: str,
+        status: JobStatus,
+        message: Optional[str] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
         old_info = await self.get_info(job_id)
 
+        if jobinfo_replace_kwargs is None:
+            jobinfo_replace_kwargs = dict()
+        jobinfo_replace_kwargs.update(status=status, message=message)
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
-            new_info = replace(old_info, status=status, message=message)
+            new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
-                entrypoint="Entrypoint not found.", status=status, message=message
+                entrypoint="Entrypoint not found.", **jobinfo_replace_kwargs
             )
 
         if status.is_terminal():
@@ -152,9 +165,11 @@ class JobInfoStorageClient:
         else:
             return job_info.status
 
-    async def get_all_jobs(self) -> Dict[str, JobInfo]:
+    async def get_all_jobs(self, timeout: int = 30) -> Dict[str, JobInfo]:
         raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
-            self.JOB_DATA_KEY_PREFIX.encode(), namespace=ray_constants.KV_NAMESPACE_JOB
+            self.JOB_DATA_KEY_PREFIX.encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
@@ -167,7 +182,7 @@ class JobInfoStorageClient:
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
 
         async def get_job_info(job_id: str):
-            job_info = await self.get_info(job_id)
+            job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
         return {

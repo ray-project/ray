@@ -4,10 +4,10 @@ from ray.rllib.algorithms.sac import (
     SAC,
     SACConfig,
 )
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 
 
@@ -85,11 +85,11 @@ class RNNSACConfig(SACConfig):
 class RNNSAC(SAC):
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return RNNSACConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return RNNSACConfig()
 
     @override(SAC)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfig) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -119,7 +119,7 @@ class RNNSAC(SAC):
             raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
 
     @override(SAC)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
         return RNNSACTorchPolicy
 
 
@@ -130,7 +130,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

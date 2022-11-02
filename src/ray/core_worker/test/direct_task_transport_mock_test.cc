@@ -69,7 +69,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetCreatingTaskSpec(actor_id);
-  EXPECT_CALL(*task_finisher, CompletePendingTask(task_spec.TaskId(), _, _));
+  EXPECT_CALL(*task_finisher, CompletePendingTask(task_spec.TaskId(), _, _, _));
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
@@ -80,7 +80,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
 TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetCreatingTaskSpec(actor_id);
-  EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _, _)).Times(0);
   EXPECT_CALL(*task_finisher,
               FailOrRetryPendingTask(
                   task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, _, _, true));

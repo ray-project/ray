@@ -1,88 +1,13 @@
-from typing import Optional, Union, Dict
+from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
 
 import numpy as np
-import pandas as pd
+import pyarrow
 import tensorflow as tf
-from pandas.api.types import is_object_dtype
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
-
-def convert_pandas_to_tf_tensor(
-    df: pd.DataFrame, dtype: Optional[tf.dtypes.DType] = None
-) -> tf.Tensor:
-    """Convert a pandas dataframe to a TensorFlow tensor.
-
-    This function works in two steps:
-    1. Convert each dataframe column to a tensor.
-    2. Concatenate the resulting tensors along the last axis.
-
-    Arguments:
-        df: The dataframe to convert to a TensorFlow tensor. Columns must be of
-            a numeric dtype, ``TensorDtype``, or object dtype. If a column has
-            an object dtype, the column must contain ``ndarray`` objects.
-        dtype: Optional data type for the returned tensor. If a dtype isn't
-            provided, the dtype is inferred from ``df``.
-
-    Returns:
-        A tensor constructed from the dataframe.
-
-    Examples:
-        >>> import pandas as pd
-        >>> from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
-        >>>
-        >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
-        >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
-        TensorShape([3, 1])
-        >>> convert_pandas_to_tf_tensor(df[["X1", "X2"]]).shape
-        TensorShape([3, 2])
-
-        >>> from ray.data.extensions import TensorArray
-        >>> import numpy as np
-        >>>
-        >>> df = pd.DataFrame({"image": TensorArray(np.zeros((4, 3, 32, 32)))})
-        >>> convert_pandas_to_tf_tensor(df).shape
-        TensorShape([4, 3, 32, 32])
-    """
-    if dtype is None:
-        try:
-            # We need to cast the tensors to a common type so that we can concatenate
-            # them. If the columns contain different types (for example, `float32`s
-            # and `int32`s), then `tf.concat` raises an error.
-            dtype: np.dtype = np.find_common_type(df.dtypes, [])
-
-            # if the columns are `ray.data.extensions.tensor_extension.TensorArray`,
-            # the dtype will be `object`. In this case, we need to set the dtype to
-            # none, and use the automatic type casting of `tf.convert_to_tensor`.
-            if is_object_dtype(dtype):
-                dtype = None
-
-        except TypeError:
-            # `find_common_type` fails if a series has `TensorDtype`. In this case,
-            # don't cast any of the series and continue.
-            pass
-
-    def tensorize(series):
-        try:
-            return tf.convert_to_tensor(series, dtype=dtype)
-        except ValueError:
-            return tf.stack([tensorize(element) for element in series])
-
-    tensors = []
-    for column in df.columns:
-        series = df[column]
-        tensor = tensorize(series)
-        tensors.append(tensor)
-
-    if len(tensors) > 1:
-        tensors = [tf.expand_dims(tensor, axis=1) for tensor in tensors]
-
-    concatenated_tensor = tf.concat(tensors, axis=1)
-
-    if concatenated_tensor.ndim == 1:
-        return tf.expand_dims(concatenated_tensor, axis=1)
-
-    return concatenated_tensor
+if TYPE_CHECKING:
+    from ray.data._internal.pandas_block import PandasBlockSchema
 
 
 def convert_ndarray_to_tf_tensor(
@@ -137,3 +62,62 @@ def convert_ndarray_batch_to_tf_tensor_batch(
         }
 
     return batch
+
+
+# This is not foolproof, but it's better than nothing
+# The place it is used in will be deprecated soon
+def contains_tensorflow_object(obj):
+    if hasattr(obj, "__module__") and (
+        "keras" in obj.__module__ or "tensorflow" in obj.__module__
+    ):
+        return True
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if contains_tensorflow_object(k):
+                return True
+            if contains_tensorflow_object(v):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            if contains_tensorflow_object(v):
+                return True
+    return False
+
+
+def get_type_spec(
+    schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
+    columns: Union[str, List[str]],
+) -> Union[tf.TypeSpec, Dict[str, tf.TypeSpec]]:
+    import pyarrow as pa
+    from ray.data.extensions import TensorDtype, ArrowTensorType
+
+    assert not isinstance(schema, type)
+
+    dtypes: Dict[str, Union[np.dtype, pa.DataType]] = dict(
+        zip(schema.names, schema.types)
+    )
+
+    def get_dtype(dtype: Union[np.dtype, pa.DataType]) -> tf.dtypes.DType:
+        if isinstance(dtype, pa.DataType):
+            dtype = dtype.to_pandas_dtype()
+        if isinstance(dtype, TensorDtype):
+            dtype = dtype.element_dtype
+        return tf.dtypes.as_dtype(dtype)
+
+    def get_shape(dtype: Union[np.dtype, pa.DataType]) -> Tuple[int, ...]:
+        shape = (None,)
+        if isinstance(dtype, ArrowTensorType):
+            dtype = dtype.to_pandas_dtype()
+        if isinstance(dtype, TensorDtype):
+            shape += dtype.element_shape
+        return shape
+
+    if isinstance(columns, str):
+        name, dtype = columns, dtypes[columns]
+        return tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
+
+    return {
+        name: tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
+        for name, dtype in dtypes.items()
+        if name in columns
+    }

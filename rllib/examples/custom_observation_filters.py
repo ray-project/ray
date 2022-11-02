@@ -11,6 +11,7 @@ import ray
 from ray import air, tune
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -38,7 +39,7 @@ class SimpleRollingStat:
 
     def update(self, other):
         n1 = self._n
-        n2 = other._n
+        n2 = other.num_pushes
         n = n1 + n2
         if n == 0:
             return
@@ -129,15 +130,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    config = {
-        "env": "CartPole-v0",
-        "observation_filter": lambda size: CustomFilter(size),
-        "num_workers": 0,
-    }
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("CartPole-v1")
+        .rollouts(
+            num_rollout_workers=0,
+            # Specify our custom filter here.
+            observation_filter=lambda size: CustomFilter(size),
+        )
+    )
 
     tuner = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(stop={"training_iteration": args.stop_iters}),
     )
     tuner.fit()

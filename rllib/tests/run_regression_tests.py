@@ -29,7 +29,7 @@ from ray.rllib import _register_all
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["jax", "tf2", "tf", "tfe", "torch"],
+    choices=["jax", "tf2", "tf", "torch"],
     default="tf",
     help="The deep learning framework to use.",
 )
@@ -39,7 +39,7 @@ parser.add_argument(
     required=True,
     help="The directory in which to find all yamls to test.",
 )
-parser.add_argument("--num-cpus", type=int, default=8)
+parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -55,6 +55,7 @@ parser.add_argument(
         "is particularly useful for timed tests."
     ),
 )
+
 # Obsoleted arg, use --framework=torch instead.
 parser.add_argument(
     "--torch", action="store_true", help="Runs all tests with PyTorch enabled."
@@ -108,7 +109,13 @@ if __name__ == "__main__":
             continue
 
         # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        if args.framework in ["tf2", "tfe"] and not args.local_mode:
+        # Ignore this if the yaml explicitly tells us to disable eager tracing
+        if (
+            args.framework == "tf2"
+            and not args.local_mode
+            and not exp["config"].get("eager_tracing") is False
+        ):
+
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.
