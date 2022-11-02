@@ -5,7 +5,7 @@ import numpy as np
 from numbers import Number
 
 from types import ModuleType
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Union
 
 from mock.mock import MagicMock
 
@@ -22,8 +22,10 @@ except ImportError:
 
 if wandb:
     from wandb.util import json_dumps_safer
+    from wandb.wandb_run import Run
+    from wandb.sdk.lib.disabled import RunDisabled
 else:
-    json_dumps_safer = None
+    json_dumps_safer = Run = RunDisabled = None
 
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
@@ -73,7 +75,9 @@ _VALID_ITERABLE_TYPES = (
 _MockWandb = MagicMock
 
 
-def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs):
+def setup_wandb(
+    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+) -> Union[Run, RunDisabled, _MockWandb]:
     """Set up a Weights & Biases session.
 
     This function can be used to initialize a Weights & Biases session in a
@@ -125,9 +129,14 @@ def setup_wandb(config: Optional[Dict] = None, rank_zero_only: bool = True, **kw
                 wandb.log({"loss": 0.123})
 
     """
+    if not wandb:
+        raise RuntimeError(
+            "Wandb was not found - please install with `pip install wandb`"
+        )
+
     try:
         # Do a try-catch here if we are not in a train session
-        if rank_zero_only and session.get_local_rank() != 0:
+        if rank_zero_only and session.get_world_rank() != 0:
             return _MockWandb()
     except RuntimeError:
         pass
@@ -148,7 +157,7 @@ def _setup_wandb(
     config: Optional[Dict] = None,
     _wandb: Optional[ModuleType] = None,
     **kwargs,
-):
+) -> Union[Run, RunDisabled]:
     _config = config.copy() if config else {}
 
     wandb_config = _config.pop("wandb", {}).copy()
