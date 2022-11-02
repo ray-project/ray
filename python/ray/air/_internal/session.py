@@ -85,16 +85,18 @@ class Session(abc.ABC):
         raise NotImplementedError
 
 
-def _get_session() -> Optional[Session]:
+def _get_session(warn: bool = True) -> Optional[Session]:
     from ray.train._internal.session import _session_v2 as train_session
     from ray.tune.trainable.session import _session_v2 as tune_session
 
     if train_session and tune_session:
-        logger.warning(
-            "Expected to be either in tune session or train session but not both."
-        )
+        if warn:
+            logger.warning(
+                "Expected to be either in tune session or train session but not both."
+            )
         return None
     if not (train_session or tune_session):
-        logger.warning("In neither tune session nor train session!")
+        if warn:
+            logger.warning("In neither tune session nor train session!")
         return None
     return train_session or tune_session

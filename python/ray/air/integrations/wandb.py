@@ -146,15 +146,16 @@ def setup_wandb(
 
     try:
         # Do a try-catch here if we are not in a train session
-        if rank_zero_only and session.get_world_rank() != 0:
+        _session = session._get_session(warn=False)
+        if _session and rank_zero_only and session.get_world_rank() != 0:
             return _MockWandb()
     except RuntimeError:
         pass
 
     default_kwargs = {
-        "trial_id": session.get_trial_id(),
-        "trial_name": session.get_trial_name(),
-        "group": session.get_experiment_name(),
+        "trial_id": kwargs.get("trial_id") or session.get_trial_id(),
+        "trial_name": kwargs.get("trial_name") or session.get_trial_name(),
+        "group": kwargs.get("group") or session.get_experiment_name(),
     }
     default_kwargs.update(kwargs)
 

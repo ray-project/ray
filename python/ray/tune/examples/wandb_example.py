@@ -1,9 +1,9 @@
 import argparse
-import tempfile
-from unittest.mock import MagicMock
+import os
 
 import numpy as np
 
+import ray
 from ray import air, tune
 from ray.air import session
 from ray.air.integrations.wandb import setup_wandb
@@ -38,10 +38,7 @@ def tune_with_callback(api_key_file):
 
 
 def train_function_wandb(config):
-    if config["mock_wandb"]:
-        wandb = setup_wandb(config, _wandb=MagicMock())
-    else:
-        wandb = setup_wandb(config)
+    wandb = setup_wandb(config)
 
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
@@ -49,8 +46,8 @@ def train_function_wandb(config):
         wandb.log(dict(loss=loss))
 
 
-def tune_with_setup(api_key_file, mock_wandb=False):
-    """Example for using the @wandb_mixin decorator with the function API"""
+def tune_with_setup(api_key_file):
+    """Example for using the setup_wandb utility with the function API"""
     tuner = tune.Tuner(
         train_function_wandb,
         tune_config=tune.TuneConfig(
@@ -61,10 +58,47 @@ def tune_with_setup(api_key_file, mock_wandb=False):
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
-            "mock_wandb": mock_wandb,
         },
     )
     tuner.fit()
+
+
+class WandbTrainable(tune.Trainable):
+    def setup(self, config):
+        self.wandb = setup_wandb(
+            config, trial_id=self.trial_id, trial_name=self.trial_name, group="Example"
+        )
+
+    def step(self):
+        for i in range(30):
+            loss = self.config["mean"] + self.config["sd"] * np.random.randn()
+            self.wandb.log({"loss": loss})
+        return {"loss": loss, "done": True}
+
+    def save_checkpoint(self, checkpoint_dir: str):
+        pass
+
+    def load_checkpoint(self, checkpoint_dir: str):
+        pass
+
+
+def tune_trainable(api_key_file):
+    """Example for using a WandTrainableMixin with the class API"""
+    tuner = tune.Tuner(
+        WandbTrainable,
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+        ),
+        param_space={
+            "mean": tune.grid_search([1, 2, 3, 4, 5]),
+            "sd": tune.uniform(0.2, 0.8),
+            "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
+        },
+    )
+    results = tuner.fit()
+
+    return results.get_best_result().config
 
 
 if __name__ == "__main__":
@@ -75,15 +109,9 @@ if __name__ == "__main__":
     api_key_file = "~/.wandb_api_key"
 
     if args.mock_api:
-        WandbLoggerCallback._logger_process_cls = MagicMock
-        wandb = MagicMock()  # noqa: F811
-        temp_file = tempfile.NamedTemporaryFile()
-        temp_file.write(b"1234")
-        temp_file.flush()
-        api_key_file = temp_file.name
+        os.environ.setdefault("WANDB_MODE", "disabled")
+        ray.init(runtime_env={"env_vars": {"WANDB_MODE": "disabled"}})
 
     tune_with_callback(api_key_file)
-    tune_with_setup(api_key_file, mock_wandb=args.mock_api)
-
-    if args.mock_api:
-        temp_file.close()
+    tune_with_setup(api_key_file)
+    tune_trainable(api_key_file)
