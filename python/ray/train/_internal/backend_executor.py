@@ -311,9 +311,6 @@ class BackendExecutor:
 
         return local_rank_map, local_world_size_map, node_rank_map
 
-    def _get_local_world_size(self) -> Dict:
-        pass
-
     def start_training(
         self,
         train_func: Callable[[], T],
