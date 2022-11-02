@@ -291,6 +291,38 @@ class TorchPolicy(Policy):
         )
 
     @override(Policy)
+    def compute_actions_from_input_dict(
+        self,
+        input_dict: Dict[str, TensorType],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
+        with torch.no_grad():
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
+            input_dict.set_training(True)
+            # Pack internal state inputs into (separate) list.
+            state_batches = [
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
+            ]
+            # Calculate RNN sequence lengths.
+            seq_lens = (
+                torch.tensor(
+                    [1] * len(state_batches[0]),
+                    dtype=torch.long,
+                    device=state_batches[0].device,
+                )
+                if state_batches
+                else None
+            )
+
+            return self._compute_action_helper(
+                input_dict, state_batches, seq_lens, explore, timestep
+            )
+
+    @override(Policy)
     @DeveloperAPI
     def compute_actions(
         self,
