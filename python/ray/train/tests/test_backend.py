@@ -60,7 +60,6 @@ def ray_2_node_3_worker():
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=1)
 
-
     ray.init(address=cluster.address)
 
     yield
@@ -224,7 +223,7 @@ def test_local_world_size(ray_2_node_3_worker):
             return session.get_local_world_size()
 
         e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-        assert set(e.finish_training()) == {2,1}
+        assert set(e.finish_training()) == {2, 1}
 
 
 def test_node_ranks(ray_2_node_3_worker):
