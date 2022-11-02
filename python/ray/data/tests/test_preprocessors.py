@@ -1084,6 +1084,43 @@ def test_chain():
     assert pred_out_df.equals(pred_expected_df)
 
 
+def test_nested_chain_state():
+    col_a = [-1, -1, 1, 1]
+    col_b = [1, 1, 1, None]
+    col_c = ["sunday", "monday", "tuesday", "tuesday"]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    def udf(df):
+        df["A"] *= 2
+        return df
+
+    def create_chain():
+        batch_mapper = BatchMapper(fn=udf)
+        imputer = SimpleImputer(["B"])
+        scaler = StandardScaler(["A", "B"])
+        encoder = LabelEncoder("C")
+        return Chain(Chain(scaler, imputer), encoder, batch_mapper)
+
+    chain = create_chain()
+    assert chain.fit_status() == Preprocessor.FitStatus.NOT_FITTED
+
+    chain = create_chain()
+    chain.preprocessors[1].fit(ds)
+    assert chain.fit_status() == Preprocessor.FitStatus.PARTIALLY_FITTED
+
+    chain = create_chain()
+    chain.preprocessors[0].fit(ds)
+    assert chain.fit_status() == Preprocessor.FitStatus.PARTIALLY_FITTED
+
+    chain.preprocessors[1].fit(ds)
+    assert chain.fit_status() == Preprocessor.FitStatus.FITTED
+
+    chain = create_chain()
+    chain.fit(ds)
+    assert chain.fit_status() == Preprocessor.FitStatus.FITTED
+
+
 def test_nested_chain():
     """Tests Chain-inside-Chain functionality."""
     col_a = [-1, -1, 1, 1]
