@@ -21,7 +21,7 @@ from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
 from ray._private.storage import _load_class
-
+from ray.util import PublicAPI
 
 try:
     import wandb
@@ -84,6 +84,7 @@ _VALID_ITERABLE_TYPES = (
 _MockWandb = MagicMock
 
 
+@PublicAPI(stability="alpha")
 def setup_wandb(
     config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
 ) -> Union[Run, RunDisabled, _MockWandb]:
