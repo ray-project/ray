@@ -42,7 +42,7 @@ def config(request):
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabled):
     config["max_direct_call_object_size"] = 100
-    config["task_retry_delay_ms"] = (100,)
+    config["task_retry_delay_ms"] = 100
     config["object_timeout_milliseconds"] = 200
 
     cluster = ray_start_cluster
@@ -84,7 +84,7 @@ def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabl
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconstruction_hangs(config, ray_start_cluster):
     config["max_direct_call_object_size"] = 100
-    config["task_retry_delay_ms"] = (100,)
+    config["task_retry_delay_ms"] = 100
     config["object_timeout_milliseconds"] = 200
     config["fetch_warn_timeout_milliseconds"] = 1000
 
