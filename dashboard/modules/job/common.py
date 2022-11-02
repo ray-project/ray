@@ -94,8 +94,10 @@ class JobInfo:
                 self.message = "Job has not started yet."
                 if any(
                     [
-                        self.entrypoint_num_cpus is not None and self.entrypoint_num_cpus > 0,
-                        self.entrypoint_num_gpus is not None and self.entrypoint_num_gpus > 0,
+                        self.entrypoint_num_cpus is not None
+                        and self.entrypoint_num_cpus > 0,
+                        self.entrypoint_num_gpus is not None
+                        and self.entrypoint_num_gpus > 0,
                         self.entrypoint_resources not in [None, {}],
                     ]
                 ):
