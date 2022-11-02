@@ -345,13 +345,11 @@ def test_dataset_pipeline_stats_autolog(mock_logger, ray_start_regular_shared):
     enabled via the `DatasetContext.enable_auto_log_stats` parameter."""
     context = DatasetContext.get_current()
     enable_auto_log_stats_orig = context.enable_auto_log_stats
-    optimize_fuse_stages_orig = context.optimize_fuse_stages
     try:
         context.enable_auto_log_stats = True
-        context.optimize_fuse_stages = True
+
         ds = ray.data.range(1000, parallelism=10)
         ds = ds.map_batches(lambda x: x)
-
         logger_args, logger_kwargs = mock_logger.info.call_args
         assert (
             canonicalize(logger_args[0])
@@ -364,9 +362,9 @@ def test_dataset_pipeline_stats_autolog(mock_logger, ray_start_regular_shared):
 * Tasks per node: N min, N max, N mean; N nodes used
 """
         )
+
         pipe = ds.repeat(5)
         pipe = pipe.map(lambda x: x)
-
         # Stats only include first stage, and not for pipelined map
         logger_args, logger_kwargs = mock_logger.info.call_args
         assert (
@@ -457,7 +455,6 @@ DatasetPipeline iterator time breakdown:
         )
     finally:
         context.enable_auto_log_stats = enable_auto_log_stats_orig
-        context.optimize_fuse_stages = optimize_fuse_stages_orig
 
 
 def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
