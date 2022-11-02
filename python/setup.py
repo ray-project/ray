@@ -303,9 +303,10 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
-        # Light weight requirement, can be replaced with "typing" once
-        # we deprecate Python 3.7 (this will take a while).
-        "typing_extensions; python_version < '3.8'",
+        # This is needed for all versions of Python less than 3.10 so that
+        # we can use the backported TypeAlias annotation (becomes part of
+        # the normal "typing" package in 3.10).
+        "typing_extensions; python_version < '3.10'",
         "virtualenv>=20.0.24",  # For pip runtime env.
     ]
 
