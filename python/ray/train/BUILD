@@ -157,16 +157,6 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
-# py_test(
-#     name = "tensorflow_autoencoder_example", # REGRESSION
-#     size = "medium",
-#     main = "examples/tf/tensorflow_autoencoder_example.py",
-#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
-#     tags = ["team:ml", "exclusive"],
-#     deps = [":train_lib"],
-#     args = ["--smoke-test"]
-# )
-
 # This is tested in test_examples!
 # py_test(
 #     name = "torch_fashion_mnist_example",
@@ -334,7 +324,7 @@ py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
-    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    tags = ["team:ml", "exclusive", "gpu_only", "torch_1_11"],
     deps = [":train_lib"]
 )
 
@@ -382,7 +372,7 @@ py_test(
     name = "test_mosaic_trainer",
     size = "medium",
     srcs = ["tests/test_mosaic_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "mosaic"],
+    tags = ["team:ml", "exclusive", "ray_air", "torch_1_11"],
     deps = [":train_lib", ":conftest"]
 )
 

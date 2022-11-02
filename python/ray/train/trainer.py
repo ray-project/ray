@@ -235,7 +235,9 @@ class TrainingIterator:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
             try:
-                self._backend_executor.shutdown()
+                # Exception raised in at least one training worker. Immediately raise
+                # this error to the user and do not attempt to terminate gracefully.
+                self._backend_executor.shutdown(graceful_termination=False)
                 self._finished_training = True
             except Exception:
                 pass
@@ -260,11 +262,11 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [self._backend.decode_data(r.data) for r in results]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
                 # Iterate until next REPORT call or training has finished.
             else:
@@ -284,7 +286,7 @@ class TrainingIterator:
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
 
     def _finish_training(self):
