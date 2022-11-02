@@ -164,7 +164,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.foreach_actor(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_indices=[0, 0],
+            remote_actor_ids=[0, 0],
         )
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
@@ -178,7 +178,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_indices=[0, 0],
+            remote_actor_ids=[0, 0],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -233,7 +233,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_indices=[1, 1],
+            remote_actor_ids=[1, 1],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -241,7 +241,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_indices=[1],
+            remote_actor_ids=[1],
         )
         # We actually made 0 calls.
         self.assertEqual(num_of_calls, 0)
