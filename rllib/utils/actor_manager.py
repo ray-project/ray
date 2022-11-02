@@ -228,12 +228,17 @@ class FaultTolerantActorManager:
             self.__NEXT_ID += 1
 
     @DeveloperAPI
-    def remove_actor(self, actor_id: int):
+    def remove_actor(self, actor_id: int) -> ActorHandle:
         """Remove an actor from the pool.
 
         Args:
             actor_id: ID of the actor to remove.
+
+        Returns:
+            Handle to the actor that was removed.
         """
+        actor = self.__actors[actor_id]
+
         # Remove the actor from the pool.
         del self.__actors[actor_id]
         del self.__remote_actor_states[actor_id]
@@ -246,6 +251,8 @@ class FaultTolerantActorManager:
         ]
         for req in reqs_to_be_removed:
             del self.__in_flight_req_to_actor_id[req]
+
+        return actor
 
     @DeveloperAPI
     def num_actors(self) -> int:

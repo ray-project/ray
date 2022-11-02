@@ -203,7 +203,6 @@ class WorkerSet:
             validate=config.validate_workers_after_construction,
         )
 
-        # Create a local worker, if needed.
         # If num_workers > 0 and we don't have an env on the local worker,
         # get the observation- and action spaces for each policy from
         # the first remote worker (which does have an env).
@@ -213,36 +212,11 @@ class WorkerSet:
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
-            # Try to figure out spaces from the first remote worker.
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_indices=[0],
-            )[0]
-            spaces = {
-                e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-                for e in remote_spaces
-            }
-            # Try to add the actual env's obs/action spaces.
-            try:
-                env_spaces = self.foreach_worker(
-                    lambda worker: worker.foreach_env.remote(
-                        lambda env: (env.observation_space, env.action_space)
-                    ),
-                    remote_worker_indices=[0],
-                )[0][0]
-                spaces["__env__"] = env_spaces
-            except Exception:
-                pass
-
-            logger.info(
-                "Inferred observation/action spaces from remote "
-                f"worker (local worker has no env): {spaces}"
-            )
+            spaces = self._get_spaces_from_remote_worker()
         else:
             spaces = None
 
+        # Create a local worker, if needed.
         if local_worker:
             self._local_worker = self._make_worker(
                 cls=RolloutWorker,
@@ -253,6 +227,50 @@ class WorkerSet:
                 config=self._local_config,
                 spaces=spaces,
             )
+
+    def _get_spaces_from_remote_worker(self):
+        """Guess observation and action spaces from a remote worker.
+
+        Returns:
+            A dict mapping from policy ids to spaces.
+        """
+        # Try to figure out spaces from the first remote worker.
+        remote_spaces = self.foreach_worker(
+            lambda worker: worker.foreach_policy(
+                lambda p, pid: (pid, p.observation_space, p.action_space)
+            ),
+            remote_worker_indices=[0],
+            local_worker=False,
+        )
+        if not remote_spaces:
+            raise ValueError(
+                "Could not get observation and action spaces from remote "
+                "worker. Maybe specify them manually in the config?"
+            )
+        spaces = {
+            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
+            for e in remote_spaces[0]
+        }
+
+        # Try to add the actual env's obs/action spaces.
+        env_spaces = self.foreach_worker(
+            lambda worker: worker.foreach_env(
+                lambda env: (env.observation_space, env.action_space)
+            ),
+            remote_worker_indices=[0],
+            local_worker=False,
+        )
+        if env_spaces:
+            # env_spaces group spaces by environment then worker.
+            # So need to unpack thing twice.
+            spaces["__env__"] = env_spaces[0][0]
+
+        logger.info(
+            "Inferred observation/action spaces from remote "
+            f"worker (local worker has no env): {spaces}"
+        )
+
+        return spaces
 
     @DeveloperAPI
     def local_worker(self) -> RolloutWorker:
@@ -273,7 +291,7 @@ class WorkerSet:
                 ),
                 error=False,
             )
-        return self.__worker_manager.actors()
+        return list(self.__worker_manager.actors().values())
 
     def remote_workers(self) -> List[ActorHandle]:
         """Returns the list of remote rollout workers."""
@@ -288,7 +306,7 @@ class WorkerSet:
                 ),
                 error=False,
             )
-        return self.__worker_manager.actors()
+        return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
     def num_remote_workers(self) -> int:
@@ -492,7 +510,7 @@ class WorkerSet:
                 self.local_worker().add_policy(**new_policy_instance_kwargs)
 
         # Add the policy to all remote workers.
-        self.foreach_worker(_create_new_policy_fn)
+        self.foreach_worker(_create_new_policy_fn, local_worker=False)
 
     @DeveloperAPI
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
@@ -528,7 +546,7 @@ class WorkerSet:
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". Establish initial states.
         if validate:
-            self.foreach_worker(lambda w: w.assert_healthy())
+            self.foreach_worker(lambda w: w.assert_healthy(), local_worker=False)
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
@@ -548,7 +566,7 @@ class WorkerSet:
         removed_workers = []
         # Terminate faulty workers.
         for worker_index in faulty_indices:
-            worker = self.remote_workers()[worker_index - 1]
+            worker = self.__worker_manager.remove_actor(worker_index)
             logger.info(f"Trying to terminate faulty worker {worker_index}.")
             try:
                 worker.__ray_terminate__.remote()
@@ -556,13 +574,7 @@ class WorkerSet:
             except Exception:
                 logger.exception("Error terminating faulty worker.")
 
-        # Remove all faulty workers from self._remote_workers.
-        for worker_index in reversed(faulty_indices):
-            del self._remote_workers[worker_index - 1]
-        # TODO: Should we also change each healthy worker's num_workers counter and
-        #  worker_index property?
-
-        if len(self.remote_workers()) == 0:
+        if self.num_remote_workers() == 0:
             raise RuntimeError(
                 f"No healthy workers remaining (worker indices {faulty_indices} have "
                 f"died)! Can't continue training."
@@ -588,7 +600,7 @@ class WorkerSet:
         removed_workers = []
         new_workers = []
         for worker_index in faulty_indices:
-            worker = self.remote_workers()[worker_index - 1]
+            worker = self.__worker_manager.remove_actor(worker_index)
             removed_workers.append(worker)
             logger.info(f"Trying to recreate faulty worker {worker_index}")
             try:
@@ -601,7 +613,7 @@ class WorkerSet:
                 cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
-                worker_index=worker_index,
+                worker_index=worker_index + 1,
                 num_workers=len(self._remote_workers),
                 recreated_worker=True,
                 config=self._remote_config,
@@ -614,7 +626,7 @@ class WorkerSet:
             )
 
             # Add new worker to list of remote workers.
-            self._remote_workers[worker_index - 1] = new_worker
+            self.__worker_manager.add_actors([new_worker])
             new_workers.append(new_worker)
 
         return removed_workers, new_workers
@@ -623,11 +635,11 @@ class WorkerSet:
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
         try:
-            if self.local_worker():
-                self.local_worker().stop()
             # Make sure we stop all workers, include the ones that were just
             # restarted / recovered.
-            self.foreach_worker(lambda w: w.stop(), healthy_only=False)
+            self.foreach_worker(
+                lambda w: w.stop(), healthy_only=False, local_worker=True
+            )
         except Exception:
             logger.exception("Failed to stop workers!")
         finally:
@@ -677,7 +689,7 @@ class WorkerSet:
         remote_results = self.__worker_manager.foreach_actor(
             func,
             healthy_only=healthy_only,
-            remote_actor_indices=remote_worker_indices,
+            remote_actor_ids=remote_worker_indices,
             timeout_seconds=timeout_seconds,
         )
         remote_results = [r.get() for r in remote_results.ignore_ray_errors()]
@@ -707,7 +719,7 @@ class WorkerSet:
         return self.__worker_manager.foreach_actor_async(
             func,
             healthy_only=healthy_only,
-            remote_actor_indices=remote_worker_indices,
+            remote_actor_ids=remote_worker_indices,
         )
 
     @DeveloperAPI
@@ -729,7 +741,7 @@ class WorkerSet:
         remote_result = self.__worker_manager.fetch_ready_async_reqs(
             timeout_seconds=timeout_seconds
         )
-        return [(r.actor_idx, r.get()) for r in remote_result.ignore_ray_errors()]
+        return [(r.actor_id, r.get()) for r in remote_result.ignore_ray_errors()]
 
     @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
@@ -751,10 +763,9 @@ class WorkerSet:
                 workers' results
         """
         results = []
-        if self.local_worker() is not None:
-            results = self.local_worker().foreach_policy(func)
-        remote_results = self.foreach_worker(lambda w: w.foreach_policy(func))
-        for r in remote_results:
+        for r in self.foreach_worker(
+            lambda w: w.foreach_policy(func), local_worker=True
+        ):
             results.extend(r)
         return results
 
@@ -772,10 +783,9 @@ class WorkerSet:
                 `func([trainable policy], [ID])`-calls.
         """
         results = []
-        if self.local_worker() is not None:
-            results = self.local_worker().foreach_policy_to_train(func)
-        remote_results = self.foreach_worker(lambda w: w.foreach_policy_to_train(func))
-        for r in remote_results:
+        for r in self.foreach_worker(
+            lambda w: w.foreach_policy_to_train(func), local_worker=True
+        ):
             results.extend(r)
         return results
 
@@ -796,11 +806,12 @@ class WorkerSet:
         Returns:
             The list (workers) of lists (sub environments) of results.
         """
-        local_results = []
-        if self.local_worker() is not None:
-            local_results = [self.local_worker().foreach_env(func)]
-        remote_results = self.foreach_worker(lambda w: w.foreach_env(func))
-        return local_results + remote_results
+        return list(
+            self.foreach_worker(
+                lambda w: w.foreach_env(func),
+                local_worker=True,
+            )
+        )
 
     @DeveloperAPI
     def foreach_env_with_context(
@@ -822,11 +833,12 @@ class WorkerSet:
             The list (1 item per workers) of lists (1 item per sub-environment)
                 of results.
         """
-        local_results = []
-        if self.local_worker() is not None:
-            local_results = [self.local_worker().foreach_env_with_context(func)]
-        remote_results = self.foreach_worker(lambda w: w.foreach_env_with_context(func))
-        return local_results + remote_results
+        return list(
+            self.foreach_worker(
+                lambda w: w.foreach_env_with_context(func),
+                local_worker=True,
+            )
+        )
 
     @staticmethod
     def _from_existing(
@@ -883,24 +895,17 @@ class WorkerSet:
             Note that index=1 is the 0th item in `self._remote_workers`.
         """
         logger.info("Health checking all workers ...")
-        checks = []
-        for worker in self.remote_workers():
-            # TODO: Maybe find a better way to probe for healthiness. Performing an
-            #  entire `sample()` step may be costly. Then again, we only do this
-            #  upon any worker failure during the `step_attempt()`, not regularly.
-            _, obj_ref = worker.sample_with_count.remote()
-            checks.append(obj_ref)
 
-        faulty_worker_indices = []
-        for i, obj_ref in enumerate(checks):
-            try:
-                ray.get(obj_ref)
-                logger.info("Worker {} looks healthy.".format(i + 1))
-            except RayError:
-                logger.exception("Worker {} is faulty.".format(i + 1))
-                faulty_worker_indices.append(i + 1)
+        remote_results = self.__worker_manager.foreach_actor(
+            lambda w: w.sample_with_count(),
+            healthy_only=False,
+        )
 
-        return faulty_worker_indices
+        return [
+            r.actor_id
+            for r in remote_results
+            if not r.ok and isinstance(r.get(), RayError)
+        ]
 
     @classmethod
     def _valid_module(cls, class_path):

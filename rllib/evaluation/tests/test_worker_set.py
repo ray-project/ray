@@ -11,7 +11,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 class TestWorkerSet(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):

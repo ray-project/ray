@@ -2367,6 +2367,8 @@ class Algorithm(Trainable):
 
         return len(new_workers)
 
+    # TODO(jungong) : remove this callback once we get rid of all the worker
+    # failure handling logics from Algorithms.
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -2376,7 +2378,9 @@ class Algorithm(Trainable):
             removed_workers: List of removed workers.
             new_workers: List of new workers.
         """
-        pass
+        for actor in removed_workers:
+            self._remote_workers_for_metrics.remove(actor)
+        self._remote_workers_for_metrics += new_workers
 
     @override(Trainable)
     def _export_model(
