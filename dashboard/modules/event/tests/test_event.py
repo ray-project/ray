@@ -10,6 +10,8 @@ import random
 import tempfile
 import socket
 
+from pprint import pprint
+
 import pytest
 import numpy as np
 
@@ -300,7 +302,7 @@ def test_autoscaler_cluster_events(shutdown_only):
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 2,
+                "max_workers": 1,
             },
             "gpu_node": {
                 "resources": {
@@ -309,7 +311,7 @@ def test_autoscaler_cluster_events(shutdown_only):
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 2,
+                "max_workers": 1,
             },
         },
         idle_timeout_minutes=1,
@@ -329,61 +331,51 @@ def test_autoscaler_cluster_events(shutdown_only):
         def g():
             print("cpu ok")
 
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 2)
         ray.get(f.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 4)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
         ray.get(g.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 8)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
 
         # Trigger an infeasible task
-        g.options(num_gpus=5).remote()
+        g.options(num_cpus=0, num_gpus=5).remote()
 
         def verify():
             cluster_events = list_cluster_events()
             messages = {(e["message"], e["source_type"]) for e in cluster_events}
 
-            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages
+            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
             assert (
                 "Adding 1 node(s) of type gpu_node.",
                 "AUTOSCALER",
-            ) in messages
+            ) in messages, cluster_events
             assert (
                 "Resized to 4 CPUs, 1 GPUs.",
                 "AUTOSCALER",
-            ) in messages
-            assert (
-                "Adding 1 node(s) of type gpu_node.",
-                "AUTOSCALER",
-            ) in messages
-            assert (
-                "Resized to 6 CPUs, 2 GPUs.",
-                "AUTOSCALER",
-            ) in messages
+            ) in messages, cluster_events
             assert (
                 "Adding 1 node(s) of type cpu_node.",
                 "AUTOSCALER",
-            ) in messages
+            ) in messages, cluster_events
             assert (
-                "Resized to 10 CPUs, 2 GPUs.",
+                "Resized to 8 CPUs, 1 GPUs.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                (
+                    "Error: No available node types can fulfill resource "
+                    "request {'GPU': 5.0}. Add suitable node "
+                    "types to this cluster to resolve this issue."
+                ),
                 "AUTOSCALER",
             ) in messages
-            assert (
-                "Adding 1 node(s) of type cpu_node.",
-                "AUTOSCALER",
-            ) in messages
-            assert (
-                "Resized to 14 CPUs, 2 GPUs.",
-                "AUTOSCALER",
-            ) in messages
-            # assert (
-            #     (
-            #         "Error: No available node types can fulfill resource "
-            #         "request {'CPU': 3.0, 'GPU': 5.0}. Add suitable node "
-            #         "types to this cluster to resolve this issue."
-            #     ),
-            #     "AUTOSCALER",
-            # ) in messages
 
             return True
 
         wait_for_condition(verify, timeout=30)
+        pprint(list_cluster_events())
     finally:
         ray.shutdown()
         cluster.shutdown()
