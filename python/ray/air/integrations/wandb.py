@@ -11,8 +11,6 @@ from numbers import Number
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-from mock.mock import MagicMock
-
 from ray import logger
 from ray.air import session
 
@@ -25,15 +23,12 @@ from ray.util import PublicAPI
 
 try:
     import wandb
-except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
-    wandb = None
-
-if wandb:
     from wandb.util import json_dumps_safer
     from wandb.wandb_run import Run
     from wandb.sdk.lib.disabled import RunDisabled
-else:
+except ImportError:
+    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
+    wandb = None
     json_dumps_safer = Run = RunDisabled = None
 
 
@@ -81,13 +76,10 @@ _VALID_ITERABLE_TYPES = (
 )
 
 
-_MockWandb = MagicMock
-
-
 @PublicAPI(stability="alpha")
 def setup_wandb(
     config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
-) -> Union[Run, RunDisabled, _MockWandb]:
+) -> Union[Run, RunDisabled]:
     """Set up a Weights & Biases session.
 
     This function can be used to initialize a Weights & Biases session in a
@@ -148,7 +140,7 @@ def setup_wandb(
         # Do a try-catch here if we are not in a train session
         _session = session._get_session(warn=False)
         if _session and rank_zero_only and session.get_world_rank() != 0:
-            return _MockWandb()
+            return RunDisabled()
     except RuntimeError:
         pass
 
