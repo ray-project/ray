@@ -700,6 +700,11 @@ cdef execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    function_name = None
+    task_name = None
+    title = None
+    task_exception = False
+    objects_stored = False
     cdef:
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
@@ -708,289 +713,302 @@ cdef execute_task(
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    try:
+        # Automatically restrict the GPUs available to this task.
+        ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    # Helper method used to exit current asyncio actor.
-    # This is called when a KeyboardInterrupt is received by the main thread.
-    # Upon receiving a KeyboardInterrupt signal, Ray will exit the current
-    # worker. If the worker is processing normal tasks, Ray treat it as task
-    # cancellation from ray.cancel(object_ref). If the worker is an asyncio
-    # actor, Ray will exit the actor.
-    def exit_current_actor_if_asyncio():
-        if core_worker.current_actor_is_asyncio():
-            error = SystemExit(0)
-            error.is_ray_terminate = True
-            error.ray_terminate_msg = "exit_actor() is called."
-            raise error
-
-    function_descriptor = CFunctionDescriptorToPython(
-        ray_function.GetFunctionDescriptor())
-
-    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        actor_class = manager.load_actor_class(job_id, function_descriptor)
-        actor_id = core_worker.get_actor_id()
-        actor = actor_class.__new__(actor_class)
-        worker.actors[actor_id] = actor
-        # Record the actor class via :actor_name: magic token in the log.
-        #
-        # (Phase 1): this covers code run before __init__ finishes.
-        # We need to handle this separately because `__repr__` may not be
-        # runnable until after `__init__` (e.g., if it accesses fields
-        # defined in the constructor).
-        actor_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-        # Flush to both .out and .err
-        print(actor_magic_token, end="")
-        print(actor_magic_token, file=sys.stderr, end="")
-
-        # Initial eventloops for asyncio for this actor.
-        if core_worker.current_actor_is_asyncio():
-            core_worker.initialize_eventloops_for_actor_concurrency_group(
-                c_defined_concurrency_groups)
-
-    execution_info = execution_infos.get(function_descriptor)
-    if not execution_info:
-        execution_info = manager.get_execution_info(
-            job_id, function_descriptor)
-        execution_infos[function_descriptor] = execution_info
-
-    function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
-
-    task_name = name.decode("utf-8")
-    name_of_concurrency_group_to_execute = \
-        c_name_of_concurrency_group_to_execute.decode("ascii")
-    title = f"ray::{task_name}()"
-
-    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        next_title = "ray::IDLE"
-        function_executor = execution_info.function
-        # Record the task name via :task_name: magic token in the log file.
-        # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        task_name_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
-        # Print on both .out and .err
-        print(task_name_magic_token, end="")
-        print(task_name_magic_token, file=sys.stderr, end="")
-    else:
-        actor = worker.actors[core_worker.get_actor_id()]
-        class_name = actor.__class__.__name__
-        next_title = f"ray::{class_name}"
-
-        def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
-
+        # Helper method used to exit current asyncio actor.
+        # This is called when a KeyboardInterrupt is received by the main thread.
+        # Upon receiving a KeyboardInterrupt signal, Ray will exit the current
+        # worker. If the worker is processing normal tasks, Ray treat it as task
+        # cancellation from ray.cancel(object_ref). If the worker is an asyncio
+        # actor, Ray will exit the actor.
+        def exit_current_actor_if_asyncio():
             if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=inspect.iscoroutinefunction)) == 0:
-                    raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
-                # Increase recursion limit if necessary. In asyncio mode,
-                # we have many parallel callstacks (represented in fibers)
-                # that's suspended for execution. Python interpreter will
-                # mistakenly count each callstack towards recusion limit.
-                # We don't need to worry about stackoverflow here because
-                # the max number of callstacks is limited in direct actor
-                # transport with max_concurrency flag.
-                increase_recursion_limit()
+                error = SystemExit(0)
+                error.is_ray_terminate = True
+                error.ray_terminate_msg = "exit_actor() is called."
+                raise error
 
-                if inspect.iscoroutinefunction(function.method):
-                    async_function = function
-                else:
-                    # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
+        function_descriptor = CFunctionDescriptorToPython(
+            ray_function.GetFunctionDescriptor())
 
-                return core_worker.run_async_func_in_event_loop(
-                    async_function, function_descriptor,
-                    name_of_concurrency_group_to_execute, actor,
-                    *arguments, **kwarguments)
+        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+            actor_class = manager.load_actor_class(job_id, function_descriptor)
+            actor_id = core_worker.get_actor_id()
+            actor = actor_class.__new__(actor_class)
+            worker.actors[actor_id] = actor
+            # Record the actor class via :actor_name: magic token in the log.
+            #
+            # (Phase 1): this covers code run before __init__ finishes.
+            # We need to handle this separately because `__repr__` may not be
+            # runnable until after `__init__` (e.g., if it accesses fields
+            # defined in the constructor).
+            actor_magic_token = "{}{}\n".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+            # Flush to both .out and .err
+            print(actor_magic_token, end="")
+            print(actor_magic_token, file=sys.stderr, end="")
 
-            return function(actor, *arguments, **kwarguments)
+            # Initial eventloops for asyncio for this actor.
+            if core_worker.current_actor_is_asyncio():
+                core_worker.initialize_eventloops_for_actor_concurrency_group(
+                    c_defined_concurrency_groups)
 
-    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
-        try:
-            task_exception = False
-            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                     and function_name == "__ray_terminate__") and
-               ray._config.memory_monitor_interval_ms() == 0):
-                worker.memory_monitor.raise_if_low_memory()
+        execution_info = execution_infos.get(function_descriptor)
+        if not execution_info:
+            execution_info = manager.get_execution_info(
+                job_id, function_descriptor)
+            execution_infos[function_descriptor] = execution_info
 
-            with core_worker.profile_event(b"task:deserialize_arguments"):
-                if c_args.empty():
-                    args, kwargs = [], {}
-                else:
-                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                    object_refs = VectorToObjectRefs(
-                            c_arg_refs,
-                            skip_adding_local_ref=False)
+        function_name = execution_info.function_name
+        extra_data = (b'{"name": ' + function_name.encode("ascii") +
+                      b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
-                    if core_worker.current_actor_is_asyncio():
-                        # We deserialize objects in event loop thread to
-                        # prevent segfaults. See #7799
-                        async def deserialize_args():
-                            return (ray._private.worker.global_worker
+        task_name = name.decode("utf-8")
+        name_of_concurrency_group_to_execute = \
+            c_name_of_concurrency_group_to_execute.decode("ascii")
+        title = f"ray::{task_name}()"
+
+        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+            next_title = "ray::IDLE"
+            function_executor = execution_info.function
+            # Record the task name via :task_name: magic token in the log file.
+            # This is used for the prefix in driver logs `(task_name pid=123) ...`
+            task_name_magic_token = "{}{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
+            # Print on both .out and .err
+            print(task_name_magic_token, end="")
+            print(task_name_magic_token, file=sys.stderr, end="")
+        else:
+            actor = worker.actors[core_worker.get_actor_id()]
+            class_name = actor.__class__.__name__
+            next_title = f"ray::{class_name}"
+
+            def function_executor(*arguments, **kwarguments):
+                function = execution_info.function
+
+                if core_worker.current_actor_is_asyncio():
+                    if len(inspect.getmembers(
+                            actor.__class__,
+                            predicate=inspect.iscoroutinefunction)) == 0:
+                        raise RayActorError(
+                            f"Failed to create the actor {core_worker.get_actor_id()}. "
+                            "The failure reason is that you set the async flag, "
+                            "but the actor has no any coroutine function.")
+                    # Increase recursion limit if necessary. In asyncio mode,
+                    # we have many parallel callstacks (represented in fibers)
+                    # that's suspended for execution. Python interpreter will
+                    # mistakenly count each callstack towards recusion limit.
+                    # We don't need to worry about stackoverflow here because
+                    # the max number of callstacks is limited in direct actor
+                    # transport with max_concurrency flag.
+                    increase_recursion_limit()
+
+                    if inspect.iscoroutinefunction(function.method):
+                        async_function = function
+                    else:
+                        # Just execute the method if it's ray internal method.
+                        if function.name.startswith("__ray"):
+                            return function(actor, *arguments, **kwarguments)
+                        async_function = sync_to_async(function)
+
+                    return core_worker.run_async_func_in_event_loop(
+                        async_function, function_descriptor,
+                        name_of_concurrency_group_to_execute, actor,
+                        *arguments, **kwarguments)
+
+                return function(actor, *arguments, **kwarguments)
+
+        with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+            try:
+                if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                         and function_name == "__ray_terminate__") and
+                        ray._config.memory_monitor_interval_ms() == 0):
+                    worker.memory_monitor.raise_if_low_memory()
+
+                with core_worker.profile_event(b"task:deserialize_arguments"):
+                    if c_args.empty():
+                        args, kwargs = [], {}
+                    else:
+                        metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                        object_refs = VectorToObjectRefs(
+                                c_arg_refs,
+                                skip_adding_local_ref=False)
+
+                        if core_worker.current_actor_is_asyncio():
+                            # We deserialize objects in event loop thread to
+                            # prevent segfaults. See #7799
+                            async def deserialize_args():
+                                return (ray._private.worker.global_worker
+                                        .deserialize_objects(
+                                            metadata_pairs, object_refs))
+                            args = core_worker.run_async_func_in_event_loop(
+                                deserialize_args, function_descriptor,
+                                name_of_concurrency_group_to_execute)
+                        else:
+                            args = (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
-                        args = core_worker.run_async_func_in_event_loop(
-                            deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
-                    else:
-                        args = ray._private.worker.global_worker.deserialize_objects(
-                            metadata_pairs, object_refs)
 
-                    for arg in args:
-                        raise_if_dependency_failed(arg)
-                    args, kwargs = ray._private.signature.recover_args(args)
+                        for arg in args:
+                            raise_if_dependency_failed(arg)
+                        args, kwargs = ray._private.signature.recover_args(args)
 
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
-                class_name = actor.__class__.__name__
-                actor_title = f"{class_name}({args!r}, {kwargs!r})"
-                core_worker.set_actor_title(actor_title.encode("utf-8"))
-            # Execute the task.
-            with core_worker.profile_event(b"task:execute"):
-                task_exception = True
-                try:
-                    is_exiting = core_worker.is_exiting()
-                    if is_exiting:
-                        title = f"{title}::Exiting"
-                        next_title = f"{next_title}::Exiting"
-                    with ray._private.worker._changeproctitle(title, next_title):
-                        if debugger_breakpoint != b"":
-                            ray.util.pdb.set_trace(
-                                breakpoint_uuid=debugger_breakpoint)
-                        outputs = function_executor(*args, **kwargs)
-                        next_breakpoint = (
-                            ray._private.worker.global_worker.debugger_breakpoint)
-                        if next_breakpoint != b"":
-                            # If this happens, the user typed "remote" and
-                            # there were no more remote calls left in this
-                            # task. In that case we just exit the debugger.
-                            ray.experimental.internal_kv._internal_kv_put(
-                                "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}",
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            ray._private.worker.global_worker.debugger_breakpoint = b""
-                    task_exception = False
-                except AsyncioActorExit as e:
-                    exit_current_actor_if_asyncio()
-                except KeyboardInterrupt as e:
-                    raise TaskCancelledError(
-                            core_worker.get_current_task_id())
-                except Exception as e:
-                    is_application_error[0] = True
-                    is_retryable_error[0] = determine_if_retryable(
-                        e,
-                        serialized_retry_exception_allowlist,
-                        function_descriptor,
-                    )
-                    if (
-                        is_retryable_error[0]
-                        and core_worker.get_current_task_retry_exceptions()
-                    ):
-                        logger.info("Task failed with retryable exception:"
-                                    " {}.".format(
-                                        core_worker.get_current_task_id()),
-                                    exc_info=True)
-                    else:
-                        logger.debug("Task failed with unretryable exception:"
-                                     " {}.".format(
-                                         core_worker.get_current_task_id()),
-                                     exc_info=True)
-                    raise e
-                if returns[0].size() == 1 and not inspect.isgenerator(outputs):
-                    # If there is only one return specified, we should return
-                    # all return values as a single object.
-                    outputs = (outputs,)
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                # Record actor repr via :actor_name: magic token in the log.
-                #
-                # (Phase 2): after `__init__` finishes, we override the
-                # log prefix with the full repr of the actor. The log monitor
-                # will pick up the updated token.
-                if (hasattr(actor_class, "__ray_actor_class__") and
-                        actor_class.__ray_actor_class__.__repr__ != object.__repr__):
-                    actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
-                    # Flush on both stdout and stderr.
-                    print(actor_magic_token, end="")
-                    print(actor_magic_token, file=sys.stderr, end="")
-            # Check for a cancellation that was called when the function
-            # was exiting and was raised after the except block.
-            if not check_signals().ok():
-                task_exception = True
-                raise TaskCancelledError(
-                            core_worker.get_current_task_id())
-
-            if (returns[0].size() > 0 and
-                    not inspect.isgenerator(outputs) and
-                    len(outputs) != int(returns[0].size())):
-                raise ValueError(
-                    "Task returned {} objects, but num_returns={}.".format(
-                        len(outputs), returns[0].size()))
-
-            # Store the outputs in the object store.
-            with core_worker.profile_event(b"task:store_outputs"):
-                num_returns = returns[0].size()
-                if dynamic_returns != NULL:
-                    if not inspect.isgenerator(outputs):
-                        raise ValueError(
-                                "Functions with @ray.remote(num_returns=\"dynamic\" "
-                                "must return a generator")
+                if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                    actor = worker.actors[core_worker.get_actor_id()]
+                    class_name = actor.__class__.__name__
+                    actor_title = f"{class_name}({args!r}, {kwargs!r})"
+                    core_worker.set_actor_title(actor_title.encode("utf-8"))
+                # Execute the task.
+                with core_worker.profile_event(b"task:execute"):
                     task_exception = True
-
-                    execute_dynamic_generator_and_store_task_outputs(
-                            outputs,
-                            returns[0][0].first,
-                            task_type,
+                    try:
+                        is_exiting = core_worker.is_exiting()
+                        if is_exiting:
+                            title = f"{title}::Exiting"
+                            next_title = f"{next_title}::Exiting"
+                        with ray._private.worker._changeproctitle(title, next_title):
+                            if debugger_breakpoint != b"":
+                                ray.util.pdb.set_trace(
+                                    breakpoint_uuid=debugger_breakpoint)
+                            outputs = function_executor(*args, **kwargs)
+                            next_breakpoint = (
+                                ray._private.worker.global_worker.debugger_breakpoint)
+                            if next_breakpoint != b"":
+                                # If this happens, the user typed "remote" and
+                                # there were no more remote calls left in this
+                                # task. In that case we just exit the debugger.
+                                ray.experimental.internal_kv._internal_kv_put(
+                                    "RAY_PDB_{}".format(next_breakpoint),
+                                    "{\"exit_debugger\": true}",
+                                    namespace=ray_constants.KV_NAMESPACE_PDB
+                                )
+                                ray.experimental.internal_kv._internal_kv_del(
+                                    "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                    namespace=ray_constants.KV_NAMESPACE_PDB
+                                )
+                                (ray._private.worker.global_worker
+                                 .debugger_breakpoint) = b""
+                        task_exception = False
+                    except AsyncioActorExit as e:
+                        exit_current_actor_if_asyncio()
+                    except Exception as e:
+                        is_application_error[0] = True
+                        is_retryable_error[0] = determine_if_retryable(
+                            e,
                             serialized_retry_exception_allowlist,
-                            dynamic_returns,
-                            is_retryable_error,
-                            is_application_error,
-                            is_reattempt,
-                            function_name,
                             function_descriptor,
-                            title)
+                        )
+                        if (
+                            is_retryable_error[0]
+                            and core_worker.get_current_task_retry_exceptions()
+                        ):
+                            logger.info("Task failed with retryable exception:"
+                                        " {}.".format(
+                                            core_worker.get_current_task_id()),
+                                        exc_info=True)
+                        else:
+                            logger.debug("Task failed with unretryable exception:"
+                                         " {}.".format(
+                                            core_worker.get_current_task_id()),
+                                         exc_info=True)
+                        raise e
+                    if returns[0].size() == 1 and not inspect.isgenerator(outputs):
+                        # If there is only one return specified, we should return
+                        # all return values as a single object.
+                        outputs = (outputs,)
+                if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                    # Record actor repr via :actor_name: magic token in the log.
+                    #
+                    # (Phase 2): after `__init__` finishes, we override the
+                    # log prefix with the full repr of the actor. The log monitor
+                    # will pick up the updated token.
+                    if (hasattr(actor_class, "__ray_actor_class__") and
+                            (actor_class.__ray_actor_class__.__repr__
+                             != object.__repr__)):
+                        actor_magic_token = "{}{}\n".format(
+                            ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        # Flush on both stdout and stderr.
+                        print(actor_magic_token, end="")
+                        print(actor_magic_token, file=sys.stderr, end="")
 
-                    task_exception = False
-                    dynamic_refs = []
-                    for idx in range(dynamic_returns.size()):
-                        dynamic_refs.append(ObjectRef(
-                            dynamic_returns[0][idx].first.Binary(),
-                            caller_address.SerializeAsString(),
-                        ))
-                    # Swap out the generator for an ObjectRef generator.
-                    outputs = (ObjectRefGenerator(dynamic_refs), )
+                # Check for a cancellation that was called when the function
+                # was exiting and was raised after the except block.
+                task_exception = True
+                PyErr_CheckSignals()
+                task_exception = False
 
-                # TODO(swang): For generator tasks, iterating over outputs will
-                # actually run the task. We should run the usual handlers for
-                # task cancellation, retrying on application exception, etc. for
-                # all generator tasks, both static and dynamic.
-                core_worker.store_task_outputs(
-                    worker, outputs,
-                    returns)
-        except Exception as error:
+                if (returns[0].size() > 0 and
+                        not inspect.isgenerator(outputs) and
+                        len(outputs) != int(returns[0].size())):
+                    raise ValueError(
+                        "Task returned {} objects, but num_returns={}.".format(
+                            len(outputs), returns[0].size()))
+
+                # Store the outputs in the object store.
+                with core_worker.profile_event(b"task:store_outputs"):
+                    num_returns = returns[0].size()
+                    if dynamic_returns != NULL:
+                        if not inspect.isgenerator(outputs):
+                            raise ValueError(
+                                    "Functions with "
+                                    "@ray.remote(num_returns=\"dynamic\" must return a "
+                                    "generator")
+                        task_exception = True
+
+                        execute_dynamic_generator_and_store_task_outputs(
+                                outputs,
+                                returns[0][0].first,
+                                task_type,
+                                serialized_retry_exception_allowlist,
+                                dynamic_returns,
+                                is_retryable_error,
+                                is_application_error,
+                                is_reattempt,
+                                function_name,
+                                function_descriptor,
+                                title)
+
+                        task_exception = False
+                        dynamic_refs = []
+                        for idx in range(dynamic_returns.size()):
+                            dynamic_refs.append(ObjectRef(
+                                dynamic_returns[0][idx].first.Binary(),
+                                caller_address.SerializeAsString(),
+                            ))
+                        # Swap out the generator for an ObjectRef generator.
+                        outputs = (ObjectRefGenerator(dynamic_refs), )
+
+                    # TODO(swang): For generator tasks, iterating over outputs will
+                    # actually run the task. We should run the usual handlers for
+                    # task cancellation, retrying on application exception, etc. for
+                    # all generator tasks, both static and dynamic.
+                    core_worker.store_task_outputs(
+                        worker, outputs,
+                        returns)
+                    objects_stored = True
+            except Exception as e:
+                num_errors_stored = store_task_errors(
+                        worker, e, task_exception, actor, function_name,
+                        task_type, title, returns)
+                objects_stored = True
+                if returns[0].size() > 0 and num_errors_stored == 0:
+                    logger.exception(
+                            "Unhandled error: Task threw exception, but all "
+                            f"{returns[0].size()} return values already created. "
+                            "This should only occur when using generator tasks.\n"
+                            "See https://github.com/ray-project/ray/issues/28689.")
+    except KeyboardInterrupt as e:
+        # Catch and handle SIGINT.
+        if not objects_stored:
+            # Only store a task cancellation error if we haven't already stored
+            # error/output objects.
+            e = TaskCancelledError(
+                core_worker.get_current_task_id()).with_traceback(e.__traceback__)
             num_errors_stored = store_task_errors(
-                    worker, error, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, function_name,
                     task_type, title, returns)
-            if returns[0].size() > 0 and num_errors_stored == 0:
-                logger.exception(
-                        "Unhandled error: Task threw exception, but all "
-                        f"{returns[0].size()} return values already created. "
-                        "This should only occur when using generator tasks.\n"
-                        "See https://github.com/ray-project/ray/issues/28689.")
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
