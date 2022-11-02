@@ -562,12 +562,24 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync:
         {
             "num_cpus": 0,
             "_system_config": {
+                "pull_based_healthcheck": False,
                 "raylet_death_check_interval_milliseconds": 10 * 1000,
                 "num_heartbeats_timeout": 10,
                 "raylet_heartbeat_period_milliseconds": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
-        }
+        },
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "pull_based_healthcheck": True,
+                "raylet_death_check_interval_milliseconds": 10 * 1000,
+                "health_check_initial_delay_ms": 0,
+                "health_check_failure_threshold": 10,
+                "health_check_period_ms": 100,
+                "timeout_ms_task_wait_for_death_info": 100,
+            },
+        },
     ],
     indirect=True,
 )
