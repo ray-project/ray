@@ -2,6 +2,7 @@
 
 -r requirements_dl.txt
 
+mosaicml==0.10.1
 mlflow==1.21.0
 tensorboardX==2.4.1
 
