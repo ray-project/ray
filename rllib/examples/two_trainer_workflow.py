@@ -64,7 +64,7 @@ parser.add_argument(
 )
 
 
-# Define new Algorithm with custom execution_plan/workflow.
+# Define new Algorithm with custom `training_step()` method (training workflow).
 class MyAlgo(Algorithm):
     @override(Algorithm)
     def setup(self, config):

@@ -164,9 +164,9 @@ class Algorithm(Trainable):
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
     or any of its built-in sub-classes.
-    This allows you to override the `execution_plan` method to implement
+    This allows you to override the `training_step` method to implement
     your own algorithm logic. You can find the different built-in
-    algorithms' execution plans in their respective main py files,
+    algorithms' `training_step()` methods in their respective main .py files,
     e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
 
     The most important API methods a Algorithm exposes are `train()`,
@@ -2325,7 +2325,7 @@ class Algorithm(Trainable):
 
         if simple_optim_setting is True:
             pass
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
+        # Multi-GPU setting: Must use multi_gpu_train_one_step.
         elif config.get("num_gpus", 0) > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
@@ -2342,8 +2342,8 @@ class Algorithm(Trainable):
                 )
             config["simple_optimizer"] = False
         # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
-        # plan).
+        # otherwise: multi_gpu_train_one_step (if supported by the algo's
+        # `training_step()` method).
         elif simple_optim_setting == DEPRECATED_VALUE:
             # tf-eager: Must use simple optimizer.
             if framework not in ["tf", "torch"]:
@@ -3137,10 +3137,7 @@ class TrainIterCtx:
             # a (tolerable) failure.
             return False
 
-        # Stopping criteria: Only when using the `training_iteration`
-        # API, b/c for the `exec_plan` API, the logic to stop is
-        # already built into the execution plans via the
-        # `StandardMetricsReporting` op.
+        # Stopping criteria.
         elif self.algo.config["_disable_execution_plan_api"]:
             if self.algo._by_agent_steps:
                 self.sampled = (
