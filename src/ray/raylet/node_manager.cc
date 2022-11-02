@@ -2829,6 +2829,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
   rpc::ResourcesData resources_data;
   resources_data.set_should_global_gc(true);
+  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
