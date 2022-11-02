@@ -280,9 +280,6 @@ def get_local_world_size() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
     Example:
-        >>> import time
-        >>> import os
-        >>>
         >>> import ray
         >>> from ray.air import session
         >>> from ray.air.config import ScalingConfig
@@ -313,9 +310,6 @@ def get_node_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
     Example:
-        >>> import time
-        >>> import os
-        >>>
         >>> import ray
         >>> from ray.air import session
         >>> from ray.air.config import ScalingConfig
