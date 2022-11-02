@@ -10,11 +10,15 @@ import random
 import tempfile
 import socket
 
+from pprint import pprint
+
 import pytest
 import numpy as np
 
 import ray
+from ray.experimental.state.api import list_cluster_events
 from ray._private.utils import binary_to_hex
+from ray.cluster_utils import AutoscalingCluster
 from ray._private.event.event_logger import get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
@@ -288,19 +292,93 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
-# TODO(sang): Enable it.
-# def test_autoscaler_cluster_events(shutdown_only):
-#     ray.init()
+def test_autoscaler_cluster_events(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 2},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 4,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "gpu_node": {
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=1,
+    )
 
-#     @ray.remote(num_gpus=1)
-#     def f():
-#         pass
+    try:
+        cluster.start()
+        ray.init("auto")
 
-#     f.remote()
+        # Triggers the addition of a GPU node.
+        @ray.remote(num_gpus=1)
+        def f():
+            print("gpu ok")
 
-#     wait_for_condition(lambda: len(list_cluster_events()) == 1)
-#     infeasible_event = list_cluster_events()[0]
-#     assert infeasible_event["source_type"] == "AUTOSCALER"
+        # Triggers the addition of a CPU node.
+        @ray.remote(num_cpus=3)
+        def g():
+            print("cpu ok")
+
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 2)
+        ray.get(f.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 4)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
+        ray.get(g.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 8)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
+
+        # Trigger an infeasible task
+        g.options(num_cpus=0, num_gpus=5).remote()
+
+        def verify():
+            cluster_events = list_cluster_events()
+            messages = {(e["message"], e["source_type"]) for e in cluster_events}
+
+            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
+            assert (
+                "Adding 1 node(s) of type gpu_node.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Resized to 4 CPUs, 1 GPUs.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Adding 1 node(s) of type cpu_node.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Resized to 8 CPUs, 1 GPUs.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                (
+                    "Error: No available node types can fulfill resource "
+                    "request {'GPU': 5.0}. Add suitable node "
+                    "types to this cluster to resolve this issue."
+                ),
+                "AUTOSCALER",
+            ) in messages
+
+            return True
+
+        wait_for_condition(verify, timeout=30)
+        pprint(list_cluster_events())
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
 
 
 # def test_jobs_cluster_events(shutdown_only):

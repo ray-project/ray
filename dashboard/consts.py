@@ -70,3 +70,12 @@ TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS = 0.1
 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR = "RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
+COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Component", "SessionName"]
+# Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
+AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
+    "workers",
+    "raylet",
+    "agent",
+    "dashboard",
+    "gcs",
+}
