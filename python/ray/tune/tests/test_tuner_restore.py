@@ -528,8 +528,14 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
             self.idx = checkpoint_dict["idx"]
 
     data = MockData()
+    trainable_with_params = tune.with_parameters(
+        FailingTrainable, data_str="data", data_obj=data
+    )
+    trainable_with_resources = tune.with_resources(
+        trainable_with_params, resources={"cpu": 2.0}
+    )
     tuner = Tuner(
-        tune.with_parameters(FailingTrainable, data_str="data", data_obj=data),
+        trainable_with_resources,
         run_config=RunConfig(
             name="restore_with_params",
             local_dir=str(tmp_path),
@@ -569,8 +575,14 @@ def test_restore_with_parameters_fn(ray_start_4_cpus, tmp_path):
     fail_marker.write_text("", encoding="utf-8")
 
     data = MockData()
+    trainable_with_params = tune.with_parameters(
+        train_func, data_str="data", data_obj=data
+    )
+    trainable_with_resources = tune.with_resources(
+        trainable_with_params, resources={"cpu": 2.0}
+    )
     tuner = Tuner(
-        tune.with_parameters(train_func, data_str="data", data_obj=data),
+        trainable_with_resources,
         param_space={"failing_hanging": (fail_marker, None)},
         run_config=RunConfig(name="restore_with_params", local_dir=str(tmp_path)),
     )
