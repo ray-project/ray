@@ -2435,7 +2435,7 @@ py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
     args = ["TestSupportedMultiAgentPG"]
 )
