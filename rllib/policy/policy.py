@@ -668,6 +668,7 @@ class Policy(metaclass=ABCMeta):
                 explore=explore,
                 # This may be inaccurate when processing large batches
                 kwargs=kwargs,
+                **kwargs,
             )
             for step_out in processed
         ]
