@@ -166,7 +166,7 @@ class Algorithm(Trainable):
     or any of its built-in sub-classes.
     This allows you to override the `training_step` method to implement
     your own algorithm logic. You can find the different built-in
-    algorithms' `training_step`s in their respective main .py files,
+    algorithms' `training_step()` methods in their respective main .py files,
     e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
 
     The most important API methods a Algorithm exposes are `train()`,
