@@ -16,7 +16,7 @@ from ray._private.dict import flatten_dict
 
 import ray
 from ray.tune.callback import Callback
-from ray.tune.logger import logger, pretty_print
+from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
@@ -536,7 +536,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         )
 
         if not IS_NOTEBOOK:
-            logger.warning(
+            warnings.warn(
                 "You are using the `JupyterNotebookReporter`, but not "
                 "IPython/Jupyter-compatible environment was detected. "
                 "If this leads to unformatted output (e.g. like "

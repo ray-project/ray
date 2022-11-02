@@ -138,9 +138,7 @@ class TunerInternal:
         self._tuner_kwargs["_remote_string_queue"] = string_queue
 
     def clear_remote_string_queue(self):
-        queue: "Queue" = self._tuner_kwargs.pop("_remote_string_queue", None)
-        if queue:
-            queue.shutdown(force=True)
+        self._tuner_kwargs.pop("_remote_string_queue", None)
 
     def _expected_utilization(self, cpus_per_trial, cpus_total):
         num_samples = self._tune_config.num_samples
