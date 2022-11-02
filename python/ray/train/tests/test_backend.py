@@ -121,33 +121,16 @@ class TestBackend(Backend):
         pass
 
 
-class MockMultiNodeWorkerGroup(WorkerGroup):
-    # Mock construct metadata
-    def add_workers(self, num_workers: int):
-        """Hard code the WorkerMetadata so that there will be two nodes, on which
-        even and odd indexed workers are run respectively. For example if there are 4
-        workers, then worker 0 and 2 will be on node 0 and the rest on node 1.
-        """
-        new_actors = []
-        new_actor_metadata = []
-        for i in range(num_workers):
-            actor = self._remote_cls.options(
-                placement_group=self._placement_group
-            ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
-            new_actors.append(actor)
-            new_actor_metadata.append(
-                WorkerMetadata(
-                    node_id=str(i % 2),
-                    node_ip=str(i % 2),
-                    hostname=str(i % 2),
-                    gpu_ids=[str(i % 2)],
-                )
-            )
+original_add_workers = WorkerGroup.add_workers
 
-        for i in range(len(new_actors)):
-            self.workers.append(
-                Worker(actor=new_actors[i], metadata=new_actor_metadata[i])
-            )
+
+def mock_add_workers(self, num_workers):
+    original_add_workers(self, num_workers)
+    for i, worker in enumerate(self.workers):
+        metadata = WorkerMetadata(
+            node_id=0, node_ip=str(i % 2), hostname=0, gpu_ids=[0]
+        )
+        worker.metadata = metadata
 
 
 EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
@@ -215,7 +198,7 @@ def test_local_ranks(ray_start_2_cpus):
 
 def test_local_world_size(ray_2_node_3_worker):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", MockMultiNodeWorkerGroup.add_workers):
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
@@ -228,7 +211,7 @@ def test_local_world_size(ray_2_node_3_worker):
 
 def test_node_ranks(ray_2_node_3_worker):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", MockMultiNodeWorkerGroup.add_workers):
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
