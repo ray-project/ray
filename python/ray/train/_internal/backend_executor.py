@@ -484,16 +484,27 @@ class BackendExecutor:
             self._restart()
             raise TrainingWorkerError
 
-    def shutdown(self):
-        """Shuts down the workers in the worker group."""
-        try:
-            self._backend.on_shutdown(self.worker_group, self._backend_config)
-        except RayActorError:
-            logger.warning(
-                "Graceful shutdown of backend failed. This is "
-                "expected if one of the workers has crashed."
-            )
-        self.worker_group.shutdown()
+    def shutdown(self, graceful_termination: bool = True):
+        """Shuts down the workers in the worker group.
+
+        Args:
+            graceful_termination: If set to True, attempt to clean up the backend
+                before terminating the Ray actors.
+
+        """
+        if graceful_termination:
+            try:
+                self._backend.on_shutdown(self.worker_group, self._backend_config)
+            except RayActorError:
+                logger.warning(
+                    "Graceful shutdown of backend failed. This is "
+                    "expected if one of the workers has crashed."
+                )
+
+        if graceful_termination:
+            self.worker_group.shutdown()
+        else:
+            self.worker_group.shutdown(patience_s=0)
         self.worker_group = InactiveWorkerGroup()
 
         if self._placement_group:
