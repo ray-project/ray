@@ -972,7 +972,7 @@ class EnvRunnerV2:
                 forward pass).
 
         Returns:
-            Dict mapping PolicyIDs to agent connector inputs.
+            Dict mapping PolicyIDs to compute_actions_from_input_dict() outputs.
         """
         policies = self._worker.policy_map
 

@@ -63,6 +63,7 @@ class AlphaZeroPolicy(TorchPolicy):
             state_batches=state_batches,
         )
 
+    @override(Policy)
     def compute_actions_from_input_dict(
         self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
     ):

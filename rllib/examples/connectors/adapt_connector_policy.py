@@ -121,7 +121,7 @@ def run(checkpoint_path):
     step = 0
     while not done:
         step += 1
-        actions, state_out, info = policy.compute_actions_from_input_dict(
+        actions, state_out, info = policy.compute_actions_from_raw_input_dict(
             env_ids=["env_1"],
             agent_ids=["agent_1"],
             input_dict={SampleBatch.OBS: [obs]},

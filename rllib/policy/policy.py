@@ -363,39 +363,26 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
-    # TODO: (Artur) Resolve this logic once we have fully migrated
     @DeveloperAPI
     def compute_actions_from_raw_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
-        timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
         agent_ids: Optional[List[str]] = None,
         env_ids: Optional[List[str]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        This will either use call compute_actions_from_input_dict or
-        compute_actions_with_connectors, depending on whether we are using connectors
-        or not.
-
         Args:
             input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions. `input_dict` already abides to the
-                Policy's as well as the Model's view requirements and can
-                thus be passed to the Model as-is.
+                to compute actions. These inputs are not assumed to abide to the
+                model's view requirements or to be preprocessed but are instead fed
+                to connectors.
             explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms. (Only relevant without connectors)
-            agent_ids: Agent IDs of observations in input_dict (only relevant when
-                using connectors)
-            env_ids: Environment IDs of observations in input_dict (only relevant when
-                using connectors)
+            agent_ids: Agent IDs of observations in input_dict
+            env_ids: Environment IDs of observations in input_dict
 
         Keyword Args:
             kwargs: Forward compatibility placeholder.
@@ -409,55 +396,47 @@ class Policy(metaclass=ABCMeta):
                 {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
         # Until we have fully migrated to connectors, we wrap compute_action-methods
-        if self.config.get("enable_connectors"):
-            assert episodes is None, (
-                "episodes argument can not be used together with connectors. Episodes "
-                "are built internally and make this arg redundant."
-            )
-            if (
-                input_dict.get(SampleBatch.OBS) is None
-                and input_dict.get(SampleBatch.NEXT_OBS) is None
-            ):
-                if log_once("compute_actions_obs_and_next_obs_provided"):
-                    logger.debug(
-                        "compute_actions_from_input_dict() expects "
-                        "either SampleBatch.OBS or "
-                        "SampleBatch.NEXT_OBS to be present in the "
-                        "input_dict arg and interprets it as the "
-                        "latest observations returned by the "
-                        "environment. We subsequently default to the content of "
-                        "SampleBatch.NEXT_OBS."
-                    )
-                # Agent connectors require this field to be empty
-                del input_dict[SampleBatch.OBS]
-            elif input_dict.get(SampleBatch.NEXT_OBS) is None:
-                assert SampleBatch.OBS in input_dict, (
-                    "Input dict must contain a "
-                    "value for key "
-                    "`SampleBatch.NEXT_OBS` or at "
-                    "least for `SampleBatch.OBS`."
+        assert "episodes" not in kwargs.keys(), (
+            "episodes argument can not be used together with connectors. Episodes "
+            "are built internally and make this arg redundant."
+        )
+        if (
+            input_dict.get(SampleBatch.OBS) is None
+            and input_dict.get(SampleBatch.NEXT_OBS) is None
+        ):
+            if log_once("compute_actions_obs_and_next_obs_provided"):
+                logger.debug(
+                    "compute_actions_from_input_dict() expects "
+                    "either SampleBatch.OBS or "
+                    "SampleBatch.NEXT_OBS to be present in the "
+                    "input_dict arg and interprets it as the "
+                    "latest observations returned by the "
+                    "environment. We subsequently default to the content of "
+                    "SampleBatch.NEXT_OBS."
                 )
-                # Interpret observation as next observation if need be here
-                input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
+            # Agent connectors require this field to be empty
+            del input_dict[SampleBatch.OBS]
+        elif input_dict.get(SampleBatch.NEXT_OBS) is None:
+            assert SampleBatch.OBS in input_dict, (
+                "Input dict must contain a "
+                "value for key "
+                "`SampleBatch.NEXT_OBS` or at "
+                "least for `SampleBatch.OBS`."
+            )
+            # Interpret observation as next observation if need be here
+            input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
 
-            return self.compute_actions_with_connectors(
-                next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
-                reward_batch=input_dict.get(SampleBatch.REWARDS),
-                dones_batch=input_dict.get(SampleBatch.DONES),
-                info_batch=input_dict.get(SampleBatch.INFOS),
-                explore=explore,
-                agent_ids=agent_ids,
-                env_ids=env_ids,
-                **kwargs,
-            )
-        else:
-            return self.compute_actions_from_input_dict(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episodes=episodes,
-                **kwargs,
-            )
+        return self.compute_actions_from_raw_inputs(
+            next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
+            reward_batch=input_dict.get(SampleBatch.REWARDS),
+            dones_batch=input_dict.get(SampleBatch.DONES),
+            info_batch=input_dict.get(SampleBatch.INFOS),
+            timestep_batch=input_dict.get(SampleBatch.T),
+            explore=explore,
+            agent_ids=agent_ids,
+            env_ids=env_ids,
+            **kwargs,
+        )
 
     def compute_actions_from_input_dict(
         self,
@@ -581,8 +560,8 @@ class Policy(metaclass=ABCMeta):
         if not self._check_compute_action_env_id_arg(env_id):
             env_id = "0"
 
-        # Share logic with _compute_actions_with_connectors
-        result = self.compute_actions_with_connectors(
+        # Share logic with compute_actions_from_raw_inputs
+        result = self.compute_actions_from_raw_inputs(
             obs_batch=[obs],
             reward_batch=[reward],
             info_batch=[info],
@@ -595,7 +574,7 @@ class Policy(metaclass=ABCMeta):
         return result[0]
 
     # method after we have migrated to connectors
-    def _compute_actions_with_connectors(
+    def compute_actions_from_raw_inputs(
         self,
         next_obs_batch: List[TensorStructType],
         reward_batch: Optional[List[TensorStructType]] = None,
