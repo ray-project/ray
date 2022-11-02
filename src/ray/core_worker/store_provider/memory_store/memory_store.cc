@@ -590,7 +590,7 @@ void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   ray::stats::STATS_object_store_memory.Record(
       num_local_objects_bytes_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocWorkerHeap}});
+      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
 }
 
 }  // namespace core
