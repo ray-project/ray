@@ -5,9 +5,9 @@ import torch
 from typing import Dict, Any, Type
 import unittest
 
-from ray.rllib.models.specs.specs_base import TensorSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.models.specs.base import TensorSpec
+from ray.rllib.models.specs.dict import ModelSpec, check_specs
+from ray.rllib.models.specs.torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 

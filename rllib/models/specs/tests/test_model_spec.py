@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
 
-from ray.rllib.models.specs.specs_np import NPTensorSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.np import NPTensorSpec
+from ray.rllib.models.specs.dict import ModelSpec
 
 
 class TypeClass1:

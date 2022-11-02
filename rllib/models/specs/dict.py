@@ -3,7 +3,7 @@ from typing import Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpec
+from ray.rllib.models.specs.base import TensorSpec
 
 
 _MISSING_KEYS_FROM_SPEC = (
