@@ -28,6 +28,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -35,7 +36,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     GradInfoDict,
@@ -482,9 +482,13 @@ class TorchPolicyV2(Policy):
                 }
             )
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = np.asarray(prev_action_batch)
+                input_dict[SampleBatch.PREV_ACTIONS] = convert_to_torch_tensor(
+                    prev_action_batch
+                )
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = np.asarray(prev_reward_batch)
+                input_dict[SampleBatch.PREV_REWARDS] = convert_to_torch_tensor(
+                    prev_reward_batch
+                )
             state_batches = [
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
