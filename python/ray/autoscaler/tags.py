@@ -10,7 +10,6 @@ NODE_KIND_HEAD = "head"
 NODE_KIND_WORKER = "worker"
 NODE_KIND_UNMANAGED = "unmanaged"
 
-
 # Tag for user defined node types (e.g., m4xl_spot). This is used for multi
 # node type clusters.
 TAG_RAY_USER_NODE_TYPE = "ray-user-node-type"
