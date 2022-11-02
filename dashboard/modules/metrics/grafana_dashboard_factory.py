@@ -1,3 +1,5 @@
+# flake8: noqa E501
+
 import json
 import os
 from dataclasses import dataclass
@@ -48,6 +50,62 @@ GRAFANA_PANELS = [
                 legend="{{Name}}",
             )
         ],
+    ),
+    Panel(
+        id=33,
+        title="Scheduler Actor State",
+    ),
+    Panel(
+        id=36,
+        title="Active Actors by Name",
+    ),
+    Panel(
+        id=27,
+        title="Scheduler CPUs (logical slots)",
+    ),
+    Panel(
+        id=29,
+        title="Object Store Memory",
+    ),
+    Panel(
+        id=28,
+        title="Scheduler GPUs (logical slots)",
+    ),
+    Panel(
+        id=2,
+        title="Node CPU",
+    ),
+    Panel(
+        id=8,
+        title="Node GPU",
+    ),
+    Panel(
+        id=6,
+        title="Node Disk",
+    ),
+    Panel(
+        id=32,
+        title="Node Disk IO Speed",
+    ),
+    Panel(
+        id=4,
+        title="Node Memory",
+    ),
+    Panel(
+        id=34,
+        title="Node Memory by Component",
+    ),
+    Panel(
+        id=18,
+        title="Node GPU Memory",
+    ),
+    Panel(
+        id=20,
+        title="Node Network",
+    ),
+    Panel(
+        id=24,
+        title="Instance count",
     ),
 ]
 
@@ -144,10 +202,14 @@ PANEL_TEMPLATE = {
 
 def generate_grafana_dashboard():
     base_json = json.load(
-        open(os.path.join(GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"))
+        open(
+            os.path.join(
+                GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"
+            )
+        )
     )
     base_json["panels"] = _generate_grafana_panels()
-    return json.dumps(base_json)
+    return json.dumps(base_json, indent=4)
 
 
 def _generate_grafana_panels():
