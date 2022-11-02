@@ -438,64 +438,6 @@ class Policy(metaclass=ABCMeta):
             **kwargs,
         )
 
-    def compute_actions_from_input_dict(
-        self,
-        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions from collected samples (across multiple-agents).
-
-        This method should not be called directly in connector-enabled policies.
-        Takes an input dict (usually a SampleBatch) as its main data input.
-        This allows for using this method in case a more complex input pattern
-        (view requirements) is needed, for example when the Model requires the
-        last n observations, the last m actions/rewards, or a combination
-        of any of these.
-
-        Args:
-            input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions. `input_dict` already abides to the
-                Policy's as well as the Model's view requirements and can
-                thus be passed to the Model as-is.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms. (Only relevant without connectors)
-            agent_ids: Agent IDs of observations in input_dict (only relevant when
-                using connectors)
-            env_ids: Environment IDs of observations in input_dict (only relevant when
-                using connectors)
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
-
-        Returns:
-            actions: Batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs: List of RNN state output
-                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-            info: Dictionary of extra feature batches, if any, with shape like
-                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
-        """
-        # Default implementation just passes obs, prev-a/r, and states on to
-        # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
-        return self.compute_actions(
-            obs_batch=input_dict[SampleBatch.OBS],
-            state_batches=state_batches,
-            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=input_dict.get(SampleBatch.INFOS),
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-            **kwargs,
-        )
 
     def _check_compute_action_agent_id_arg(self, agent_id_arg):
         if agent_id_arg is None:
@@ -946,6 +888,66 @@ class Policy(metaclass=ABCMeta):
             single_action,
             [s[0] for s in state_out],
             {k: v[0] for k, v in info.items()},
+        )
+
+
+    def compute_actions_from_input_dict(
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from collected samples (across multiple-agents).
+
+        This method should not be called directly in connector-enabled policies.
+        Takes an input dict (usually a SampleBatch) as its main data input.
+        This allows for using this method in case a more complex input pattern
+        (view requirements) is needed, for example when the Model requires the
+        last n observations, the last m actions/rewards, or a combination
+        of any of these.
+
+        Args:
+            input_dict: A SampleBatch or input dict containing the Tensors
+                to compute actions. `input_dict` already abides to the
+                Policy's as well as the Model's view requirements and can
+                thus be passed to the Model as-is.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms. (Only relevant without connectors)
+            agent_ids: Agent IDs of observations in input_dict (only relevant when
+                using connectors)
+            env_ids: Environment IDs of observations in input_dict (only relevant when
+                using connectors)
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
+
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        # Default implementation just passes obs, prev-a/r, and states on to
+        # `self.compute_actions()`.
+        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+        return self.compute_actions(
+            obs_batch=input_dict[SampleBatch.OBS],
+            state_batches=state_batches,
+            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
+            info_batch=input_dict.get(SampleBatch.INFOS),
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            **kwargs,
         )
 
     @abstractmethod
