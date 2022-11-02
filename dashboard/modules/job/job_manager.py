@@ -33,7 +33,6 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
 
