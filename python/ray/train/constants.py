@@ -12,6 +12,7 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
 )
 
 # Autofilled session.report() metrics. Keys should be consistent with Tune.
@@ -66,12 +67,6 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 # (avoiding unnecessary serialization if worker is on the same node
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
-# Integer value which if set will copy files in reported AIR directory
-# checkpoints instead of moving them (if worker is on the same node as Trainable)
-COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
-    "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
-)
 
 # Default NCCL_SOCKET_IFNAME.
 # Use ethernet when possible.
