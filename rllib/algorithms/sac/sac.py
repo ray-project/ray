@@ -84,7 +84,7 @@ class SACConfig(AlgorithmConfig):
         self.target_network_update_freq = 0
 
         # .rollout()
-        self.rollout_fragment_length = 1
+        self.rollout_fragment_length = "auto"
         self.compress_observations = False
 
         # .training()
@@ -291,6 +291,17 @@ class SACConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
         if self.use_state_preprocessor != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config['use_state_preprocessor']",
@@ -309,6 +320,12 @@ class SACConfig(AlgorithmConfig):
                 "Trying to import tfp results in the following error:"
             )
             try_import_tfp(error=True)
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
 
 
 class SAC(DQN):
