@@ -11,7 +11,6 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 
 import logging
 from typing import List, Optional, Type, Union
-import math
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm

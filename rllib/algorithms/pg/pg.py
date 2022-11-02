@@ -86,6 +86,9 @@ class PGConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
         # Check for mismatches between `train_batch_size` and
         # `rollout_fragment_length` (if not "auto")..
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
