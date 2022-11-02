@@ -89,3 +89,42 @@ ds.repartition(3).write_numpy("/tmp/multi_numpy")
 # -> /tmp/multi_numpy/b837e5b5a18448bfa3f8388f5d99d033_000002.npy
 # __write_numpy_end__
 # fmt: on
+
+# fmt: off
+# __write_tfrecords_begin__
+import ray
+
+ds = ray.data.from_items(
+    [
+        {"some_int": 1, "some_float": 1.0, "some_bytestring": b"abc"},
+        {"some_int": 2, "some_float": 2.0, "some_bytestring": b"def"},
+    ]
+)
+# -> Dataset(
+#        num_blocks=2, 
+#        num_rows=2, 
+#        schema={some_int: int64, some_float: double, some_bytestring: binary}
+#    )
+
+ds.show(2)
+# -> {'some_int': 1, 'some_float': 1.0, 'some_bytestring': b'abc'}
+# -> {'some_int': 2, 'some_float': 2.0, 'some_bytestring': b'def'}
+
+# Write out just one file.
+ds.repartition(1).write_tfrecords("/tmp/one_tfrecord")
+# -> /tmp/one_tfrecord/6d41f90ee8ac4d7db0aa4f43efd3070c_000000.tfrecords
+
+# Write out multiple files.
+ds.repartition(2).write_tfrecords("/tmp/multi_tfrecords")
+# -> /tmp/multi_tfrecords/1ba614cf75de47e184b7d8f4a1cdfc80_000000.tfrecords
+# -> /tmp/multi_tfrecords/1ba614cf75de47e184b7d8f4a1cdfc80_000001.tfrecords
+# __write_tfrecords_end__
+# fmt: on
+
+
+ds = ray.data.from_items(
+    [
+        {"some_int": 1, "some_float": 1.0, "some_bytestring": b"abc"},
+        {"some_int": 2, "some_float": 2.0, "some_bytestring": b"def"},
+    ]
+)

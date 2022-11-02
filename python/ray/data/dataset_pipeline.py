@@ -943,6 +943,29 @@ class DatasetPipeline(Generic[T]):
             )
         )
 
+    def write_tfrecords(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Call :py:meth:`Dataset.write_tfrecords <ray.data.Dataset.write_tfrecords>` on
+        each output dataset of this pipeline."""
+        self._write_each_dataset(
+            lambda ds: ds.write_tfrecords(
+                path,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                block_path_provider=block_path_provider,
+                ray_remote_args=ray_remote_args,
+            )
+        )
+
     def write_datasource(
         self,
         datasource: Datasource[T],
