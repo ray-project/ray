@@ -118,7 +118,13 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+    yield ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        namespace=TEST_NAMESPACE,
+        log_to_driver=True,
+    )
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -510,16 +516,35 @@ class TestRuntimeEnv:
         "env_vars",
         [None, {}, {"hello": "world"}],
     )
-    async def test_cuda_visible_devices(self, job_manager, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior.
+    @pytest.mark.parametrize(
+        "resource_kwarg",
+        [
+            {},
+            {"entrypoint_num_cpus": 1},
+            {"entrypoint_num_gpus": 1},
+            {"entrypoint_resources": {"Custom": 1}},
+        ],
+    )
+    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
+
         Should not be set in the driver, but should be set in tasks.
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
+
+        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
+        logic. Instead, the behavior should match that of the user specifying
+        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
+        driver and tasks.
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
+        if resource_kwarg:
+            run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
-            entrypoint=run_cmd, runtime_env=runtime_env
+            entrypoint=run_cmd,
+            runtime_env=runtime_env,
+            **resource_kwarg,
         )
 
         await async_wait_for_condition_async_predicate(
