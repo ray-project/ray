@@ -19,6 +19,7 @@ from ray.tune.progress_reporter import (
     RemoteReporterMixin,
     _detect_reporter,
     _detect_progress_metrics,
+    run_remote_with_string_queue,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -167,6 +168,8 @@ def run(
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
+    # Passed by the Tuner.
+    _remote_string_queue: Optional[Queue] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -390,49 +393,28 @@ def run(
 
         set_verbosity(verbose)
         progress_reporter = progress_reporter or _detect_reporter()
+        string_queue = _remote_string_queue
+
+        # Override with detected progress reporter
+        remote_run_kwargs["progress_reporter"] = progress_reporter
 
         # JupyterNotebooks don't work with remote tune runs out of the box
         # (e.g. via Ray client) as they don't have access to the main
         # process stdout. So we introduce a queue here that accepts
         # strings, which will then be displayed on the driver side.
         if isinstance(progress_reporter, RemoteReporterMixin):
-            string_queue = Queue(
-                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
-            )
+            if string_queue is None:
+                string_queue = Queue(
+                    actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+                )
+
+        if string_queue is not None:
             progress_reporter.output_queue = string_queue
 
-            def get_next_queue_item():
-                try:
-                    return string_queue.get(block=False)
-                except Empty:
-                    return None
-
-        else:
-            # If we don't need a queue, use this dummy get fn instead of
-            # scheduling an unneeded actor
-            def get_next_queue_item():
-                return None
-
-        def _handle_string_queue():
-            string_item = get_next_queue_item()
-            while string_item is not None:
-                # This happens on the driver side
-                progress_reporter.display(string_item)
-
-                string_item = get_next_queue_item()
-
-        # Override with detected progress reporter
-        remote_run_kwargs["progress_reporter"] = progress_reporter
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
-        # ray.wait(...)[1] returns futures that are not ready, yet
-        while ray.wait([remote_future], timeout=0.2)[1]:
-            # Check if we have items to execute
-            _handle_string_queue()
-
-        # Handle queue one last time
-        _handle_string_queue()
-
+        if string_queue is not None:
+            return run_remote_with_string_queue(remote_future, progress_reporter, string_queue)
         return ray.get(remote_future)
 
     del remote_run_kwargs

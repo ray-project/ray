@@ -9,8 +9,17 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
+from ray.tune.utils.log import set_verbosity
+from ray.tune.progress_reporter import (
+    ProgressReporter,
+    RemoteReporterMixin,
+    _detect_reporter,
+    _detect_progress_metrics,
+    run_remote_with_string_queue,
+)
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
+from ray.util.queue import Queue
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -140,6 +149,29 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+        self._ray_client_remote_string_queue = None
+        self._progress_reporter = None
+        if self._is_ray_client:
+
+            run_config = run_config or RunConfig()
+            set_verbosity(run_config.verbose)
+            progress_reporter = run_config.progress_reporter or _detect_reporter()
+
+            if isinstance(progress_reporter, RemoteReporterMixin):
+                self._ray_client_remote_string_queue = Queue(
+                    actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+                )
+                progress_reporter.output_queue = self._ray_client_remote_string_queue
+
+            run_config.progress_reporter = progress_reporter
+            self._progress_reporter = progress_reporter
+
+            _tuner_kwargs = _tuner_kwargs or {}
+            _tuner_kwargs["_remote_string_queue"] = self._ray_client_remote_string_queue
+            kwargs["_tuner_kwargs"] = _tuner_kwargs
+            kwargs["run_config"] = run_config
+
+
         if _tuner_internal:
             if not self._is_ray_client:
                 self._local_tuner = kwargs[_TUNER_INTERNAL]
@@ -252,7 +284,7 @@ class Tuner:
                 self._remote_tuner.get_experiment_checkpoint_dir.remote()
             )
             try:
-                return ray.get(self._remote_tuner.fit.remote())
+                return run_remote_with_string_queue(self._remote_tuner.fit.remote(), self._progress_reporter, self._ray_client_remote_string_queue)
             except Exception as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
@@ -281,4 +313,4 @@ class Tuner:
         if not self._is_ray_client:
             return self._local_tuner.get_results()
         else:
-            return ray.get(self._remote_tuner.fit.remote())
+            return run_remote_with_string_queue(self._remote_tuner.fit.remote(), self._progress_reporter, self._ray_client_remote_string_queue)

@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 from ray._private.dict import flatten_dict
 
+import ray
 from ray.tune.callback import Callback
 from ray.tune.logger import logger, pretty_print
 from ray.tune.result import (
@@ -36,7 +37,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.queue import Queue
+from ray.util.queue import Empty, Queue
 
 from ray.widgets import Template
 
@@ -1532,3 +1533,34 @@ def _detect_progress_metrics(
         return None
 
     return getattr(trainable, "_progress_metrics", None)
+
+def run_remote_with_string_queue(remote_future: ray.ObjectRef, progress_reporter: ProgressReporter, string_queue: Optional[Queue] = None):
+    if string_queue is not None:
+        def get_next_queue_item():
+            try:
+                return string_queue.get(block=False)
+            except Empty:
+                return None
+    else:
+        # If we don't need a queue, use this dummy get fn instead of
+        # scheduling an unneeded actor
+        def get_next_queue_item():
+            return None
+
+    def _handle_string_queue():
+        string_item = get_next_queue_item()
+        while string_item is not None:
+            # This happens on the driver side
+            progress_reporter.display(string_item)
+
+            string_item = get_next_queue_item()
+
+    # ray.wait(...)[1] returns futures that are not ready, yet
+    while ray.wait([remote_future], timeout=0.2)[1]:
+        # Check if we have items to execute
+        _handle_string_queue()
+
+    # Handle queue one last time
+    _handle_string_queue()
+
+    return ray.get(remote_future)
