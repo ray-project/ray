@@ -259,8 +259,8 @@ class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)
     # TODO make this return a AlgorithmConfig
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPGConfig()
 
     @override(SimpleQ)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

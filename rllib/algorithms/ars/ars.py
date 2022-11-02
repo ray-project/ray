@@ -323,8 +323,8 @@ class ARS(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ARSConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ARSConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

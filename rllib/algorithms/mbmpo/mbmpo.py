@@ -461,8 +461,8 @@ class MBMPO(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MBMPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MBMPOConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

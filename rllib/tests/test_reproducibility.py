@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.algorithms.dqn import DQN
+from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
@@ -33,21 +33,26 @@ class TestReproducibility(unittest.TestCase):
             for trial in range(3):
                 ray.init()
                 register_env("PickLargest", env_creator)
-                config = {
-                    "seed": 666 if trial in [0, 1] else 999,
-                    "min_time_s_per_iteration": 0,
-                    "min_sample_timesteps_per_iteration": 100,
-                    "framework": fw,
-                }
-                agent = DQN(config=config, env="PickLargest")
+                config = (
+                    DQNConfig()
+                    .environment("PickLargest")
+                    .debugging(seed=666 if trial in [0, 1] else 999)
+                    .reporting(
+                        min_time_s_per_iteration=0,
+                        min_sample_timesteps_per_iteration=100,
+                    )
+                    .framework(fw)
+                )
+                algo = config.build()
 
                 trajectory = list()
                 for _ in range(8):
-                    r = agent.train()
+                    r = algo.train()
                     trajectory.append(r["episode_reward_max"])
                     trajectory.append(r["episode_reward_min"])
                 trajs.append(trajectory)
 
+                algo.stop()
                 ray.shutdown()
 
             # trial0 and trial1 use same seed and thus

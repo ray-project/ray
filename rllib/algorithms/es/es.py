@@ -329,8 +329,8 @@ class ES(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ESConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ESConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:

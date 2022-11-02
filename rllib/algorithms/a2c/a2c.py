@@ -3,6 +3,7 @@ import math
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -109,8 +110,8 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A2CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A2CConfig()
 
     @override(A3C)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -171,10 +172,7 @@ class A2C(A3C):
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if (
-            self.config["_disable_execution_plan_api"] is True
-            and self.config["microbatch_size"]
-        ):
+        if self.config["microbatch_size"]:
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 

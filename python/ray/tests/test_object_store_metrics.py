@@ -2,6 +2,7 @@ from collections import defaultdict
 import pytest
 from typing import Dict
 import numpy as np
+import sys
 
 import ray
 from ray._private.test_utils import (
@@ -58,6 +59,9 @@ def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
     return True
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_all_shared_memory(shutdown_only):
     """Test objects allocated in shared memory"""
     import numpy as np
@@ -102,6 +106,9 @@ def test_all_shared_memory(shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_spilling(object_spilling_config, shutdown_only):
     """Test metrics with object spilling occurred"""
 
@@ -176,6 +183,9 @@ def test_spilling(object_spilling_config, shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 @pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
 def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
     """Test object store metric on raylet controlled by `metric_report_interval_ms`"""
@@ -209,6 +219,9 @@ def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms)
     del obj
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_fallback_memory(shutdown_only):
     """Test some fallback allocated objects"""
 
@@ -291,6 +304,9 @@ def test_fallback_memory(shutdown_only):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
+)
 def test_seal_memory(shutdown_only):
     """Test objects sealed states reported correctly"""
     import numpy as np

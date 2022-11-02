@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -124,8 +125,8 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CQLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CQLConfig()
 
     @override(SAC)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
