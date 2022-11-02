@@ -355,7 +355,7 @@ class TestSampleBatch(unittest.TestCase):
         check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
 
     def test_to_device(self):
-        """Tests whether to_device works properly under different circumestances"""
+        """Tests whether to_device works properly under different circumstances"""
         torch, _ = try_import_torch()
 
         # sample batch includes
