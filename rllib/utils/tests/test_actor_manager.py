@@ -101,6 +101,8 @@ class TestActorManager(unittest.TestCase):
         # sequences of random numbers.
         self.assertEqual(len(results), 10)
 
+        manager.clear()
+
     def test_sync_call_all_actors(self):
         """Test synchronous remote calls to all actors, regardless of their states."""
         actors = [Actor.remote(i) for i in range(4)]
@@ -124,6 +126,8 @@ class TestActorManager(unittest.TestCase):
         # Note that we can hardcode 15 here because we are using deterministic
         # sequences of random numbers.
         self.assertEqual(len([r for r in results if r.ok]), 15)
+
+        manager.clear()
 
     def test_sync_call_fire_and_forget(self):
         """Test synchronous remote calls with 0 timeout_seconds."""
@@ -155,6 +159,8 @@ class TestActorManager(unittest.TestCase):
         # each remote actor. 11 calls to each actor in total.
         self.assertEqual(results2, [11, 11, 11, 11])
 
+        manager.clear()
+
     def test_sync_call_same_actor_multiple_times(self):
         """Test multiple synchronous remote calls to the same actor."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
@@ -168,6 +174,8 @@ class TestActorManager(unittest.TestCase):
         )
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
+
+        manager.clear()
 
     def test_async_call_same_actor_multiple_times(self):
         """Test multiple asynchronous remote calls to the same actor."""
@@ -187,6 +195,8 @@ class TestActorManager(unittest.TestCase):
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
 
+        manager.clear()
+
     def test_sync_call_not_ignore_error(self):
         """Test synchronous remote calls that returns errors."""
         actors = [Actor.remote(i) for i in range(4)]
@@ -202,6 +212,8 @@ class TestActorManager(unittest.TestCase):
 
         # Some calls did error out.
         self.assertTrue(any([not r.ok for r in results]))
+
+        manager.clear()
 
     def test_async_call(self):
         """Test asynchronous remote calls work."""
@@ -220,6 +232,8 @@ class TestActorManager(unittest.TestCase):
         # 6 calls succeeded, 5 failed.
         self.assertEqual(len([r for r in results if r.ok]), 10)
         self.assertEqual(len([r for r in results if not r.ok]), 5)
+
+        manager.clear()
 
     def test_async_calls_get_dropped_if_inflight_requests_over_limit(self):
         """Test asynchronous remote calls get dropped if too many in-flight calls."""
@@ -245,6 +259,8 @@ class TestActorManager(unittest.TestCase):
         )
         # We actually made 0 calls.
         self.assertEqual(num_of_calls, 0)
+
+        manager.clear()
 
 
 if __name__ == "__main__":

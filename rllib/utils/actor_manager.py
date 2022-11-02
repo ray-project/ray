@@ -114,11 +114,16 @@ class RemoteCallResults:
         return self._Iterator(copy.copy(self.result_or_errors))
 
     def ignore_errors(self) -> Iterator[ResultOrError]:
-        """Return an iterator over the results, skipping errors."""
+        """Return an iterator over the results, skipping all errors."""
         return self._Iterator([r for r in self.result_or_errors if r.ok])
 
     def ignore_ray_errors(self) -> Iterator[ResultOrError]:
-        """Return an iterator over the results, skipping errors."""
+        """Return an iterator over the results, skipping only Ray errors.
+
+        Similar to ignore_errors, but only skips Errors raised from the
+        Ray framework. This is useful for application that wants to handle
+        errors from user code differently.
+        """
         return self._Iterator(
             [r for r in self.result_or_errors if not isinstance(r.get(), RayError)]
         )
@@ -161,6 +166,7 @@ class FaultTolerantActorManager:
     @dataclass
     class _ActorState:
         """State of a single actor."""
+
         # Num of outstanding async requests for this actor.
         num_in_flight_async_requests: int = 0
         # Whether this actor is in a healthy state.
@@ -185,9 +191,9 @@ class FaultTolerantActorManager:
         self.__NEXT_ID = 0
 
         # Actors are stored in a map and indexed by a unique id.
-        self.__actors = {}
-        self.__remote_actor_states = {}
-        self.add_actors((actors or []))
+        self.__actors: Mapping[int, ActorHandle] = {}
+        self.__remote_actor_states: Mapping[int, self._ActorState] = {}
+        self.add_actors(actors or [])
 
         # Maps outstanding async requests to the ids of the actors that
         # are executing them.
@@ -234,7 +240,8 @@ class FaultTolerantActorManager:
 
         # Remove any outstanding async requests for this actor.
         reqs_to_be_removed = [
-            req for req, id in self.__in_flight_req_to_actor_id.items()
+            req
+            for req, id in self.__in_flight_req_to_actor_id.items()
             if id == actor_id
         ]
         for req in reqs_to_be_removed:
@@ -248,9 +255,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def num_healthy_actors(self) -> int:
         """Return the number of healthy remote actors."""
-        return sum(
-            [1 for s in self.__remote_actor_states.values() if s.is_healthy]
-        )
+        return sum([s.is_healthy for s in self.__remote_actor_states.values()])
 
     @DeveloperAPI
     def num_outstanding_async_reqs(self) -> int:
@@ -267,6 +272,8 @@ class FaultTolerantActorManager:
         Returns:
             True if the actor is healthy, False otherwise.
         """
+        if actor_id not in self.__remote_actor_states:
+            raise ValueError(f"Unknown actor id: {actor_id}")
         return self.__remote_actor_states[actor_id].is_healthy
 
     @DeveloperAPI
@@ -277,6 +284,8 @@ class FaultTolerantActorManager:
             actor_id: ID of the remote actor.
             healthy: Whether the remote actor is healthy.
         """
+        if actor_id not in self.__remote_actor_states:
+            raise ValueError(f"Unknown actor id: {actor_id}")
         self.__remote_actor_states[actor_id].is_healthy = healthy
 
     @DeveloperAPI
@@ -419,9 +428,7 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
         if healthy_only:
-            remote_actor_ids = [
-                i for i in remote_actor_ids if self.is_actor_healthy(i)
-            ]
+            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
 
         remote_calls = self.__call_actors(
             func=func,
@@ -458,9 +465,7 @@ class FaultTolerantActorManager:
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
 
         if healthy_only:
-            remote_actor_ids = [
-                i for i in remote_actor_ids if self.is_actor_healthy(i)
-            ]
+            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
 
         if isinstance(func, list) and len(func) != len(remote_actor_ids):
             raise ValueError(
@@ -476,9 +481,9 @@ class FaultTolerantActorManager:
             limited_func = []
             limited_remote_actor_ids = []
             for i, f in zip(remote_actor_ids, func):
-                num_outstanding_reqs = (
-                    self.__remote_actor_states[i].num_in_flight_async_requests
-                )
+                num_outstanding_reqs = self.__remote_actor_states[
+                    i
+                ].num_in_flight_async_requests
                 if (
                     num_outstanding_reqs + num_calls_to_make[i]
                     < self._max_remote_requests_in_flight_per_actor
@@ -490,9 +495,9 @@ class FaultTolerantActorManager:
             limited_func = func
             limited_remote_actor_ids = []
             for i in remote_actor_ids:
-                num_outstanding_reqs = (
-                    self.__remote_actor_states[i].num_in_flight_async_requests
-                )
+                num_outstanding_reqs = self.__remote_actor_states[
+                    i
+                ].num_in_flight_async_requests
                 if (
                     num_outstanding_reqs + num_calls_to_make[i]
                     < self._max_remote_requests_in_flight_per_actor
@@ -538,7 +543,9 @@ class FaultTolerantActorManager:
 
         for obj_ref, result in zip(ready, remote_results):
             # Decrease outstanding request on this actor by 1.
-            self.__remote_actor_states[result.actor_id].num_in_flight_async_requests -= 1
+            self.__remote_actor_states[
+                result.actor_id
+            ].num_in_flight_async_requests -= 1
             # Also, this call is done.
             del self.__in_flight_req_to_actor_id[obj_ref]
 
