@@ -224,7 +224,8 @@ def test_resources(shutdown_only):
 
     # Check the case of sufficient resources.
     stdout, _ = _run_cmd(
-        "ray job submit --entrypoint-num-cpus=1 --entrypoint-num-gpus=1 --entrypoint-resources='{"
+        "ray job submit --entrypoint-num-cpus=1 "
+        "--entrypoint-num-gpus=1 --entrypoint-resources='{"
         '"Custom": 1}\' -- echo hello',
     )
     assert "hello" in stdout

@@ -81,7 +81,10 @@ def test_submit_job_with_resources(shutdown_only):
 
     # Check the case of sufficient resources.
     job_id = client.submit_job(
-        entrypoint="echo hello", entrypoint_num_cpus=1, entrypoint_num_gpus=1, entrypoint_resources={"Custom": 1}
+        entrypoint="echo hello",
+        entrypoint_num_cpus=1,
+        entrypoint_num_gpus=1,
+        entrypoint_resources={"Custom": 1},
     )
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
 

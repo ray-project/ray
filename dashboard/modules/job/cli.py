@@ -179,7 +179,9 @@ def submit(
             "--job-id option is deprecated. Please use --submission-id instead."
         )
     if entrypoint_resources is not None:
-        entrypoint_resources = parse_resources_json(entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources")
+        entrypoint_resources = parse_resources_json(
+            entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
+        )
 
     submission_id = submission_id or job_id
 

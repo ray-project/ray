@@ -294,25 +294,40 @@ class JobSubmitRequest:
                             f"metadata values must be strings, got {type(v)}"
                         )
 
-        if self.entrypoint_num_cpus is not None and not isinstance(self.entrypoint_num_cpus, (int, float)):
-            raise TypeError(f"entrypoint_num_cpus must be a number, got {type(self.entrypoint_num_cpus)}")
+        if self.entrypoint_num_cpus is not None and not isinstance(
+            self.entrypoint_num_cpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_cpus must be a number, "
+                f"got {type(self.entrypoint_num_cpus)}"
+            )
 
-        if self.entrypoint_num_gpus is not None and not isinstance(self.entrypoint_num_gpus, (int, float)):
-            raise TypeError(f"entrypoint_num_gpus must be a number, got {type(self.entrypoint_num_gpus)}")
+        if self.entrypoint_num_gpus is not None and not isinstance(
+            self.entrypoint_num_gpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_gpus must be a number, "
+                f"got {type(self.entrypoint_num_gpus)}"
+            )
 
         if self.entrypoint_resources is not None:
             if not isinstance(self.entrypoint_resources, dict):
-                raise TypeError(f"entrypoint_resources must be a dict, got {type(self.entrypoint_resources)}")
+                raise TypeError(
+                    "entrypoint_resources must be a dict, "
+                    f"got {type(self.entrypoint_resources)}"
+                )
             else:
                 for k in self.entrypoint_resources.keys():
                     if not isinstance(k, str):
                         raise TypeError(
-                            f"entrypoint_resources keys must be strings, got {type(k)}"
+                            "entrypoint_resources keys must be strings, "
+                            f"got {type(k)}"
                         )
                 for v in self.entrypoint_resources.values():
                     if not isinstance(v, (int, float)):
                         raise TypeError(
-                            f"entrypoint_resources values must be numbers, got {type(v)}"
+                            "entrypoint_resources values must be numbers, "
+                            f"got {type(v)}"
                         )
 
 

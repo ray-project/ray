@@ -644,8 +644,8 @@ class JobManager:
                 the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
             entrypoint_resources: The quantity of various custom resources
-                to reserve for the entrypoint command, separately from any tasks or actors
-                launched by it.
+                to reserve for the entrypoint command, separately from any tasks or
+                actors launched by it.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
