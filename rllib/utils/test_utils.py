@@ -410,7 +410,8 @@ def check_compute_single_action(
                 clip_action=clip,
                 **call_kwargs,
             )
-            algo_times.append(time.time_ns() - t0)
+            if what is algorithm:
+                algo_times.append(time.time_ns() - t0)
 
         state_out = None
         if state_in or full_fetch or what is pol:
@@ -452,7 +453,6 @@ def check_compute_single_action(
     def _test_compute_actions_from_raw_data(
         what, method_to_test, explore, timestep, unsquash, clip
     ):
-        call_kwargs = {}
         if what is algorithm:
             return True
 
@@ -468,7 +468,7 @@ def check_compute_single_action(
                 input_dict={SampleBatch.NEXT_OBS: [obs]},
                 explore=explore,
                 timestep=timestep,
-                **call_kwargs,
+                clip=clip,
             )
             # Unbatch everything to be able to compare against single
             # action below.
@@ -480,10 +480,7 @@ def check_compute_single_action(
 
             try:
                 action2 = pol.compute_actions_from_raw_input(
-                    next_obs_batch=[obs],
-                    explore=explore,
-                    timestep=timestep,
-                    **call_kwargs,
+                    next_obs_batch=[obs], explore=explore, timestep=timestep, clip=clip
                 )[0]
                 # Make sure these are the same, unless we have exploration
                 # switched on (or noisy layers).
@@ -499,7 +496,7 @@ def check_compute_single_action(
                 timestep=timestep,
                 unsquash_action=unsquash,
                 clip_action=clip,
-                **call_kwargs,
+                clip=clip,
             )[0][0]
             policy_with_connectors_times.append(time.time_ns() - t0)
             assert action_space.contains(action)
