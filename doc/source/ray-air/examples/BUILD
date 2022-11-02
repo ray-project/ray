@@ -34,10 +34,7 @@ py_test_run_all_notebooks(
         "huggingface_text_classification.ipynb",
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
-        # NOTE(@bveeramani): `upload_to_wandb.ipynb` is flaky. Since the test gives us 
-        # a poor signal, I'm skipping the test until I get a chance to fix it. For more
-        # information, see #29720.
-        # "upload_to_wandb.ipynb",  # Needs credentials
+        "upload_to_wandb.ipynb",  # Needs credentials
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
@@ -46,7 +43,12 @@ py_test_run_all_notebooks(
 py_test_run_all_notebooks(
     size = "large",
     include = ["upload_to_*.ipynb"],
-    exclude = [],
+    exclude = [
+        # NOTE(@bveeramani): `upload_to_wandb.ipynb` is flaky. Since the test gives us 
+        # a poor signal, I'm skipping the test until I get a chance to fix it. For more
+        # information, see #29720.
+        "upload_to_wandb.ipynb"
+    ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
 )
