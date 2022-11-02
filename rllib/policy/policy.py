@@ -363,13 +363,6 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
-        # In order to compute the inputs of action connectors from the output of
-        # agent connectors, what was before compute_actions_from_input_dict is used
-        # for this intermediate step
-        self._compute_action_connectors_input_from_agent_connectors_output = (
-            self._compute_actions_without_connectors_from_input_dict
-        )
-
     # TODO: (Artur) Resolve this logic once we have fully migrated
     @DeveloperAPI
     def compute_actions_from_input_dict(
@@ -384,11 +377,7 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Takes an input dict (usually a SampleBatch) as its main data input.
-        This allows for using this method in case a more complex input pattern
-        (view requirements) is needed, for example when the Model requires the
-        last n observations, the last m actions/rewards, or a combination
-        of any of these.
+        This will either use call _compute_actions_from_input_dict or
 
         Args:
             input_dict: A SampleBatch or input dict containing the Tensors
@@ -449,7 +438,7 @@ class Policy(metaclass=ABCMeta):
                 # Interpret observation as next observation if need be here
                 input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
 
-            return self._compute_actions_with_connectors(
+            return self.compute_actions_with_connectors(
                 next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
                 reward_batch=input_dict.get(SampleBatch.REWARDS),
                 dones_batch=input_dict.get(SampleBatch.DONES),
@@ -460,20 +449,72 @@ class Policy(metaclass=ABCMeta):
                 **kwargs,
             )
         else:
-            # Default implementation just passes obs, prev-a/r, and states on to
-            # `self.compute_actions()`.
-            state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
-            return self._compute_actions_without_connectors(
-                obs_batch=input_dict[SampleBatch.OBS],
-                state_batches=state_batches,
-                prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
-                prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-                info_batch=input_dict.get(SampleBatch.INFOS),
+            return self._compute_actions_from_input_dict(
+                input_dict=input_dict,
                 explore=explore,
                 timestep=timestep,
                 episodes=episodes,
                 **kwargs,
             )
+
+    def _compute_actions_from_input_dict(
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from collected samples (across multiple-agents).
+
+        This method should not be called directly in connector-enabled policies.
+        Takes an input dict (usually a SampleBatch) as its main data input.
+        This allows for using this method in case a more complex input pattern
+        (view requirements) is needed, for example when the Model requires the
+        last n observations, the last m actions/rewards, or a combination
+        of any of these.
+
+        Args:
+            input_dict: A SampleBatch or input dict containing the Tensors
+                to compute actions. `input_dict` already abides to the
+                Policy's as well as the Model's view requirements and can
+                thus be passed to the Model as-is.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms. (Only relevant without connectors)
+            agent_ids: Agent IDs of observations in input_dict (only relevant when
+                using connectors)
+            env_ids: Environment IDs of observations in input_dict (only relevant when
+                using connectors)
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
+
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        # Default implementation just passes obs, prev-a/r, and states on to
+        # `self.compute_actions()`.
+        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+        return self.compute_actions(
+            obs_batch=input_dict[SampleBatch.OBS],
+            state_batches=state_batches,
+            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
+            info_batch=input_dict.get(SampleBatch.INFOS),
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            **kwargs,
+        )
 
     def _check_compute_action_agent_id_arg(self, agent_id_arg):
         if agent_id_arg is None:
@@ -699,7 +740,7 @@ class Policy(metaclass=ABCMeta):
             ]
 
         action_connector_input_data = [
-            self._compute_action_connectors_input_from_agent_connectors_output(
+            self._compute_actions_from_input_dict(
                 step_out.data.sample_batch,
                 explore=explore,
                 # This may be inaccurate when processing large batches
@@ -926,64 +967,9 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()},
         )
 
-    @DeveloperAPI
-    def _compute_actions_without_connectors_from_input_dict(
-        self,
-        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions from collected samples (across multiple-agents).
-
-        Takes an input dict (usually a SampleBatch) as its main data input.
-        This allows for using this method in case a more complex input pattern
-        (view requirements) is needed, for example when the Model requires the
-        last n observations, the last m actions/rewards, or a combination
-        of any of these.
-
-        Args:
-            input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions. `input_dict` already abides to the
-                Policy's as well as the Model's view requirements and can
-                thus be passed to the Model as-is.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
-
-        Returns:
-            actions: Batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs: List of RNN state output
-                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-            info: Dictionary of extra feature batches, if any, with shape like
-                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
-        """
-        # Default implementation just passes obs, prev-a/r, and states on to
-        # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
-        return self._compute_actions_without_connectors(
-            input_dict[SampleBatch.OBS],
-            state_batches,
-            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=input_dict.get(SampleBatch.INFOS),
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-            **kwargs,
-        )
-
     @abstractmethod
     @DeveloperAPI
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,
@@ -1695,9 +1681,7 @@ class Policy(metaclass=ABCMeta):
             actions,
             state_outs,
             extra_outs,
-        ) = self._compute_actions_without_connectors_from_input_dict(
-            self._dummy_batch, explore=False
-        )
+        ) = self.compute_actions_from_input_dict(self._dummy_batch, explore=False)
 
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:

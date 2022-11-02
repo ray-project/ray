@@ -45,7 +45,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
     def get_initial_state(self):
         return [np.zeros((self.state_size,), dtype=np.float32)]
 
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch=None,
         state_batches=None,
@@ -77,7 +77,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         # state_batch.
         assert state_batches[0].shape[1] == 2
         assert state_batches[0].shape[2] == self.state_size
-        return self._compute_actions_without_connectors(
+        return self._compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),

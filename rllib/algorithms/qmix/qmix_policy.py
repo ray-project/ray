@@ -278,7 +278,7 @@ class QMixTorchPolicy(TorchPolicy):
         )
 
     @override(TorchPolicy)
-    def _compute_actions_without_connectors_from_input_dict(
+    def _compute_actions_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
         explore: bool = None,
@@ -327,7 +327,7 @@ class QMixTorchPolicy(TorchPolicy):
         return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(TorchPolicy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,
@@ -359,7 +359,7 @@ class QMixTorchPolicy(TorchPolicy):
                 for i in range(len(state_batches)):
                     input_dict[f"state_in_{i}"] = state_batches[i]
 
-            return self._compute_actions_without_connectors_from_input_dict(
+            return self._compute_actions_from_input_dict(
                 input_dict=input_dict, explore=explore, timestep=timestep
             )
 

@@ -55,7 +55,7 @@ class CliffWalkingWallPolicy(Policy):
         self.dist_class = TorchCategorical
 
     @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,

@@ -45,25 +45,12 @@ class RandomPolicy(Policy):
         vr.used_for_compute_actions = False
 
     @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
-        **kwargs
-    ):
-        # Alternatively, a numpy array would work here as well.
-        # e.g.: np.array([random.choice([0, 1])] * len(obs_batch))
-        return [self.action_space_for_sampling.sample() for _ in obs_batch], [], {}
-
-    @override(Policy)
-    def _compute_actions_with_connectors(
-        self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
         **kwargs
     ):
         # Alternatively, a numpy array would work here as well.

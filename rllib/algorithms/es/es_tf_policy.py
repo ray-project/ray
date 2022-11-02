@@ -57,7 +57,7 @@ def rollout(
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac, _, _ = policy._compute_actions_without_connectors(
+        ac, _, _ = policy._compute_actions(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
@@ -147,9 +147,7 @@ class ESTFPolicy(Policy):
         )
 
     @override(Policy)
-    def _compute_actions_without_connectors(
-        self, obs_batch, add_noise=False, update=True, **kwargs
-    ):
+    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = obs_batch[0]
@@ -178,7 +176,7 @@ class ESTFPolicy(Policy):
     def compute_single_action(
         self, observation, add_noise=False, update=True, **kwargs
     ):
-        action, state_outs, extra_fetches = self._compute_actions_without_connectors(
+        action, state_outs, extra_fetches = self._compute_actions(
             [observation], add_noise=add_noise, update=update, **kwargs
         )
         return action[0], state_outs, extra_fetches

@@ -281,47 +281,7 @@ class TFPolicy(Policy):
             )
 
     @override(Policy)
-    def _compute_actions_without_connectors_from_input_dict(
-        self,
-        input_dict: Union[SampleBatch, Dict[str, TensorType]],
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
-        explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
-
-        # Switch off is_training flag in our batch.
-        if isinstance(input_dict, SampleBatch):
-            input_dict.set_training(False)
-        else:
-            # Deprecated dict input.
-            input_dict["is_training"] = False
-
-        builder = _TFRunBuilder(self.get_session(), "compute_actions_from_input_dict")
-        obs_batch = input_dict[SampleBatch.OBS]
-        to_fetch = self._build_compute_actions(
-            builder, input_dict=input_dict, explore=explore, timestep=timestep
-        )
-
-        # Execute session run to get action (and other fetches).
-        fetched = builder.get(to_fetch)
-
-        # Update our global timestep by the batch size.
-        self.global_timestep += (
-            len(obs_batch)
-            if isinstance(obs_batch, list)
-            else len(input_dict)
-            if isinstance(input_dict, SampleBatch)
-            else obs_batch.shape[0]
-        )
-
-        return fetched
-
-    @override(Policy)
-    def _compute_actions_without_connectors(
+    def compute_actions(
         self,
         obs_batch: Union[List[TensorType], TensorType],
         state_batches: Optional[List[TensorType]] = None,

@@ -85,9 +85,7 @@ class FeatureImportance(OfflineEvaluator):
         n_features = obs_batch.shape[-1]
         importance = np.zeros((self.repeat, n_features))
 
-        ref_actions, _, _ = self.policy._compute_actions_without_connectors(
-            obs_batch, explore=False
-        )
+        ref_actions, _, _ = self.policy._compute_actions(obs_batch, explore=False)
         for r in range(self.repeat):
             for i in range(n_features):
                 copy_obs_batch = copy.deepcopy(obs_batch)
@@ -96,9 +94,7 @@ class FeatureImportance(OfflineEvaluator):
                     perturbed_actions,
                     _,
                     _,
-                ) = self.policy._compute_actions_without_connectors(
-                    copy_obs_batch, explore=False
-                )
+                ) = self.policy._compute_actions(copy_obs_batch, explore=False)
 
                 importance[r, i] = np.mean(np.abs(perturbed_actions - ref_actions))
 
