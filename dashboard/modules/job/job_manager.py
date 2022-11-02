@@ -152,7 +152,6 @@ class JobSupervisor:
         gcs_aio_client = GcsAioClient(address=gcs_address)
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
-        self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
 
         # Default metadata if not passed by the user.
@@ -165,9 +164,25 @@ class JobSupervisor:
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
 
-    def _get_driver_runtime_env(self) -> Dict[str, Any]:
+    def _get_driver_runtime_env(
+        self, resources_specified: bool = False
+    ) -> Dict[str, Any]:
+        """Get the runtime env that should be set in the job driver.
+
+        Args:
+            resources_specified: Whether the user specified resources (CPUs, GPUs,
+                custom resources) in the submit_job request. If so, we will skip
+                the workaround for GPU detection introduced in #24546, so that the
+                behavior matches that of the user specifying resources for any
+                other actor.
+
+        Returns:
+            The runtime env that should be set in the job driver.
+        """
         # Get the runtime_env set for the supervisor actor.
         curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        if resources_specified:
+            return curr_runtime_env
         # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
@@ -251,7 +266,7 @@ class JobSupervisor:
 
             return child_process
 
-    def _get_driver_env_vars(self) -> Dict[str, str]:
+    def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
         # RAY_ADDRESS may be the dashboard URL but not the gcs address,
         # so when the environment variable is not empty, we force set RAY_ADDRESS
@@ -268,7 +283,7 @@ class JobSupervisor:
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
                 {
-                    "runtime_env": self._driver_runtime_env,
+                    "runtime_env": self._get_driver_runtime_env(resources_specified),
                     "metadata": self._metadata,
                 }
             ),
@@ -303,6 +318,7 @@ class JobSupervisor:
         self,
         # Signal actor used in testing to capture PENDING -> RUNNING cases
         _start_signal_actor: Optional[ActorHandle] = None,
+        resources_specified: bool = False,
     ):
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
@@ -340,7 +356,7 @@ class JobSupervisor:
             # Configure environment variables for the child process. These
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars())
+            os.environ.update(self._get_driver_env_vars(resources_specified))
             logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
@@ -530,10 +546,21 @@ class JobManager:
             return
 
     def _get_supervisor_runtime_env(
-        self, user_runtime_env: Dict[str, Any]
+        self, user_runtime_env: Dict[str, Any], resources_specified: bool = False
     ) -> Dict[str, Any]:
-        """Configure and return the runtime_env for the supervisor actor."""
+        """Configure and return the runtime_env for the supervisor actor.
 
+        Args:
+            user_runtime_env: The runtime_env specified by the user.
+            resources_specified: Whether the user specified resources in the
+                submit_job() call. If so, we will skip the workaround introduced
+                in #24546 for GPU detection and just use the user's resource
+                requests, so that the behavior matches that of the user specifying
+                resources for any other actor.
+
+        Returns:
+            The runtime_env for the supervisor actor.
+        """
         # Make a copy to avoid mutating passed runtime_env.
         runtime_env = (
             copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
@@ -545,10 +572,11 @@ class JobManager:
         if env_vars is None:
             env_vars = {}
 
-        # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
-        # driver can use GPUs if it wants to. This will be removed from
-        # the driver's runtime_env so it isn't inherited by tasks & actors.
-        env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+        if not resources_specified:
+            # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
+            # driver can use GPUs if it wants to. This will be removed from
+            # the driver's runtime_env so it isn't inherited by tasks & actors.
+            env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
@@ -697,10 +725,15 @@ class JobManager:
                 num_gpus=entrypoint_num_gpus,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
-                runtime_env=self._get_supervisor_runtime_env(runtime_env),
+                runtime_env=self._get_supervisor_runtime_env(
+                    runtime_env, resources_specified
+                ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
-            supervisor.run.remote(_start_signal_actor=_start_signal_actor)
+            supervisor.run.remote(
+                _start_signal_actor=_start_signal_actor,
+                resources_specified=resources_specified,
+            )
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
