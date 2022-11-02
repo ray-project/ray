@@ -42,11 +42,20 @@ public class RayJavaLoggingTest extends BaseTest {
     final JobId jobId = Ray.getRuntimeContext().getCurrentJobId();
     String currLogDir = "/tmp/ray/session_latest/logs";
     for (int i = 1; i <= 3; ++i) {
-      File rotatedFile =
-          new File(String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
-      Assert.assertTrue(rotatedFile.exists());
-      long fileSize = rotatedFile.length();
-      Assert.assertTrue(fileSize > 1024 && fileSize < 1024 * 2);
+      boolean rotated =
+          TestUtils.waitForCondition(
+              () -> {
+                File rotatedFile =
+                    new File(
+                        String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
+                if (!rotatedFile.exists()) {
+                  return false;
+                }
+                long fileSize = rotatedFile.length();
+                return fileSize > 1024 && fileSize < 1024 * 2;
+              },
+              10 * 1000);
+      Assert.assertTrue(rotated);
     }
   }
 }
