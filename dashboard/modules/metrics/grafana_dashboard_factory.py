@@ -176,7 +176,7 @@ GRAFANA_PANELS = [
         id=32,
         title="Node Disk IO Speed",
         description="Disk IO per node.",
-        unit="bytes",
+        unit="Bps",
         targets=[
             Target(
                 expr='ray_node_disk_io_write_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
@@ -256,7 +256,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_cluster_active_nodes{cluster_id="$cluster_id"}',
-                legend="Active Nodes: {{node_type}})",
+                legend="Active Nodes: {{node_type}}",
             ),
             Target(
                 expr='ray_cluster_failed_nodes{cluster_id="$cluster_id"}',
@@ -291,7 +291,7 @@ PANEL_TEMPLATE = {
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,
     "fillGradient": 0,
-    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "hiddenSeries": False,
     "id": 26,
     "legend": {
@@ -323,6 +323,7 @@ PANEL_TEMPLATE = {
             "$$hashKey": "object:2987",
             "alias": "MAX",
             "dashes": True,
+            "color": "#1F60C4",
             "fill": 0,
             "stack": False,
         }
@@ -393,7 +394,8 @@ def _generate_grafana_panels():
                 "targets": _generate_targets(panel),
             }
         )
-        template["gridPos"]["y"] = i
+        template["gridPos"]["y"] = i // 2
+        template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
         panels.append(template)
     return panels
