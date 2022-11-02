@@ -44,7 +44,6 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TensorStructType,
 )
 from ray.util.debug import log_once
 
@@ -75,7 +74,7 @@ class EagerTFPolicyV2(Policy):
             )
         )
 
-        super(EagerTFPolicyV2, self).__init__(observation_space, action_space, config)
+        Policy.__init__(self, observation_space, action_space, config)
 
         self._is_training = False
         # Global timestep should be a tensor.
@@ -423,39 +422,15 @@ class EagerTFPolicyV2(Policy):
         )
         self._loss_initialized = True
 
-    # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
-    # only canonical entry point for inference.
     @override(Policy)
-    def compute_actions(
+    def compute_actions_from_input_dict(
         self,
-        obs_batch: Union[List[TensorStructType], TensorStructType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
-        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
-        explore: Optional[bool] = None,
+        input_dict: Dict[str, TensorType],
+        explore: bool = None,
         timestep: Optional[int] = None,
+        episodes: Optional[List[Episode]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        # Create input dict to simply pass the entire call to
-        # self.compute_actions_from_input_dict().
-        input_dict = SampleBatch(
-            {
-                SampleBatch.CUR_OBS: obs_batch,
-            },
-            _is_training=tf.constant(False),
-        )
-        if state_batches is not None:
-            for i, s in enumerate(state_batches):
-                input_dict[f"state_in_{i}"] = s
-        if prev_action_batch is not None:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-        if prev_reward_batch is not None:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-        if info_batch is not None:
-            input_dict[SampleBatch.INFOS] = info_batch
-
         self._is_training = False
 
         explore = explore if explore is not None else self.explore
@@ -490,6 +465,47 @@ class EagerTFPolicyV2(Policy):
         # Update our global timestep by the batch size.
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
         return convert_to_numpy(ret)
+
+    # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
+    # only canonical entry point for inference.
+    @override(Policy)
+    def compute_actions(
+        self,
+        obs_batch,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        info_batch=None,
+        episodes=None,
+        explore=None,
+        timestep=None,
+        **kwargs,
+    ):
+        # Create input dict to simply pass the entire call to
+        # self.compute_actions_from_input_dict().
+        input_dict = SampleBatch(
+            {
+                SampleBatch.CUR_OBS: obs_batch,
+            },
+            _is_training=tf.constant(False),
+        )
+        if state_batches is not None:
+            for s in enumerate(state_batches):
+                input_dict["state_in_{i}"] = s
+        if prev_action_batch is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+        if prev_reward_batch is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+        if info_batch is not None:
+            input_dict[SampleBatch.INFOS] = info_batch
+
+        return self.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            **kwargs,
+        )
 
     @with_lock
     @override(Policy)
