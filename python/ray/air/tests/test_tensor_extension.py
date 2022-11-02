@@ -68,10 +68,6 @@ def test_arrow_variable_shaped_tensor_array_validation():
     with pytest.raises(ValueError):
         ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
 
-    # Test tensor elements with differing dimensions raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
-
     # Test arbitrary object raises ValueError.
     with pytest.raises(ValueError):
         ArrowVariableShapedTensorArray.from_numpy(object())
