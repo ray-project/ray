@@ -460,59 +460,6 @@ class Policy(metaclass=ABCMeta):
                 )
             return False
 
-    def _compute_single_action_with_connectors(
-        self,
-        obs: TensorStructType,
-        reward: TensorStructType,
-        done: TensorStructType,
-        info: Dict[str, list] = None,
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        agent_id: Optional[int] = None,
-        env_id: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        if log_once("legacy_compute_single_action_method"):
-            deprecation_warning(
-                help="_compute_single_action_with_connectors will soon be "
-                "deprecated. When computing a single action, "
-                "use a batched compute_actions_from_input_dict "
-                "method."
-            )
-
-        for old_kwarg in [
-            "state",
-            "prev_action",
-            "prev_reward",
-            "episode",
-            "input_dict",
-        ]:
-            assert old_kwarg not in kwargs, (
-                "Within the context of connectors, "
-                "{} is internally built by "
-                "connectors and can not be "
-                "provided as an argument.".format(old_kwarg)
-            )
-
-        if not self._check_compute_action_agent_id_arg(agent_id):
-            agent_id = "0"
-
-        if not self._check_compute_action_env_id_arg(env_id):
-            env_id = "0"
-
-        # Share logic with compute_actions_from_raw_inputs
-        result = self.compute_actions_from_raw_input(
-            obs_batch=[obs],
-            reward_batch=[reward],
-            info_batch=[info],
-            explore=explore,
-            timestep=timestep,
-            agent_ids=[agent_id],
-            env_ids=[env_id],
-        )
-
-        return result[0]
-
     @PublicAPI(stability="alpha")
     def compute_actions_from_raw_input(
         self,
