@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
 
 import ray
+from ray import tune
 import ray.cloudpickle as pickle
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
@@ -63,6 +64,7 @@ class TunerInternal:
         self,
         restore_path: str = None,
         resume_config: Optional[_ResumeConfig] = None,
+        with_parameters: Optional[Dict[str, Any]] = None,
         trainable: Optional[
             Union[
                 str,
@@ -89,7 +91,9 @@ class TunerInternal:
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
-                path_or_uri=restore_path, resume_config=resume_config
+                path_or_uri=restore_path,
+                resume_config=resume_config,
+                parameters=with_parameters,
             )
             return
 
@@ -178,7 +182,10 @@ class TunerInternal:
             )
 
     def _restore_from_path_or_uri(
-        self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
+        self,
+        path_or_uri: str,
+        resume_config: Optional[_ResumeConfig],
+        parameters: Optional[Dict[str, Any]],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -199,6 +206,19 @@ class TunerInternal:
         # Load trainable and tuner state
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
             trainable = pickle.load(fp)
+            if hasattr(trainable, "_unwrapped_trainable_and_params"):
+                (
+                    unwrapped_trainable,
+                    attached_params,
+                ) = trainable._unwrapped_trainable_and_params
+                if not parameters or set(parameters.keys()) != set(attached_params):
+                    raise ValueError(
+                        f"All the objects {attached_params} passed in through "
+                        "`tune.with_parameters` must be re-specified in "
+                        "`Tuner.restore(..., with_parameters=dict(...))` "
+                        "for them to be registered again in the object-store."
+                    )
+                trainable = tune.with_parameters(unwrapped_trainable, **parameters)
 
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
             tuner = pickle.load(fp)
