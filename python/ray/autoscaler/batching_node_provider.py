@@ -1,26 +1,18 @@
-from collections import (
-    dataclass,
-    defaultdict
-)
 import logging
+from collections import dataclass, defaultdict
 from typing import Any, Dict, List, Optional
 
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_STATUS,
-    TAG_RAY_NODE_KIND,
-)
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
 )
-from ray.autoscaler._private.util import (
-    NodeID,
-    NodeIP,
-    NodeKind,
-    NodeType,
+from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeType
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +29,7 @@ class ScaleRequest:
             that type.
         workers_to_delete: List of ids of nodes that should be removed.
     """
+
     desired_num_workers: Dict[NodeType, int] = {}
     workers_to_delete: List[NodeID] = []
 
@@ -46,11 +39,11 @@ class NodeData:
     """Stores all data about a Ray node needed by the autoscaler.
 
     Attributes:
-        kind (NodeKind): Whether the node is the head or a worker.
-        type (str): The user-defined type of the node.
-        ip (Optional[str]): Cluster-internal ip of the node. ip can be None if the ip
+        kind: Whether the node is the head or a worker.
+        type: The user-defined type of the node.
+        ip: Cluster-internal ip of the node. ip can be None if the ip
             has not yet been assigned.
-        status (str): The status of the node. You must adhere to the following semantics
+        status: The status of the node. You must adhere to the following semantics
             for status:
             * The status must be "up-to-date" if and only if the node is running.
             * The status must be "update-failed" if and only if the node is in an
@@ -58,6 +51,7 @@ class NodeData:
             * If the node is in a pending (starting-up) state, the status should be
                 a brief user-facing description of why the node is pending.
     """
+
     kind: NodeKind
     type: NodeType
     ip: Optional[NodeIP]
@@ -81,11 +75,12 @@ class BatchingNodeProvider(NodeProvider):
 
     See the method docstrings for more information.
     """
+
     def __init__(
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False
+        _allow_multiple: bool = False,
     ) -> None:
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.node_data_dict: Dict[NodeID, NodeData] = {}
@@ -156,8 +151,7 @@ class BatchingNodeProvider(NodeProvider):
         return True
 
     def post_process(self) -> None:
-        """Submit a scale request if it is safe to do so.
-        """
+        """Submit a scale request if it is safe to do so."""
         if self.scale_change_needed and self.safe_to_scale():
             self.submit_scale_request(self.scale_request)
         self.scale_change_needed = False
@@ -169,7 +163,7 @@ class BatchingNodeProvider(NodeProvider):
         # Initialize ScaleRequest
         self.scale_request = ScaleRequest(
             desired_num_workers=self.cur_num_workers,  # Current scale
-            workers_to_delete=[]  # No workers to delete yet
+            workers_to_delete=[],  # No workers to delete yet
         )
         return list(self.node_data_dict.keys())
 

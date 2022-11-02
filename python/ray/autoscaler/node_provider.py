@@ -246,6 +246,6 @@ class NodeProvider:
         return cluster_config
 
     def post_process() -> None:
-        """This optional method is executed at the end of StandardAutoscaler._update().
-        """
+        """This optional method is executed at the end of
+        StandardAutoscaler._update()."""
         pass

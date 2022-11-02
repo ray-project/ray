@@ -1,6 +1,5 @@
 import collections
 import copy
-from enum import Enum
 import hashlib
 import json
 import logging
@@ -9,6 +8,7 @@ import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from io import StringIO
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -22,11 +22,11 @@ from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler.tags import (
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-    NODE_KIND_WORKER,
     NODE_KIND_HEAD,
     NODE_KIND_UNMANAGED,
+    NODE_KIND_WORKER,
+    NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
 )
 
 REQUIRED, OPTIONAL = True, False
