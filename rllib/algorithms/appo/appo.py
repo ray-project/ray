@@ -15,6 +15,7 @@ import logging
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
+from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -167,6 +168,31 @@ class APPOConfig(ImpalaConfig):
             self.kl_target = kl_target
 
         return self
+
+
+class UpdateTargetAndKL:
+    def __init__(self, workers, config):
+        self.workers = workers
+        self.config = config
+        self.update_kl = UpdateKL(workers)
+        self.target_update_freq = (
+            config["num_sgd_iter"] * config["minibatch_buffer_size"]
+        )
+
+    def __call__(self, fetches):
+        metrics = _get_shared_metrics()
+        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update > self.target_update_freq:
+            metrics.counters[NUM_TARGET_UPDATES] += 1
+            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
+            # Update Target Network
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, _: p.update_target()
+            )
+            # Also update KL Coeff
+            if self.config["use_kl_loss"]:
+                self.update_kl(fetches)
 
 
 class APPO(Impala):
