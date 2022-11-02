@@ -331,7 +331,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        return self._compute_actions_from_input_dict(
+        return self.compute_actions_from_input_dict(
             input_dict, explore, timestep, **kwargs
         )
 

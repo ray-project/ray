@@ -229,7 +229,7 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Run compute_actions_from_input_dict
-            (actions, _, extras,) = policy._compute_actions_from_input_dict(
+            (actions, _, extras,) = policy.compute_actions_from_input_dict(
                 input_dict,
                 explore=False,
                 timestep=None,
@@ -281,7 +281,7 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Run compute_actions_from_input_dict
-            (actions, _, extras,) = policy._compute_actions_from_input_dict(
+            (actions, _, extras,) = policy.compute_actions_from_input_dict(
                 input_dict,
                 explore=False,
                 timestep=None,

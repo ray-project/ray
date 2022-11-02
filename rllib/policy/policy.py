@@ -449,7 +449,7 @@ class Policy(metaclass=ABCMeta):
                 **kwargs,
             )
         else:
-            return self._compute_actions_from_input_dict(
+            return self.compute_actions_from_input_dict(
                 input_dict=input_dict,
                 explore=explore,
                 timestep=timestep,
@@ -580,7 +580,7 @@ class Policy(metaclass=ABCMeta):
             env_id = "0"
 
         # Share logic with _compute_actions_with_connectors
-        result = self._compute_actions_with_connectors(
+        result = self.compute_actions_with_connectors(
             obs_batch=[obs],
             reward_batch=[reward],
             info_batch=[info],
@@ -740,7 +740,7 @@ class Policy(metaclass=ABCMeta):
             ]
 
         action_connector_input_data = [
-            self._compute_actions_from_input_dict(
+            self.compute_actions_from_input_dict(
                 step_out.data.sample_batch,
                 explore=explore,
                 # This may be inaccurate when processing large batches

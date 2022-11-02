@@ -204,7 +204,7 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy._compute_actions_from_input_dict(ac.data.sample_batch)
+        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
 
         action_connector_data = ActionConnectorDataType(
             env_id, agent_id, ac.data.raw_dict, policy_output

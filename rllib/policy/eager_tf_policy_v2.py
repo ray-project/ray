@@ -126,7 +126,7 @@ class EagerTFPolicyV2(Policy):
 
         # Only for `config.eager_tracing=True`: A counter to keep track of
         # how many times an eager-traced method (e.g.
-        # `self._compute_actions_helper`) has been re-traced by tensorflow.
+        # `self.compute_actions_helper`) has been re-traced by tensorflow.
         # We will raise an error if more than n re-tracings have been
         # detected, since this would considerably slow down execution.
         # The variable below should only get incremented during the
@@ -479,7 +479,7 @@ class EagerTFPolicyV2(Policy):
             timestep=timestep, explore=explore, tf_sess=self.get_session()
         )
 
-        ret = self._compute_actions_helper(
+        ret = self.compute_actions_helper(
             input_dict,
             state_batches,
             # TODO: Passing episodes into a traced method does not work.

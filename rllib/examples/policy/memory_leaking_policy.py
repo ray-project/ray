@@ -17,7 +17,7 @@ class MemoryLeakingPolicy(RandomPolicy):
     def compute_actions(self, *args, **kwargs):
         # Leak.
         self._leak.append(1.5)
-        return super()._compute_actions(*args, **kwargs)
+        return super().compute_actions(*args, **kwargs)
 
     @override(RandomPolicy)
     def compute_actions_from_input_dict(self, *args, **kwargs):

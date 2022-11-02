@@ -77,7 +77,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         # state_batch.
         assert state_batches[0].shape[1] == 2
         assert state_batches[0].shape[2] == self.state_size
-        return self._compute_actions(
+        return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),

@@ -359,7 +359,7 @@ class QMixTorchPolicy(TorchPolicy):
                 for i in range(len(state_batches)):
                     input_dict[f"state_in_{i}"] = state_batches[i]
 
-            return self._compute_actions_from_input_dict(
+            return self.compute_actions_from_input_dict(
                 input_dict=input_dict, explore=explore, timestep=timestep
             )
 

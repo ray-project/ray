@@ -111,7 +111,7 @@ class ARSTFPolicy(Policy):
     def compute_single_action(
         self, observation, add_noise=False, update=True, **kwargs
     ):
-        action, state_outs, extra_fetches = self._compute_actions(
+        action, state_outs, extra_fetches = self.compute_actions(
             [observation], add_noise=add_noise, update=update, **kwargs
         )
         return action[0], state_outs, extra_fetches
