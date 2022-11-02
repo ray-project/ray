@@ -221,7 +221,7 @@ def test_multiple_returns(config, ray_start_cluster, reconstruction_enabled):
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nested(config, ray_start_cluster, reconstruction_enabled):
-    config["fetch_fail_timeout_milliseconds"] = (10_000,)
+    config["fetch_fail_timeout_milliseconds"] = 10_000
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
