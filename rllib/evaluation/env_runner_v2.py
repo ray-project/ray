@@ -692,7 +692,7 @@ class EnvRunnerV2:
                 # the agents that are done during this step of rollout in
                 # the case of _multiple_episodes_in_batch=False.
                 self._handle_done_episode(
-                    env_id, env_obs, is_done, hit_horizon, to_eval, outputs
+                    env_id, env_obs, infos[env_id], is_done, hit_horizon, to_eval, outputs
                 )
 
             # Try to build something.
@@ -713,6 +713,7 @@ class EnvRunnerV2:
         self,
         env_id: EnvID,
         env_obs: MultiAgentDict,
+        env_infos: MultiAgentDict,
         is_done: bool,
         hit_horizon: bool,
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
@@ -792,6 +793,7 @@ class EnvRunnerV2:
         # Horizon hit and we have a soft horizon (no hard env reset).
         if hit_horizon and self._soft_horizon:
             resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {env_id: env_obs}
+            resetted_infos = {env_id: env_infos}
             # Do not reset connector state if this is a soft reset.
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
@@ -834,9 +836,9 @@ class EnvRunnerV2:
             # types: AgentID, EnvObsType
             for agent_id, raw_obs in resetted_obs[env_id].items():
                 policy_id: PolicyID = new_episode.policy_for(agent_id)
-                per_policy_resetted_obs[policy_id].append((agent_id, raw_obs))
+                per_policy_resetted_obs[policy_id].append((agent_id, raw_obs, env_infos.get(agent_id, {})))
 
-            for policy_id, agents_obs in per_policy_resetted_obs.items():
+            for policy_id, agents_obs, agents_infos in per_policy_resetted_obs.items():
                 policy = self._worker.policy_map[policy_id]
                 acd_list: List[AgentConnectorDataType] = [
                     AgentConnectorDataType(
@@ -844,6 +846,7 @@ class EnvRunnerV2:
                         agent_id,
                         {
                             SampleBatch.NEXT_OBS: obs,
+                            SampleBatch.INFOS: agents_infos[agent_id],
                             SampleBatch.T: new_episode.length - 1,
                         },
                     )
@@ -856,6 +859,7 @@ class EnvRunnerV2:
                     new_episode.add_init_obs(
                         agent_id=d.agent_id,
                         init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                        init_infos=d.data.raw_dict[SampleBatch.INFOS],
                         t=d.data.raw_dict[SampleBatch.T],
                     )
                     to_eval[policy_id].append(d)

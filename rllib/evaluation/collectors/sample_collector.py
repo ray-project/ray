@@ -64,9 +64,9 @@ class SampleCollector(metaclass=ABCMeta):
         episode: Episode,
         agent_id: AgentID,
         policy_id: PolicyID,
-        t: int = -1,
         init_obs: TensorType,
         init_infos: Optional[Dict[str, TensorType]] = None,
+        t: int = -1,
     ) -> None:
         """Adds an initial obs (after reset) to this collector.
 
@@ -85,14 +85,21 @@ class SampleCollector(metaclass=ABCMeta):
             env_id: The environment index (in a vectorized setup).
             policy_id: Unique id for policy controlling the agent.
             init_obs: Initial observation (after env.reset()).
-            t: The time step (episode length - 1). The initial obs has
-                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs: Initial observation (after env.reset()).
             init_infos: Initial infos dict (after env.reset()).
+            t: The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
 
         Examples:
             >>> obs, infos = env.reset()
-            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs, infos)
+            >>> collector.add_init_obs(
+            ...     episode=my_episode,
+            ...     agent_id=0,
+            ...     policy_id="pol0",
+            ...     t=-1,
+            ...     init_obs=obs,
+            ...     init_infos=infos,
+            ... )
             >>> obs, r, done, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done,

@@ -955,9 +955,9 @@ def _process_observations(
                     agent_id=agent_id,
                     env_id=env_id,
                     policy_id=policy_id,
-                    t=episode.length - 1,
                     init_obs=filtered_obs,
                     init_infos=agent_infos,
+                    t=episode.length - 1,
                 )
             else:
                 # Add actions, rewards, next-obs to collectors.
@@ -1158,9 +1158,9 @@ def _process_observations(
                         agent_id=agent_id,
                         env_id=env_id,
                         policy_id=policy_id,
-                        t=new_episode.length - 1,
                         init_obs=filtered_obs,
                         init_infos=resetted_infos,
+                        t=new_episode.length - 1,
                     )
 
                     item = _PolicyEvalData(
