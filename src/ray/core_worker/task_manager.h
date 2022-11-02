@@ -50,7 +50,8 @@ class TaskFinisherInterface {
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true) = 0;
 
-  virtual void MarkTaskWaitingForExecution(const TaskID &task_id) = 0;
+  virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                           const NodeID &node_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -276,7 +277,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Record that the given task is scheduled and wait for execution.
   ///
   /// \param[in] task_id The task that is will be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id) override;
+  /// \param[in] node_id The node id that this task wil be running.
+  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -318,6 +320,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     }
 
     rpc::TaskStatus GetStatus() const { return status; }
+
+    // Get the NodeID where the task is executed.
+    NodeID GetNodeId() const { return node_id_; }
+    // Set the NodeID where the task is executed.
+    void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
@@ -368,6 +375,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    private:
     // The task's current execution status.
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
+    // The node id where task is executed.
+    NodeID node_id_;
   };
 
   /// Update nested ref count info and store the in-memory value for a task's

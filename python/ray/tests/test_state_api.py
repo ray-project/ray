@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 from ray.cluster_utils import cluster_not_supported
+from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
     Address,
     CoreWorkerStats,
@@ -131,6 +132,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     for k in state_fields_columns:
         assert k in result_dict
 
+    for k in result_dict:
+        assert k in state_fields_columns
+
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
@@ -139,6 +143,7 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         name="abc",
         pid=1234,
         class_name=class_name,
+        address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
     )
 
 
@@ -181,6 +186,7 @@ def generate_task_entry(
     func_or_class="class",
     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     type=TaskType.NORMAL_TASK,
+    node_id=NodeID.from_random().binary(),
 ):
     return TaskInfoEntry(
         task_id=id,
@@ -188,16 +194,27 @@ def generate_task_entry(
         func_or_class_name=func_or_class,
         scheduling_state=state,
         type=type,
+        node_id=node_id,
     )
 
 
 def generate_task_data(
-    id, name="class", func_or_class="class", state=TaskStatus.PENDING_NODE_ASSIGNMENT
+    id,
+    name="class",
+    func_or_class="class",
+    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
+    node_id=NodeID.from_random(),
 ):
+    if node_id is not None:
+        node_id = node_id.binary()
     return GetTasksInfoReply(
         owned_task_info_entries=[
             generate_task_entry(
-                id=id, name=name, func_or_class=func_or_class, state=state
+                id=id,
+                name=name,
+                func_or_class=func_or_class,
+                state=state,
+                node_id=node_id,
             )
         ],
         total=1,
@@ -468,6 +485,7 @@ async def test_api_manager_list_actors(state_api_manager):
     )
     result = await state_api_manager.list_actors(option=create_api_options())
     data = result.result
+
     actor_data = data[0]
     verify_schema(ActorState, actor_data)
     assert result.total == 2
@@ -763,13 +781,14 @@ async def test_api_manager_list_tasks(state_api_manager):
     data_source_client.get_all_registered_raylet_ids = MagicMock()
     data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
+    node_id = NodeID.from_random()
     first_task_name = "1"
     second_task_name = "2"
     data_source_client.get_task_info = AsyncMock()
     id = b"1234"
     data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
+        generate_task_data(id, first_task_name, node_id=node_id),
+        generate_task_data(b"2345", second_task_name, node_id=None),
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
     data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
@@ -778,8 +797,11 @@ async def test_api_manager_list_tasks(state_api_manager):
     data = data
     assert len(data) == 2
     assert result.total == 2
+
     verify_schema(TaskState, data[0])
+    assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
+    assert data[1]["node_id"] is None
 
     """
     Test detail
@@ -1643,15 +1665,29 @@ class TestListActors:
         class A:
             pass
 
-        a = A.remote()  # noqa
+        @ray.remote(num_gpus=1)
+        class UnschedulableActor:
+            pass
+
+        job_id = ray.get_runtime_context().get_job_id()
+        node_id = ray.get_runtime_context().get_node_id()
+        a = A.remote()
+        b = UnschedulableActor.remote()
 
         def verify():
             # Test list
-            actors = list_actors()
+            actors = list_actors(filters=[("actor_id", "=", a._actor_id.hex())])
             assert len(actors) == 1
             assert actors[0]["state"] == "ALIVE"
             assert is_hex(actors[0]["actor_id"])
             assert a._actor_id.hex() == actors[0]["actor_id"]
+            assert actors[0]["job_id"] == job_id
+            assert actors[0]["node_id"] == node_id
+
+            # Test the second actor's node id is None because
+            # it is not scheduled.
+            actors = list_actors(filters=[("actor_id", "=", b._actor_id.hex())])
+            assert actors[0]["node_id"] is None
 
             # Test get
             actors = list_actors(detail=True)
@@ -1882,6 +1918,8 @@ def test_list_cluster_events(shutdown_only):
 
 def test_list_get_tasks(shutdown_only):
     ray.init(num_cpus=2)
+    job_id = ray.get_runtime_context().get_job_id()
+    node_id = ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def f():
@@ -1906,6 +1944,11 @@ def test_list_get_tasks(shutdown_only):
     def verify():
         tasks = list_tasks()
         assert len(tasks) == 5
+        for task in tasks:
+            assert task["job_id"] == job_id
+        for task in tasks:
+            assert task["actor_id"] is None
+
         waiting_for_execution = len(
             list(
                 filter(
@@ -1949,6 +1992,17 @@ def test_list_get_tasks(shutdown_only):
             get_task_data = get_task(task["task_id"])
             assert get_task_data == task
 
+        # Test node id.
+        tasks = list_tasks(
+            filters=[("scheduling_state", "=", "PENDING_NODE_ASSIGNMENT")]
+        )
+        for task in tasks:
+            assert task["node_id"] is None
+
+        tasks = list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
+        for task in tasks:
+            assert task["node_id"] == node_id
+
         return True
 
     wait_for_condition(verify)
@@ -1957,6 +2011,7 @@ def test_list_get_tasks(shutdown_only):
 
 def test_list_actor_tasks(shutdown_only):
     ray.init(num_cpus=2)
+    job_id = ray.get_runtime_context().get_job_id()
 
     @ray.remote
     class Actor:
@@ -1966,10 +2021,15 @@ def test_list_actor_tasks(shutdown_only):
             time.sleep(30)
 
     a = Actor.remote()
+    actor_id = a._actor_id.hex()
     calls = [a.call.remote() for _ in range(10)]  # noqa
 
     def verify():
         tasks = list_tasks()
+        for task in tasks:
+            assert task["job_id"] == job_id
+        for task in tasks:
+            assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
         # Actor.call: 1 running, 9 waiting for execution (queued).
         assert len(tasks) == 11

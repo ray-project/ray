@@ -764,7 +764,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
+                                              const NodeID &node_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
@@ -772,6 +773,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  it->second.SetNodeId(node_id);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -789,14 +791,17 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
     const auto &task_state = task_entry.GetStatus();
+    const auto &node_id = task_entry.GetNodeId();
     rpc::TaskType type;
     if (task_spec.IsNormalTask()) {
       type = rpc::TaskType::NORMAL_TASK;
     } else if (task_spec.IsActorCreationTask()) {
       type = rpc::TaskType::ACTOR_CREATION_TASK;
+      entry->set_actor_id(task_spec.ActorCreationId().Binary());
     } else {
       RAY_CHECK(task_spec.IsActorTask());
       type = rpc::TaskType::ACTOR_TASK;
+      entry->set_actor_id(task_spec.ActorId().Binary());
     }
     entry->set_type(type);
     entry->set_name(task_spec.GetName());
@@ -804,6 +809,9 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
     entry->set_scheduling_state(task_state);
     entry->set_job_id(task_spec.JobId().Binary());
+    if (!node_id.IsNil()) {
+      entry->set_node_id(node_id.Binary());
+    }
     entry->set_task_id(task_spec.TaskId().Binary());
     entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();

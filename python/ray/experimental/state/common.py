@@ -99,6 +99,12 @@ class ListApiOptions:
         assert isinstance(self.limit, int)
         assert isinstance(self.timeout, int)
         assert isinstance(self.detail, bool)
+        assert isinstance(self.filters, list) or self.filters is None, (
+            "filters must be a list type. Given filters: "
+            f"{self.filters} type: {type(self.filters)}. "
+            "Provide a list of tuples instead. "
+            "e.g., list_actors(filters=[('name', '=', 'ABC')])"
+        )
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
@@ -328,8 +334,15 @@ class ActorState(StateSchema):
     #:   but means the actor was dead more than once.
     #: - DEAD: The actor is permanatly dead.
     state: TypeActorStatus = state_column(filterable=True)
+    #: The job id of this actor.
+    job_id: str = state_column(filterable=True)
     #: The name of the actor given by the `name` argument.
     name: Optional[str] = state_column(filterable=True)
+    #: The node id of this actor.
+    #: If the actor is restarting, it could be the node id
+    #: of the dead actor (and it will be re-updated when
+    #: the actor is successfully restarted).
+    node_id: str = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
     #: The namespace of the actor.
@@ -464,6 +477,15 @@ class TaskState(StateSchema):
     #: breakdowns and typical state transition flow.
     #:
     scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    #: The job id of this task.
+    job_id: str = state_column(filterable=True)
+    #: Id of the node that runs the task. If the task is retried, it could
+    #: contain the node id of the previous executed task.
+    #: If empty, it means the task hasn't been scheduled yet.
+    node_id: str = state_column(filterable=True)
+    #: The actor id that's associated with this task.
+    #: It is empty if there's no relevant actors.
+    actor_id: str = state_column(filterable=True)
     #: The type of the task.
     #:
     #: - NORMAL_TASK: Tasks created by `func.remote()``
