@@ -57,6 +57,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
+    # TODO(sang): Remove it. Legacy code that's not working.
     @routes.get("/api/launch_profiling")
     async def launch_profiling(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
@@ -154,7 +155,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             cluster_status=formatted_status if formatted_status else None,
         )
 
-
     @routes.get("/api/v0/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
         # ip = req.query["ip"]
@@ -166,11 +166,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         logger.info(reply)
         return dashboard_optional_utils.rest_response(
-            success=True, output=reply.output, message="",
+            success=True,
+            output=reply.output,
+            message="",
         )
 
     @routes.get("/api/v0/cpu_profile")
-    async def launch_profiling(self, req) -> aiohttp.web.Response:
+    async def cpu_profile(self, req) -> aiohttp.web.Response:
         # ip = req.query["ip"]
         pid = int(req.query["pid"])
         duration = int(req.get("duration", 5))
@@ -178,12 +180,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         password = req.query.get("password", "")
         reporter_stub = list(self._stubs.values())[0]
         reply = await reporter_stub.CpuProfiling(
-            reporter_pb2.CpuProfilingRequest(pid=pid, password=password, duration=duration, format=format)
+            reporter_pb2.CpuProfilingRequest(
+                pid=pid, password=password, duration=duration, format=format
+            )
         )
         logger.info(reply)
-        filename = reply.filename
+        # filename = reply.filename
         return dashboard_optional_utils.rest_response(
-            success=True, output=reply.filename, message="",
+            success=True,
+            output=reply.filename,
+            message="",
         )
 
     async def run(self, server):

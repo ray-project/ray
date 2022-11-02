@@ -1,7 +1,6 @@
 import copy
 import json
 import logging
-from multiprocessing.sharedctypes import Value
 import os
 import signal
 import subprocess
@@ -2555,7 +2554,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
 def py_stack(pid, password):
     print("Run profiler")
     import requests
-    result = requests.get(f"http://localhost:8265/api/v0/traceback?pid={pid}&password={password}").json()
+
+    result = requests.get(
+        f"http://localhost:8265/api/v0/traceback?pid={pid}&password={password}"
+    ).json()
     if not result["result"]:
         print(f"Failed {result['msg']}")
     else:
@@ -2593,7 +2595,11 @@ def py_stack(pid, password):
 def cpu_profile(pid, password, duration, format):
     print("Run profiler")
     import requests
-    result = requests.get(f"http://localhost:8265/api/v0/cpu_profile?pid={pid}&password={password}&duration={duration}&format={format}").json()
+
+    result = requests.get(
+        "http://localhost:8265/api/v0/cpu_profile"
+        f"?pid={pid}&password={password}&duration={duration}&format={format}"
+    ).json()
     if not result["result"]:
         print(f"Failed {result['msg']}")
     else:

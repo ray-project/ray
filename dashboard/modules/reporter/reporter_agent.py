@@ -278,6 +278,7 @@ class ReporterAgent(
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
 
+    # TODO(sang): Remove it
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
@@ -316,7 +317,9 @@ class ReporterAgent(
         format = request.format
         p = CpuProfilingManager(self._log_dir)
         # output = await p.trace_dump(pid, password)
-        output = await p.cpu_profile(pid, format=format, duration=duration, password=password)
+        output = await p.cpu_profile(
+            pid, format=format, duration=duration, password=password
+        )
         return reporter_pb2.GetTracebackReply(output=output)
 
     async def ReportOCMetrics(self, request, context):
