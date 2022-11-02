@@ -20,7 +20,7 @@ from ray.train._internal.backend_executor import (
 )
 
 from ray.train._internal.dataset_spec import RayDatasetSpec
-from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata, Worker
+from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
