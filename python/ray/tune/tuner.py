@@ -10,8 +10,8 @@ from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
-    prepare_progress_reporter_for_ray_client,
-    get_remote_with_string_queue,
+    _prepare_progress_reporter_for_ray_client,
+    _get_remote_with_string_queue,
 )
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
@@ -224,7 +224,7 @@ class Tuner:
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
-        progress_reporter, string_queue = prepare_progress_reporter_for_ray_client(
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
             run_config.progress_reporter, run_config.verbose
         )
         run_config.progress_reporter = progress_reporter
@@ -275,7 +275,7 @@ class Tuner:
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
             try:
-                return get_remote_with_string_queue(
+                return _get_remote_with_string_queue(
                     self._remote_tuner.fit.remote(),
                     progress_reporter,
                     string_queue,
@@ -312,7 +312,7 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            return get_remote_with_string_queue(
+            return _get_remote_with_string_queue(
                 self._remote_tuner.fit.remote(),
                 progress_reporter,
                 string_queue,

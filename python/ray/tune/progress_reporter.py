@@ -1536,7 +1536,7 @@ def _detect_progress_metrics(
     return getattr(trainable, "_progress_metrics", None)
 
 
-def prepare_progress_reporter_for_ray_client(
+def _prepare_progress_reporter_for_ray_client(
     progress_reporter: ProgressReporter,
     verbosity: Union[int, Verbosity],
     string_queue: Optional[Queue] = None,
@@ -1561,7 +1561,7 @@ def prepare_progress_reporter_for_ray_client(
     return progress_reporter, string_queue
 
 
-def get_remote_with_string_queue(
+def _get_remote_with_string_queue(
     remote_future: ray.ObjectRef,
     progress_reporter: ProgressReporter,
     string_queue: Queue,

@@ -18,8 +18,8 @@ from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
     _detect_progress_metrics,
-    prepare_progress_reporter_for_ray_client,
-    get_remote_with_string_queue,
+    _prepare_progress_reporter_for_ray_client,
+    _get_remote_with_string_queue,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -391,7 +391,7 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = _force_on_current_node(remote_run)
 
-        progress_reporter, string_queue = prepare_progress_reporter_for_ray_client(
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
             progress_reporter, verbose, _remote_string_queue
         )
 
@@ -400,7 +400,7 @@ def run(
 
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
-        return get_remote_with_string_queue(
+        return _get_remote_with_string_queue(
             remote_future, progress_reporter, string_queue
         )
 
