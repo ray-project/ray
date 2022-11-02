@@ -37,20 +37,8 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials,-torch_1_11,-mosaic
+      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials
       python/ray/train/...
-
-- label: ":tv: :steam_locomotive: Train tests and examples (PyTorch 1.11) "
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    # TODO(amogkam): Remove this after we upgrade the PyTorch version.
-    - pip uninstall torch -y
-    - pip install -U torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
-    - pip install mosaicml==0.10.1 --ignore-installed
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=mosaic,-gpu_only python/ray/train/...
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
