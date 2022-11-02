@@ -339,7 +339,7 @@ class TestCheckBaseEnv:
     def test_check_correct_env(self):
         env = self._make_base_env()
         check_env(env)
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         env = convert_to_base_env(env)
         check_env(env)
 

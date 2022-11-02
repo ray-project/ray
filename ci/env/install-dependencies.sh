@@ -224,11 +224,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.3.1
-    # cryptography 37.0.0 breaks ensurepip.
-    # Example build failure:
-    # https://buildkite.com/ray-project/ray-builders-branch/builds/7207#a16e8f76-a993-4d8d-a5f0-09c4f76245dc
-    "${python}" -m pip install cryptography==36.0.2
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -301,7 +297,7 @@ install_pip_packages() {
     # Remove this entire section once Serve dependencies are fixed.
     if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
+      pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
@@ -310,17 +306,24 @@ install_pip_packages() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -Ur "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
-  fi
 
-  # Default requirements
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+    # Repeat for requirements_test.txt
+    local status="0";
+    local errmsg="";
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
+
   fi
 
   if [ "${LINT-}" = 1 ]; then
@@ -350,26 +353,26 @@ install_pip_packages() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
     #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.
@@ -389,10 +392,10 @@ install_pip_packages() {
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
@@ -408,11 +411,6 @@ install_pip_packages() {
       esac
       pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.9.0}" torchvision=="${TORCHVISION_VERSION}"
     fi
-  fi
-
-  # RLlib testing with TF 1.x.
-  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
   fi
 
   # Inject our own mirror for the CIFAR10 dataset

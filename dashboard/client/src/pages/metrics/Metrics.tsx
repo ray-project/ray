@@ -69,6 +69,18 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
   },
   {
+    title: "Active Tasks by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+  },
+  {
+    title: "Scheduler Actor State",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+  },
+  {
+    title: "Active Actors by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
+  },
+  {
     title: "Scheduler CPUs (logical slots)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
   },
@@ -93,8 +105,16 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
   },
   {
+    title: "Node Disk IO Speed",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
+  },
+  {
     title: "Node Memory",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+  },
+  {
+    title: "Node Memory by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
   },
   {
     title: "Node GPU Memory",
@@ -115,7 +135,7 @@ export const Metrics = () => {
   const { grafanaHost } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.ONE_HOUR,
+    TimeRangeOptions.THIRTY_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,

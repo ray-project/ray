@@ -58,10 +58,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
-  Python 3.9/3.10 support is currently experimental.
-
-.. note::
-
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
@@ -198,7 +194,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
    * ``bash Miniforge3-MacOSX-arm64.sh``
 
-   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
 
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
 

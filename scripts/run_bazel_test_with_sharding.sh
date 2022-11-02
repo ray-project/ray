@@ -1,0 +1,1 @@
+../ci/run/run_bazel_test_with_sharding.sh

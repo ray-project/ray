@@ -13,3 +13,4 @@ This user guide will help you navigate the Ray Serve project and show you how to
 - [Handling Dependencies](handling-dependencies)
 - [Experimental Java API](managing-java-deployments)
 - [1.x to 2.x API Migration Guide](migration)
+- [Experimental gRPC Support](direct-ingress)

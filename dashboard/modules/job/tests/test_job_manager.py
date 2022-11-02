@@ -11,7 +11,10 @@ import pytest
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray._private.ray_constants import (
+    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+    KV_NAMESPACE_JOB,
+)
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
@@ -19,10 +22,49 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.job_submission import JobStatus
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+async def test_get_scheduling_strategy(call_ray_start, monkeypatch):  # noqa: F811
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+
+    job_manager = JobManager(gcs_aio_client)
+
+    # If no head node id is found, we should use "DEFAULT".
+    await gcs_aio_client.internal_kv_del(
+        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy()
+    assert strategy == "DEFAULT"
+
+    # Add a head node id to the internal KV to simulate what is done in node_head.py.
+    await gcs_aio_client.internal_kv_put(
+        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy()
+    expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+    assert expected_strategy.node_id == strategy.node_id
+    assert expected_strategy.soft == strategy.soft
+
+    # When the env var is set to 1, we should use DEFAULT.
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
+    strategy = await job_manager._get_scheduling_strategy()
+    assert strategy == "DEFAULT"
 
 
 @pytest.mark.asyncio
@@ -436,17 +478,14 @@ class TestRuntimeEnv:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert (
-            dict_to_str(
-                {
-                    JOB_NAME_METADATA_KEY: job_id,
-                    JOB_ID_METADATA_KEY: job_id,
-                    "key1": "val1",
-                    "key2": "val2",
-                }
-            )
-            in job_manager.get_job_logs(job_id)
-        )
+        assert dict_to_str(
+            {
+                JOB_NAME_METADATA_KEY: job_id,
+                JOB_ID_METADATA_KEY: job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        ) in job_manager.get_job_logs(job_id)
 
         # Check that we can override job name.
         job_id = await job_manager.submit_job(
