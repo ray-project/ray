@@ -919,10 +919,6 @@ class Policy(metaclass=ABCMeta):
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms. (Only relevant without connectors)
-            agent_ids: Agent IDs of observations in input_dict (only relevant when
-                using connectors)
-            env_ids: Environment IDs of observations in input_dict (only relevant when
-                using connectors)
 
         Keyword Args:
             kwargs: Forward compatibility placeholder.
