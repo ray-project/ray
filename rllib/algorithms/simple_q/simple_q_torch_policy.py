@@ -70,19 +70,22 @@ class SimpleQTorchPolicy(
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
         if timestep is None:
             timestep = self.global_timestep
-        # Compute the Q-values for each possible action, using our Q-value network.
-        q_vals = self._compute_q_values(
-            self.model, input_dict[SampleBatch.OBS], is_training=is_training
-        )
-        # Use a Categorical distribution for the exploration component.
-        # This way, it may either sample storchastically (e.g. when using SoftQ)
-        # or deterministically/greedily (e.g. when using EpsilonGreedy).
-        distribution = TorchCategorical(q_vals, self.model)
-        # Call the exploration component's `get_exploration_action` method to
-        # explore, if necessary.
-        actions, logp = self.exploration.get_exploration_action(
-            action_distribution=distribution, timestep=timestep, explore=explore
-        )
+        with torch.no_grad():
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
+            # Compute the Q-values for each possible action, using our Q-value network.
+            q_vals = self._compute_q_values(
+                self.model, input_dict[SampleBatch.OBS], is_training=is_training
+            )
+            # Use a Categorical distribution for the exploration component.
+            # This way, it may either sample storchastically (e.g. when using SoftQ)
+            # or deterministically/greedily (e.g. when using EpsilonGreedy).
+            distribution = TorchCategorical(q_vals, self.model)
+            # Call the exploration component's `get_exploration_action` method to
+            # explore, if necessary.
+            actions, logp = self.exploration.get_exploration_action(
+                action_distribution=distribution, timestep=timestep, explore=explore
+            )
         # Return (exploration) actions, state_outs (empty list), and extra outs.
         return (
             convert_to_numpy(actions),
