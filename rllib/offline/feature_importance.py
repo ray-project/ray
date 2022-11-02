@@ -90,11 +90,9 @@ class FeatureImportance(OfflineEvaluator):
             for i in range(n_features):
                 copy_obs_batch = copy.deepcopy(obs_batch)
                 perturb_fn(copy_obs_batch, index=i)
-                (
-                    perturbed_actions,
-                    _,
-                    _,
-                ) = self.policy.compute_actions(copy_obs_batch, explore=False)
+                perturbed_actions, _, _ = self.policy.compute_actions(
+                    copy_obs_batch, explore=False
+                )
 
                 importance[r, i] = np.mean(np.abs(perturbed_actions - ref_actions))
 

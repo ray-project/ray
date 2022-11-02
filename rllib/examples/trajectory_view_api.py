@@ -119,7 +119,7 @@ if __name__ == "__main__":
         while not done:
             # Create a dummy action using the same observation n times,
             # as well as dummy prev-n-actions and prev-n-rewards.
-            (action, state, logits,) = algo.compute_actions_from_input_dict(
+            action, state, logits = algo.compute_single_action(
                 input_dict={
                     "obs": obs,
                     "prev_n_obs": np.stack([obs for _ in range(num_frames)]),

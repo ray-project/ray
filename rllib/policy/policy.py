@@ -926,6 +926,7 @@ class Policy(metaclass=ABCMeta):
             episodes=episodes,
             explore=explore,
             timestep=timestep,
+            **kwargs,
         )
 
         # Some policies don't return a tuple, but always just a single action.

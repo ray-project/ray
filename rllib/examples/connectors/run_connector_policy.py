@@ -51,7 +51,7 @@ def run(checkpoint_path):
         # Use connectors() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
         # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
-        actions, state_outs, infos = policy.compute_actions_from_input_dict(
+        actions, state_outs, infos = policy.compute_actions_from_raw_input_dict(
             env_ids=["env_1"],
             agent_ids=["agent_1"],
             input_dict={SampleBatch.OBS: [obs]},

@@ -158,7 +158,7 @@ def parse_policy_specs_from_checkpoint(
 @Deprecated(
     old="ray.rllib.utils.policy.local_policy_inference()",
     new="Policy.compute_actions_from_input_dict()",
-    help="For connector-enabled policies, Policy.compute_actions_from_input_dict() "
+    help="For connector-enabled policies, Policy.compute_actions_from_raw_input_dict() "
     "now handles connectors, making local_policy_inference() redundant.",
     error=False,
 )
