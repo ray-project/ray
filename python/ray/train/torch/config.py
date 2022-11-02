@@ -172,7 +172,6 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
             _shutdown_torch, destroy_process_group=len(worker_group) > 1
         )
