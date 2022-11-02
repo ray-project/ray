@@ -227,6 +227,7 @@ def _mosaic_train_loop_per_worker(config):
         f_name = "rank{rank}.pt".format(rank=os.environ["RANK"])
         load_path = checkpoint.to_path(f_name)
         config["load_path"] = load_path
+
     # initialize Composer trainer
     trainer: Trainer = trainer_init_per_worker(config)
 
