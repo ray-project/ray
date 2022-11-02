@@ -477,17 +477,6 @@ def check_compute_single_action(
                 action = np.array(action)
             action = tree.map_structure(lambda s: s[0], action)
             assert action_space.contains(action)
-
-            try:
-                action2 = pol.compute_actions_from_raw_input(
-                    next_obs_batch=[obs], explore=explore, timestep=timestep, clip=clip
-                )[0]
-                # Make sure these are the same, unless we have exploration
-                # switched on (or noisy layers).
-                if not explore and not pol.config.get("noisy"):
-                    check(action, action2)
-            except TypeError:
-                pass
         else:
             t0 = time.time_ns()
             action = what.compute_actions_from_raw_input(
