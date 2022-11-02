@@ -6,11 +6,23 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
+import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
+from ray.train.mosaic.mosaic_predictor import MosaicPredictor
+from ray.train.batch_predictor import BatchPredictor
+
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
+mean = (0.507, 0.487, 0.441)
+std = (0.267, 0.256, 0.276)
+cifar10_transforms = transforms.Compose(
+    [transforms.ToTensor(), transforms.Normalize(mean, std)]
+)
+
+data_directory = "~/data"
 
 
 def trainer_init_per_worker(config):
@@ -25,13 +37,6 @@ def trainer_init_per_worker(config):
     )
 
     # prepare train/test dataset
-    mean = (0.507, 0.487, 0.441)
-    std = (0.267, 0.256, 0.276)
-    cifar10_transforms = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize(mean, std)]
-    )
-
-    data_directory = "~/data"
     train_dataset = torch.utils.data.Subset(
         datasets.CIFAR10(
             data_directory, train=True, download=True, transform=cifar10_transforms
@@ -425,6 +430,73 @@ class TestResumedTraining:
         result = trainer.fit()
 
         assert result.metrics["epoch"] == 5
+
+
+def test_batch_predict(ray_start_4_cpus):
+    """
+    Use BatchPredictor to make predictions
+    """
+    from ray.train.mosaic import MosaicTrainer
+
+    model = torchvision.models.resnet18(num_classes=10)
+
+    trainer_init_config = {
+        "model": model,
+        "max_duration": "5ep",
+        "should_eval": True,
+        "log_keys": ["metrics/my_evaluator/Accuracy"],
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    # prediction mapping functions
+    def convert_logits_to_classes(df):
+        best_class = df["predictions"].map(lambda x: x.argmax())
+        df["prediction"] = best_class
+        return df
+
+    def calculate_prediction_scores(df):
+        df["correct"] = df["prediction"] == df["label"]
+        return df[["prediction", "label", "correct"]]
+
+    predictor = BatchPredictor.from_checkpoint(
+        checkpoint=result.checkpoint,
+        predictor_cls=MosaicPredictor,
+        model=model,
+    )
+
+    # prepare prediction dataset
+    data_directory = "~/data"
+
+    test_dataset = torch.utils.data.Subset(
+        datasets.CIFAR10(
+            data_directory, train=False, download=True, transform=cifar10_transforms
+        ),
+        list(range(64)),
+    )
+    test_images = [x.numpy() for x, _ in test_dataset]
+    test_input = ray.data.from_items(test_images)
+
+    # make prediction
+    outputs = predictor.predict(test_input)
+    predictions = outputs.map_batches(convert_logits_to_classes, batch_format="pandas")
+
+    # add label column
+    prediction_df = predictions.to_pandas()
+    prediction_df["label"] = [y for _, y in test_dataset]
+    predictions = ray.data.from_pandas(prediction_df)
+
+    # score prediction
+    scores = predictions.map_batches(calculate_prediction_scores)
+    score = scores.sum(on="correct") / scores.count()
+
+    assert score == result.metrics["metrics/my_evaluator/Accuracy"]
 
 
 if __name__ == "__main__":
