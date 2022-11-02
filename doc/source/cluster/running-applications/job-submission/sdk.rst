@@ -181,7 +181,7 @@ Specifying CPU and GPU resources
 We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
 No extra configuration is needed to do this.
 
-However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the ``entrypoint_num_cpus``, ``entrypoint_num_gpus`` and `entrypoint_resources` arguments to ``submit_job``.  These arguments function
+However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the ``entrypoint_num_cpus``, ``entrypoint_num_gpus`` and ``entrypoint_resources`` arguments to ``submit_job``.  These arguments function
 identically to the ``num_cpus``, ``num_gpus``, and ``resources`` arguments to ``@ray.remote()`` decorator for tasks and actors as described in :ref:`resource-requirements`.
 
 .. code-block:: python
@@ -195,13 +195,13 @@ identically to the ``num_cpus``, ``num_gpus``, and ``resources`` arguments to ``
         entrypoint_num_gpus=1
     )
 
-The same arguments are also available as options `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, and `--entrypoint-resources` to `ray job submit` in the Jobs CLI; see :ref:`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
+The same arguments are also available as options ``--entrypoint-num-cpus``, ``--entrypoint-num-gpus``, and ``--entrypoint-resources`` to ``ray job submit`` in the Jobs CLI; see :ref:`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
 
 .. note::
 
-    Resources specified by `entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources` are separate from any resources specified
-    for tasks and actors within the job.  For example, if you specify `entrypoint_num_gpus=1`, then the entrypoint script will be scheduled on a node with at least 1 GPU,
-    but if your script contains a Ray task defined with `@ray.remote(num_gpus=1)`, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
+    Resources specified by ``entrypoint_num_cpus``, ``entrypoint_num_gpus``, and ``entrypoint_resources`` are separate from any resources specified
+    for tasks and actors within the job.  For example, if you specify ``entrypoint_num_gpus=1``, then the entrypoint script will be scheduled on a node with at least 1 GPU,
+    but if your script contains a Ray task defined with ``@ray.remote(num_gpus=1)``, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
 
 .. note::
 
