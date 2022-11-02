@@ -37,8 +37,8 @@ TEST_NAMESPACE = "jobs_test_namespace"
     indirect=True,
 )
 async def test_get_scheduling_strategy(
-    call_ray_start, monkeypatch, tmp_path
-):  # noqa: F811
+    call_ray_start, monkeypatch, tmp_path  # noqa: F811
+):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
