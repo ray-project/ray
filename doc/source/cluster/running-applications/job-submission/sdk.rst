@@ -203,7 +203,7 @@ The same arguments are also available as options ``--entrypoint-num-cpus``, ``--
     for tasks and actors within the job.  
     
     For example, if you specify ``entrypoint_num_gpus=1``, then the entrypoint script will be scheduled on a node with at least 1 GPU,
-    but if your script contains a Ray task defined with ``@ray.remote(num_gpus=1)``, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
+    but if your script also contains a Ray task defined with ``@ray.remote(num_gpus=1)``, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
 
 .. note::
     
