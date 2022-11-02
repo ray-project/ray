@@ -54,58 +54,170 @@ GRAFANA_PANELS = [
     Panel(
         id=33,
         title="Scheduler Actor State",
+        description="Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+        unit="actors",
+        targets=[
+            Target(
+                expr="sum(ray_actors) by (State)",
+                legend="{{State}}",
+            )
+        ],
     ),
     Panel(
         id=36,
         title="Active Actors by Name",
+        description="Current number of (live) actors with a particular name.",
+        unit="actors",
+        targets=[
+            Target(
+                expr="sum(ray_actors) by (Name)",
+                legend="{{Name}}",
+            )
+        ],
     ),
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=29,
         title="Object Store Memory",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=28,
         title="Scheduler GPUs (logical slots)",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=2,
         title="Node CPU",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=8,
         title="Node GPU",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=6,
         title="Node Disk",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=32,
         title="Node Disk IO Speed",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=4,
         title="Node Memory",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=34,
         title="Node Memory by Component",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=18,
         title="Node GPU Memory",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=20,
         title="Node Network",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
     Panel(
         id=24,
         title="Instance count",
+        description="",
+        unit="",
+        targets=[
+            Target(
+                expr="",
+                legend="",
+            )
+        ],
     ),
 ]
 
