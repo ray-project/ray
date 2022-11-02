@@ -3,10 +3,8 @@ import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
 from pkg_resources import packaging
-from ray.dashboard.utils import (
-    get_address_for_submission_client,
-    strip_keys_with_value_none,
-)
+from ray.dashboard.utils import get_address_for_submission_client
+from ray.dashboard.modules.job.utils import strip_keys_with_value_none
 
 
 try:
