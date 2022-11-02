@@ -51,7 +51,6 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_heartbeat_report_ms_sum",
     "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
     "ray_internal_num_spilled_tasks",
@@ -147,6 +146,11 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_rss_mb",
     "ray_component_uss_mb",
 ]
+
+if ray._raylet.Config.pull_based_healthcheck():
+    _METRICS.append("ray_health_check_rpc_latency_ms_sum")
+else:
+    _METRICS.append("ray_heartbeat_report_ms_sum")
 
 
 @pytest.fixture

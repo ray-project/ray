@@ -170,6 +170,7 @@ void HeartbeatSender::Heartbeat() {
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
         if (status.IsDisconnected()) {
+          RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD") << "This node has beem marked as dead.";
           RAY_LOG(FATAL) << "This node has beem marked as dead.";
         }
       }));
@@ -462,7 +463,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
 ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeat here to ensure it happening after raylet being registered.
-  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -1026,6 +1029,14 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   if (node_id == self_node_id_) {
     if (!is_node_drained_) {
+      // TODO(iycheng): Don't duplicate log here once we enable event by default.
+      RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
+          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+             "dead by the "
+          << "GCS: GCS didn't receive heartbeats from this node for "
+          << RayConfig::instance().num_heartbeats_timeout() *
+                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
+          << " ms. This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
