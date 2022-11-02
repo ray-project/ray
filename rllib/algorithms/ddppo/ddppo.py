@@ -21,6 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -41,7 +42,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -92,6 +92,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
+        self.num_rollout_workers = 2
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -195,8 +196,8 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
     def validate_config(self, config):
@@ -257,31 +258,30 @@ class DDPPO(PPO):
         super().setup(config)
 
         # Initialize torch process group for
-        if self.config["_disable_execution_plan_api"] is True:
-            self._curr_learner_info = {}
-            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-            logger.info("Creating torch process group with leader {}".format(address))
+        self._curr_learner_info = {}
+        ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
+        port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        logger.info("Creating torch process group with leader {}".format(address))
 
-            # Get setup tasks in order to throw errors on failure.
-            ray.get(
-                [
-                    worker.setup_torch_data_parallel.remote(
-                        url=address,
-                        world_rank=i,
-                        world_size=len(self.workers.remote_workers()),
-                        backend=self.config["torch_distributed_backend"],
-                    )
-                    for i, worker in enumerate(self.workers.remote_workers())
-                ]
-            )
-            logger.info("Torch process group init completed")
-            self._ddppo_worker_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
-                max_remote_requests_in_flight_per_worker=1,
-                ray_wait_timeout_s=0.03,
-            )
+        # Get setup tasks in order to throw errors on failure.
+        ray.get(
+            [
+                worker.setup_torch_data_parallel.remote(
+                    url=address,
+                    world_rank=i,
+                    world_size=len(self.workers.remote_workers()),
+                    backend=self.config["torch_distributed_backend"],
+                )
+                for i, worker in enumerate(self.workers.remote_workers())
+            ]
+        )
+        logger.info("Torch process group init completed")
+        self._ddppo_worker_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=1,
+            ray_wait_timeout_s=0.03,
+        )
 
     @override(PPO)
     def training_step(self) -> ResultDict:

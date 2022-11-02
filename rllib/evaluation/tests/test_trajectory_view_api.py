@@ -102,7 +102,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["create_env_on_driver"] = True
 
         for _ in framework_iterator(config):
-            algo = ppo.PPO(config, env="CartPole-v0")
+            algo = ppo.PPO(config, env="CartPole-v1")
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -198,7 +198,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
         rollout_worker_w_api = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=ppo.PPOTorchPolicy,
             config=ppo.PPOConfig().rollouts(
                 rollout_fragment_length=200, num_rollout_workers=0

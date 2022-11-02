@@ -3,7 +3,7 @@
 .. _result-grid-docstring:
 
 ResultGrid (tune.ResultGrid)
-========================================
+----------------------------
 
 .. autoclass:: ray.tune.ResultGrid
     :members:

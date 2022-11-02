@@ -16,7 +16,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
-from ray.tune.registry import register_input
+from ray.tune.registry import get_trainable_cls, register_input
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -24,7 +24,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -78,35 +78,42 @@ if __name__ == "__main__":
     # we register our custom input creator with this convenient function
     register_input("custom_input", input_creator)
 
-    # config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
-    config = {
-        "env": "Pendulum-v1",
-        # we can either use the tune registry, class path, or direct function
-        # to connect our input api.
-        "input": "custom_input",
-        # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
-        # "input": input_creator,
-        # this gets passed to the IOContext
-        "input_config": {
-            "input_files": args.input_files,
-        },
-        "framework": args.framework,
-        "actions_in_input_normalized": True,
-        "clip_actions": True,
-        "twin_q": True,
-        "train_batch_size": 2000,
-        "num_steps_sampled_before_learning_starts": 0,
-        "bc_iters": 100,
-        "metrics_num_episodes_for_smoothing": 5,
-        "evaluation_interval": 1,
-        "evaluation_num_workers": 2,
-        "evaluation_duration": 10,
-        "evaluation_parallel_to_training": True,
-        "evaluation_config": {
-            "input": "sampler",
-            "explore": False,
-        },
-    }
+    # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("Pendulum-v1", clip_actions=True)
+        .framework(args.framework)
+        .offline_data(
+            # we can either use the tune registry, class path, or direct function
+            # to connect our input api.
+            input_="custom_input",
+            # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+            # "input": input_creator,
+            # this gets passed to the IOContext
+            input_config={"input_files": args.input_files},
+            actions_in_input_normalized=True,
+        )
+        .training(train_batch_size=2000)
+        .evaluation(
+            evaluation_interval=1,
+            evaluation_num_workers=2,
+            evaluation_duration=10,
+            evaluation_parallel_to_training=True,
+            evaluation_config={
+                "input": "sampler",
+                "explore": False,
+            },
+        )
+        .reporting(metrics_num_episodes_for_smoothing=5)
+    )
+
+    if args.run == "CQL":
+        config.training(
+            twin_q=True,
+            num_steps_sampled_before_learning_starts=0,
+            bc_iters=100,
+        )
 
     stop = {
         "training_iteration": args.stop_iters,

@@ -36,7 +36,7 @@ class TestIMPALA(unittest.TestCase):
                 }
             )
         )
-        env = "CartPole-v0"
+        env = "CartPole-v1"
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -78,7 +78,7 @@ class TestIMPALA(unittest.TestCase):
                 train_batch_size=100,
             )
             .rollouts(num_envs_per_worker=2)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
         )
 
         def get_lr(result):

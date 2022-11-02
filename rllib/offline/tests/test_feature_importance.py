@@ -14,7 +14,7 @@ class TestFeatureImportance(unittest.TestCase):
         ray.shutdown()
 
     def test_feat_importance_cartpole(self):
-        config = CRRConfig().environment("CartPole-v0").framework("torch")
+        config = CRRConfig().environment("CartPole-v1").framework("torch")
         runner = CRR(config)
         policy = runner.workers.local_worker().get_policy()
         sample_batch = synchronous_parallel_sample(worker_set=runner.workers)

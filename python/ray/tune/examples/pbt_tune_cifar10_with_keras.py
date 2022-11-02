@@ -198,9 +198,10 @@ if __name__ == "__main__":
         space["lr"] = 10**-4
         space["dropout"] = 0.5
 
+    perturbation_interval = 10
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        perturbation_interval=10,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
         },
@@ -217,6 +218,11 @@ if __name__ == "__main__":
                 "mean_accuracy": 0.80,
                 "training_iteration": 30,
             },
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
+            ),
         ),
         tune_config=tune.TuneConfig(
             scheduler=pbt,

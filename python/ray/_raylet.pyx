@@ -159,6 +159,11 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
+# The currently executing task, if any. These are used to synchronize task
+# interruption for ray.cancel.
+current_task_id = None
+current_task_id_lock = threading.Lock()
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -812,8 +817,9 @@ cdef execute_task(
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
             task_exception = False
-            if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                    and function_name == "__ray_terminate__"):
+            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                     and function_name == "__ray_terminate__") and
+               ray._config.memory_monitor_interval_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -915,8 +921,7 @@ cdef execute_task(
                 # log prefix with the full repr of the actor. The log monitor
                 # will pick up the updated token.
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in
-                        actor_class.__ray_actor_class__.__dict__):
+                        actor_class.__ray_actor_class__.__repr__ != object.__repr__):
                     actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
@@ -1024,8 +1029,15 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
+
+    global current_task_id
     with gil, disable_client_hook():
         try:
+            task_id = (ray._private.worker.
+                       global_worker.core_worker.get_current_task_id())
+            with current_task_id_lock:
+                current_task_id = task_id
+
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -1069,6 +1081,9 @@ cdef CRayStatus task_execution_handler(
                         job_id=None)
                     sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
+            finally:
+                with current_task_id_lock:
+                    current_task_id = None
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
@@ -1096,12 +1111,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-cdef c_bool kill_main_task() nogil:
+cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
     with gil:
-        if setproctitle.getproctitle() != "ray::IDLE":
+        task_id_to_kill = TaskID(task_id.Binary())
+        with current_task_id_lock:
+            if current_task_id != task_id_to_kill:
+                return False
             _thread.interrupt_main()
             return True
-        return False
 
 
 cdef CRayStatus check_signals() nogil:

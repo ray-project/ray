@@ -119,6 +119,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -163,9 +164,9 @@ class Algorithm(Trainable):
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
     or any of its built-in sub-classes.
-    This allows you to override the `execution_plan` method to implement
+    This allows you to override the `training_step` method to implement
     your own algorithm logic. You can find the different built-in
-    algorithms' execution plans in their respective main py files,
+    algorithms' `training_step()` methods in their respective main .py files,
     e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
 
     The most important API methods a Algorithm exposes are `train()`,
@@ -308,7 +309,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+        config: Optional[AlgorithmConfig] = None,
         env=None,  # deprecated arg
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
@@ -321,9 +322,12 @@ class Algorithm(Trainable):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
+        config = config or self.get_default_config()
 
-        # Resolve possible dict into an AlgorithmConfig object.
-        # TODO: In the future, only support AlgorithmConfig objects here.
+        # Resolve possible dict into an AlgorithmConfig object as well as
+        # resolving generic config objects into specific ones (e.g. passing
+        # an `AlgorithmConfig` super-class instance into a PPO constructor,
+        # which normally would expect a PPOConfig object).
         if isinstance(config, dict):
             default_config = self.get_default_config()
             # `self.get_default_config()` also returned a dict ->
@@ -334,6 +338,10 @@ class Algorithm(Trainable):
                 )
             else:
                 config = default_config.update_from_dict(config)
+        else:
+            default_config = self.get_default_config()
+            if not isinstance(config, type(default_config)):
+                config = default_config.update_from_dict(config.to_dict())
 
         if env is not None:
             deprecation_warning(
@@ -440,12 +448,12 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> Union[AlgorithmConfig, AlgorithmConfigDict]:
+    def get_default_config(cls) -> AlgorithmConfig:
         return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]):
+    def setup(self, config: AlgorithmConfig) -> None:
 
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
@@ -2222,7 +2230,7 @@ class Algorithm(Trainable):
         _tf1, _tf, _tfv = None, None, None
         _torch = None
         framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        tf_valid_frameworks = {"tf", "tf2"}
         if framework not in tf_valid_frameworks and framework != "torch":
             return
         elif framework in tf_valid_frameworks:
@@ -2256,7 +2264,7 @@ class Algorithm(Trainable):
         def resolve_tf_settings():
             """Check and resolve tf settings."""
 
-            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+            if _tf1 and config["framework"] == "tf2":
                 if config["framework"] == "tf2" and _tfv < 2:
                     raise ValueError(
                         "You configured `framework`=tf2, but your installed "
@@ -2317,12 +2325,12 @@ class Algorithm(Trainable):
 
         if simple_optim_setting is True:
             pass
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
+        # Multi-GPU setting: Must use multi_gpu_train_one_step.
         elif config.get("num_gpus", 0) > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the RLTrainer API.
-            if framework in ["tfe", "tf2"] and type(self).__name__ != "AlphaStar":
+            if framework == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
                     "framework={}!".format(framework)
@@ -2334,8 +2342,8 @@ class Algorithm(Trainable):
                 )
             config["simple_optimizer"] = False
         # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
-        # plan).
+        # otherwise: multi_gpu_train_one_step (if supported by the algo's
+        # `training_step()` method).
         elif simple_optim_setting == DEPRECATED_VALUE:
             # tf-eager: Must use simple optimizer.
             if framework not in ["tf", "torch"]:
@@ -2377,7 +2385,7 @@ class Algorithm(Trainable):
 
         # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2"]:
+            if framework == "tf2":
                 raise ValueError(
                     "`simple_optimizer=False` not supported for "
                     "config.framework({})!".format(framework)
@@ -2693,8 +2701,20 @@ class Algorithm(Trainable):
                 for pid, filter in worker_state["filters"].items()
                 if pid in policy_ids
             }
+
+            # Compile actual config object.
+            algo_cls = state["algorithm_class"]
+            if isinstance(algo_cls, str):
+                algo_cls = get_trainable_cls(algo_cls)
+            default_config = algo_cls.get_default_config()
+            if isinstance(default_config, AlgorithmConfig):
+                new_config = default_config.update_from_dict(state["config"])
+            else:
+                new_config = Algorithm.merge_trainer_configs(
+                    default_config, state["config"]
+                )
+
             # Remove policies from multiagent dict that are not in `policy_ids`.
-            new_config = AlgorithmConfig.from_dict(state["config"])
             new_policies = new_config.policies
             if isinstance(new_policies, (set, list, tuple)):
                 new_policies = {pid for pid in new_policies if pid in policy_ids}
@@ -2775,10 +2795,7 @@ class Algorithm(Trainable):
         # In case we are training (in a thread) parallel to evaluation,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
-        if (
-            self.config.get("framework") in ["tf2", "tfe"]
-            and not tf.executing_eagerly()
-        ):
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
         results = None
@@ -3120,10 +3137,7 @@ class TrainIterCtx:
             # a (tolerable) failure.
             return False
 
-        # Stopping criteria: Only when using the `training_iteration`
-        # API, b/c for the `exec_plan` API, the logic to stop is
-        # already built into the execution plans via the
-        # `StandardMetricsReporting` op.
+        # Stopping criteria.
         elif self.algo.config["_disable_execution_plan_api"]:
             if self.algo._by_agent_steps:
                 self.sampled = (

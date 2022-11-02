@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -124,8 +125,8 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return CQLConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return CQLConfig()
 
     @override(SAC)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -151,7 +152,7 @@ class CQL(SAC):
         if config["simple_optimizer"] is not True and config["framework"] == "torch":
             config["simple_optimizer"] = True
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        if config["framework"] in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run CQL! "
                 "Install it via `pip install tensorflow_probability`. Your "
