@@ -438,7 +438,6 @@ class Policy(metaclass=ABCMeta):
             **kwargs,
         )
 
-
     def _check_compute_action_agent_id_arg(self, agent_id_arg):
         if agent_id_arg is None:
             if log_once("policy_{}_called_without_agent_ids".format(self)):
