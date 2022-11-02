@@ -55,10 +55,11 @@ def ray_4_node_4_cpu():
 
 
 @pytest.fixture
-def ray_2_node_2_cpu():
+def ray_2_node_3_worker():
     cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=1)
+
 
     ray.init(address=cluster.address)
 
@@ -121,10 +122,10 @@ class TestBackend(Backend):
         pass
 
 
-class MockWorkerGroup(WorkerGroup):
+class MockMultiNodeWorkerGroup(WorkerGroup):
     # Mock construct metadata
     def add_workers(self, num_workers: int):
-        """Hard code the WorkerMetadata so that ther will be two nodes, on which
+        """Hard code the WorkerMetadata so that there will be two nodes, on which
         even and odd indexed workers are run respectively. For example if there are 4
         workers, then worker 0 and 2 will be on node 0 and the rest on node 1.
         """
@@ -213,30 +214,30 @@ def test_local_ranks(ray_start_2_cpus):
     assert set(e.finish_training()) == {0, 1}
 
 
-def test_local_world_size(ray_2_node_2_cpu):
+def test_local_world_size(ray_2_node_3_worker):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", MockWorkerGroup.add_workers):
-        e = BackendExecutor(config, num_workers=4)
+    with patch.object(WorkerGroup, "add_workers", MockMultiNodeWorkerGroup.add_workers):
+        e = BackendExecutor(config, num_workers=3)
         e.start()
 
         def train_func():
             return session.get_local_world_size()
 
         e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-        assert set(e.finish_training()) == {2, 2, 2, 2}
+        assert set(e.finish_training()) == {2,1}
 
 
-def test_node_ranks(ray_2_node_2_cpu):
+def test_node_ranks(ray_2_node_3_worker):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", MockWorkerGroup.add_workers):
-        e = BackendExecutor(config, num_workers=4)
+    with patch.object(WorkerGroup, "add_workers", MockMultiNodeWorkerGroup.add_workers):
+        e = BackendExecutor(config, num_workers=3)
         e.start()
 
         def train_func():
             return session.get_node_rank()
 
         e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-        assert set(e.finish_training()) == {0, 1, 0, 1}
+        assert set(e.finish_training()) == {0, 1}
 
 
 def test_train_failure(ray_start_2_cpus):
