@@ -15,12 +15,28 @@ from ray._private.test_utils import (
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-def test_cached_object(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+@pytest.fixture(params=[True, False])
+def config(request):
+    pull_based = request.param
+    if pull_based:
+        config = {
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 100,
+            "health_check_failure_threshold": 10,
+            "object_timeout_milliseconds": 200,
+            "pull_based_healthcheck": True,
+        }
+    else:
+        config = {
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 100,
+            "pull_based_healthcheck": False,
+            "object_timeout_milliseconds": 200,
+        }
+    yield config
+
+
+def test_cached_object(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -56,12 +72,9 @@ def test_cached_object(ray_start_cluster):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_cached_dependency(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_reconstruction_cached_dependency(
+    config, ray_start_cluster, reconstruction_enabled
+):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -119,12 +132,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster, reconstruction_enab
     sys.platform == "win32", reason="Very flaky on Windows due to memory usage."
 )
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -186,12 +194,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
 # fail to reconstruct a ray.put object.
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_basic_reconstruction_put(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -243,12 +246,9 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_basic_reconstruction_actor_task(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_basic_reconstruction_actor_task(
+    config, ray_start_cluster, reconstruction_enabled
+):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -325,13 +325,8 @@ def test_basic_reconstruction_actor_task(ray_start_cluster, reconstruction_enabl
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_lineage_disabled(
-    ray_start_cluster, reconstruction_enabled
+    config, ray_start_cluster, reconstruction_enabled
 ):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -399,13 +394,8 @@ def test_basic_reconstruction_actor_lineage_disabled(
 @pytest.mark.skipif(sys.platform == "win32", reason="Test failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_constructor(
-    ray_start_cluster, reconstruction_enabled
+    config, ray_start_cluster, reconstruction_enabled
 ):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -480,12 +470,7 @@ def test_basic_reconstruction_actor_constructor(
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -550,12 +535,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -599,115 +579,6 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
             ray.get(dependent_task.remote(obj))
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(obj)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_stress(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "max_direct_call_object_size": 100,
-        "task_retry_delay_ms": 100,
-        "object_timeout_milliseconds": 200,
-    }
-    cluster = ray_start_cluster
-    # Head node with no resources.
-    cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True
-    )
-    ray.init(address=cluster.address)
-    # Node to place the initial object.
-    node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
-    )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
-    cluster.wait_for_nodes()
-
-    @ray.remote
-    def large_object():
-        return np.zeros(10**5, dtype=np.uint8)
-
-    @ray.remote
-    def dependent_task(x):
-        return
-
-    for _ in range(3):
-        obj = large_object.options(resources={"node1": 1}).remote()
-        ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
-
-        outputs = [
-            large_object.options(resources={"node1": 1}).remote() for _ in range(1000)
-        ]
-        outputs = [
-            dependent_task.options(resources={"node2": 1}).remote(obj)
-            for obj in outputs
-        ]
-
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(
-            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
-        )
-
-        i = 0
-        while outputs:
-            ray.get(outputs.pop(0))
-            print(i)
-            i += 1
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_stress_spill(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "max_direct_call_object_size": 100,
-        "task_retry_delay_ms": 100,
-        "object_timeout_milliseconds": 200,
-    }
-    cluster = ray_start_cluster
-    # Head node with no resources.
-    cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True
-    )
-    ray.init(address=cluster.address)
-    # Node to place the initial object.
-    node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
-    )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
-    cluster.wait_for_nodes()
-
-    @ray.remote
-    def large_object():
-        return np.zeros(10**6, dtype=np.uint8)
-
-    @ray.remote
-    def dependent_task(x):
-        return
-
-    for _ in range(3):
-        obj = large_object.options(resources={"node1": 1}).remote()
-        ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
-
-        outputs = [
-            large_object.options(resources={"node1": 1}).remote() for _ in range(1000)
-        ]
-        outputs = [
-            dependent_task.options(resources={"node2": 1}).remote(obj)
-            for obj in outputs
-        ]
-
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(
-            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
-        )
-
-        i = 0
-        while outputs:
-            ref = outputs.pop(0)
-            print(i, ref)
-            ray.get(ref)
-            i += 1
 
 
 if __name__ == "__main__":
