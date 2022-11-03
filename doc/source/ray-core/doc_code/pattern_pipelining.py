@@ -1,15 +1,17 @@
 import ray
 
+
 @ray.remote
 class WorkQueue:
     def __init__(self):
-        self.queue = [i for i in range(10)]
+        self.queue = list(range(10))
 
     def get_work_item(self):
         if self.queue:
             return self.queue.pop(0)
         else:
             return None
+
 
 @ray.remote
 class WorkerWithoutPipelining:
@@ -29,6 +31,7 @@ class WorkerWithoutPipelining:
 
             # Do work.
             self.process(work_item)
+
 
 @ray.remote
 class WorkerWithPipelining:
