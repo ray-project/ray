@@ -15,28 +15,23 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different
+processes managed by RLlib.
+For example, it can be useful to maintain a global average of a certain variable,
+or centrally control a hyperparameter used by policies.
+Ray provides a general way to achieve this through *named actors*
+(learn more about :ref:`Ray actors here <actor-guide>`).
+These actors are assigned a global name and handles to them can be retrieved using
+these names. As an example, consider maintaining a shared global counter that is
+incremented by environments and read periodically from your driver program:
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_counter_begin__
+   :end-before: __rllib-adv_api_counter_end__
 
-    @ray.remote
-    class Counter:
-       def __init__(self):
-          self.count = 0
-       def inc(self, n):
-          self.count += n
-       def get(self):
-          return self.count
-
-    # on the driver
-    counter = Counter.options(name="global_counter").remote()
-    print(ray.get(counter.get.remote()))  # get the latest count
-
-    # in your envs
-    counter = ray.get_actor("global_counter")
-    counter.inc.remote(1)  # async call to increment the global count
-
-Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.
+Ray actors provide high levels of performance, so in more complex cases they can be
+used implement communication patterns such as parameter servers and allreduce.
 
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -58,16 +53,18 @@ and
 `these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks.py>`__.
 
 .. tip::
-    You can create custom logic that can run on each evaluation episode by checking if the
-    :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in evaluation mode,
-    through accessing ``worker.policy_config["in_evaluation"]``. You can then implement this check in
-    ``on_episode_start()`` or ``on_episode_end()`` in your subclass of
-    :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`. For running callbacks before and after the evaluation
+    You can create custom logic that can run on each evaluation episode by checking
+    if the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in
+    evaluation mode, through accessing ``worker.policy_config["in_evaluation"]``.
+    You can then implement this check in ``on_episode_start()`` or ``on_episode_end()``
+    in your subclass of :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+    For running callbacks before and after the evaluation
     runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
 
+.. dropdown:: Click here to see the full API of the ``DefaultCallbacks`` class
 
-.. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
-    :members:
+    .. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
+        :members:
 
 
 Chaining Callbacks
@@ -95,25 +92,21 @@ exploration behavior, including the decisions (how and whether) to sample
 actions from distributions (stochastically or deterministically).
 The setup can be done via using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
-which are specified (and further configured) inside ``Algorithm.config["exploration_config"]``.
+which are specified (and further configured) inside
+``AlgorithmConfig().exploration(..)``.
 Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
-Every policy has-an Exploration object, which is created from the Algorithm’s
-``config[“exploration_config”]`` dict, which specifies the class to use via the
+Every policy has-an Exploration object, which is created from the AlgorithmConfig’s
+``.exploration(exploration_config=...)`` method, which specifies the class to use via the
 special “type” key, as well as constructor arguments via all other keys,
 e.g.:
 
-.. code-block:: python
-
-    # in Algorithm.config:
-    "exploration_config": {
-        "type": "StochasticSampling",  # <- Special `type` key provides class information
-        "[c'tor arg]" : "[value]",  # <- Add any needed constructor args here.
-        # etc
-    }
-    # ...
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_explore_begin__
+   :end-before: __rllib-adv_api_explore_end__
 
 The following table lists all built-in Exploration sub-classes and the agents
 that currently use these by default:
