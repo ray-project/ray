@@ -3095,6 +3095,11 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
+def test_grouped_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
+    assert repr(ds.groupby("key")) == f"GroupedDataset(dataset={ds!r}, key='key')"
+
+
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     # Test empty dataset.
     agg_ds = (
