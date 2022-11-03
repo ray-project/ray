@@ -1,6 +1,6 @@
 import logging
 from collections import dataclass, defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Set, Optional
 
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
@@ -31,7 +31,7 @@ class ScaleRequest:
     """
 
     desired_num_workers: Dict[NodeType, int] = {}
-    workers_to_delete: List[NodeID] = []
+    workers_to_delete: Set[NodeID] = []
 
 
 @dataclass
@@ -163,7 +163,7 @@ class BatchingNodeProvider(NodeProvider):
         # Initialize ScaleRequest
         self.scale_request = ScaleRequest(
             desired_num_workers=self.cur_num_workers,  # Current scale
-            workers_to_delete=[],  # No workers to delete yet
+            workers_to_delete=set(),  # No workers to delete yet
         )
         return list(self.node_data_dict.keys())
 
@@ -201,12 +201,30 @@ class BatchingNodeProvider(NodeProvider):
         Optionally return a mapping from deleted node ids to node
         metadata.
         """
-        node_type = self.node_tags(node_id)[TAG_RAY_USER_NODE_TYPE]
+        # Sanity check: We should never try to delete the same node twice.
+        if node_id in self.scale_request.workers_to_delete:
+            logger.warning(
+                f"Autoscaler tried to terminate node {node_id} twice in the same update"
+                ". Skipping termination request."
+            )
+            return
+
+        node_type = self.node_data_dict[node_id].type
+
+        # Sanity check: Don't request less than 0 nodes.
+        if self.scale_request.desired_num_workers[node_type] <= 0:
+            logger.warning(
+                "NodeProvider attempted to request less than 0 workers of type "
+                f"{node_type}. Skipping termination request."
+            )
+            self.scale_request.desired_num_workers[node_type] = 0
+            return
+
         self.scale_request.desired_num_workers[node_type] -= 1
         if self.scale_request.desired_num_workers[node_type] < 0:
             raise ValueError(
                 "NodeProvider attempted to request less than 0 workers of type "
                 f"{node_type}."
             )
-        self.scale_request.workers_to_terminate.append(node_id)
+        self.scale_request.workers_to_delete.add(node_id)
         self.scale_change_needed = True
