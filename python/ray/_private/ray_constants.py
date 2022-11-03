@@ -360,6 +360,7 @@ RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 def gcs_actor_scheduling_enabled():
     from ray._raylet import Config
+
     return Config.gcs_actor_scheduling_enabled()
 
 
