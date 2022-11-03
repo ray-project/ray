@@ -104,7 +104,7 @@ def get_dummy_batch_for_space(
             lambda s: get_dummy_batch_for_space(s, batch_size, fill_value),
             get_base_struct_from_space(space),
         )
-    # Primivite spaces: Box, Discrete, MultiDiscrete.
+    # Primitive spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
     elif fill_value == "random":
         if time_size is not None:

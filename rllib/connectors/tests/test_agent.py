@@ -315,11 +315,15 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
             # next_obs[t-context_len+1:t]
             "context_next_obs": ViewRequirement(
-                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+                "obs",
+                shift=f"-{context_len}:1",
+                used_for_compute_actions=False,
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 
