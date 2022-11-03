@@ -322,7 +322,11 @@ class TrialRunnerTest2(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tempdir)
 
-        trial = Trial("__fake", checkpoint_config=CheckpointConfig(num_to_keep=2))
+        trial = Trial(
+            "__fake",
+            local_dir=tempdir,
+            checkpoint_config=CheckpointConfig(num_to_keep=2),
+        )
         trial.init_logdir()
         trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
