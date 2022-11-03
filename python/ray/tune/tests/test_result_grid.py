@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+from pathlib import Path
 import shutil
 
 import pytest
@@ -259,28 +260,32 @@ def test_result_grid_df(ray_start_2_cpus):
 
 
 def test_num_errors_terminated(tmpdir):
-    error_file = tmpdir / "error.txt"
-    with open(error_file, "w") as fp:
+    error_filename = "error.txt"
+
+    trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
+
+    # Only create 1 shared trial logdir for this test
+    trials[0].init_logdir()
+    for trial in trials[1:]:
+        trial.relative_logdir = trials[0].relative_logdir
+
+    # Store a shared error file inside
+    error_path = Path(trials[0].logdir) / error_filename
+    with open(error_path, "w") as fp:
         fp.write("Test error\n")
 
-    trials = [Trial("foo", stub=True) for i in range(10)]
-    trials[4].status = Trial.ERROR
-    trials[6].status = Trial.ERROR
-    trials[8].status = Trial.ERROR
+    for i in [4, 6, 8]:
+        trials[i].status = Trial.ERROR
+        trials[i].error_filename = error_filename
 
-    trials[4].error_file = error_file
-    trials[6].error_file = error_file
-    trials[8].error_file = error_file
+    for i in [3, 5]:
+        trials[i].status = Trial.TERMINATED
 
-    trials[3].status = Trial.TERMINATED
-    trials[5].status = Trial.TERMINATED
-
-    experiment_dir = create_tune_experiment_checkpoint(trials)
-    result_grid = ResultGrid(tune.ExperimentAnalysis(experiment_dir))
+    create_tune_experiment_checkpoint(trials, local_checkpoint_dir=str(tmpdir))
+    result_grid = ResultGrid(tune.ExperimentAnalysis(tmpdir))
     assert len(result_grid.errors) == 3
     assert result_grid.num_errors == 3
     assert result_grid.num_terminated == 2
-    shutil.rmtree(experiment_dir)
 
 
 def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
