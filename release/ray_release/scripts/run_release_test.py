@@ -137,8 +137,8 @@ def main(
     if "BUILDKITE" in os.environ:
         reporters.append(ArtifactsReporter())
 
-    if report:
-        reporters.append(DBReporter())
+    #if report:
+    reporters.append(DBReporter())
 
     try:
         result = run_release_test(
