@@ -78,7 +78,7 @@ def _unpack_dataframe_to_serializable(output_df: "pd.DataFrame") -> "pd.DataFram
         # # DL predictor outputs raw ndarray outputs as opaque numpy object.
         # # ex: output_df = pd.DataFrame({"predictions": [np.array(1)]})
         elif output_df.dtypes[col] == np.dtype(object):
-            output_df[col] = np.array([np.asarray(v) for v in output_df[col]]).tolist()
+            output_df.loc[:, col] = np.array([np.asarray(v) for v in output_df[col]]).tolist()
 
     return output_df
 
