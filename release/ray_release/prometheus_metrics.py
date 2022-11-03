@@ -95,9 +95,9 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
             query="ray_cluster_pending_nodes", **kwargs
         ),
     }
-    ret = {k: await v for k, v in metrics.items()}
+    metrics = {k: await v for k, v in metrics.items()}
     await client.close()
-    return ret
+    return metrics
 
 
 def get_prometheus_metrics(start_time: float, end_time: float) -> Optional[dict]:
