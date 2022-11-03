@@ -76,7 +76,7 @@ deploying, and managing a Ray application.
 
 An alternative method is to run Ray Jobs interactively.  For interactive development, the following methods are available:
 
-* Directly running a :ref:`Ray driver <ray-driver>` Ray driver on any head or worker node.
-* Using the Ray Client to connect remotely to the cluster within a :ref:`Ray driver <ray-driver>` script.
+* Directly running a driver on any head or worker node.
+* Using the Ray Client to connect remotely to the cluster within a driver script.
 
 For details on these workflows, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
