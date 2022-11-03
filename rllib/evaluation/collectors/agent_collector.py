@@ -493,7 +493,12 @@ class AgentCollector:
     def _cache_in_np(self, cache_dict: Dict[str, List[np.ndarray]], key: str) -> None:
         """Caches the numpy version of the key in the buffer dict."""
         if key not in cache_dict:
-            cache_dict[key] = [_to_float_np_array(d) for d in self.buffers[key]]
+            arrays_to_cache = []
+            for d in self.buffers[key]:
+                # Don't attempt to cache empty arrays
+                if len(d):
+                    arrays_to_cache.append(_to_float_np_array(d))
+            cache_dict[key] = arrays_to_cache
 
     def _unflatten_as_buffer_struct(
         self, data: List[np.ndarray], key: str
