@@ -36,8 +36,8 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S = (
-    float(os.environ.get("SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S", 0)) or None
+REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
 )
 
 
@@ -63,18 +63,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
-            timeout=SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S,
         )
         logger.debug(f"Finished asyncio.wait. Got {len(done)} things in done.")
-        if len(done) == 0:
-            logger.debug(
-                "HTTPProxy couldn't reach target replica in "
-                f"{SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S} seconds. Retrying with "
-                "another replica. You can modify this timeout by setting the "
-                '"PROXY_FORWARD_ATTEMPT_TIMEOUT" env var.'
-            )
-            retries += 1
-        elif client_disconnection_task in done:
+        if client_disconnection_task in done:
             logger.debug("Received client disconnection task.")
             message = await client_disconnection_task
             logger.debug("Finished client disconnection task.")
@@ -92,10 +83,22 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         try:
             object_ref = await assignment_task
             logger.debug("Finished assigning query. Waiting for result.")
-            result = await object_ref
-            logger.debug("Got result.")
-            client_disconnection_task.cancel()
-            break
+            results, timed_out = await asyncio.wait(
+                [object_ref], timeout=REQUEST_PROCESSING_TIMEOUT_S
+            )
+            if timed_out:
+                logger.debug(
+                    f"Request didn't finish within {REQUEST_PROCESSING_TIMEOUT_S} "
+                    "seconds. Retrying with another replica. You can modify "
+                    'this timeout by setting the "REQUEST_PROCESSING_TIMEOUT_S" '
+                    "env var."
+                )
+                retries += 1
+            else:
+                result = results[0]
+                logger.debug("Got result.")
+                client_disconnection_task.cancel()
+                break
         except asyncio.CancelledError:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
