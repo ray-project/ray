@@ -2286,13 +2286,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_execution",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_execution.py"]
-)
-
-py_test(
     name = "tests/test_filters",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
