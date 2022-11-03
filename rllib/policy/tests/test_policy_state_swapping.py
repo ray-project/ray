@@ -30,11 +30,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_swap_gpu(self):
-        config = (
-            APPOConfig()
-            .framework("tf2", eager_tracing=True)
-            .resources(num_gpus=1)
-        )
+        config = APPOConfig().framework("tf2", eager_tracing=True).resources(num_gpus=1)
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
         act_space = gym.spaces.Discrete(2)
@@ -43,8 +39,10 @@ class TestPolicyStateSwapping(unittest.TestCase):
 
         for fw in framework_iterator(config):
             cls = get_tf_eager_cls_if_necessary(
-                APPOTF2Policy if fw == "tf2"
-                else APPOTF1Policy if fw == "tf"
+                APPOTF2Policy
+                if fw == "tf2"
+                else APPOTF1Policy
+                if fw == "tf"
                 else APPOTorchPolicy,
                 config,
             )
