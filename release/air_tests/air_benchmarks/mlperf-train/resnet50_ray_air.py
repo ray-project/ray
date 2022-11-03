@@ -481,6 +481,10 @@ if __name__ == "__main__":
             train_loop_config["data_loader"] = TF_DATA
         else:
             logger.info("Using Ray Datasets loader")
+
+            ctx = ray.data.context.DatasetContext.get_current()
+            ctx.block_splitting_enabled = True
+
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
