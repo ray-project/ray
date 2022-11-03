@@ -274,7 +274,7 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
 def test_ray_start(configure_lang, monkeypatch, tmp_path):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
-    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    temp_dir = os.path.join(str(tmp_path), uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
         [
