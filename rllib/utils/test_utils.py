@@ -518,9 +518,12 @@ def check_compute_single_action(
                             unsquash,
                             clip,
                         )
-    print(f"Average action computation ({algorithm}): {np.average(algo_times)}")
     print(
-        f"Average action computation ({pol} + connectors):"
+        f"Average t/ns to compute action (Algorithm: {algorithm}):"
+        f" {np.average(algo_times)}"
+    )
+    print(
+        f"AAverage t/ns to compute action ({pol} + connectors):"
         f" {np.average(policy_with_connectors_times)}"
     )
 
@@ -897,6 +900,7 @@ def run_learning_tests_from_yaml(
         "last_update": float(time.time()),
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
+        "not_passed": [k for k, exp in checks.items() if not exp["passed"]],
         "failures": {
             k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
         },

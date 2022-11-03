@@ -1,10 +1,12 @@
 from copy import deepcopy
 from gym.spaces import Space
+import logging
 import math
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
+from ray.util import log_once
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -20,6 +22,8 @@ from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 
 def _to_float_np_array(v: List[Any]) -> np.ndarray:
@@ -185,15 +189,25 @@ class AgentCollector:
         # Next obs -> obs.
         # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
         values = deepcopy(input_values)
-        assert SampleBatch.OBS not in values, (
-            "AgentColletor only uses NEXT_OBS to " "build trajectories."
-        )
+        assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
         # Default to next timestep if not provided in input values
         if SampleBatch.T not in input_values:
+            if log_once("no_timesteps_provided_in_add_action_reward_next_obs"):
+                logger.warning(
+                    "Agent collector is not receiving timesteps."
+                    "Timesteps are built internally."
+                )
             values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
+        if SampleBatch.REWARDS not in input_values:
+            if log_once("no_rewards_provided_in_add_action_reward_next_obs"):
+                logger.warning(
+                    "Agent collector is not receiving rewards."
+                    "Rewards are set to zero."
+                )
+            values[SampleBatch.REWARDS] = 0
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
@@ -237,7 +251,7 @@ class AgentCollector:
     def build_for_inference(self) -> SampleBatch:
         """During inference, we will build a SampleBatch with a batch size of 1 that
         can then be used to run the forward pass of a policy. This data will only
-        include the environment context for running the policy at the last timestep.
+        include the enviornment context for running the policy at the last timestep.
 
         Returns:
             A SampleBatch with a batch size of 1.
@@ -495,7 +509,12 @@ class AgentCollector:
     def _cache_in_np(self, cache_dict: Dict[str, List[np.ndarray]], key: str) -> None:
         """Caches the numpy version of the key in the buffer dict."""
         if key not in cache_dict:
-            cache_dict[key] = [_to_float_np_array(d) for d in self.buffers[key]]
+            arrays_to_cache = []
+            for d in self.buffers[key]:
+                # Don't attempt to cache empty arrays
+                if len(d):
+                    arrays_to_cache.append(_to_float_np_array(d))
+            cache_dict[key] = arrays_to_cache
 
     def _unflatten_as_buffer_struct(
         self, data: List[np.ndarray], key: str
@@ -532,10 +551,10 @@ class AgentCollector:
         except KeyError:
             space = view_requirement.space
 
-        # special treatment for state_out_<i>
-        # add them to the buffer in case they don't exist yet
-        is_state = True
+        is_recurrent_input = True
         if data_col.startswith("state_out_"):
+            # special treatment for state_out_<i>
+            # add them to the buffer in case they don't exist yet
             if not self.is_policy_recurrent:
                 raise ValueError(
                     f"{data_col} is not available, because the given policy is"
@@ -546,17 +565,17 @@ class AgentCollector:
             state_ind = int(data_col.split("_")[-1])
             self._build_buffers({data_col: self.intial_states[state_ind]})
         else:
-            is_state = False
+            is_recurrent_input = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space
 
                 self._build_buffers({data_col: fill_value})
 
-        return is_state
+        return is_recurrent_input
