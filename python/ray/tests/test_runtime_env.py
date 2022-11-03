@@ -829,7 +829,7 @@ def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None
                 continue
             with open(os.path.join(root, file), "r") as f:
                 for line in f:
-                    assert user_info not in line, (user_info, line)
+                    assert user_info not in line, (file, user_info, line)
 
 
 # TODO(architkulkarni): Also test Ray Client and Ray Job Submission codepaths
@@ -872,10 +872,7 @@ def test_no_user_info_in_logs(monkeypatch):
     with pytest.raises(AssertionError):
         assert_no_user_info_in_logs(USER_SECRET)
 
-    # TODO(architkulkarni): Remove runtime env user info from dashboard_agent.log
-    assert_no_user_info_in_logs(
-        USER_SECRET, file_whitelist=["dashboard_agent.log", "runtime_env_setup*.log"]
-    )
+    assert_no_user_info_in_logs(USER_SECRET, file_whitelist=["runtime_env*.log"])
 
 
 if __name__ == "__main__":

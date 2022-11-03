@@ -46,7 +46,7 @@ try:
 except AttributeError:
     create_task = asyncio.ensure_future
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
 
 aiogrpc.init_grpc_aio()
 
@@ -485,7 +485,10 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
-        setup_component_logger(**logging_params)
+
+        setup_component_logger(
+            logger_name=ray_constants.AGENT_LOGGER_NAME, **logging_params
+        )
 
         agent = DashboardAgent(
             args.node_ip_address,

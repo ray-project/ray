@@ -16,10 +16,10 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
-
+import ray._private.ray_constants as ray_constants
 
 routes = optional_utils.ClassMethodRouteTable
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule):

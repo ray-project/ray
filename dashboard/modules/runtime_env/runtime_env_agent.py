@@ -7,7 +7,9 @@ import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
-from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.ray_constants import (
+    DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+)
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
@@ -36,7 +38,8 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
-default_logger = logging.getLogger(__name__)
+RUNTIME_ENV_AGENT_LOGGER_NAME = "runtime_env_agent_logger"
+default_logger = logging.getLogger(RUNTIME_ENV_AGENT_LOGGER_NAME)
 
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
@@ -213,6 +216,10 @@ class RuntimeEnvAgent(
         )
 
         self._logger = default_logger
+        self._logging_params.update(filename="runtime_env_agent.log")
+        setup_component_logger(
+            logger_name=RUNTIME_ENV_AGENT_LOGGER_NAME, **self._logging_params
+        )
 
     def uris_parser(self, runtime_env):
         result = list()
@@ -250,6 +257,9 @@ class RuntimeEnvAgent(
             params["filename"] = f"runtime_env_setup-{job_id}.log"
             params["logger_name"] = f"runtime_env_{job_id}"
             per_job_logger = setup_component_logger(**params)
+            per_job_logger.info("TESTING: Runtime env setup log for job %s", job_id)
+            random_logger = logging.getLogger("random_logger")
+            random_logger.info("TESTING: Random logger for job %s", job_id)
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 

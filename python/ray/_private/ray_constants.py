@@ -192,6 +192,8 @@ LOGGER_FORMAT_STDERR = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
 
+AGENT_LOGGER_NAME = "agent_logger"
+
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"

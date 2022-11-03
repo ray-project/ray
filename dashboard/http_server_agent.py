@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import ray._private.ray_constants as ray_constants
 
 try:
     from packaging.version import Version
@@ -10,7 +11,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ray_constants.AGENT_LOGGER_NAME)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
