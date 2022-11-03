@@ -143,12 +143,13 @@ class TestPolicyMap(unittest.TestCase):
         register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
         num_policies = 100
         num_trainable = 10
+        num_envs_per_worker = 5
         config = (
             PPOConfig()
             .environment("multi_cartpole")
             .rollouts(
                 num_rollout_workers=4,
-                num_envs_per_worker=5,#5
+                num_envs_per_worker=num_envs_per_worker,
                 observation_filter="MeanStdFilter",
             )
             .training(
@@ -162,7 +163,10 @@ class TestPolicyMap(unittest.TestCase):
                 #vtrace_drop_last_ts=False,
             )
             .multi_agent(
-                policy_map_capacity=10,
+                # 2 agents per sub-env.
+                # This is to avoid excessive swapping during an episode rollout, since
+                # Policies are only re-picked at the beginning of each episode.
+                policy_map_capacity=2 * num_envs_per_worker,
                 policies_swappable=True,
                 policies={f"pol{i}" for i in range(num_policies)},
                 # Train only the first n policies.
@@ -178,7 +182,7 @@ class TestPolicyMap(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2"), with_eager_tracing=True):  # , "torch", "tf"
+        for _ in framework_iterator(config, frameworks=("torch"), with_eager_tracing=True):  # , "torch", "tf"
             algo = config.build()
             reward = 0.0
             iter = 0

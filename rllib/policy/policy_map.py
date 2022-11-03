@@ -87,7 +87,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def __getitem__(self, item):
-        with self.timers["getitem"]:
+        with self.timers["getitem"]:#TODO
             # Never seen this key -> Error.
             if item not in self.valid_keys:
                 raise KeyError(
@@ -99,7 +99,7 @@ class PolicyMap(dict):
             # "most recently used") and return it.
             if item in self.cache:
                 self.counters["already_cached"] += 1
-                with self.timers["getitem->cached"]:
+                with self.timers["getitem->cached"]:#TODO
                     self.deque.remove(item)
                     self.deque.append(item)
                     return self.cache[item]
@@ -108,9 +108,9 @@ class PolicyMap(dict):
             # remove leftmost one.
             else:
                 self.counters["swaps"] += 1
-                with self.timers["getitem->NON-cached"]:
+                with self.timers["getitem->NON-cached"]:#TODO
                     assert item in self._policy_state_refs
-                    with self.timers["getitem->NON-cached->ray.get"]:
+                    with self.timers["getitem->NON-cached->ray.get"]:#TODO
                         policy_state = ray.get(self._policy_state_refs[item])
 
                     # All our policies have same NN-architecture (are "swappable").
@@ -118,24 +118,27 @@ class PolicyMap(dict):
                     # new policy's state into that one. This way, we save the costly
                     # re-creation step.
                     if self.policies_swappable and len(self.deque) == self.deque.maxlen:
-                        with self.timers["getitem->NON-cached->stash-least-used"]:
+                        with self.timers["getitem->NON-cached->stash-least-used"]:#TODO
                             old_policy_id = self.deque[0]
                             policy = self.cache[old_policy_id]
                             self._stash_least_used_policy()
                             self.cache[item] = policy
-                        with self.timers["getitem->NON-cached->set-state"]:
+                        with self.timers["getitem->NON-cached->set-state"]:#TODO
                             # Restore policy's state and return it.
                             policy.set_state(policy_state)
-                    # Policies are different or we are not at capacity:
+                    # Policies are different (not swappable) or we are not at capacity:
                     # Have to (re-)create new policy here.
                     else:
-                        self._stash_least_used_policy()
-                        # Create policy object (from its spec: cls, obs-space, act-space,
-                        # config).
+                        # If we are at capacity -> Stash the least used policy to
+                        # object store.
+                        if len(self.deque) == self.deque.maxlen:
+                            self._stash_least_used_policy()
+                        # Create policy object (from its spec: cls, obs-space,
+                        # act-space, config).
                         policy = Policy.from_state(policy_state)
                         self.cache[item] = policy
 
-                    with self.timers["getitem->NON-cached->deque.append"]:
+                    with self.timers["getitem->NON-cached->deque.append"]:#TODO
                         self.deque.append(item)
 
                     return policy
@@ -143,7 +146,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def __setitem__(self, key, value):
-        with self.timers["setitem"]:
+        with self.timers["setitem"]:#TODO
             # Item already in cache -> Rearrange deque.
             if key in self.cache:
                 self.deque.remove(key)
@@ -165,7 +168,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def __delitem__(self, key):
-        with self.timers["delitem"]:
+        with self.timers["delitem"]:#TODO
             # Make key invalid.
             self.valid_keys.remove(key)
             # Remove policy from memory if currently cached.
@@ -178,7 +181,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def __iter__(self):
-        with self.timers["iter"]:
+        with self.timers["iter"]:#TODO
             return iter(self.keys())
 
     @override(dict)
@@ -193,7 +196,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
-        with self.timers["keys"]:
+        with self.timers["keys"]:#TODO
             self._lock.acquire()
             ks = list(self.valid_keys)
             self._lock.release()
@@ -206,7 +209,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def values(self):
-        with self.timers["values"]:
+        with self.timers["values"]:#TODO
             self._lock.acquire()
             vs = [self[k] for k in self.valid_keys]
             self._lock.release()
@@ -220,7 +223,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def update(self, __m, **kwargs):
-        with self.timers["update"]:
+        with self.timers["update"]:#TODO
             for k, v in __m.items():
                 self[k] = v
             for k, v in kwargs.items():
@@ -229,7 +232,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def get(self, key):
-        with self.timers["get"]:
+        with self.timers["get"]:#TODO
             if key not in self.valid_keys:
                 return None
             return self[key]
@@ -238,13 +241,13 @@ class PolicyMap(dict):
     @override(dict)
     def __len__(self):
         """Returns number of all policies, including the stashed-to-disk ones."""
-        with self.timers["len"]:
+        with self.timers["len"]:#TODO
             return len(self.valid_keys)
 
     @with_lock
     @override(dict)
     def __contains__(self, item):
-        with self.timers["contains"]:
+        with self.timers["contains"]:#TODO
             return item in self.valid_keys
 
     def _stash_least_used_policy(self):
@@ -252,7 +255,7 @@ class PolicyMap(dict):
 
         Also closes the session - if applicable - of the stashed policy.
         """
-        # Get policy's state for writing to disk.
+        # Get policy's state for writing to object store.
         dropped_policy_id = self.deque.popleft()
         assert dropped_policy_id in self.cache
         policy = self.cache[dropped_policy_id]
