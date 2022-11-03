@@ -839,7 +839,7 @@ void CoreWorker::RecordMetrics() {
   task_manager_->RecordMetrics();
   // Record metrics for executed tasks.
   task_counter_.RecordMetrics();
-  // Record worker heap memory metric
+  // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
 }
 
