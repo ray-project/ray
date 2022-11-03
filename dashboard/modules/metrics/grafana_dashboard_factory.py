@@ -398,7 +398,7 @@ def generate_grafana_dashboard() -> str:
     base_json = json.load(
         open(
             os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"
+                os.path.dirname(__file__), "grafana_dashboard_base.json"
             )
         )
     )
