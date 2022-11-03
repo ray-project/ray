@@ -400,3 +400,24 @@ class BatchPredictor:
             ray_remote_args=ray_remote_args,
             **predict_kwargs,
         )
+
+    def _determine_predictor_batch_format(self, dataset: ray.data.Dataset):
+        """Determine the batch format to use in map_batches.
+
+        We consider all 2x2x2 combinations of the following:
+
+        Dataset block format:
+            - D(pandas): Dataset block format is Pandas
+            - D(arrow): Dataset block format is Arrow
+        Preprocessor batch format:
+            - B(pandas): Preprocessor with _transform_pandas implementation
+            - B(numpy): Preprocessor with _transform_numpy implementation
+        Predictor implementation
+            - P(pandas): Predictor with _predict_pandas implementation
+            - P(numpy): Predictor with _predict_numpy implementation
+
+        Example:
+            1) D(pandas), B(pandas), P(pandas) -> pandas
+
+        """
+        pass
