@@ -434,9 +434,12 @@ class PPO(Algorithm):
         # workers.
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
 
-        # For each policy: update KL scale and warn about possible issues
+        # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():
             # Update KL loss with dynamic scaling
             # for each (possibly multiagent) policy we are training

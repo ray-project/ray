@@ -385,9 +385,12 @@ class SimpleQ(Algorithm):
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
             # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
+            # on all remote workers (only those policies that were actually trained).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
         else:
             train_results = {}
 

@@ -1284,12 +1284,15 @@ class Algorithm(Trainable):
             train_results = multi_gpu_train_one_step(self, train_batch)
 
         # Update weights and global_vars - after learning on the local worker - on all
-        # remote workers.
+        # remote workers (only those policies that were actually trained).
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.workers.sync_weights(global_vars=global_vars)
+            self.workers.sync_weights(
+                policies=list(train_results.keys()),
+                global_vars=global_vars,
+            )
 
         return train_results
 
