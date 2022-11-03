@@ -188,7 +188,7 @@ class TestWorkerFailures(unittest.TestCase):
             algo = config.build()
             result = algo.train()
 
-            # One of the rollout worker failed.
+            # One of the rollout workers failed.
             self.assertTrue(result["num_healthy_workers"] == 1)
             if fail_eval:
                 # One of the eval workers failed.

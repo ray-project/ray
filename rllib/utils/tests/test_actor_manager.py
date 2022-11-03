@@ -1,3 +1,4 @@
+import functools
 import os
 from pathlib import Path
 import pickle
@@ -170,7 +171,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.foreach_actor(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[0, 0],
+            remote_actor_ids=[1, 1],
         )
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
@@ -186,7 +187,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[0, 0],
+            remote_actor_ids=[1, 1],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -259,6 +260,27 @@ class TestActorManager(unittest.TestCase):
         )
         # We actually made 0 calls.
         self.assertEqual(num_of_calls, 0)
+
+        manager.clear()
+
+    def test_healthy_only_works_for_list_of_functions(self):
+        """Test healthy only mode works when a list of funcs are provided."""
+        actors = [Actor.remote(i) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        # Mark first and second actor as unhealthy.
+        manager.set_actor_state(1, False)
+        manager.set_actor_state(2, False)
+
+        def f(id, _):
+            return id
+        func = [functools.partial(f, i + 1) for i in range(4)]
+
+        manager.foreach_actor_async(func, healthy_only=True)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=None)
+
+        # Should get results back from calling actor 3 and 4.
+        self.assertEqual([r.get() for r in results], [3, 4])
 
         manager.clear()
 

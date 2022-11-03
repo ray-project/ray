@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError, RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.util.annotations import DeveloperAPI
 
 
@@ -30,7 +30,11 @@ class ResultOrError:
         # Note(jungong) : None is a valid result if the remote function
         # does not return anything.
         self._result = result
-        self._error = error
+        # Easier to handle if we show the user the original error.
+        self._error = (
+            error.as_instanceof_cause() if isinstance(error, RayTaskError)
+            else error
+        )
 
     @property
     def ok(self):
@@ -120,12 +124,12 @@ class RemoteCallResults:
     def ignore_ray_errors(self) -> Iterator[ResultOrError]:
         """Return an iterator over the results, skipping only Ray errors.
 
-        Similar to ignore_errors, but only skips Errors raised from the
-        Ray framework. This is useful for application that wants to handle
-        errors from user code differently.
+        Similar to ignore_errors, but only skips Errors raised because of
+        remote actor problems (often get restored automatcially).
+        This is useful for callers that wants to handle application errors differently.
         """
         return self._Iterator(
-            [r for r in self.result_or_errors if not isinstance(r.get(), RayError)]
+            [r for r in self.result_or_errors if not isinstance(r.get(), RayActorError)]
         )
 
 
@@ -188,7 +192,9 @@ class FaultTolerantActorManager:
                 that cannot be scheduled because the limit has been reached will be
                 dropped. This only applies to the asynchronous remote call mode.
         """
-        self.__NEXT_ID = 0
+        # For historic reasons, just start remote worker ID from 1, so they never
+        # collide with local worker ID (0).
+        self.__NEXT_ID = 1
 
         # Actors are stored in a map and indexed by a unique id.
         self.__actors: Mapping[int, ActorHandle] = {}
@@ -330,8 +336,7 @@ class FaultTolerantActorManager:
 
         if isinstance(func, list):
             calls = [
-                self.__actors[i].apply.remote(func)
-                for i, func in zip(remote_actor_ids, func)
+                self.__actors[i].apply.remote(f) for i, f in zip(remote_actor_ids, func)
             ]
         else:
             calls = [self.__actors[i].apply.remote(func) for i in remote_actor_ids]
@@ -407,6 +412,37 @@ class FaultTolerantActorManager:
 
         return ready, remote_results
 
+    def _filter_func_and_remote_actor_id_by_state(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        remote_actor_ids: List[int],
+    ):
+        """Filter out func and remote worker ids by actor state.
+
+        Args:
+            func: A single, or a list of Callables.
+            remote_worker_ids: IDs of potential remote workers to apply func on.
+
+        Returns:
+            A tuple of (filtered func, filtered remote worker ids).
+        """
+        if isinstance(func, list):
+            # We are given a list of functions to apply.
+            # Need to filter the functions together with worker IDs.
+            temp_func = []
+            temp_remote_actor_ids = []
+            for f, i in zip(func, remote_actor_ids):
+                if self.is_actor_healthy(i):
+                    temp_func.append(f)
+                    temp_remote_actor_ids.append(i)
+            func = temp_func
+            remote_actor_ids = temp_remote_actor_ids
+        else:
+            # Simply filter the worker IDs.
+            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+
+        return func, remote_actor_ids
+
     @DeveloperAPI
     def foreach_actor(
         self,
@@ -435,7 +471,9 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
         if healthy_only:
-            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
 
         remote_calls = self.__call_actors(
             func=func,
@@ -472,15 +510,15 @@ class FaultTolerantActorManager:
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
 
         if healthy_only:
-            remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
 
         if isinstance(func, list) and len(func) != len(remote_actor_ids):
             raise ValueError(
                 f"The number of functions specified {len(func)} must match "
                 f"the number of remote actor indices {len(remote_actor_ids)}."
             )
-
-        print(self.__remote_actor_states)
 
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.

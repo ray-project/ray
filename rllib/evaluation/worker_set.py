@@ -1,3 +1,4 @@
+import functools
 import gym
 import logging
 import importlib.util
@@ -43,7 +44,6 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     TensorType,
 )
-from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -131,6 +131,9 @@ class WorkerSet:
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
 
+        # Create remote worker manager.
+        self.__worker_manager = FaultTolerantActorManager()
+
         if _setup:
             try:
                 self._setup(
@@ -197,7 +200,6 @@ class WorkerSet:
             self._ds_shards = None
 
         # Create a number of @ray.remote workers.
-        self.__worker_manager = FaultTolerantActorManager()
         self.add_workers(
             num_workers,
             validate=config.validate_workers_after_construction,
@@ -229,7 +231,7 @@ class WorkerSet:
             )
 
     def _get_spaces_from_remote_worker(self):
-        """Guess observation and action spaces from a remote worker.
+        """Infer observation and action spaces from a remote worker.
 
         Returns:
             A dict mapping from policy ids to spaces.
@@ -278,46 +280,43 @@ class WorkerSet:
         return self._local_worker
 
     @property
+    @Deprecated(
+        old="_remote_workers",
+        help=(
+            "Accessing remote workers directly through "
+            "_remote_workers is strongly discouraged. "
+            "Please try to use one of the foreach accessors "
+            "that is fault tolerant. "
+        ),
+        error=False,
+    )
     def _remote_workers(self) -> List[ActorHandle]:
         """Returns the list of remote rollout workers."""
-        if log_once("worker_set__remote_workers"):
-            deprecation_warning(
-                old="_remote_workers",
-                help=(
-                    "Accessing remote workers directly through "
-                    "_remote_workers is strongly discouraged. "
-                    "Please try to use one of the foreach accessors "
-                    "that is fault tolerant. "
-                ),
-                error=False,
-            )
         return list(self.__worker_manager.actors().values())
 
+    @Deprecated(
+        old="remote_workers()",
+        help=(
+            "Accessing the list of remote workers directly through "
+            "remote_workers() is strongly discouraged. "
+            "Please try to use one of the foreach accessors "
+            "that is fault tolerant. "
+        ),
+        error=False,
+    )
     def remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""
-        if log_once("worker_set_remote_workers"):
-            deprecation_warning(
-                old="remote_workers()",
-                help=(
-                    "Accessing the list of remote workers directly through "
-                    "remote_workers() is strongly discouraged. "
-                    "Please try to use one of the foreach accessors "
-                    "that is fault tolerant. "
-                ),
-                error=False,
-            )
+        """Returns the list of remote rollout workers."""       
         return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
     def num_remote_workers(self) -> int:
+        """Returns the number of remote rollout workers."""
         return self.__worker_manager.num_actors()
 
     @DeveloperAPI
     def num_healthy_workers(self) -> int:
-        if self._local_worker and self.__worker_manager.num_healthy_actors() <= 0:
-            return 1
-        # Return the number of healthy remote workers after this iteration.
-        return self.__worker_manager.num_healthy_actors()
+        """Returns the number of healthy workers, including local and remote workers."""
+        return int(bool(self._local_worker)) + self.__worker_manager.num_healthy_actors()
 
     @DeveloperAPI
     def sync_weights(
@@ -334,6 +333,8 @@ class WorkerSet:
                 If None (default), sync weights to/from all policies.
             from_worker: Optional RolloutWorker instance to sync from.
                 If None (default), sync from this WorkerSet's local worker.
+            to_worker_indices: Optional list of worker indices to sync the
+                weights to. If None (default), sync to all remote workers.
             global_vars: An optional global vars dict to set this
                 worker to. If None, do not update the global_vars.
         """
@@ -546,7 +547,12 @@ class WorkerSet:
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". Establish initial states.
         if validate:
-            self.foreach_worker(lambda w: w.assert_healthy(), local_worker=False)
+            for result in self.__worker_manager.foreach_actor(
+                lambda w: w.assert_healthy()
+            ):
+                # Simiply raise the error, which will get handled by the try-except
+                # clause around the _setup().
+                if not result.ok: raise result.get()
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
@@ -697,6 +703,48 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
+    def foreach_worker_with_id(self,
+        func: Callable[[int, RolloutWorker], T],
+        *,
+        local_worker=True,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
+        healthy_only=False,
+        remote_worker_indices: List[int] = None,
+        timeout_seconds=None,
+    ) -> List[T]:
+        """Similar to foreach_worker(), but calls the function with id of the worker too.
+
+        Args:
+            func: The function to call for each worker (as only arg).
+            local_worker: Whether apply func on local worker too. Default is True.
+            healthy_only: Apply func on known active workers only. By default
+                this will apply func on all workers regardless of their states.
+            remote_worker_indices: Apply func on a selected set of remote workers.
+            timeout_seconds: Time to wait for results. Default is None.
+
+        Returns:
+             The list of return values of all calls to `func([worker, id])`.
+        """
+        local_result = []
+        if local_worker and self.local_worker() is not None:
+            local_result = [func(0, self.local_worker())]
+
+        if not remote_worker_indices:
+            remote_worker_indices = list(self.__worker_manager.actors().keys())
+
+        funcs = [functools.partial(func, i) for i in remote_worker_indices]
+
+        remote_results = self.__worker_manager.foreach_actor(
+            funcs,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_worker_indices,
+            timeout_seconds=timeout_seconds,
+        )
+        remote_results = [r.get() for r in remote_results.ignore_ray_errors()]
+
+        return local_result + remote_results
+
+    @DeveloperAPI
     def foreach_worker_async(
         self,
         func: Callable[[RolloutWorker], T],
@@ -705,7 +753,11 @@ class WorkerSet:
         healthy_only=False,
         remote_worker_indices: List[int] = None,
     ) -> int:
-        """Calls the given function with each worker instance as the argument.
+        """Calls the given function asynchronously with each worker as the argument.
+
+        foreach_worker_async() does not return results directly. Instead,
+        fetch_ready_async_reqs() can be used to pull results in an async manner
+        whenever they are available.
 
         Args:
             func: The function to call for each worker (as only arg).
@@ -714,7 +766,7 @@ class WorkerSet:
             remote_worker_indices: Apply func on a selected set of remote workers.
 
         Returns:
-             The number of async requests that are actually fired.
+             The number of async requests that are currently in-flight.
         """
         return self.__worker_manager.foreach_actor_async(
             func,
@@ -847,8 +899,8 @@ class WorkerSet:
         workers = WorkerSet(
             env_creator=None, default_policy_class=None, config=None, _setup=False
         )
+        workers.reset(remote_workers or [])
         workers._local_worker = local_worker
-        workers.__worker_manager.add_actors(remote_workers or [])
         return workers
 
     def _make_worker(

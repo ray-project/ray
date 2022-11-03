@@ -2379,7 +2379,10 @@ class Algorithm(Trainable):
             new_workers: List of new workers.
         """
         for actor in removed_workers:
-            self._remote_workers_for_metrics.remove(actor)
+            # The list of workers for metrics may not be the
+            # same as the full list of workers.
+            if actor in self._remote_workers_for_metrics:
+                self._remote_workers_for_metrics.remove(actor)
         self._remote_workers_for_metrics += new_workers
 
     @override(Trainable)
