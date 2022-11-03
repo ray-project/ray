@@ -1,16 +1,24 @@
-from typing import Any, Dict, List, Optional
+import asyncio
 import aiohttp
 import logging
 import os
-from pydantic import BaseModel
 import shutil
-from urllib.parse import quote
 
+from typing import Any, Dict, Optional, List
+
+import psutil
+
+from pydantic import BaseModel
+from urllib.parse import quote
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+    generate_grafana_dashboard,
+)
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -21,6 +29,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
+METRICS_RECORD_INTERVAL_S = 5
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
@@ -96,6 +105,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
         )
         self._session = aiohttp.ClientSession()
+        self._ip = dashboard_head.ip
+        self._pid = os.getpid()
+        self._component = "dashboard"
+        self._session_name = dashboard_head.session_name
+        assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -217,8 +231,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # Copy default grafana configurations
         if os.path.exists(grafana_config_output_path):
             shutil.rmtree(grafana_config_output_path)
-        os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
-        shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -226,8 +238,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         data_sources_path = os.path.join(
             grafana_config_output_path, "provisioning", "datasources"
         )
+        dashboards_path = os.path.join(grafana_config_output_path, "dashboards")
         os.makedirs(
             data_sources_path,
+            exist_ok=True,
+        )
+        os.makedirs(
+            dashboards_path,
             exist_ok=True,
         )
         with open(
@@ -238,19 +255,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
-
-        # Output the dashboards in a special directory
-        if self._grafana_dashboard_output_dir:
-            grafana_dashboards_dir = os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards"
-            )
-            # Copy all dashboard jsons from directory
-            for root, _, files in os.walk(grafana_dashboards_dir):
-                for file in files:
-                    shutil.copy2(
-                        os.path.join(root, file),
-                        os.path.join(self._grafana_dashboard_output_dir, file),
-                    )
+        with open(
+            os.path.join(
+                dashboards_path,
+                "default_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            f.write(generate_grafana_dashboard())
 
     def _create_default_prometheus_configs(self):
         """
@@ -266,9 +278,26 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
+    @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
+    async def record_dashboard_metrics(self):
+        dashboard_proc = psutil.Process()
+        self._dashboard_head.metrics.metrics_dashboard_cpu.labels(
+            ip=self._ip,
+            pid=self._pid,
+            Component=self._component,
+            SessionName=self._session_name,
+        ).set(float(dashboard_proc.cpu_percent()) * 100)
+        self._dashboard_head.metrics.metrics_dashboard_mem.labels(
+            ip=self._ip,
+            pid=self._pid,
+            Component=self._component,
+            SessionName=self._session_name,
+        ).set(float(dashboard_proc.memory_info().rss) / 1.0e6)
+
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
+        await asyncio.gather(self.record_dashboard_metrics())
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
