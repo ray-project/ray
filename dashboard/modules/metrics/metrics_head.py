@@ -240,7 +240,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         data_sources_path = os.path.join(
             grafana_config_output_path, "provisioning", "datasources"
         )
-        dashboards_path = os.path.join(grafana_config_output_path, "dashboards")
+        dashboards_path = (
+            self._grafana_dashboard_output_dir
+            if self._grafana_dashboard_output_dir
+            else os.path.join(grafana_config_output_path, "dashboards")
+        )
         os.makedirs(
             data_sources_path,
             exist_ok=True,
