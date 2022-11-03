@@ -215,7 +215,9 @@ class R2D2(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:

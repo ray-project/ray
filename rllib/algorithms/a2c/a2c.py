@@ -111,26 +111,28 @@ class A2CConfig(A3CConfig):
         super().validate()
 
         if self.microbatch_size:
-            if self.train_batch_size != "auto":
-                # Train batch size needs to be significantly larger than microbatch
-                # size.
-                if self.train_batch_size / self.microbatch_size < 3:
-                    logger.warning(
-                        "`train_batch_size` should be considerably larger (at least 3x)"
-                        " than `microbatch_size` for a microbatching setup to make "
-                        "sense!"
-                    )
-                # Rollout fragment length needs to be less than microbatch_size.
-                if self.rollout_fragment_length > self.microbatch_size:
-                    logger.warning(
-                        "`rollout_fragment_length` should not be larger than "
-                        "`microbatch_size` (try setting them to the same value)! "
-                        "Otherwise, microbatches of desired size won't be achievable."
-                    )
-
             if self.num_gpus > 1:
                 raise AttributeError(
                     "A2C does not support multiple GPUs when micro-batching is set."
+                )
+
+            # Train batch size needs to be significantly larger than microbatch
+            # size.
+            if self.train_batch_size / self.microbatch_size < 3:
+                logger.warning(
+                    "`train_batch_size` should be considerably larger (at least 3x)"
+                    " than `microbatch_size` for a microbatching setup to make "
+                    "sense!"
+                )
+            # Rollout fragment length needs to be less than microbatch_size.
+            if (
+                self.rollout_fragment_length != "auto"
+                and self.rollout_fragment_length > self.microbatch_size
+            ):
+                logger.warning(
+                    "`rollout_fragment_length` should not be larger than "
+                    "`microbatch_size` (try setting them to the same value)! "
+                    "Otherwise, microbatches of desired size won't be achievable."
                 )
 
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:

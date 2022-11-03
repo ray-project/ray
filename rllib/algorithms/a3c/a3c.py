@@ -20,7 +20,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -177,7 +176,9 @@ class A3C(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 

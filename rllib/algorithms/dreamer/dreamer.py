@@ -23,7 +23,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
-    AlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -328,7 +327,9 @@ class Dreamer(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return DreamerTorchPolicy
 
     @override(Algorithm)

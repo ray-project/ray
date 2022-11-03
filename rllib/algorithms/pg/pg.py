@@ -108,9 +108,8 @@ class PGConfig(AlgorithmConfig):
                 batch_size += min_batch_size
             if (
                 batch_size - self.train_batch_size > 0.1 * self.train_batch_size
-                or batch_size - min_batch_size - self.train_batch_size > (
-                    0.1 * self.train_batch_size
-                )
+                or batch_size - min_batch_size - self.train_batch_size
+                > (0.1 * self.train_batch_size)
             ):
                 suggested_rollout_fragment_length = self.train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
@@ -148,7 +147,9 @@ class PG(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 

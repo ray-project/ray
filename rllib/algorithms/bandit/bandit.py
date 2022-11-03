@@ -92,7 +92,9 @@ class BanditLinTS(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -109,7 +111,9 @@ class BanditLinUCB(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":

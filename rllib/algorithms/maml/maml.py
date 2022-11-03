@@ -286,7 +286,9 @@ class MAML(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 

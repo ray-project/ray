@@ -461,7 +461,7 @@ class AlgorithmConfig:
         #  directly anymore.
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def validate(self) -> None:
+    def validate(self, algo_class=None) -> None:
         """Validates all values in this config.
 
         Note: This should NOT include immediate checks on single value
@@ -1815,7 +1815,9 @@ class AlgorithmConfig:
                 self.num_envs_per_worker * (self.num_rollout_workers or 1)
             )
             if int(rollout_fragment_length) != rollout_fragment_length:
-                diff = self.train_batch_size - int(rollout_fragment_length) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                diff = self.train_batch_size - int(
+                    rollout_fragment_length
+                ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 if (worker_index * self.num_envs_per_worker) <= diff:
                     return int(rollout_fragment_length) + 1
             return int(rollout_fragment_length)

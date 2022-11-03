@@ -25,7 +25,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 
 from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.algorithms.alpha_zero.mcts import MCTS
@@ -329,7 +329,9 @@ class AlphaZero(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return AlphaZeroPolicyWrapperClass
 
     @override(Algorithm)

@@ -235,7 +235,9 @@ class SlateQ(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_policy_class(cls, config: AlgorithmConfigDict) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfigDict
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:

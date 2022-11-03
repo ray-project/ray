@@ -18,7 +18,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     ResultDict,
     TensorStructType,
     PolicyID,
@@ -286,7 +285,9 @@ class DT(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 

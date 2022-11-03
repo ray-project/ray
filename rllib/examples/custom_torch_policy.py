@@ -27,7 +27,6 @@ MyTorchPolicy = build_policy_class(
 
 # Create a new Algorithm using the Policy defined above.
 class MyAlgorithm(Algorithm):
-
     @classmethod
     def get_default_policy_class(cls, config):
         return MyTorchPolicy

@@ -95,7 +95,6 @@ MyTFPolicy = build_tf_policy(
 
 # Create a new Algorithm using the Policy defined above.
 class MyAlgo(Algorithm):
-
     @classmethod
     def get_default_policy_class(cls, config):
         return MyTFPolicy

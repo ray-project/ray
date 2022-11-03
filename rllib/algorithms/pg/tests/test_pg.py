@@ -195,9 +195,12 @@ class TestPG(unittest.TestCase):
         )
         config.rollouts(
             num_rollout_workers=1,
-            rollout_fragment_length=50,
         )
-        config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
+        config.training(
+            lr=0.2,
+            lr_schedule=[[0, 0.2], [500, 0.001]],
+            train_batch_size=50,
+        )
 
         def _step_n_times(algo, n: int):
             """Step trainer n times.

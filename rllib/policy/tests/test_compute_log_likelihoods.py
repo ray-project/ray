@@ -144,10 +144,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
         config = pg.PGConfig()
-        config.training(model={
-            "fcnet_hiddens": [10],
-            "fcnet_activation": "linear",
-        })
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
         config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(
@@ -168,10 +170,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
         config = ppo.PPOConfig()
-        config.training(model={
-            "fcnet_hiddens": [10],
-            "fcnet_activation": "linear",
-        })
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
         config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
@@ -186,10 +190,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.SACConfig()
-        config.training(policy_model_config={
-            "fcnet_hiddens": [10],
-            "fcnet_activation": "linear",
-        })
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
         config.debugging(seed=42)
         prev_a = np.array([0.0])
 
@@ -221,10 +227,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.SACConfig()
-        config.training(policy_model_config={
-            "fcnet_hiddens": [10],
-            "fcnet_activation": "linear",
-        })
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
         config.debugging(seed=42)
         prev_a = np.array(0)
 

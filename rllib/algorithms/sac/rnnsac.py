@@ -118,7 +118,9 @@ class RNNSAC(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_policy_class(cls, config: AlgorithmConfig) -> Optional[Type[Policy]]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return RNNSACTorchPolicy
 
 

@@ -348,6 +348,11 @@ class Algorithm(Trainable):
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
 
+        # In case this algo is using a generic config (with no algo_class set), set it
+        # here.
+        if config.algo_class is None:
+            config.algo_class = type(self)
+
         if env is not None:
             deprecation_warning(
                 old=f"algo = Algorithm(env='{env}', ...)",
