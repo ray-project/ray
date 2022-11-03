@@ -2461,13 +2461,16 @@ class Dataset(Generic[T]):
         ctx = DatasetContext.get_current()
         if ray_remote_args is None:
             ray_remote_args = {}
-        if not ray.util.client.ray.is_connected():
-            paths = write_args.get("path", None)
-            if paths and _is_local_scheme(paths):
-                ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(),
-                    soft=False,
+        paths = write_args.get("path", None)
+        if paths and _is_local_scheme(paths):
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    f"The local scheme paths {paths} are not supported in Ray Client."
                 )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
 
         blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 

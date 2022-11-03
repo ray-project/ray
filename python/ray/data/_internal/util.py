@@ -211,7 +211,7 @@ def _check_import(obj, *, module: str, package: str) -> None:
 
 
 def _resolve_custom_scheme(path: str) -> str:
-    """Returns the resolved path if the given path following a Ray-specific custom
+    """Returns the resolved path if the given path follows a Ray-specific custom
     scheme. Othewise, returns the path unchanged.
 
     The supported custom schemes are: "local", "example".
@@ -245,14 +245,10 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
         raise ValueError("paths must be a path string or a list of path strings.")
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
-    is_local = None
-    for path in paths:
-        current = urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME
-        if not is_local:
-            is_local = current
-        elif is_local != current:
-            raise ValueError(
-                "The paths must all be local-scheme or not local-scheme, "
-                f"but found mixed {paths}"
-            )
-    return is_local
+    num = sum(urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME for path in paths)
+    if num > 0 and num < len(paths):
+        raise ValueError(
+            "The paths must all be local-scheme or not local-scheme, "
+            f"but found mixed {paths}"
+        )
+    return num == len(paths)

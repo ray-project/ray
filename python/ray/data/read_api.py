@@ -312,13 +312,16 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    if not ray.util.client.ray.is_connected():
-        paths = read_args.get("paths", None)
-        if paths and _is_local_scheme(paths):
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
             )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
 
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False

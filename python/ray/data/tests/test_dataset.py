@@ -4852,6 +4852,29 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
     assert "2 nodes used" not in ds.stats()
 
 
+def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    df = pd.DataFrame({"one": list(range(0, 10)), "two": list(range(10, 20))})
+    path = os.path.join(data_path, "test.parquet")
+    df.to_parquet(path)
+
+    # Read/write from Ray Client will result in error.
+    ray.init(address)
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet("local://" + path).fully_executed()
+    ds = ray.data.from_pandas(df)
+    with pytest.raises(ValueError):
+        ds.write_parquet("local://" + data_path).fully_executed()
+
+
 def test_read_write_local_node(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -4921,6 +4944,10 @@ def test_read_write_local_node(ray_start_cluster):
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", "example://iris.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            ["example://iris.parquet", local_path + "/test1.parquet"]
         ).fully_executed()
 
 
