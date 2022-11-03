@@ -337,8 +337,8 @@ class TestAgentCollector(unittest.TestCase):
         obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
         view_reqs = {
             SampleBatch.T: ViewRequirement(SampleBatch.T),
-            SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
-            "prev_obs": ViewRequirement("obs", shift=-1),
+            SampleBatch.REWARDS: ViewRequirement("reward", space=obs_space),
+            "prev_reward": ViewRequirement("reward", shift=-1),
         }
 
         ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
