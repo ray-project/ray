@@ -106,7 +106,12 @@ if __name__ == "__main__":
 
     if args.mock_api:
         os.environ.setdefault("WANDB_MODE", "disabled")
-        ray.init(runtime_env={"env_vars": {"WANDB_MODE": "disabled"}})
+        os.environ.setdefault("WANDB_API_KEY", "abcd")
+        ray.init(
+            runtime_env={
+                "env_vars": {"WANDB_MODE": "disabled", "WANDB_API_KEY": "abcd"}
+            }
+        )
 
     tune_with_callback()
     tune_with_setup()
