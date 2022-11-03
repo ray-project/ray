@@ -80,6 +80,13 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             "dtype": sp.dtype.str,
         }
 
+    def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
+        d = {
+            "space": "multi-binary",
+            "n": sp.n,
+        }
+        return d
+
     def _tuple(sp: gym.spaces.Tuple) -> Dict:
         return {
             "space": "tuple",
@@ -121,6 +128,8 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _discrete(space)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         return _multi_discrete(space)
+    elif isinstance(space, gym.spaces.MultiBinary):
+        return _multi_binary(space)
     elif isinstance(space, gym.spaces.Tuple):
         return _tuple(space)
     elif isinstance(space, gym.spaces.Dict):
@@ -181,6 +190,9 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         )
         return gym.spaces.MultiDiscrete(**__common(d))
 
+    def _multi_binary(d: Dict) -> gym.spaces.MultiBinary:
+        return gym.spaces.MultiBinary(**__common(d))
+
     def _tuple(d: Dict) -> gym.spaces.Discrete:
         spaces = [gym_space_from_dict(sp) for sp in d["spaces"]]
         return gym.spaces.Tuple(spaces=spaces)
@@ -205,6 +217,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         "box": _box,
         "discrete": _discrete,
         "multi-discrete": _multi_discrete,
+        "multi-binary": _multi_binary,
         "tuple": _tuple,
         "dict": _dict,
         "simplex": _simplex,
