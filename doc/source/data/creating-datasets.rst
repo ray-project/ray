@@ -314,8 +314,12 @@ from a local filesystem:
 
 * **Providing a local filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
   the given path will be resolved as a local filesystem path.
-  .. note:: if the file exists only on the local node and you run this read operation in
+
+.. note::
+
+  If the file exists only on the local node and you run this read operation in
   distributed cluster, this will fail as it cannot access the file from remote node.
+
 * **Using ``local://`` custom URI scheme**: Similarly, this will be resolved to local
   filesystem, e.g. ``ray.data.read_csv("local://my_file.csv")`` will read the
   same file as the approach above. The difference is that this scheme will ensure
