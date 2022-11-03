@@ -117,8 +117,8 @@ Here is an example of the basic usage.
 We first create a `PPOConfig` and add properties to it, like the `environment` we want
 to use, or the `resources` we want to leverage for training.
 After we `build` the `algo` from its configuration, we can `train` it for a number of
-episodes (here `1000`) and `save` the resulting policy periodically
-(here every `100` episodes).
+episodes (here `100`) and `save` the resulting policy periodically
+(here every `10` episodes).
 
 .. literalinclude:: ./doc_code/getting_started.py
     :language: python

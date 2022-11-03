@@ -13,11 +13,11 @@ algo = (
     .build()
 )
 
-for i in range(1000):
+for i in range(100):
     result = algo.train()
     print(pretty_print(result))
 
-    if i % 100 == 0:
+    if i % 10 == 0:
         checkpoint_dir = algo.save()
         print(f"Checkpoint saved in directory {checkpoint_dir}")
 # __rllib-first-config-end__
