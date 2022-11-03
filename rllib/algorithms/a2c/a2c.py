@@ -242,6 +242,8 @@ class A2C(A3C):
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
+            # Synch updated weights back to the workers
+            # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=self.workers.local_worker().get_policies_to_train(),
