@@ -95,7 +95,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 )
                 retries += 1
             else:
-                result = results[0]
+                result = await object_ref
                 logger.debug("Got result.")
                 client_disconnection_task.cancel()
                 break
