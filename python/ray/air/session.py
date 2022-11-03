@@ -293,7 +293,7 @@ def get_local_world_size() -> int:
         >>> trainer = TorchTrainer(train_loop_per_worker,
         ...     scaling_config=ScalingConfig(num_workers=1),
         ...     datasets={"train": train_dataset})
-        >>> trainer.fit()
+        >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
     if not isinstance(session, _TrainSessionImpl):
@@ -366,7 +366,7 @@ def get_dataset_shard(
         trainer = TorchTrainer(train_loop_per_worker,
             scaling_config=ScalingConfig(num_workers=2),
             datasets={"train": train_dataset})
-        trainer.fit() # doctest: +SKIP
+        trainer.fit()
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
