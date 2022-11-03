@@ -65,17 +65,37 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
+def _update_trial_checkpoint_paths(trial_checkpoints, old_logdir, new_logdir):
+    for tracked_checkpoint in trial_checkpoints:
+        if tracked_checkpoint.storage_mode == CheckpointStorage.PERSISTENT:
+            checkpoint_relative_path = os.path.relpath(
+                tracked_checkpoint.dir_or_data, old_logdir
+            )
+            tracked_checkpoint.dir_or_data = os.path.join(
+                new_logdir, checkpoint_relative_path
+            )
+
+
 def _load_trial_from_checkpoint(
     trial_cp: dict, stub: bool = False, **overwrite_checkpoint_kwargs
 ):
-    # Update trial checkpoint with kwargs passed in
     new_trial = Trial(
         trial_cp["trainable_name"],
         stub=stub,
         _setup_default_resource=False,
     )
+    old_logdir = os.path.join(
+        trial_cp.get("local_dir"), trial_cp.get("relative_logdir")
+    )
     trial_cp.update(overwrite_checkpoint_kwargs)
     new_trial.__setstate__(trial_cp)
+
+    # If the trial logdir has been moved, update the checkpoint paths to match
+    if new_trial.logdir != old_logdir:
+        _update_trial_checkpoint_paths(
+            new_trial.get_trial_checkpoints(), old_logdir, new_trial.logdir
+        )
+
     return new_trial
 
 
