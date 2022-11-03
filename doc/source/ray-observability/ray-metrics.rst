@@ -53,6 +53,9 @@ Next, let's start Prometheus.
 
     ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
 
+.. note::
+    If you are using mac, you may receive an error at this point about trying to launch an application where the developer has not been verified. See :ref:`this link <unverified-developer>` to fix the issue.
+
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
@@ -133,6 +136,8 @@ Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
 
 Troubleshooting
 ---------------
+
+.. _unverified-developer:
 
 Mac does not trust the developer when installing prometheus or grafana
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
