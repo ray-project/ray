@@ -542,7 +542,9 @@ def _get_unique_value_indices(
             if col in df_columns:
                 result[col] = get_pd_value_counts_per_column(df[col])
             else:
-                raise ValueError(f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}")
+                raise ValueError(
+                    f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
+                )
         return [result]
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
