@@ -260,10 +260,12 @@ class MARWIL(Algorithm):
         }
 
         # Update weights - after learning on the local worker - on all remote
-        # workers.
+        # workers (only those policies that were actually trained).
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()), global_vars=global_vars
+                )
 
         # Update global vars on local worker as well.
         self.workers.local_worker().set_global_vars(global_vars)
