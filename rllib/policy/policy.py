@@ -678,6 +678,12 @@ class Policy(metaclass=ABCMeta):
             for step_out in processed
         ]
 
+        # Turn action lists from ES and ARS into arrays
+        action_connector_input_data = [
+            (np.array(a), s, i) if isinstance(a, list) else (a, s, i)
+            for a, s, i in action_connector_input_data
+        ]
+
         actions = list()  # We return [BATCH_DIM, ACTION_DIM, ...]
         rnn_states = list()  # We return [BATCH_DIM, STATE_DIM, ...]
         fetches = defaultdict(list)  # We return a dict shaped similarly as
