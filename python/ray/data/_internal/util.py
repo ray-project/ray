@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Inclusive minimum pyarrow version.
 MIN_PYARROW_VERSION = "6.0.1"
 # Exclusive maximum pyarrow version.
-MAX_PYARROW_VERSION = "8.0.0"
+MAX_PYARROW_VERSION = "11.0.0"
 RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
