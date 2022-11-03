@@ -6,6 +6,9 @@ from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
 
+logger = logging.getLogger(__name__)
+
+
 @PublicAPI(stability="alpha")
 class Concatenator(Preprocessor):
     """Combine numeric columns into a column of type
@@ -114,6 +117,11 @@ class Concatenator(Preprocessor):
         dtype: Optional[np.dtype] = None,
         raise_if_missing: bool = False,
     ):
+        if isinstance(include, str):
+            include = [include]
+        if isinstance(exclude, str):
+            exclude = [exclude]
+
         self.output_column_name = output_column_name
         self.include = include
         self.exclude = exclude or []
