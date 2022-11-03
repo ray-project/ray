@@ -57,23 +57,6 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
-    """Unpack predictor's return value with TensorArray into numpy.
-
-    In dl_predictor.py we return a pd.DataFrame that could have multiple
-    columns but value of each column is a TensorArray. Flatten the
-    TensorArray to list to ensure output is json serializable as http
-    response.
-    """
-    from ray.data.extensions import TensorDtype
-
-    for col in output_df.columns:
-        if isinstance(output_df.dtypes[col], TensorDtype):
-            output_df[col] = output_df[col].to_numpy()
-
-    return output_df
-
-
 class _BatchingManager:
     """A collection of utilities for batching and splitting data."""
 
@@ -120,8 +103,6 @@ class _BatchingManager:
                 f"The output dataframe should have length divisible by {batch_size}, "
                 f"but Serve got length {len(output_df)}."
             )
-
-        output_df = _unpack_tensorarray_from_pandas(output_df)
 
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
@@ -284,8 +265,6 @@ class PredictorWrapper(SimpleSchemaIngress):
                 out = self.model.predict(inp, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
-                elif pd is not None and isinstance(out, pd.DataFrame):
-                    out = _unpack_tensorarray_from_pandas(out)
                 return out
 
         else:

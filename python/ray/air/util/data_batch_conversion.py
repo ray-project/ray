@@ -25,13 +25,11 @@ class DataType(Enum):
 @DeveloperAPI
 def convert_batch_type_to_pandas(
     data: DataBatchType,
-    cast_tensor_columns: bool = False,
 ) -> pd.DataFrame:
     """Convert the provided data to a Pandas DataFrame.
 
     Args:
         data: Data of type DataBatchType
-        cast_tensor_columns: Whether tensor columns should be cast to NumPy ndarrays.
 
     Returns:
         A pandas Dataframe representation of the input data.
@@ -57,8 +55,6 @@ def convert_batch_type_to_pandas(
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"
         )
-    if cast_tensor_columns:
-        data = _cast_tensor_columns_to_ndarrays(data)
     return data
 
 
@@ -66,21 +62,16 @@ def convert_batch_type_to_pandas(
 def convert_pandas_to_batch_type(
     data: pd.DataFrame,
     type: DataType,
-    cast_tensor_columns: bool = False,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
         type: The specific ``DataBatchType`` to convert to.
-        cast_tensor_columns: Whether tensor columns should be cast to our tensor
-            extension type.
 
     Returns:
         The input data represented with the provided type.
     """
-    if cast_tensor_columns:
-        data = _cast_ndarray_columns_to_tensor_extension(data)
     if type == DataType.PANDAS:
         return data
 
