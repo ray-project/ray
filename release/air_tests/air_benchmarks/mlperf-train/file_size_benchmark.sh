@@ -4,7 +4,7 @@
 set -x
 
 NUM_IMAGES_PER_FILE="8192"
-MIN_PARALLELISM=16
+MIN_PARALLELISM=10
 NUM_EPOCHS=1
 BATCH_SIZE=64
 SHUFFLE_BUFFER_SIZE=0
@@ -23,12 +23,12 @@ for num_images_per_file in $NUM_IMAGES_PER_FILE; do
     
     rm -rf $DATA_DIR
     mkdir -p $DATA_DIR
-    python make_fake_dataset.py \
+    time python make_fake_dataset.py \
         --num-shards "$num_files" \
         --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$num_images_per_file-times" \
         --output-directory $DATA_DIR
     
-    python resnet50_ray_air.py \
+    time python resnet50_ray_air.py \
         --num-images-per-input-file "$num_images_per_file" \
         --num-epochs $NUM_EPOCHS \
         --batch-size $BATCH_SIZE \
