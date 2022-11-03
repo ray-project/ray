@@ -828,7 +828,7 @@ def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None
             if any(fnmatch.fnmatch(file, pattern) for pattern in file_whitelist):
                 continue
             # Some lines contain hex IDs, so ignore the UTF decoding errors.
-            with open(os.path.join(root, file), "r", errors='ignore') as f:
+            with open(os.path.join(root, file), "r", errors="ignore") as f:
                 for line in f:
                     assert user_info not in line, (file, user_info, line)
 
@@ -841,7 +841,13 @@ def test_no_user_info_in_logs(monkeypatch, tmp_path):
     USER_SECRET = "pip-install-test"
     working_dir = tmp_path / USER_SECRET
     working_dir.mkdir()
-    ray.init(runtime_env={"working_dir": str(working_dir), "pip": [USER_SECRET], "env_vars": {USER_SECRET: USER_SECRET}})
+    ray.init(
+        runtime_env={
+            "working_dir": str(working_dir),
+            "pip": [USER_SECRET],
+            "env_vars": {USER_SECRET: USER_SECRET},
+        }
+    )
 
     # Run a function to ensure the runtime env is set up.
     @ray.remote
