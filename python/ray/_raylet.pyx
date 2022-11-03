@@ -817,8 +817,9 @@ cdef execute_task(
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
             task_exception = False
-            if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                    and function_name == "__ray_terminate__"):
+            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                     and function_name == "__ray_terminate__") and
+               ray._config.memory_monitor_interval_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -920,8 +921,7 @@ cdef execute_task(
                 # log prefix with the full repr of the actor. The log monitor
                 # will pick up the updated token.
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in
-                        actor_class.__ray_actor_class__.__dict__):
+                        actor_class.__ray_actor_class__.__repr__ != object.__repr__):
                     actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
