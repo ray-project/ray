@@ -16,7 +16,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSION=$(python -c"from platform import python_version; print(python_version())")
 
-RAY_VERSIONS=("1.12.0")
+RAY_VERSIONS=("2.0.1")
 
 for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
@@ -67,7 +67,10 @@ do
 
     JOB_ID=$(python -c "import uuid; print(uuid.uuid4().hex)")
 
-    if ! ray job submit --job-id="${JOB_ID}" --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"; then
+    # Get directory of current file. https://stackoverflow.com/questions/59895/
+    DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+    if ! ray job submit --job-id="${JOB_ID}" --working-dir="${DIR}" --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py; then
         cleanup
         exit 1
     fi
@@ -78,6 +81,11 @@ do
     fi
 
     if ! ray job logs "${JOB_ID}"; then
+        cleanup
+        exit 1
+    fi
+
+    if ! pytest -vs "${DIR}"/../test_backwards_compatibility.py::test_error_message; then
         cleanup
         exit 1
     fi

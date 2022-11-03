@@ -3,7 +3,7 @@ import os
 import pprint
 import time
 from subprocess import list2cmdline
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import click
 
@@ -13,6 +13,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
+from ray._private.utils import parse_resources_json
 
 
 def _get_sdk_client(
@@ -123,6 +124,28 @@ def job_cli_group():
     ),
 )
 @click.option(
+    "--entrypoint-num-cpus",
+    required=False,
+    type=float,
+    help="the quantity of CPU cores to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
+)
+@click.option(
+    "--entrypoint-num-gpus",
+    required=False,
+    type=float,
+    help="the quantity of GPUs to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
+)
+@click.option(
+    "--entrypoint-resources",
+    required=False,
+    type=str,
+    help="a JSON-serialized dictionary mapping resource name to resource quantity "
+    "describing resources to reserve for the entrypoint command, "
+    "separately from any tasks or actors that are launched by it",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     type=bool,
@@ -140,6 +163,9 @@ def submit(
     runtime_env_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
+    entrypoint_num_cpus: Optional[Union[int, float]],
+    entrypoint_num_gpus: Optional[Union[int, float]],
+    entrypoint_resources: Optional[str],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.
@@ -150,7 +176,11 @@ def submit(
 
     if job_id:
         cli_logger.warning(
-            "--job-id option is deprecated. " "Please use --submission-id instead."
+            "--job-id option is deprecated. Please use --submission-id instead."
+        )
+    if entrypoint_resources is not None:
+        entrypoint_resources = parse_resources_json(
+            entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
         )
 
     submission_id = submission_id or job_id
@@ -165,6 +195,9 @@ def submit(
             runtime_env_json=runtime_env_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
             no_wait=no_wait,
         )
 
@@ -175,11 +208,13 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
+        entrypoint_num_cpus=entrypoint_num_cpus,
+        entrypoint_num_gpus=entrypoint_num_gpus,
+        entrypoint_resources=entrypoint_resources,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
@@ -209,7 +244,7 @@ def submit(
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                f"{sdk_version}. Please upgrade Ray to the latest version "
                 "for this feature."
             )
 
@@ -322,8 +357,8 @@ def logs(address: Optional[str], job_id: str, follow: bool):
             asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
-                "Tailing logs is not enabled for job sdk client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                "Tailing logs is not enabled for the Jobs SDK client version "
+                f"{sdk_version}. Please upgrade Ray to latest version "
                 "for this feature."
             )
     else:

@@ -11,7 +11,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -31,7 +31,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.utils import file_tail_iterator
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
@@ -153,7 +153,6 @@ class JobSupervisor:
         gcs_aio_client = GcsAioClient(address=gcs_address)
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
-        self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
 
         # Default metadata if not passed by the user.
@@ -166,9 +165,25 @@ class JobSupervisor:
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
 
-    def _get_driver_runtime_env(self) -> Dict[str, Any]:
+    def _get_driver_runtime_env(
+        self, resources_specified: bool = False
+    ) -> Dict[str, Any]:
+        """Get the runtime env that should be set in the job driver.
+
+        Args:
+            resources_specified: Whether the user specified resources (CPUs, GPUs,
+                custom resources) in the submit_job request. If so, we will skip
+                the workaround for GPU detection introduced in #24546, so that the
+                behavior matches that of the user specifying resources for any
+                other actor.
+
+        Returns:
+            The runtime env that should be set in the job driver.
+        """
         # Get the runtime_env set for the supervisor actor.
         curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        if resources_specified:
+            return curr_runtime_env
         # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
@@ -252,7 +267,7 @@ class JobSupervisor:
 
             return child_process
 
-    def _get_driver_env_vars(self) -> Dict[str, str]:
+    def _get_driver_env_vars(self, resources_specified: bool) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
         # RAY_ADDRESS may be the dashboard URL but not the gcs address,
         # so when the environment variable is not empty, we force set RAY_ADDRESS
@@ -269,7 +284,7 @@ class JobSupervisor:
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
                 {
-                    "runtime_env": self._driver_runtime_env,
+                    "runtime_env": self._get_driver_runtime_env(resources_specified),
                     "metadata": self._metadata,
                 }
             ),
@@ -304,6 +319,7 @@ class JobSupervisor:
         self,
         # Signal actor used in testing to capture PENDING -> RUNNING cases
         _start_signal_actor: Optional[ActorHandle] = None,
+        resources_specified: bool = False,
     ):
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
@@ -341,7 +357,7 @@ class JobSupervisor:
             # Configure environment variables for the child process. These
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars())
+            os.environ.update(self._get_driver_env_vars(resources_specified))
             logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
@@ -500,6 +516,16 @@ class JobManager:
                         job_status,
                         message=job_error_message,
                     )
+                elif isinstance(e, ActorUnschedulableError):
+                    logger.info(
+                        f"Failed to schedule job {job_id} because the supervisor actor "
+                        f"could not be scheduled: {e}"
+                    )
+                    await self._job_info_client.put_status(
+                        job_id,
+                        JobStatus.FAILED,
+                        message=(f"Job supervisor actor could not be scheduled: {e}"),
+                    )
                 else:
                     logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
@@ -555,10 +581,21 @@ class JobManager:
             return
 
     def _get_supervisor_runtime_env(
-        self, user_runtime_env: Dict[str, Any]
+        self, user_runtime_env: Dict[str, Any], resources_specified: bool = False
     ) -> Dict[str, Any]:
-        """Configure and return the runtime_env for the supervisor actor."""
+        """Configure and return the runtime_env for the supervisor actor.
 
+        Args:
+            user_runtime_env: The runtime_env specified by the user.
+            resources_specified: Whether the user specified resources in the
+                submit_job() call. If so, we will skip the workaround introduced
+                in #24546 for GPU detection and just use the user's resource
+                requests, so that the behavior matches that of the user specifying
+                resources for any other actor.
+
+        Returns:
+            The runtime_env for the supervisor actor.
+        """
         # Make a copy to avoid mutating passed runtime_env.
         runtime_env = (
             copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
@@ -570,43 +607,65 @@ class JobManager:
         if env_vars is None:
             env_vars = {}
 
-        # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
-        # driver can use GPUs if it wants to. This will be removed from
-        # the driver's runtime_env so it isn't inherited by tasks & actors.
-        env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+        if not resources_specified:
+            # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
+            # driver can use GPUs if it wants to. This will be removed from
+            # the driver's runtime_env so it isn't inherited by tasks & actors.
+            env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
-    async def _get_scheduling_strategy(self) -> SchedulingStrategyT:
+    async def _get_scheduling_strategy(
+        self, resources_specified: bool
+    ) -> SchedulingStrategyT:
+        """Get the scheduling strategy for the job.
+
+        If resources_specified is true, or if the environment variable is set to
+        allow the job to run on worker nodes, we will use Ray's default actor
+        placement strategy. Otherwise, we will force the job to use the head node.
+
+        Args:
+            resources_specified: Whether the job specified any resources
+                (CPUs, GPUs, or custom resources).
+
+        Returns:
+            The scheduling strategy to use for the job.
+        """
+        if resources_specified:
+            return "DEFAULT"
+
         if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
             logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
                 "driver instead of running it on the head node."
             )
+            return "DEFAULT"
+
+        # If the user did not specify any resources or set the driver on worker nodes
+        # env var, we will run the driver on the head node.
+
+        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
+            "head_node_id".encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=30,
+        )
+        if head_node_id_bytes is None:
+            logger.info(
+                "Head node ID not found in GCS. Using Ray's default actor "
+                "scheduling strategy for the job driver instead of running "
+                "it on the head node."
+            )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-                "head_node_id".encode(),
-                namespace=ray_constants.KV_NAMESPACE_JOB,
-                timeout=30,
+            head_node_id = head_node_id_bytes.decode()
+            logger.info(
+                "Head node ID found in GCS; scheduling job driver on "
+                f"head node {head_node_id}"
             )
-            if head_node_id_bytes is None:
-                logger.info(
-                    "Head node ID not found in GCS. Using Ray's default actor "
-                    "scheduling strategy for the job driver instead of running "
-                    "it on the head node."
-                )
-                scheduling_strategy = "DEFAULT"
-            else:
-                head_node_id = head_node_id_bytes.decode()
-                logger.info(
-                    "Head node ID found in GCS; scheduling job driver on "
-                    f"head node {head_node_id}"
-                )
-                scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=head_node_id, soft=False
-                )
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                node_id=head_node_id, soft=False
+            )
         return scheduling_strategy
 
     async def submit_job(
@@ -616,6 +675,9 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -638,6 +700,15 @@ class JobManager:
                 env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
+            entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_num_gpus: The quantity of GPUs to reserve for
+                the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_resources: The quantity of various custom resources
+                to reserve for the entrypoint command, separately from any tasks or
+                actors launched by it.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -646,6 +717,10 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
+        if entrypoint_num_cpus is None:
+            entrypoint_num_cpus = 0
+        if entrypoint_num_gpus is None:
+            entrypoint_num_gpus = 0
         if submission_id is None:
             submission_id = generate_job_id()
         elif await self._job_info_client.get_status(submission_id) is not None:
@@ -658,6 +733,9 @@ class JobManager:
             start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
         )
         await self._job_info_client.put_info(submission_id, job_info)
 
@@ -665,7 +743,16 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            scheduling_strategy = await self._get_scheduling_strategy()
+            resources_specified = any(
+                [
+                    entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
+                    entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                    entrypoint_resources not in [None, {}],
+                ]
+            )
+            scheduling_strategy = await self._get_scheduling_strategy(
+                resources_specified
+            )
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
@@ -673,12 +760,19 @@ class JobManager:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
-                num_cpus=0,
+                num_cpus=entrypoint_num_cpus,
+                num_gpus=entrypoint_num_gpus,
+                resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
-                runtime_env=self._get_supervisor_runtime_env(runtime_env),
+                runtime_env=self._get_supervisor_runtime_env(
+                    runtime_env, resources_specified
+                ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
-            supervisor.run.remote(_start_signal_actor=_start_signal_actor)
+            supervisor.run.remote(
+                _start_signal_actor=_start_signal_actor,
+                resources_specified=resources_specified,
+            )
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
@@ -687,7 +781,7 @@ class JobManager:
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start job supervisor: {e}.",
+                message=f"Failed to start Job Supervisor actor: {e}.",
             )
 
         return submission_id

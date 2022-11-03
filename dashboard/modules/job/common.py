@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
@@ -76,6 +76,12 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: The quantity of CPU cores to reserve for the entrypoint command.
+    entrypoint_num_cpus: Optional[Union[int, float]] = None
+    #: The number of GPUs to reserve for the entrypoint command.
+    entrypoint_num_gpus: Optional[Union[int, float]] = None
+    #: The quantity of various custom resources to reserve for the entrypoint command.
+    entrypoint_resources: Optional[Dict[str, float]] = None
     #: Driver agent http address
     driver_agent_http_address: Optional[str] = None
     #: The node id that driver running on. It will be None only when the job status
@@ -85,10 +91,22 @@ class JobInfo:
     def __post_init__(self):
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = (
-                    "Job has not started yet, likely waiting "
-                    "for the runtime_env to be set up."
-                )
+                self.message = "Job has not started yet."
+                if any(
+                    [
+                        self.entrypoint_num_cpus is not None
+                        and self.entrypoint_num_cpus > 0,
+                        self.entrypoint_num_gpus is not None
+                        and self.entrypoint_num_gpus > 0,
+                        self.entrypoint_resources not in [None, {}],
+                    ]
+                ):
+                    self.message += " It may be waiting for resources "
+                    "(CPUs, GPUs, custom resources) to become available."
+                if self.runtime_env not in [None, {}]:
+                    self.message += (
+                        " It may be waiting for the runtime environment to be set up."
+                    )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
@@ -225,6 +243,18 @@ class JobSubmitRequest:
     runtime_env: Optional[Dict[str, Any]] = None
     # Metadata to pass in to the JobConfig.
     metadata: Optional[Dict[str, str]] = None
+    # The quantity of CPU cores to reserve for the execution
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_cpus: Optional[Union[int, float]] = None
+    # The quantity of GPUs to reserve for the execution
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_num_gpus: Optional[Union[int, float]] = None
+    # The quantity of various custom resources
+    # to reserve for the entrypoint command, separately from any Ray tasks
+    # or actors that are created by it.
+    entrypoint_resources: Optional[Dict[str, float]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -264,6 +294,42 @@ class JobSubmitRequest:
                     if not isinstance(v, str):
                         raise TypeError(
                             f"metadata values must be strings, got {type(v)}"
+                        )
+
+        if self.entrypoint_num_cpus is not None and not isinstance(
+            self.entrypoint_num_cpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_cpus must be a number, "
+                f"got {type(self.entrypoint_num_cpus)}"
+            )
+
+        if self.entrypoint_num_gpus is not None and not isinstance(
+            self.entrypoint_num_gpus, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_num_gpus must be a number, "
+                f"got {type(self.entrypoint_num_gpus)}"
+            )
+
+        if self.entrypoint_resources is not None:
+            if not isinstance(self.entrypoint_resources, dict):
+                raise TypeError(
+                    "entrypoint_resources must be a dict, "
+                    f"got {type(self.entrypoint_resources)}"
+                )
+            else:
+                for k in self.entrypoint_resources.keys():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            "entrypoint_resources keys must be strings, "
+                            f"got {type(k)}"
+                        )
+                for v in self.entrypoint_resources.values():
+                    if not isinstance(v, (int, float)):
+                        raise TypeError(
+                            "entrypoint_resources values must be numbers, "
+                            f"got {type(v)}"
                         )
 
 
