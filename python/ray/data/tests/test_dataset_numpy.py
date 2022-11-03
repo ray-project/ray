@@ -122,7 +122,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=None, "
+        "Dataset(num_blocks=2, num_rows=?, "
         "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
