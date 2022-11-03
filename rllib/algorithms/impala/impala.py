@@ -2,7 +2,7 @@ import copy
 import logging
 import platform
 import queue
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -45,6 +45,7 @@ from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
+    PolicyID,
     ResultDict,
     SampleBatchType,
     T,
@@ -614,7 +615,9 @@ class Impala(Algorithm):
             raise RuntimeError("The learner thread died while training!")
 
         # Get references to sampled SampleBatches from our workers.
-        unprocessed_sample_batches_refs = self.get_samples_from_workers()
+        unprocessed_sample_batches_refs, num_grad_updates_per_policy = (
+            self.get_samples_from_workers()
+        )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
@@ -727,23 +730,32 @@ class Impala(Algorithm):
 
     def get_samples_from_workers(
         self,
-    ) -> Dict[
-        Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
+    ) -> Tuple[
+        Dict[
+            Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
+        ],
+        Dict[PolicyID, int],
     ]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
+
+            def get_samples_and_num_grad_updates(worker):
+                sample = worker.sample()
+                num_updates = worker.global_vars["gradient_updates_per_policy"]
+                return sample, num_updates
+
             self._sampling_actor_manager.call_on_all_available(
-                lambda worker: worker.sample()
+                get_samples_and_num_grad_updates
             )
-            sample_batches: Dict[
-                ActorHandle, List[ObjectRef]
-            ] = self._sampling_actor_manager.get_ready()
+            sample_batches, num_grad_updates = self._sampling_actor_manager.get_ready()
+
         else:
-            # only sampling on the local worker
-            sample_batches = {
-                self.workers.local_worker(): [self.workers.local_worker().sample()]
-            }
-        return sample_batches
+            local_worker = self.workers.local_worker()
+            # Only sampling on the local worker.
+            sample_batches = {local_worker: [local_worker.sample()]}
+            num_grad_updates = local_worker.global_vars["gradient_updates_per_policy"]
+
+        return sample_batches, num_grad_updates
 
     def place_processed_samples_on_learner_queue(self) -> None:
         while self.batches_to_place_on_learner:

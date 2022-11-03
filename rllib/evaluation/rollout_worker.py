@@ -528,7 +528,16 @@ class RolloutWorker(ParallelIteratorWorker):
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
-        self.global_vars: Optional[dict] = None
+        self.global_vars: dict = {
+            # TODO(sven): Make this per-policy!
+            "timesteps": 0,
+
+            # Counter for performed gradient updates per policy in `self.policy_map`.
+            # Allows for compiling metrics on the off-policy'ness of an update given that
+            # the number of gradient updates of the sampling policies are known to the
+            # learner (and can be compared to the learner version of the same policy).
+            "gradient_updates_per_policy": defaultdict(int),
+        }
 
         # If seed is provided, add worker index to it and 10k iff evaluation worker.
         self.seed = (
@@ -1771,8 +1780,10 @@ class RolloutWorker(ParallelIteratorWorker):
     def set_global_vars(self, global_vars: dict) -> None:
         """Updates this worker's and all its policies' global vars.
 
+        Updates are done using the dict's update method.
+
         Args:
-            global_vars: The new global_vars dict.
+            global_vars: The global_vars dict to update from.
 
         Examples:
             >>> worker = ... # doctest: +SKIP
@@ -1783,7 +1794,14 @@ class RolloutWorker(ParallelIteratorWorker):
         # access of policies which might have been offloaded to disk. This is important
         # here since global vars are constantly being updated.
         self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
-        self.global_vars = global_vars
+        # Handle per-policy values.
+        global_vars = global_vars.copy()
+        gradient_updates_per_policy = global_vars.pop("gradient_updates_per_policy", {})
+        self.global_vars["gradient_updates_per_policy"].update(
+            gradient_updates_per_policy
+        )
+        # Update all other global vars.
+        self.global_vars.update(global_vars)
 
     @DeveloperAPI
     def stop(self) -> None:
