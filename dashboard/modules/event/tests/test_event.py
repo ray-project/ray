@@ -32,7 +32,6 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.job_submission import JobSubmissionClient
-from pprint import pprint
 
 logger = logging.getLogger(__name__)
 
