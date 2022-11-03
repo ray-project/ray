@@ -221,10 +221,5 @@ class BatchingNodeProvider(NodeProvider):
             return
 
         self.scale_request.desired_num_workers[node_type] -= 1
-        if self.scale_request.desired_num_workers[node_type] < 0:
-            raise ValueError(
-                "NodeProvider attempted to request less than 0 workers of type "
-                f"{node_type}."
-            )
         self.scale_request.workers_to_delete.add(node_id)
         self.scale_change_needed = True
