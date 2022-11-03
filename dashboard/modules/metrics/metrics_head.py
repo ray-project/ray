@@ -16,7 +16,9 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
-from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import DASHBOARD_PROVISIONING_TEMPLATE
+from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import (
+    DASHBOARD_PROVISIONING_TEMPLATE,
+)
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
@@ -256,7 +258,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(DASHBOARD_PROVISIONING_TEMPLATE.format(dashboard_output_folder=dashboards_path))
+            f.write(
+                DASHBOARD_PROVISIONING_TEMPLATE.format(
+                    dashboard_output_folder=dashboards_path
+                )
+            )
 
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(

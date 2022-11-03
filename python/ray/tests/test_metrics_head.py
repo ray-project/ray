@@ -55,9 +55,12 @@ def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
         assert os.path.exists(
             f"{override_dashboard_dir}/default_grafana_dashboard.json"
         )
-        with open(f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml") as f:
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
+        ) as f:
             contents = f.read()
             assert override_dashboard_dir in contents
+
 
 def test_metrics_folder_when_dashboard_disabled():
     """
