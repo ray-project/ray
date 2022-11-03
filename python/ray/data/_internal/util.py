@@ -224,7 +224,7 @@ def _resolve_custom_scheme(path: str) -> str:
         path = parsed_uri.netloc + parsed_uri.path
     elif parsed_uri.scheme == _EXAMPLE_SCHEME:
         example_data_path = pathlib.Path(__file__).parent.parent / "examples" / "data"
-        path = example_data_path / parsed_uri.netloc
+        path = example_data_path / (parsed_uri.netloc + parsed_uri.path)
         path = str(path.resolve())
     return path
 
