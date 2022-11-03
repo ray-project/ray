@@ -257,9 +257,6 @@ class RuntimeEnvAgent(
             params["filename"] = f"runtime_env_setup-{job_id}.log"
             params["logger_name"] = f"runtime_env_{job_id}"
             per_job_logger = setup_component_logger(**params)
-            per_job_logger.info("TESTING: Runtime env setup log for job %s", job_id)
-            random_logger = logging.getLogger("random_logger")
-            random_logger.info("TESTING: Random logger for job %s", job_id)
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
