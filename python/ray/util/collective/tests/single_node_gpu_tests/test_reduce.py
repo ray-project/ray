@@ -20,7 +20,7 @@ def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, dst_ran
             assert (results[i] == cp.ones((10,), dtype=cp.float32)).all()
 
 
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("dst_rank", [0, 1])
 def test_reduce_different_array_size(
     ray_start_single_node_2_gpus, array_size, dst_rank

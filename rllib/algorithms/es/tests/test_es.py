@@ -31,7 +31,7 @@ class TestES(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            for env in ["CartPole-v0", "Pendulum-v1"]:
+            for env in ["CartPole-v1", "Pendulum-v1"]:
                 algo = config.build(env=env)
                 for i in range(num_iterations):
                     results = algo.train()
@@ -57,7 +57,7 @@ class TestES(unittest.TestCase):
         config.rollouts(num_rollout_workers=1)
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             weights = np.zeros_like(algo.get_weights())
             algo.set_weights(weights=weights)

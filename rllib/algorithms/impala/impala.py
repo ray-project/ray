@@ -11,15 +11,9 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.execution.common import (
-    _get_global_vars,
-    _get_shared_metrics,
-)
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
@@ -45,6 +39,7 @@ from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
+    PolicyID,
     ResultDict,
     SampleBatchType,
     T,
@@ -65,8 +60,8 @@ class ImpalaConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
@@ -104,8 +99,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = ((1 / self.replay_proportion)
-                             if self.replay_proportion > 0 else 0.0)
+        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -131,7 +125,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
@@ -205,8 +199,7 @@ class ImpalaConfig(AlgorithmConfig):
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
-                be replayed with a p:1 proportion to new data samples. Used in the
-                execution plan API.
+                be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
                 The number of transitions saved total will be
                 (replay_buffer_num_slots * rollout_fragment_length).
@@ -288,6 +281,9 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not None:
             self.replay_proportion = replay_proportion
+            self.replay_ratio = (
+                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
+            )
         if replay_buffer_num_slots is not None:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not None:
@@ -379,61 +375,6 @@ def make_learner_thread(local_worker, config):
     return learner_thread
 
 
-def gather_experiences_directly(workers, config):
-    rollouts = ParallelRollouts(
-        workers,
-        mode="async",
-        num_async=config["max_requests_in_flight_per_sampler_worker"],
-    )
-
-    # Augment with replay and concat to desired train batch size.
-    train_batches = (
-        rollouts.for_each(lambda batch: batch.decompress_if_needed())
-        .for_each(
-            MixInReplay(
-                num_slots=config["replay_buffer_num_slots"],
-                replay_proportion=config["replay_proportion"],
-            )
-        )
-        .flatten()
-        .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
-        )
-    )
-
-    return train_batches
-
-
-# Update worker weights as they finish generating experiences.
-class BroadcastUpdateLearnerWeights:
-    def __init__(self, learner_thread, workers, broadcast_interval):
-        self.learner_thread = learner_thread
-        self.steps_since_broadcast = 0
-        self.broadcast_interval = broadcast_interval
-        self.workers = workers
-        self.weights = workers.local_worker().get_weights()
-
-    def __call__(self, item):
-        actor, batch = item
-        self.steps_since_broadcast += 1
-        if (
-            self.steps_since_broadcast >= self.broadcast_interval
-            and self.learner_thread.weights_updated
-        ):
-            self.weights = ray.put(self.workers.local_worker().get_weights())
-            self.steps_since_broadcast = 0
-            self.learner_thread.weights_updated = False
-            # Update metrics.
-            metrics = _get_shared_metrics()
-            metrics.counters["num_weight_broadcasts"] += 1
-        actor.set_weights.remote(self.weights, _get_global_vars())
-        # Also update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(_get_global_vars())
-
-
 class Impala(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
@@ -450,8 +391,8 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ImpalaConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ImpalaConfig()
 
     @override(Algorithm)
     def get_default_policy_class(
@@ -523,7 +464,7 @@ class Impala(Algorithm):
             # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
             #  models to return separate sets of weights in order to create
             #  the different torch optimizers).
-            if config["framework"] not in ["tf", "tf2", "tfe"]:
+            if config["framework"] not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
                 )
@@ -640,9 +581,9 @@ class Impala(Algorithm):
         # Extract most recent train results from learner thread.
         train_results = self.process_trained_results()
 
-        # Sync worker weights.
+        # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.update_workers_if_necessary()
+            self.update_workers_if_necessary(policy_ids=list(train_results.keys()))
 
         return train_results
 
@@ -839,7 +780,21 @@ class Impala(Algorithm):
 
         return ready_processed_batches
 
-    def update_workers_if_necessary(self) -> None:
+    def update_workers_if_necessary(
+        self,
+        policy_ids: Optional[List[PolicyID]] = None,
+    ) -> None:
+        """Updates all RolloutWorkers that require updating.
+
+        Updates only if NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS has been
+        reached and the worker has sent samples in this iteration. Also only updates
+        those policies, whose IDs are given via `policies` (if None, update all
+        policies).
+
+        Args:
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
+        """
         # Only need to update workers if there are remote workers.
         global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
@@ -849,9 +804,9 @@ class Impala(Algorithm):
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights())
+            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
-            self._learner_thread.weights_updated = False
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
             for worker in self.workers_that_need_updates:

@@ -916,7 +916,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i ** 2, done=i == 4)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
             for i in range(5)
         ]
 
@@ -940,7 +940,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testNoDoneReceived(self):
         # repeat same test but without explicitly reporting done=True
-        results1 = [dict(timesteps_total=(i + 1), my_score=i ** 2) for i in range(5)]
+        results1 = [dict(timesteps_total=(i + 1), my_score=i**2) for i in range(5)]
 
         logs1, trials = self.checkAndReturnConsistentLogs(results1)
 
@@ -1528,6 +1528,34 @@ def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
     ).trials
 
     assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config, extra_param=None):
+        assert extra_param is not None, "Missing extra parameter."
+        print(ray.get_runtime_context().get_assigned_resources())
+        return {"num_gpus": len(ray.get_gpu_ids())}
+
+    # Nesting `tune.with_parameters` and `tune.with_resources` should respect
+    # the resource specifications.
+    trainable = tune.with_resources(
+        tune.with_parameters(train_fn, extra_param="extra"),
+        {"gpu": num_gpus},
+    )
+
+    tuner = tune.Tuner(trainable)
+    results = tuner.fit()
+    print(results[0].metrics)
+    assert results[0].metrics["num_gpus"] == num_gpus
+
+    # The other order of nesting should work the same.
+    trainable = tune.with_parameters(
+        tune.with_resources(train_fn, {"gpu": num_gpus}), extra_param="extra"
+    )
+    tuner = tune.Tuner(trainable)
+    results = tuner.fit()
+    assert results[0].metrics["num_gpus"] == num_gpus
 
 
 class SerializabilityTest(unittest.TestCase):

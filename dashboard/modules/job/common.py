@@ -76,6 +76,11 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: Driver agent http address
+    driver_agent_http_address: Optional[str] = None
+    #: The node id that driver running on. It will be None only when the job status
+    # is PENDING, and this field will not be deleted or modified even if the driver dies
+    driver_node_id: Optional[str] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -126,19 +131,26 @@ class JobInfoStorageClient:
             return pickle.loads(pickled_info)
 
     async def put_status(
-        self, job_id: str, status: JobStatus, message: Optional[str] = None
+        self,
+        job_id: str,
+        status: JobStatus,
+        message: Optional[str] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
         old_info = await self.get_info(job_id)
 
+        if jobinfo_replace_kwargs is None:
+            jobinfo_replace_kwargs = dict()
+        jobinfo_replace_kwargs.update(status=status, message=message)
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
-            new_info = replace(old_info, status=status, message=message)
+            new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
-                entrypoint="Entrypoint not found.", status=status, message=message
+                entrypoint="Entrypoint not found.", **jobinfo_replace_kwargs
             )
 
         if status.is_terminal():

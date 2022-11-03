@@ -25,14 +25,13 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
@@ -54,8 +53,8 @@ class PPOConfig(AlgorithmConfig):
         ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -101,6 +100,7 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
@@ -243,56 +243,11 @@ class UpdateKL:
         self.workers.local_worker().foreach_policy_to_train(update)
 
 
-def warn_about_bad_reward_scales(config, result):
-    if result["policy_reward_mean"]:
-        return result  # Punt on handling multiagent case.
-
-    # Warn about excessively high VF loss.
-    learner_info = result["info"][LEARNER_INFO]
-    if DEFAULT_POLICY_ID in learner_info:
-        scaled_vf_loss = (
-            config["vf_loss_coeff"]
-            * learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
-        )
-
-        policy_loss = learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["policy_loss"]
-        if config.get("model", {}).get("vf_share_layers") and scaled_vf_loss > 100:
-            logger.warning(
-                "The magnitude of your value function loss is extremely large "
-                "({}) compared to the policy loss ({}). This can prevent the "
-                "policy from learning. Consider scaling down the VF loss by "
-                "reducing vf_loss_coeff, or disabling vf_share_layers.".format(
-                    scaled_vf_loss, policy_loss
-                )
-            )
-
-    # Warn about bad clipping configs
-    if config["vf_clip_param"] <= 0:
-        rew_scale = float("inf")
-    else:
-        rew_scale = round(
-            abs(result["episode_reward_mean"]) / config["vf_clip_param"], 0
-        )
-    if rew_scale > 200:
-        logger.warning(
-            "The magnitude of your environment rewards are more than "
-            "{}x the scale of `vf_clip_param`. ".format(rew_scale)
-            + "This means that it will take more than "
-            "{} iterations for your value ".format(rew_scale)
-            + "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`."
-        )
-
-    return result
-
-
 class PPO(Algorithm):
-    # TODO: Change the return value of this method to return a AlgorithmConfig object
-    #  instead.
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return PPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return PPOConfig()
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -341,7 +296,8 @@ class PPO(Algorithm):
             * config["rollout_fragment_length"]
         )
         if (
-            config["train_batch_size"] > 0
+            not config.get("in_evaluation")
+            and config["train_batch_size"] > 0
             and config["train_batch_size"] % calculated_min_rollout_size != 0
         ):
             new_rollout_fragment_length = math.ceil(
@@ -366,7 +322,11 @@ class PPO(Algorithm):
         # `postprocessing_fn`), iff generalized advantage estimation is used
         # (value function estimate at end of truncated episode to estimate
         # remaining value).
-        if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
+        if (
+            not config.get("in_evaluation")
+            and config["batch_mode"] == "truncate_episodes"
+            and not config["use_gae"]
+        ):
             raise ValueError(
                 "Episode truncation is not supported without a value "
                 "function (to estimate the return at the end of the truncated"
@@ -428,9 +388,12 @@ class PPO(Algorithm):
         # workers.
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
 
-        # For each policy: update KL scale and warn about possible issues
+        # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():
             # Update KL loss with dynamic scaling
             # for each (possibly multiagent) policy we are training

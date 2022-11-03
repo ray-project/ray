@@ -921,7 +921,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
-        self.assertGreaterEqual(config1["b"]["z"], 1e-4)
+        self.assertLessEqual(1e-4, config1["b"]["z"])
         self.assertLessEqual(config1["b"]["z"], 1e-2)
 
         searcher = HEBOSearch(metric="a", mode="max", random_state_seed=123)

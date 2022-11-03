@@ -118,6 +118,8 @@ class GrpcServer {
   void RegisterService(GrpcService &service);
   void RegisterService(grpc::Service &service);
 
+  grpc::Server &GetServer() { return *server_; }
+
  protected:
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances

@@ -387,7 +387,7 @@ def memory_summary(
     line_wrap_threshold = 137
 
     # Unit conversions
-    units = {"B": 10 ** 0, "KB": 10 ** 3, "MB": 10 ** 6, "GB": 10 ** 9}
+    units = {"B": 10**0, "KB": 10**3, "MB": 10**6, "GB": 10**9}
 
     # Fetch core memory worker stats, store as a dictionary
     core_worker_stats = []

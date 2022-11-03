@@ -2,7 +2,6 @@ import gym
 import logging
 import importlib.util
 import os
-from types import FunctionType
 from typing import (
     Callable,
     Container,
@@ -11,6 +10,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TYPE_CHECKING,
     TypeVar,
     Union,
 )
@@ -21,23 +21,15 @@ from ray.exceptions import RayError
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.offline import (
-    NoopOutput,
-    JsonReader,
-    MixedInput,
-    JsonWriter,
-    ShuffledInput,
-    D4RLReader,
-    DatasetReader,
-    DatasetWriter,
-    get_dataset_and_shards,
-)
-from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
-from ray.rllib.utils import merge_dicts
+from ray.rllib.offline import get_dataset_and_shards
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+    DEPRECATED_VALUE,
+)
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
@@ -50,7 +42,9 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     TensorType,
 )
-from ray.tune.registry import registry_contains_input, registry_get_input
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -72,12 +66,15 @@ class WorkerSet:
         *,
         env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
-        policy_class: Optional[Type[Policy]] = None,
-        trainer_config: Optional[AlgorithmConfigDict] = None,
+        default_policy_class: Optional[Type[Policy]] = None,
+        config: Optional[Union["AlgorithmConfig", AlgorithmConfigDict]] = None,
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
+        # deprecated args.
+        policy_class=DEPRECATED_VALUE,
+        trainer_config=DEPRECATED_VALUE,
     ):
         """Initializes a WorkerSet instance.
 
@@ -85,11 +82,12 @@ class WorkerSet:
             env_creator: Function that returns env given env config.
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
-            policy_class: An optional Policy class. If None, PolicySpecs can be
-                generated automatically by using the Algorithm's default class
-                of via a given multi-agent policy config dict.
-            trainer_config: Optional dict that extends the common config of
-                the Algorithm class.
+            default_policy_class: An optional default Policy class to use inside
+                the (multi-agent) `policies` dict. In case the PolicySpecs in there
+                have no class defined, use this `default_policy_class`.
+                If None, PolicySpecs will be using the Algorithm's default Policy
+                class.
+            config: Optional AlgorithmConfig (or config dict).
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
                 in the returned set as well (default: True). If `num_workers`
@@ -97,19 +95,36 @@ class WorkerSet:
             logdir: Optional logging directory for workers.
             _setup: Whether to setup workers. This is only for testing.
         """
+        if policy_class != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="WorkerSet(policy_class=..)",
+                new="WorkerSet(default_policy_class=..)",
+                error=False,
+            )
+            default_policy_class = policy_class
+        if trainer_config != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="WorkerSet(trainer_config=..)",
+                new="WorkerSet(config=..)",
+                error=False,
+            )
+            config = trainer_config
 
-        if not trainer_config:
-            from ray.rllib.algorithms.algorithm import COMMON_CONFIG
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-            trainer_config = COMMON_CONFIG
+        # Make sure `config` is an AlgorithmConfig object.
+        if not config:
+            config = AlgorithmConfig()
+        elif isinstance(config, dict):
+            config = AlgorithmConfig.from_dict(config)
 
         self._env_creator = env_creator
-        self._policy_class = policy_class
-        self._remote_config = trainer_config
+        self._policy_class = default_policy_class
+        self._remote_config = config
         self._remote_args = {
-            "num_cpus": self._remote_config["num_cpus_per_worker"],
-            "num_gpus": self._remote_config["num_gpus_per_worker"],
-            "resources": self._remote_config["custom_resources_per_worker"],
+            "num_cpus": self._remote_config.num_cpus_per_worker,
+            "num_gpus": self._remote_config.num_gpus_per_worker,
+            "resources": self._remote_config.custom_resources_per_worker,
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
@@ -119,17 +134,14 @@ class WorkerSet:
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-            self._local_config = merge_dicts(
-                trainer_config,
-                {"tf_session_args": trainer_config["local_tf_session_args"]},
+            self._local_config = config.copy(copy_frozen=False).framework(
+                tf_session_args=config.local_tf_session_args
             )
 
-            if trainer_config["input"] == "dataset":
+            if config.input_ == "dataset":
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
-                self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers
-                )
+                self._ds, self._ds_shards = get_dataset_and_shards(config, num_workers)
             else:
                 self._ds = None
                 self._ds_shards = None
@@ -138,7 +150,7 @@ class WorkerSet:
             self._remote_workers = []
             self.add_workers(
                 num_workers,
-                validate=trainer_config.get("validate_workers_after_construction"),
+                validate=config.validate_workers_after_construction,
             )
 
             # Create a local worker, if needed.
@@ -148,11 +160,8 @@ class WorkerSet:
             if (
                 local_worker
                 and self._remote_workers
-                and not trainer_config.get("create_env_on_driver")
-                and (
-                    not trainer_config.get("observation_space")
-                    or not trainer_config.get("action_space")
-                )
+                and not config.create_env_on_local_worker
+                and (not config.observation_space or not config.action_space)
             ):
                 remote_spaces = ray.get(
                     self.remote_workers()[0].foreach_policy.remote(
@@ -186,9 +195,6 @@ class WorkerSet:
                     cls=RolloutWorker,
                     env_creator=env_creator,
                     validate_env=validate_env,
-                    policy_cls=self._policy_class,
-                    # Initially, policy_specs will be inferred from config dict.
-                    policy_specs=None,
                     worker_index=0,
                     num_workers=num_workers,
                     config=self._local_config,
@@ -253,7 +259,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -279,7 +285,7 @@ class WorkerSet:
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -340,7 +346,7 @@ class WorkerSet:
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
+        config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -367,7 +373,7 @@ class WorkerSet:
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
+            config: The config object or overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
@@ -470,10 +476,6 @@ class WorkerSet:
                     cls=self._cls,
                     env_creator=self._env_creator,
                     validate_env=None,
-                    policy_cls=self._policy_class,
-                    # Setup remote workers with policy_specs inferred from config dict.
-                    # Simply provide None here.
-                    policy_specs=None,
                     worker_index=old_num_workers + i + 1,
                     num_workers=old_num_workers + num_workers,
                     config=self._remote_config,
@@ -548,19 +550,12 @@ class WorkerSet:
                 worker.__ray_terminate__.remote()
             except Exception:
                 logger.exception("Error terminating faulty worker.")
+
             # Try to recreate the failed worker (start a new one).
             new_worker = self._make_worker(
                 cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
-                policy_cls=self._policy_class,
-                # For recreated remote workers, we need to sync the entire
-                # policy specs dict from local_worker_for_synching.
-                # We can not let self._make_worker() infer policy specs
-                # from self._remote_config dict because custom policies
-                # may be added to both rollout and evaluation workers
-                # while the training job progresses.
-                policy_specs=local_worker_for_synching.policy_dict,
                 worker_index=worker_index,
                 num_workers=len(self._remote_workers),
                 recreated_worker=True,
@@ -569,9 +564,8 @@ class WorkerSet:
 
             # Sync new worker from provided one (or local one).
             # Restore weights and global variables.
-            new_worker.set_weights.remote(
-                weights=local_worker_for_synching.get_weights(),
-                global_vars=local_worker_for_synching.get_global_vars(),
+            new_worker.set_state.remote(
+                state=local_worker_for_synching.get_state(),
             )
 
             # Add new worker to list of remote workers.
@@ -600,6 +594,8 @@ class WorkerSet:
         """Whether given PolicyID (optionally inside some batch) is trainable."""
         local_worker = self.local_worker()
         if local_worker:
+            if local_worker.is_policy_to_train is None:
+                return True
             return local_worker.is_policy_to_train(policy_id, batch)
         else:
             raise NotImplementedError
@@ -762,7 +758,7 @@ class WorkerSet:
         local_worker: RolloutWorker, remote_workers: List[ActorHandle] = None
     ):
         workers = WorkerSet(
-            env_creator=None, policy_class=None, trainer_config={}, _setup=False
+            env_creator=None, default_policy_class=None, config=None, _setup=False
         )
         workers._local_worker = local_worker
         workers._remote_workers = remote_workers or []
@@ -774,12 +770,10 @@ class WorkerSet:
         cls: Callable,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
-        policy_cls: Type[Policy],
-        policy_specs: Optional[Dict[str, PolicySpec]] = None,
         worker_index: int,
         num_workers: int,
         recreated_worker: bool = False,
-        config: AlgorithmConfigDict,
+        config: "AlgorithmConfig",
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
@@ -788,147 +782,18 @@ class WorkerSet:
             logger.debug("Creating TF session {}".format(config["tf_session_args"]))
             return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
 
-        def valid_module(class_path):
-            if (
-                isinstance(class_path, str)
-                and not os.path.isfile(class_path)
-                and "." in class_path
-            ):
-                module_path, class_name = class_path.rsplit(".", 1)
-                try:
-                    spec = importlib.util.find_spec(module_path)
-                    if spec is not None:
-                        return True
-                except (ModuleNotFoundError, ValueError):
-                    print(
-                        f"module {module_path} not found while trying to get "
-                        f"input {class_path}"
-                    )
-            return False
-
-        # A callable returning an InputReader object to use.
-        if isinstance(config["input"], FunctionType):
-            input_creator = config["input"]
-        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
-        # on `config.sample_async` setting).
-        elif config["input"] == "sampler":
-            input_creator = lambda ioctx: ioctx.default_sampler_input()
-        # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
-        elif config["input"] == "dataset":
-            # Input dataset shards should have already been prepared.
-            # We just need to take the proper shard here.
-            input_creator = lambda ioctx: DatasetReader(
-                self._ds_shards[worker_index], ioctx
-            )
-        # Dict: Mix of different input methods with different ratios.
-        elif isinstance(config["input"], dict):
-            input_creator = lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config["shuffle_buffer_size"]
-            )
-        # A pre-registered input descriptor (str).
-        elif isinstance(config["input"], str) and registry_contains_input(
-            config["input"]
-        ):
-            input_creator = registry_get_input(config["input"])
-        # D4RL input.
-        elif "d4rl" in config["input"]:
-            env_name = config["input"].split(".")[-1]
-            input_creator = lambda ioctx: D4RLReader(env_name, ioctx)
-        # Valid python module (class path) -> Create using `from_config`.
-        elif valid_module(config["input"]):
-            input_creator = lambda ioctx: ShuffledInput(
-                from_config(config["input"], ioctx=ioctx)
-            )
-        # JSON file or list of JSON files -> Use JsonReader (shuffled).
-        else:
-            input_creator = lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config["shuffle_buffer_size"]
-            )
-
-        if isinstance(config["output"], FunctionType):
-            output_creator = config["output"]
-        elif config["output"] is None:
-            output_creator = lambda ioctx: NoopOutput()
-        elif config["output"] == "dataset":
-            output_creator = lambda ioctx: DatasetWriter(
-                ioctx, compress_columns=config["output_compress_columns"]
-            )
-        elif config["output"] == "logdir":
-            output_creator = lambda ioctx: JsonWriter(
-                ioctx.log_dir,
-                ioctx,
-                max_file_size=config["output_max_file_size"],
-                compress_columns=config["output_compress_columns"],
-            )
-        else:
-            output_creator = lambda ioctx: JsonWriter(
-                config["output"],
-                ioctx,
-                max_file_size=config["output_max_file_size"],
-                compress_columns=config["output_compress_columns"],
-            )
-
-        if not policy_specs:
-            # Infer policy specs from multiagent.policies dict.
-            if config["multiagent"]["policies"]:
-                # Make a copy so we don't modify the original multiagent config dict
-                # by accident.
-                policy_specs = config["multiagent"]["policies"].copy()
-                # Assert everything is correct in "multiagent" config dict (if given).
-                for policy_spec in policy_specs.values():
-                    assert isinstance(policy_spec, PolicySpec)
-                    # Class is None -> Use `policy_cls`.
-                    if policy_spec.policy_class is None:
-                        policy_spec.policy_class = policy_cls
-            # Use the only policy class as policy specs.
-            else:
-                policy_specs = policy_cls
-
-        if worker_index == 0:
-            extra_python_environs = config.get("extra_python_environs_for_driver", None)
-        else:
-            extra_python_environs = config.get("extra_python_environs_for_worker", None)
-
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policy_specs,
-            policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
-            policies_to_train=config["multiagent"]["policies_to_train"],
+            default_policy_class=self._policy_class,
             tf_session_creator=(session_creator if config["tf_session_args"] else None),
-            rollout_fragment_length=config["rollout_fragment_length"],
-            count_steps_by=config["multiagent"]["count_steps_by"],
-            batch_mode=config["batch_mode"],
-            episode_horizon=config["horizon"],
-            preprocessor_pref=config["preprocessor_pref"],
-            sample_async=config["sample_async"],
-            compress_observations=config["compress_observations"],
-            num_envs=config["num_envs_per_worker"],
-            observation_fn=config["multiagent"]["observation_fn"],
-            clip_rewards=config["clip_rewards"],
-            normalize_actions=config["normalize_actions"],
-            clip_actions=config["clip_actions"],
-            env_config=config["env_config"],
-            policy_config=config,
+            config=config,
             worker_index=worker_index,
             num_workers=num_workers,
             recreated_worker=recreated_worker,
             log_dir=self._logdir,
-            log_level=config["log_level"],
-            callbacks=config["callbacks"],
-            input_creator=input_creator,
-            output_creator=output_creator,
-            remote_worker_envs=config["remote_worker_envs"],
-            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
-            soft_horizon=config["soft_horizon"],
-            no_done_at_end=config["no_done_at_end"],
-            seed=(config["seed"] + worker_index)
-            if config["seed"] is not None
-            else None,
-            fake_sampler=config["fake_sampler"],
-            extra_python_environs=extra_python_environs,
             spaces=spaces,
-            disable_env_checking=config["disable_env_checking"],
+            dataset_shards=self._ds_shards,
         )
 
         return worker
@@ -986,12 +851,4 @@ class WorkerSet:
 
     @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
-        local_worker = self.local_worker()
-        if local_worker is not None:
-            return [
-                pid
-                for pid in local_worker.policy_map.keys()
-                if local_worker.is_policy_to_train(pid, None)
-            ]
-        else:
-            raise NotImplementedError
+        pass
