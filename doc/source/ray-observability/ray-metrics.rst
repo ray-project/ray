@@ -108,7 +108,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Current number of actors in a particular state. The State label is described by rpc::ActorTableData proto in gcs.proto. The actor class name is available in the Name label.
    * - `ray_resources`
      - `Name`, `State`
-     - Logical resource usage aggregated across all nodes of the cluster. Each resource has some quantity that is in USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
+     - Logical resource usage for each node of the cluster. Each resource has some quantity that is in USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`
      - Object store memory usage in bytes, broken down by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
