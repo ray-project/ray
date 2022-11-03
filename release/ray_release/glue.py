@@ -43,6 +43,7 @@ from ray_release.util import (
     get_pip_packages,
     reinstall_anyscale_dependencies,
 )
+from ray_release.prometheus_metrics import get_prometheus_metrics
 
 type_str_to_command_runner = {
     "command": SDKRunner,
@@ -103,6 +104,7 @@ def run_release_test(
     os.chdir(new_wd)
 
     start_time = time.monotonic()
+    start_time_unix = time.time()
 
     run_type = test["run"].get("type", "sdk_command")
 
@@ -321,7 +323,9 @@ def run_release_test(
             logger.error(f"Could not terminate cluster: {e}")
 
     time_taken = time.monotonic() - start_time
+    end_time_unix = time.time()
     result.runtime = time_taken
+    result.prometheus_metrics = get_prometheus_metrics(start_time_unix, end_time_unix)
 
     os.chdir(old_wd)
 
