@@ -164,8 +164,9 @@ class MetricsAgent:
             view_name
         ][-1]
 
-    def record_and_export(self, records: List[Record]):
+    def record_and_export(self, records: List[Record], global_tags=None):
         """Directly record and export stats from the same process."""
+        global_tags = global_tags or {}
         with self._lock:
             if not self.view_manager:
                 return
@@ -174,7 +175,7 @@ class MetricsAgent:
                 gauge = record.gauge
                 value = record.value
                 tags = record.tags
-                self._record_gauge(gauge, value, tags)
+                self._record_gauge(gauge, value, {**tags, **global_tags})
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
         view_data = self.view_manager.get_view(gauge.name)
@@ -182,7 +183,6 @@ class MetricsAgent:
             self.view_manager.register_view(gauge.view)
             # Reobtain the view.
         view = self.view_manager.get_view(gauge.name).view
-
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():

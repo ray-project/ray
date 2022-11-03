@@ -8,7 +8,6 @@ import re
 from prometheus_client import start_http_server
 from prometheus_client.core import (
     REGISTRY,
-    CollectorRegistry,
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
@@ -39,9 +38,7 @@ class Options(object):
     :param registry: A Prometheus collector registry instance.
     """
 
-    def __init__(
-        self, namespace="", port=8000, address="", registry=CollectorRegistry()
-    ):
+    def __init__(self, namespace="", port=8000, address="", registry=REGISTRY):
         self._namespace = namespace
         self._registry = registry
         self._port = int(port)
@@ -115,7 +112,6 @@ class Collector(object):
                 "units": view.measure.unit,
             }
             self.registered_views[v_name] = desc
-            self.registry.register(self)
 
     def add_view_data(self, view_data):
         """Add view data object to be sent to server"""
@@ -124,7 +120,7 @@ class Collector(object):
         self.view_name_to_data_map[v_name] = view_data
 
     # TODO: add start and end timestamp
-    def to_metric(self, desc, tag_values, agg_data):
+    def to_metric(self, desc, tag_values, agg_data, metrics_map):
         """to_metric translate the data that OpenCensus create
         to Prometheus format, using Prometheus Metric object
         :type desc: dict
@@ -154,12 +150,15 @@ class Collector(object):
         tag_values = [tv if tv else "" for tv in tag_values]
 
         if isinstance(agg_data, aggregation_data_module.CountAggregationData):
-            metric = CounterMetricFamily(
-                name=metric_name,
-                documentation=metric_description,
-                unit=metric_units,
-                labels=label_keys,
-            )
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = CounterMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    unit=metric_units,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.count_data)
             return metric
 
@@ -179,9 +178,14 @@ class Collector(object):
             # In OpenCensus we don't have +Inf in the bucket bonds so need to
             # append it here.
             buckets.append(["+Inf", agg_data.count_data])
-            metric = HistogramMetricFamily(
-                name=metric_name, documentation=metric_description, labels=label_keys
-            )
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = HistogramMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
             metric.add_metric(
                 labels=tag_values,
                 buckets=buckets,
@@ -190,16 +194,26 @@ class Collector(object):
             return metric
 
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
-            metric = UnknownMetricFamily(
-                name=metric_name, documentation=metric_description, labels=label_keys
-            )
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = UnknownMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.sum_data)
             return metric
 
         elif isinstance(agg_data, aggregation_data_module.LastValueAggregationData):
-            metric = GaugeMetricFamily(
-                name=metric_name, documentation=metric_description, labels=label_keys
-            )
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = GaugeMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
             metric.add_metric(labels=tag_values, value=agg_data.value)
             return metric
 
@@ -214,14 +228,17 @@ class Collector(object):
         """
         # Make a shallow copy of self._view_name_to_data_map, to avoid seeing
         # concurrent modifications when iterating through the dictionary.
+        metrics_map = {}
         for v_name, view_data in self._view_name_to_data_map.copy().items():
             if v_name not in self.registered_views:
                 continue
             desc = self.registered_views[v_name]
             for tag_values in view_data.tag_value_aggregation_data_map:
                 agg_data = view_data.tag_value_aggregation_data_map[tag_values]
-                metric = self.to_metric(desc, tag_values, agg_data)
-                yield metric
+                metric = self.to_metric(desc, tag_values, agg_data, metrics_map)
+
+        for metric in metrics_map.values():
+            yield metric
 
 
 class PrometheusStatsExporter(base_exporter.StatsExporter):

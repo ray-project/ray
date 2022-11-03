@@ -6,7 +6,7 @@
 # evaluation_config:
 #     explore: False
 cartpole-apex-dqn:
-    env: CartPole-v0
+    env: CartPole-v1
     run: APEX
     stop:
         episode_reward_mean: 150.0

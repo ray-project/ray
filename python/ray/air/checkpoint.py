@@ -501,6 +501,11 @@ class Checkpoint:
                 )
         return os.path.join(tmp_dir_path, checkpoint_dir_name)
 
+    def _save_checkpoint_metadata_in_directory(self, path: str) -> None:
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        with open(checkpoint_metadata_path, "wb") as file:
+            pickle.dump(self._metadata, file)
+
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
             # This is a object ref or dict
@@ -547,9 +552,7 @@ class Checkpoint:
                     f"No valid location found for checkpoint {self}: {self._uri}"
                 )
 
-        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
-        with open(checkpoint_metadata_path, "wb") as file:
-            pickle.dump(self._metadata, file)
+        self._save_checkpoint_metadata_in_directory(path)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.

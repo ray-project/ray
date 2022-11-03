@@ -118,6 +118,7 @@ py_test_module_list(
     "test_memory_pressure.py",
     "test_metrics.py",
     "test_task_metrics.py",
+    "test_actor_state_metrics.py",
     "test_object_store_metrics.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
@@ -126,7 +127,6 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
-    "test_placement_group_5.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_resource_demand_scheduler.py",
@@ -218,7 +218,8 @@ py_test_module_list(
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
-    "kuberay/test_autoscaling_config.py"
+    "kuberay/test_autoscaling_config.py",
+    "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:serverless"],
@@ -272,6 +273,7 @@ py_test_module_list(
     "test_exit_observability.py",
     "test_usage_stats.py",
     "test_placement_group_3.py",
+    "test_placement_group_5.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],

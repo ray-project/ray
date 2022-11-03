@@ -83,7 +83,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
             if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
@@ -94,7 +95,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
-    def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    @staticmethod
+    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,

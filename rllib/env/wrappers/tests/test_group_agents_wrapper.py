@@ -6,7 +6,7 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 
 class TestGroupAgentsWrapper(unittest.TestCase):
     def test_group_agents_wrapper(self):
-        MultiAgentCartPole = make_multi_agent("CartPole-v0")
+        MultiAgentCartPole = make_multi_agent("CartPole-v1")
         grouped_ma_cartpole = GroupAgentsWrapper(
             env=MultiAgentCartPole({"num_agents": 4}),
             groups={"group1": [0, 1], "group2": [2, 3]},

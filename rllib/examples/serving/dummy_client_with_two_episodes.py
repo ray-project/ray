@@ -37,8 +37,8 @@ if __name__ == "__main__":
 
     ray.init()
 
-    # Use a CartPole-v0 env so this plays nicely with our cartpole server script.
-    env = gym.make("CartPole-v0")
+    # Use a CartPole-v1 env so this plays nicely with our cartpole server script.
+    env = gym.make("CartPole-v1")
 
     # Note that the RolloutWorker that is generated inside the client (in case
     # of local inference) will contain only a RandomEnv dummy env to step through.

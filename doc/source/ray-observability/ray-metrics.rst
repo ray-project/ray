@@ -1,47 +1,37 @@
 .. _ray-metrics:
 
-Exporting Metrics
-=================
+Metrics
+=======
 
 To help monitor Ray applications, Ray
 
-- Collects some default system level metrics.
+- Collects system-level metrics.
+- Provides a default configuration for prometheus.
+- Provides a default Grafana dashboard.
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
 - Supports custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
-This page describes how to access these metrics using Prometheus.
-
-.. note::
-
-    It is currently an experimental feature and under active development. APIs are subject to change.
-
-Getting Started (Single Node)
------------------------------
-
-First, install Ray with the proper dependencies:
-
-.. code-block:: bash
-
-  pip install "ray[default]"
+Getting Started
+---------------
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
-Let's expose metrics through `ray start`.
+First, `download Prometheus <https://prometheus.io/download/>`_. Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
 
-.. code-block:: bash
-
-    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
-
-Now, you can scrape Ray's metrics using Prometheus.
-
-First, `download Prometheus. <https://prometheus.io/download/>`_
+Then, unzip the the archive into a local directory using the following command.
 
 .. code-block:: bash
 
     tar xvfz prometheus-*.tar.gz
     cd prometheus-*
 
-With the `ray[default]` installation, Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+Ray exports metrics only when ``ray[default]`` is installed.
+
+.. code-block:: bash
+
+  pip install "ray[default]"
+
+Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
 .. code-block:: yaml
 
@@ -76,9 +66,9 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
-First, `download Grafana. <https://grafana.com/grafana/download>`_
+First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
-Then run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
+Then go to to the location of the binary and run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
 
 .. code-block:: shell
 
@@ -87,11 +77,13 @@ Then run grafana using the built in configuration found in `/tmp/ray/session_lat
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
 If this is your first time, you can login with the username: `admin` and password `admin`.
 
-You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard.
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/grafana_login.png
+    :align: center
+
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same metric graphs are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
     :align: center
-
 
 .. _application-level-metrics:
 
@@ -125,3 +117,15 @@ If you open this in the browser, you should see the following output:
   ray_num_requests_total{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 2.0
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
+
+Customize prometheus export port
+--------------------------------
+
+Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
+To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.
+
+.. code-block:: bash
+
+    ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
+
+Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.

@@ -379,68 +379,75 @@ class EnvRunnerV2:
             Object containing state, action, reward, terminal condition,
             and other fields as dictated by `policy`.
         """
-        # Before the very first poll (this will reset all vector sub-environments):
-        # Create all upcoming episodes and call `on_episode_created` callbacks for
-        # all sub-environments (upcoming episodes).
-        for env_id, sub_env in self._base_env.get_sub_environments(
-            as_dict=True
-        ).items():
-            self.create_episode(env_id)
-
         while True:
-            self._perf_stats.incr("iters", 1)
-
-            t0 = time.time()
-            # Get observations from all ready agents.
-            # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-            (
-                unfiltered_obs,
-                rewards,
-                dones,
-                infos,
-                off_policy_actions,
-            ) = self._base_env.poll()
-            env_poll_time = time.time() - t0
-
-            # Process observations and prepare for policy evaluation.
-            t1 = time.time()
-            # types: Set[EnvID], Dict[PolicyID, List[AgentConnectorDataType]],
-            #       List[Union[RolloutMetrics, SampleBatchType]]
-            to_eval, outputs = self._process_observations(
-                unfiltered_obs=unfiltered_obs,
-                rewards=rewards,
-                dones=dones,
-                infos=infos,
-            )
-            self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
-
+            outputs = self.step()
             for o in outputs:
                 yield o
 
-            # Do batched policy eval (accross vectorized envs).
-            t2 = time.time()
-            # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
-            eval_results = self._do_policy_eval(to_eval=to_eval)
-            self._perf_stats.incr("inference_time", time.time() - t2)
+    def step(self) -> List[SampleBatchType]:
+        """Samples training episodes by stepping through environments."""
 
-            # Process results and update episode state.
-            t3 = time.time()
-            actions_to_send: Dict[
-                EnvID, Dict[AgentID, EnvActionType]
-            ] = self._process_policy_eval_results(
-                to_eval=to_eval,
-                eval_results=eval_results,
-                off_policy_actions=off_policy_actions,
-            )
-            self._perf_stats.incr("action_processing_time", time.time() - t3)
+        # Before the very first poll (this will reset all vector sub-environments):
+        # Create all upcoming episodes and call `on_episode_created` callbacks for
+        # all sub-environments (upcoming episodes).
+        if not self._active_episodes:
+            for env_id, sub_env in self._base_env.get_sub_environments(
+                as_dict=True
+            ).items():
+                self.create_episode(env_id)
 
-            # Return computed actions to ready envs. We also send to envs that have
-            # taken off-policy actions; those envs are free to ignore the action.
-            t4 = time.time()
-            self._base_env.send_actions(actions_to_send)
-            self._perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
+        self._perf_stats.incr("iters", 1)
 
-            self._maybe_render()
+        t0 = time.time()
+        # Get observations from all ready agents.
+        # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
+        (
+            unfiltered_obs,
+            rewards,
+            dones,
+            infos,
+            off_policy_actions,
+        ) = self._base_env.poll()
+        env_poll_time = time.time() - t0
+
+        # Process observations and prepare for policy evaluation.
+        t1 = time.time()
+        # types: Set[EnvID], Dict[PolicyID, List[AgentConnectorDataType]],
+        #       List[Union[RolloutMetrics, SampleBatchType]]
+        to_eval, outputs = self._process_observations(
+            unfiltered_obs=unfiltered_obs,
+            rewards=rewards,
+            dones=dones,
+            infos=infos,
+        )
+        self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
+
+        # Do batched policy eval (accross vectorized envs).
+        t2 = time.time()
+        # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
+        eval_results = self._do_policy_eval(to_eval=to_eval)
+        self._perf_stats.incr("inference_time", time.time() - t2)
+
+        # Process results and update episode state.
+        t3 = time.time()
+        actions_to_send: Dict[
+            EnvID, Dict[AgentID, EnvActionType]
+        ] = self._process_policy_eval_results(
+            to_eval=to_eval,
+            eval_results=eval_results,
+            off_policy_actions=off_policy_actions,
+        )
+        self._perf_stats.incr("action_processing_time", time.time() - t3)
+
+        # Return computed actions to ready envs. We also send to envs that have
+        # taken off-policy actions; those envs are free to ignore the action.
+        t4 = time.time()
+        self._base_env.send_actions(actions_to_send)
+        self._perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
+
+        self._maybe_render()
+
+        return outputs
 
     def _get_rollout_metrics(self, episode: EpisodeV2) -> List[RolloutMetrics]:
         """Get rollout metrics from completed episode."""
@@ -631,9 +638,9 @@ class EnvRunnerV2:
                     # Record transition info if applicable.
                     if not episode.has_init_obs(d.agent_id):
                         episode.add_init_obs(
-                            d.agent_id,
-                            d.data.raw_dict[SampleBatch.T],
-                            d.data.raw_dict[SampleBatch.NEXT_OBS],
+                            agent_id=d.agent_id,
+                            init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                            t=d.data.raw_dict[SampleBatch.T],
                         )
                     else:
                         episode.add_action_reward_done_next_obs(
@@ -815,8 +822,8 @@ class EnvRunnerV2:
                         env_id,
                         agent_id,
                         {
-                            SampleBatch.T: new_episode.length - 1,
                             SampleBatch.NEXT_OBS: obs,
+                            SampleBatch.T: new_episode.length - 1,
                         },
                     )
                     for agent_id, obs in agents_obs
@@ -825,11 +832,10 @@ class EnvRunnerV2:
                 processed = policy.agent_connectors(acd_list)
 
                 for d in processed:
-                    # Add initial obs to buffer.
                     new_episode.add_init_obs(
-                        d.agent_id,
-                        d.data.raw_dict[SampleBatch.T],
-                        d.data.raw_dict[SampleBatch.NEXT_OBS],
+                        agent_id=d.agent_id,
+                        init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                        t=d.data.raw_dict[SampleBatch.T],
                     )
                     to_eval[policy_id].append(d)
 
