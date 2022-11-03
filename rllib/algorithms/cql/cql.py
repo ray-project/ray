@@ -204,9 +204,10 @@ class CQL(SAC):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
         # Update remote workers's weights after learning on local worker
+        # (only those policies that were actually trained).
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights()
+                self.workers.sync_weights(policies=list(train_results.keys()))
 
         # Return all collected metrics for the iteration.
         return train_results
