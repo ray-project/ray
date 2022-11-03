@@ -628,7 +628,7 @@ def test_object_directory_failure(pull_based, ray_start_cluster):
     if pull_based:
         config = {
             "health_check_initial_delay_ms": 0,
-            "health_check_period_ms": 1000,
+            "health_check_period_ms": 500,
             "health_check_failure_threshold": 10,
             "object_timeout_milliseconds": 200,
             "pull_based_healthcheck": True,

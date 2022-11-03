@@ -245,9 +245,12 @@ class A3C(Algorithm):
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
 
-            # Synch updated weights back to the particular worker.
+            # Synch updated weights back to the particular worker
+            # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                weights = local_worker.get_weights(local_worker.get_policies_to_train())
+                weights = local_worker.get_weights(
+                    policies=local_worker.get_policies_to_train()
+                )
                 worker.set_weights.remote(weights, global_vars)
 
         # Update global vars of the local worker.
