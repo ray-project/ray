@@ -67,7 +67,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.yaml_dir != "":
-        deprecation_warning(old="--yaml-dir", new="--dir", error=True)
+        deprecation_warning(old="--yaml-dir", new="--dir", error=False)
+        args.dir = args.yaml_dir
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
