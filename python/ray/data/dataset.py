@@ -2832,10 +2832,6 @@ class Dataset(Generic[T]):
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
-        .. tip::
-            If multiple TensorFlow workers consume this data, call
-            :meth:`~ray.data.Dataset.split`.
-
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
             errors, resize tensors or
