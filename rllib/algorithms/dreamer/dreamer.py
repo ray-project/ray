@@ -11,6 +11,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
@@ -331,19 +332,55 @@ class Dreamer(Algorithm):
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
+        # `training_iteration` implementation: Setup buffer in `setup`, not
+        # in `execution_plan` (deprecated).
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = EpisodeSequenceBuffer(
+                replay_sequence_length=config["batch_length"]
+            )
 
-        # Setup buffer.
-        self.local_replay_buffer = EpisodeSequenceBuffer(
+            # Prefill episode buffer with initial exploration (uniform sampling)
+            while (
+                total_sampled_timesteps(self.workers.local_worker())
+                < self.config["prefill_timesteps"]
+            ):
+                samples = self.workers.local_worker().sample()
+                self.local_replay_buffer.add(samples)
+
+    @staticmethod
+    @override(Algorithm)
+    def execution_plan(workers, config, **kwargs):
+        assert (
+            len(kwargs) == 0
+        ), "Dreamer execution_plan does NOT take any additional parameters"
+
+        # Special replay buffer for Dreamer agent.
+        episode_buffer = EpisodeSequenceBuffer(
             replay_sequence_length=config["batch_length"]
         )
 
+        local_worker = workers.local_worker()
+
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while (
-            total_sampled_timesteps(self.workers.local_worker())
-            < self.config["prefill_timesteps"]
-        ):
-            samples = self.workers.local_worker().sample()
-            self.local_replay_buffer.add(samples)
+        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
+            samples = local_worker.sample()
+            episode_buffer.add(samples)
+
+        batch_size = config["batch_size"]
+        dreamer_train_iters = config["dreamer_train_iters"]
+        act_repeat = config["action_repeat"]
+
+        rollouts = ParallelRollouts(workers)
+        rollouts = rollouts.for_each(
+            DreamerIteration(
+                local_worker,
+                episode_buffer,
+                dreamer_train_iters,
+                batch_size,
+                act_repeat,
+            )
+        )
+        return rollouts
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:

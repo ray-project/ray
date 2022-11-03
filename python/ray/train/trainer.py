@@ -235,7 +235,9 @@ class TrainingIterator:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
             try:
-                self._backend_executor.shutdown()
+                # Exception raised in at least one training worker. Immediately raise
+                # this error to the user and do not attempt to terminate gracefully.
+                self._backend_executor.shutdown(graceful_termination=False)
                 self._finished_training = True
             except Exception:
                 pass
