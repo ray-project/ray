@@ -15,7 +15,7 @@ import copy
 import platform
 import random
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray._private.dict import merge_dicts
@@ -43,6 +43,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
+    SampleBatchType,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -402,18 +403,19 @@ class ApexDQN(DQN):
     @override(DQN)
     def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
-        worker_samples_collected = defaultdict(int)
+        num_worker_samples_collected = defaultdict(int)
 
         for worker, samples_infos in num_samples_ready_dict.items():
             for samples_info in samples_infos:
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += samples_info["agent_steps"]
                 self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
-                worker_samples_collected[worker] += samples_info["agent_steps"]
+                num_worker_samples_collected[worker] += samples_info["agent_steps"]
 
-        # update the weights of the workers that returned samples
-        # only do this if there are remote workers (config["num_workers"] > 1)
+        # Update the weights of the workers that returned samples.
+        # Only do this if there are remote workers (config["num_workers"] > 1).
+        # Also, only update those policies that were actually trained.
         if self.workers.remote_workers():
-            self.update_workers(worker_samples_collected)
+            self.update_workers(num_worker_samples_collected)
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
@@ -424,7 +426,7 @@ class ApexDQN(DQN):
             # trigger a sample from the replay actors and enqueue operation to the
             # learner thread.
             self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-                worker_samples_collected
+                num_worker_samples_collected
             )
             self.update_replay_sample_priority()
 
@@ -488,9 +490,12 @@ class ApexDQN(DQN):
         max_steps_weight_sync_delay = self.config["optimizer"]["max_weight_sync_delay"]
         # Update our local copy of the weights if the learner thread has updated
         # the learner worker's weights
-        if self.learner_thread.weights_updated:
-            self.learner_thread.weights_updated = False
-            weights = self.workers.local_worker().get_weights()
+        policy_ids_updated = self.learner_thread.policy_ids_updated.copy()
+        self.learner_thread.policy_ids_updated.clear()
+        if policy_ids_updated:
+            weights = self.workers.local_worker().get_weights(
+                policies=policy_ids_updated
+            )
             self.curr_learner_weights = ray.put(weights)
 
         num_workers_updated = 0
@@ -523,12 +528,12 @@ class ApexDQN(DQN):
         return num_workers_updated
 
     def sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-        self, num_samples_collected: Dict[ActorHandle, int]
+        self, num_worker_samples_collected: Dict[ActorHandle, int]
     ) -> None:
         """Get samples from the replay buffer and place them on the learner queue.
 
         Args:
-            num_samples_collected: A mapping from ActorHandle (RolloutWorker) to
+            num_worker_samples_collected: A mapping from ActorHandle (RolloutWorker) to
                 number of samples returned by the remote worker. This is used to
                 implement training intensity which is the concept of triggering a
                 certain amount of training based on the number of samples that have
@@ -536,8 +541,9 @@ class ApexDQN(DQN):
 
         """
 
-        def wait_on_replay_actors() -> None:
+        def wait_on_replay_actors() -> List[Tuple[ActorHandle, SampleBatchType]]:
             """Wait for the replay actors to finish sampling for timeout seconds.
+
             If the timeout is None, then block on the actors indefinitely.
             """
             _replay_samples_ready = self._replay_actor_manager.get_ready()
@@ -547,7 +553,7 @@ class ApexDQN(DQN):
                     replay_sample_batches.append((_replay_actor, _sample_batch))
             return replay_sample_batches
 
-        num_samples_collected = sum(num_samples_collected.values())
+        num_samples_collected = sum(num_worker_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
         replay_sample_batches = wait_on_replay_actors()
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
@@ -564,7 +570,7 @@ class ApexDQN(DQN):
                 )
             replay_sample_batches.extend(wait_on_replay_actors())
 
-        # add the sample batches to the learner queue
+        # Add all the tuples of (ActorHandle, SampleBatchType) to the learner queue.
         for item in replay_sample_batches:
             # Setting block = True prevents the learner thread,
             # the main thread, and the gpu loader threads from

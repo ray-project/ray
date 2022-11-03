@@ -1,5 +1,6 @@
 import contextlib
 import pytest
+import time
 import torch
 import os
 
@@ -176,6 +177,24 @@ def test_torch_session_errors(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
+
+
+def test_single_worker_failure(ray_start_4_cpus):
+    """Tests if training fails upon any worker failure."""
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=single_worker_fail,
+        scaling_config=scaling_config,
+    )
+    with pytest.raises(ValueError):
+        trainer.fit()
 
 
 # See comment in backend.py::_warn_about_bad_checkpoint_type
