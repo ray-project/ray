@@ -7,11 +7,131 @@ Advanced Python APIs
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your algorithm once per training iteration and report the new training results.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__,
+Tune will call ``train()`` on your algorithm once per training iteration and report
+the new training results.
 Sometimes, it is desirable to have full control over training, but still run inside Tune.
-Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to
+implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+For even finer-grained control over training, you can use RLlib's lower-level
+`building blocks <rllib-concepts.html>`__ directly to implement
+`fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+
+
+Curriculum Learning
+~~~~~~~~~~~~~~~~~~~
+
+In Curriculum learning, the environment can be set to different difficulties
+(or "tasks") to allow for learning to progress through controlled phases (from easy to
+more difficult). RLlib comes with a basic curriculum learning API utilizing the
+`TaskSettableEnv <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__ environment API.
+Your environment only needs to implement the `set_task` and `get_task` methods
+for this to work. You can then define an `env_task_fn` in your config,
+which receives the last training results and returns a new task for the env to be set to:
+
+.. TODO move to doc_code and make it use algo configs.
+.. code-block:: python
+
+    from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+
+    class MyEnv(TaskSettableEnv):
+        def get_task(self):
+            return self.current_difficulty
+
+        def set_task(self, task):
+            self.current_difficulty = task
+
+    def curriculum_fn(train_results, task_settable_env, env_ctx):
+        # Very simple curriculum function.
+        current_task = task_settable_env.get_task()
+        new_task = current_task + 1
+        return new_task
+
+    # Setup your Algorithm's config like so:
+    config = {
+        "env": MyEnv,
+        "env_task_fn": curriculum_fn,
+    }
+    # Train using `Tuner.fit()` or `Algorithm.train()` and the above config stub.
+    # ...
+
+There are two more ways to use the RLlib's other APIs to implement
+`curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
+
+Use the Algorithm API and update the environment between calls to ``train()``.
+This example shows the algorithm being run inside a Tune function.
+This is basically the same as what the built-in `env_task_fn` API described above
+already does under the hood, but allows you to do even more customizations to your
+training loop.
+
+.. TODO move to doc_code and make it use algo configs.
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from ray.rllib.algorithms.ppo import PPO
+
+    def train(config, reporter):
+        algo = PPO(config=config, env=YourEnv)
+        while True:
+            result = algo.train()
+            reporter(**result)
+            if result["episode_reward_mean"] > 200:
+                task = 2
+            elif result["episode_reward_mean"] > 100:
+                task = 1
+            else:
+                task = 0
+            algo.workers.foreach_worker(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_task(task)))
+
+    num_gpus = 0
+    num_workers = 2
+
+    ray.init()
+    tune.Tuner(
+        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),)
+        param_space={
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
+        },
+    ).fit()
+
+You could also use RLlib's callbacks API to update the environment on new training
+results:
+
+.. TODO move to doc_code and make it use algo configs.
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from ray.rllib.agents.callbacks import DefaultCallbacks
+
+    class MyCallbacks(DefaultCallbacks):
+        def on_train_result(self, algorithm, result, **kwargs):
+            if result["episode_reward_mean"] > 200:
+                task = 2
+            elif result["episode_reward_mean"] > 100:
+                task = 1
+            else:
+                task = 0
+            algorithm.workers.foreach_worker(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_task(task)))
+
+    ray.init()
+    tune.Tuner(
+        "PPO",
+        param_space={
+            "env": YourEnv,
+            "callbacks": MyCallbacks,
+        },
+    ).fit()
+
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
@@ -134,8 +254,9 @@ exploratory behavior, allowing e.g. turning off any exploration easily for
 evaluation purposes (see :ref:`CustomEvaluation`).
 
 The following are example excerpts from different Algorithms' configs
-(see rllib/algorithms/algorithm.py) to setup different exploration behaviors:
+(see ``rllib/algorithms/algorithm.py``) to setup different exploration behaviors:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # All of the following configs go into Algorithm.config.
@@ -193,10 +314,11 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can activate evaluating policies during training (``Algorithm.train()``) by setting
-the ``evaluation_interval`` to an int value (> 0) indicating every how many ``Algorithm.train()``
-calls an "evaluation step" is run:
+of environment configurations). You can activate evaluating policies during training
+(``Algorithm.train()``) by setting the ``evaluation_interval`` to an int value (> 0)
+indicating every how many ``Algorithm.train()`` calls an "evaluation step" is run:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Run one evaluation step on every 3rd `Algorithm.train()` call.
@@ -205,10 +327,11 @@ calls an "evaluation step" is run:
     }
 
 
-An evaluation step runs - using its own RolloutWorkers - for ``evaluation_duration`` episodes or timesteps, depending
-on the ``evaluation_duration_unit`` setting, which can take values of either "episodes" (default) or "timesteps".
+An evaluation step runs - using its own ``RolloutWorker``s - for ``evaluation_duration``
+episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can
+take values of either ``"episodes"`` (default) or ``"timesteps"``.
 
-
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Every time we run an evaluation step, run it for exactly 10 episodes.
@@ -223,15 +346,19 @@ on the ``evaluation_duration_unit`` setting, which can take values of either "ep
     }
 
 
-Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration`` setting is NOT dividable
-by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will round up the number of
-timesteps specified to the nearest whole number of timesteps that is divisible by the number of evaluation workers.
-Also, when using ``evaluation_duration_unit=episodes`` and your ``evaluation_duration`` setting is NOT dividable
-by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will run the remainder of episodes
+Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration``
+setting is not divisible by the number of evaluation workers (configurable via
+``evaluation_num_workers``), RLlib will round up the number of time-steps specified to
+the nearest whole number of time-steps that is divisible by the number of evaluation
+workers.
+Also, when using ``evaluation_duration_unit=episodes`` and your
+``evaluation_duration`` setting is not divisible by the number of evaluation workers
+(configurable via ``evaluation_num_workers``), RLlib will run the remainder of episodes
 on the first n eval RolloutWorkers and leave the remaining workers idle for that time.
 
-For examples:
+For example:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Every time we run an evaluation step, run it for exactly 10 episodes, no matter, how many eval workers we have.
@@ -246,31 +373,43 @@ For examples:
     }
 
 
-Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
+Before each evaluation step, weights from the main model are synchronized
+to all evaluation workers.
 
-By default, the evaluation step (if there is one in the current iteration) is run right **after** the respective training step.
+By default, the evaluation step (if there is one in the current iteration) is run
+right **after** the respective training step.
 For example, for ``evaluation_interval=1``, the sequence of events is:
-``train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...``. Here, the indices show the version of neural network weights used.
-``train(0->1)`` is an update step that changes the weights from version 0 to version 1 and ``eval(1)`` then uses weights version 1.
+``train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...``.
+Here, the indices show the version of neural network weights used.
+``train(0->1)`` is an update step that changes the weights from version 0 to
+version 1 and ``eval(1)`` then uses weights version 1.
 Weights index 0 represents the randomly initialized weights of our neural network(s).
 
-Another example: For ``evaluation_interval=2``, the sequence is: ``train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...``.
+Another example: For ``evaluation_interval=2``, the sequence is:
+``train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...``.
 
-Instead of running ``train``- and ``eval``-steps in sequence, it is also possible to run them in parallel via the ``evaluation_parallel_to_training=True``
-config setting. In this case, both training- and evaluation steps are run at the same time via multi-threading.
-This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
-training- and evaluation results. The evaluation results are behind in this case b/c they use slightly outdated
+Instead of running ``train``- and ``eval``-steps in sequence, it is also possible to
+run them in parallel via the ``evaluation_parallel_to_training=True`` config setting.
+In this case, both training- and evaluation steps are run at the same time via
+multi-threading.
+This can speed up the evaluation process significantly, but leads to a 1-iteration
+delay between reported training- and evaluation results.
+The evaluation results are behind in this case b/c they use slightly outdated
 model weights (synchronized after the previous training step).
 
-For example, for ``evaluation_parallel_to_training=True`` and ``evaluation_interval=1``, the sequence is now:
-``train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)``, where ``+`` means: "at the same time".
-Note: The change in the weights indices with respect to the non-parallel examples above. The evaluation weights indices are now "one behind"
+For example, for ``evaluation_parallel_to_training=True`` and ``evaluation_interval=1``,
+the sequence is now:
+``train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)``,
+where ``+`` means: "at the same time".
+Note that the change in the weights indices with respect to the non-parallel examples above.
+The evaluation weights indices are now "one behind"
 the resulting train weights indices (``train(1->**2**) + eval(**1**)``).
 
 When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
 is supported for ``evaluation_duration``. This can be used to make the evaluation step take
 roughly as long as the concurrently ongoing training step:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Run evaluation and training at the same time via threading and make sure they roughly
@@ -289,6 +428,7 @@ The ``evaluation_config`` key allows you to override any config settings for
 the evaluation workers. For example, to switch off exploration in the evaluation steps,
 do:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Switching off exploration behavior for evaluation workers
@@ -305,22 +445,29 @@ do:
     will result in the evaluation workers not using this stochastic policy.
 
 
-The level of parallelism within the evaluation step is determined via the ``evaluation_num_workers``
-setting. Set this to larger values if you want the desired evaluation episodes or timesteps to
-run as much in parallel as possible. For example, if your ``evaluation_duration=10``,
-``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each evaluation RolloutWorker
-only has to run 1 episode in each evaluation step.
+The level of parallelism within the evaluation step is determined via the
+``evaluation_num_workers`` setting. Set this to larger values if you want the desired
+evaluation episodes or time-steps to run as much in parallel as possible.
+For example, if your ``evaluation_duration=10``, ``evaluation_duration_unit=episodes``,
+and ``evaluation_num_workers=10``, each evaluation ``RolloutWorker``
+only has to run one episode in each evaluation step.
 
-In case you observe occasional failures in your (evaluation) RolloutWorkers during evaluation (e.g. you have an environment that sometimes crashes),
+In case you observe occasional failures in your (evaluation) RolloutWorkers during
+evaluation (e.g. you have an environment that sometimes crashes),
 you can use an (experimental) new setting: ``enable_async_evaluation=True``.
-This will run the parallel sampling of all evaluation RolloutWorkers via a fault tolerant, asynchronous manager, such that if one of the workers
-takes too long to run through an episode and return data or fails entirely, the other evaluation RolloutWorkers will pick up its task and complete the job.
+This will run the parallel sampling of all evaluation RolloutWorkers via a fault
+tolerant, asynchronous manager, such that if one of the workers takes too long to run
+through an episode and return data or fails entirely, the other evaluation
+RolloutWorkers will pick up its task and complete the job.
 
-Note that with or without async evaluation, all :ref:`fault tolerance settings <rllib-scaling-guide>`,
-such as ``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied to the failed evaluation workers.
+Note that with or without async evaluation, all
+:ref:`fault tolerance settings <rllib-scaling-guide>`, such as
+``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied
+to the failed evaluation workers.
 
-Example:
+Here's an example:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     # Having an environment that occasionally blocks completely for e.g. 10min would
@@ -335,17 +482,18 @@ Example:
 
 **Problem with the above example:**
 
-In case the environment used by worker 3 blocks for 10min, the entire training+evaluation
-pipeline will come to a (10min) halt b/c of this. The next ``train`` step cannot
-start before all evaluation has been finished.
+In case the environment used by worker 3 blocks for 10min, the entire training
+and evaluation pipeline will come to a (10min) halt b/c of this.
+The next ``train`` step cannot start before all evaluation has been finished.
 
 **Solution:**
 
 Switch on asynchronous evaluation, meaning, we don't wait for individual
-evaluation RolloutWorkers to complete their n episode(s) (or n timesteps), but instead:
-any evaluation RolloutWorker can cover the load of another one that failed
+evaluation RolloutWorkers to complete their n episode(s) (or ``n`` time-steps).
+Instead, any evaluation RolloutWorker can cover the load of another one that failed
 or is stuck in a very long lasting environment step.
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     {
@@ -355,17 +503,23 @@ or is stuck in a very long lasting environment step.
     }
 
 
-In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
-config to a callable, which takes the Algorithm object and a WorkerSet object (the Algorithm's ``self.evaluation_workers`` WorkerSet instance)
-and returns a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
+In case you would like to entirely customize the evaluation step,
+set ``custom_eval_function`` in your config to a callable, which takes the Algorithm
+object and a WorkerSet object (the Algorithm's ``self.evaluation_workers``
+WorkerSet instance) and returns a metrics dictionary.
+See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
-There is also an end-to-end example of how to set up a custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
-Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number of training
-iterations before stopping.
+There is also an end-to-end example of how to set up a custom online evaluation in
+`custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
+Note that if you only want to evaluate your policy at the end of training,
+you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number
+of training iterations before stopping.
 
-Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
+Below are some examples of how the custom evaluation metrics are reported nested under
+the ``evaluation`` key of normal training results:
 
+.. TODO make sure these outputs are still valid.
 .. code-block:: bash
 
     ------------------------------------------------------------------------
@@ -418,13 +572,20 @@ Below are some examples of how the custom evaluation metrics are reported nested
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Note that in the ``on_postprocess_traj`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+Note that in the ``on_postprocess_traj`` callback you have full access to the
+trajectory batch (``post_batch``) and other training state. This can be used to
+rewrite the trajectory, which has a number of uses including:
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
- * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a
+   `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
-To access the policy / model (``policy.model``) in the callbacks, note that ``info['pre_batch']`` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+To access the policy / model (``policy.model``) in the callbacks, note that
+``info['pre_batch']`` returns a tuple where the first element is a policy and the
+second one is the batch itself. You can also access all the rollout worker state
+using the following call:
 
+.. TODO move to doc_code and make it use algo configs.
 .. code-block:: python
 
     from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -434,108 +595,5 @@ To access the policy / model (``policy.model``) in the callbacks, note that ``in
     # all the policies, etc: see rollout_worker.py for more info.
     rollout_worker = get_global_worker()
 
-Policy losses are defined over the ``post_batch`` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
-
-Curriculum Learning
-~~~~~~~~~~~~~~~~~~~
-
-In Curriculum learning, the environment can be set to different difficulties (or "tasks") to allow for learning to progress through controlled phases
-(from easy to more difficult). RLlib comes with a basic curriculum learning API utilizing the
-`TaskSettableEnv <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__ environment API.
-Your environment only needs to implement the `set_task` and `get_task` methods for this to work. You can then define an `env_task_fn` in your config,
-which receives the last training results and returns a new task for the env to be set to:
-
-.. code-block:: python
-
-    from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
-
-    class MyEnv(TaskSettableEnv):
-        def get_task(self):
-            return self.current_difficulty
-
-        def set_task(self, task):
-            self.current_difficulty = task
-
-    def curriculum_fn(train_results, task_settable_env, env_ctx):
-        # Very simple curriculum function.
-        current_task = task_settable_env.get_task()
-        new_task = current_task + 1
-        return new_task
-
-    # Setup your Algorithm's config like so:
-    config = {
-        "env": MyEnv,
-        "env_task_fn": curriculum_fn,
-    }
-    # Train using `Tuner.fit()` or `Algorithm.train()` and the above config stub.
-    # ...
-
-There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
-
-Use the Algorithm API and update the environment between calls to ``train()``. This example shows the algorithm being run inside a Tune function.
-This is basically the same as what the built-in `env_task_fn` API described above already does under the hood, but allows you to do even more
-customizations to your training loop.
-
-.. code-block:: python
-
-    import ray
-    from ray import tune
-    from ray.rllib.algorithms.ppo import PPO
-
-    def train(config, reporter):
-        algo = PPO(config=config, env=YourEnv)
-        while True:
-            result = algo.train()
-            reporter(**result)
-            if result["episode_reward_mean"] > 200:
-                task = 2
-            elif result["episode_reward_mean"] > 100:
-                task = 1
-            else:
-                task = 0
-            algo.workers.foreach_worker(
-                lambda ev: ev.foreach_env(
-                    lambda env: env.set_task(task)))
-
-    num_gpus = 0
-    num_workers = 2
-
-    ray.init()
-    tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
-            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
-        ),)
-        param_space={
-            "num_gpus": num_gpus,
-            "num_workers": num_workers,
-        },
-    ).fit()
-
-You could also use RLlib's callbacks API to update the environment on new training results:
-
-.. code-block:: python
-
-    import ray
-    from ray import tune
-    from ray.rllib.agents.callbacks import DefaultCallbacks
-
-    class MyCallbacks(DefaultCallbacks):
-        def on_train_result(self, algorithm, result, **kwargs):
-            if result["episode_reward_mean"] > 200:
-                task = 2
-            elif result["episode_reward_mean"] > 100:
-                task = 1
-            else:
-                task = 0
-            algorithm.workers.foreach_worker(
-                lambda ev: ev.foreach_env(
-                    lambda env: env.set_task(task)))
-
-    ray.init()
-    tune.Tuner(
-        "PPO",
-        param_space={
-            "env": YourEnv,
-            "callbacks": MyCallbacks,
-        },
-    ).fit()
+Policy losses are defined over the ``post_batch`` data, so you can mutate that in
+the callbacks to change what data the policy loss function sees.
