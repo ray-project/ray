@@ -353,21 +353,8 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0", "11.0.0"])
-def unsupported_pyarrow_version(request):
-    orig_version = pa.__version__
-    pa.__version__ = request.param
-    # Unset pyarrow version cache.
-    import ray._private.utils as utils
-
-    utils._PYARROW_VERSION = None
-    yield request.param
-    pa.__version__ = orig_version
-
-
-# TODO(Clark): Add upper-bound of 11.0.0 once released.
 @pytest.fixture(params=["5.0.0"])
-def unsupported_pyarrow_version_that_exists(request):
+def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
