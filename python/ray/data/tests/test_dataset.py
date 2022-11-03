@@ -4908,8 +4908,10 @@ def test_read_write_local_node(ray_start_cluster):
     assert "1 nodes used" in ds.stats(), ds.stats()
 
     # Write back to local scheme.
-    ds.write_parquet(os.path.join(local_path, "output.parquet"))
+    output = os.path.join(local_path, "test_read_write_local_node")
+    ds.write_parquet(output)
     assert "1 nodes used" in ds.stats(), ds.stats()
+    ray.data.read_parquet(output).take_all() == ds.take_all()
 
     # Mixing paths of local and non-local scheme is invalid.
     with pytest.raises(ValueError):
