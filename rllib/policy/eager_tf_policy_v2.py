@@ -678,9 +678,8 @@ class EagerTFPolicyV2(Policy):
         # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
-            if (
-                not type(self).__name__.endswith("_traced")
-                and log_once("set_state_optimizer_vars_tf_eager_policy_v2")
+            if not type(self).__name__.endswith("_traced") and log_once(
+                "set_state_optimizer_vars_tf_eager_policy_v2"
             ):
                 logger.warning(
                     "Cannot restore an optimizer's state for tf eager! Keras "

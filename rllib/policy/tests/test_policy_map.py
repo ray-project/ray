@@ -5,7 +5,6 @@ from typing import Optional
 import unittest
 
 import ray
-from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig, PPOTF2Policy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy_map import PolicyMap
@@ -156,11 +155,11 @@ class TestPolicyMap(unittest.TestCase):
                 model={
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
-                    #"vf_share_layers": True,
+                    # "vf_share_layers": True,
                 },
-                #vf_loss_coeff=0.01,
-                #vtrace=True,
-                #vtrace_drop_last_ts=False,
+                # vf_loss_coeff=0.01,
+                # vtrace=True,
+                # vtrace_drop_last_ts=False,
             )
             .multi_agent(
                 # 2 agents per sub-env.
@@ -173,16 +172,17 @@ class TestPolicyMap(unittest.TestCase):
                 policies_to_train=[f"pol{i}" for i in range(num_trainable)],
                 # Pick one trainable and one non-trainable policy per episode.
                 policy_mapping_fn=(
-                    lambda aid, eps, worker, **kw: "pol" + str(
-                        np.random.randint(0, num_trainable) if aid == 0
+                    lambda aid, eps, worker, **kw: "pol"
+                    + str(
+                        np.random.randint(0, num_trainable)
+                        if aid == 0
                         else np.random.randint(num_trainable, num_policies)
                     )
                 ),
-                #policy_mapping_fn=lambda aid, eps, worker, **kw: "pol0" if aid == 0 else "pol1"
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("torch"), with_eager_tracing=True):  # , "torch", "tf"
+        for _ in framework_iterator(config, frameworks=("torch"), with_eager_tracing=True):#,"torch", "tf"
             algo = config.build()
             reward = 0.0
             iter = 0
@@ -190,16 +190,24 @@ class TestPolicyMap(unittest.TestCase):
 
             while (np.isnan(reward) or reward < required_reward) and iter < 50:
                 results = algo.train()
-                reward = np.mean([
-                    r for pid, r in results["policy_reward_mean"].items()
-                    if int(pid[3:]) < num_trainable
-                ])
-                print(f"iter={iter} reward={reward} timesteps-sampled={results['num_agent_steps_sampled']}")
-                print(ray.get(
-                    algo.workers.remote_workers()[0].apply.remote(
-                        lambda w: w.policy_map.counters
+                reward = np.mean(
+                    [
+                        r
+                        for pid, r in results["policy_reward_mean"].items()
+                        if int(pid[3:]) < num_trainable
+                    ]
+                )
+                print(
+                    f"iter={iter} reward={reward} "
+                    f"timesteps-sampled={results['num_agent_steps_sampled']}"
+                )
+                print(
+                    ray.get(
+                        algo.workers.remote_workers()[0].apply.remote(
+                            lambda w: w.policy_map.counters
+                        )
                     )
-                ))
+                )
                 iter += 1
 
             assert reward >= required_reward, "Not learnt!"
