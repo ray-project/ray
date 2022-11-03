@@ -176,7 +176,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
     if (disable_agent_client_) {
       std::stringstream str_stream;
       str_stream
-          << "Failed to create runtime environment " << serialized_runtime_env
+          << "Failed to create runtime environment for job " << job_id
           << " because the Ray agent couldn't be started due to the port conflict. See "
              "`dashboard_agent.log` for more details. To solve the problem, start Ray "
              "with a hard-coded agent port. `ray start --dashboard-agent-grpc-port "
@@ -195,8 +195,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
         << "Runtime env agent is not registered yet. Will retry "
-           "GetOrCreateRuntimeEnv later: "
-        << serialized_runtime_env;
+           "GetOrCreateRuntimeEnv for job_id "
+        << job_id << " later";
     delay_executor_(
         [this,
          job_id,
@@ -224,6 +224,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
       [serialized_runtime_env,
        runtime_env_config,
        serialized_allocated_resource_instances,
+       job_id,
        callback = std::move(callback)](const Status &status,
                                        const rpc::GetOrCreateRuntimeEnvReply &reply) {
         if (status.ok()) {
@@ -232,7 +233,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
                      reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ "");
           } else {
-            RAY_LOG(INFO) << "Failed to create runtime env: " << serialized_runtime_env
+            RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
                           << ", error message: " << reply.error_message();
             callback(false,
                      reply.serialized_runtime_env_context(),
@@ -241,7 +242,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
 
         } else {
           RAY_LOG(INFO)
-              << "Failed to create runtime env: " << serialized_runtime_env
+              << "Failed to create runtime env for job " << job_id
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
           callback(false, "", "Failed to request agent.");
@@ -287,15 +288,14 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
             callback(true);
           } else {
             // TODO(sang): Find a better way to delivering error messages in this case.
-            RAY_LOG(ERROR) << "Failed to delete runtime env for "
-                           << serialized_runtime_env
+            RAY_LOG(ERROR) << "Failed to delete runtime env"
                            << ", error message: " << reply.error_message();
             callback(false);
           }
 
         } else {
           RAY_LOG(ERROR)
-              << "Failed to delete runtime env reference for " << serialized_runtime_env
+              << "Failed to delete runtime env reference"
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
           callback(false);

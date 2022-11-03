@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import dataclasses
+import fnmatch
 import json
 import logging
 import os
@@ -811,6 +812,69 @@ def test_runtime_env_interface():
 
     runtime_env.pop("container")
     assert runtime_env.to_dict() == {}
+
+
+def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None):
+    """Assert that the user info is not in the logs, except for any file that
+    glob pattern matches a file in the whitelist.
+    """
+    if file_whitelist is None:
+        file_whitelist = []
+
+    log_dir = os.path.join(ray.worker._global_node.get_session_dir_path(), "logs")
+
+    for root, dirs, files in os.walk(log_dir):
+        for file in files:
+            if any(fnmatch.fnmatch(file, pattern) for pattern in file_whitelist):
+                continue
+            with open(os.path.join(root, file), "r") as f:
+                for line in f:
+                    assert user_info not in line, (user_info, line)
+
+
+# TODO(architkulkarni): Also test Ray Client and Ray Job Submission codepaths
+def test_no_user_info_in_logs(monkeypatch):
+    monkeypatch.setenv("RAY_BACKEND_LOG_LEVEL", "debug")
+    USER_SECRET = "pip-install-test"
+    ray.init(runtime_env={"pip": [USER_SECRET], "env_vars": {USER_SECRET: USER_SECRET}})
+
+    @ray.remote
+    def f():
+        return os.environ.get(USER_SECRET)
+
+    assert ray.get(f.remote()) == USER_SECRET
+
+    @ray.remote
+    class Foo:
+        def __init__(self):
+            self.x = os.environ.get(USER_SECRET)
+
+        def get_x(self):
+            return self.x
+
+    foo = Foo.remote()
+    assert ray.get(foo.get_x.remote()) == USER_SECRET
+
+    # Generate runtime env failure logs.
+    bad_runtime_env = {
+        "pip": ["pkg-which-sadly-does-not-exist"],
+        "env_vars": {USER_SECRET: USER_SECRET},
+    }
+    with pytest.raises(Exception):
+        ray.get(f.options(runtime_env=bad_runtime_env).remote())
+
+    # Allow time for log files to be written.
+    time.sleep(5)
+
+    # Check that no_user_info_in_logs works.
+    with pytest.raises(AssertionError):
+        assert_no_user_info_in_logs("ray")
+        assert_no_user_info_in_logs(USER_SECRET)
+
+    # TODO(architkulkarni): Remove runtime env user info from dashboard_agent.log
+    assert_no_user_info_in_logs(
+        USER_SECRET, file_whitelist=["dashboard_agent.log", "runtime_env_setup*.log"]
+    )
 
 
 if __name__ == "__main__":

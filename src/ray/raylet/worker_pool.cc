@@ -554,7 +554,11 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
     for (const auto &arg : worker_command_args) {
-      debug_info.append(" ").append(arg);
+      if (arg.find("--serialized-runtime-env-context") != std::string::npos) {
+        debug_info.append(" --serialized-runtime-env-context=XXXXX");
+      } else {
+        debug_info.append(" ").append(arg);
+      }
     }
     debug_info.append(", and the envs:");
     for (const auto &entry : env) {
@@ -647,7 +651,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     // increment the ref count multiple times. This is fine because
     // `HandleJobFinished` will also decrement the ref count multiple times.
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
-                  << ". The runtime environment was " << runtime_env << ".";
+                  << ".";
     GetOrCreateRuntimeEnv(
         runtime_env,
         runtime_env_config,
@@ -657,7 +661,6 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
                  const std::string &setup_error_message) {
           if (successful) {
             RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
-                          << ". The result context was " << serialized_runtime_env_context
                           << ".";
           } else {
             RAY_LOG(WARNING) << "[Eagerly] Couldn't create a runtime environment for job "
@@ -1635,7 +1638,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(
     const JobID &job_id,
     const GetOrCreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
-  RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv " << serialized_runtime_env;
+  RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id;
   agent_manager_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
@@ -1651,7 +1654,6 @@ void WorkerPool::GetOrCreateRuntimeEnv(
           callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
-                           << ". The runtime environment was " << serialized_runtime_env
                            << ".";
           callback(false, "", setup_error_message);
         }
@@ -1659,13 +1661,12 @@ void WorkerPool::GetOrCreateRuntimeEnv(
 }
 
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
-  RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
+  RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible ";
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     agent_manager_->DeleteRuntimeEnvIfPossible(
         serialized_runtime_env, [serialized_runtime_env](bool successful) {
           if (!successful) {
-            RAY_LOG(ERROR) << "Delete runtime env failed for " << serialized_runtime_env
-                           << ".";
+            RAY_LOG(ERROR) << "Delete runtime env failed";
           }
         });
   }
