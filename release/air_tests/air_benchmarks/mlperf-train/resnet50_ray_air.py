@@ -489,9 +489,13 @@ if __name__ == "__main__":
             # Set a lower batch size for images to prevent OOM.
             batch_size = 32
             if args.online_processing:
-                preprocessor = BatchMapper(decode_tf_record_batch, batch_size=batch_size)
+                preprocessor = BatchMapper(
+                    decode_tf_record_batch, batch_size=batch_size
+                )
             else:
-                preprocessor = BatchMapper(decode_crop_and_flip_tf_record_batch, batch_size=batch_size)
+                preprocessor = BatchMapper(
+                    decode_crop_and_flip_tf_record_batch, batch_size=batch_size
+                )
             train_loop_config["data_loader"] = RAY_DATA
 
     trainer = TensorflowTrainer(
