@@ -67,7 +67,6 @@ class DLPredictor(Predictor):
         tensors = convert_pandas_to_batch_type(
             data,
             DataType.NUMPY,
-            self._cast_tensor_columns,
         )
         model_input = self._arrays_to_tensors(tensors, dtype)
 
