@@ -14,8 +14,6 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentRepla
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
@@ -375,34 +373,6 @@ def make_learner_thread(local_worker, config):
             learner_queue_timeout=config["learner_queue_timeout"],
         )
     return learner_thread
-
-
-def gather_experiences_directly(workers, config):
-    rollouts = ParallelRollouts(
-        workers,
-        mode="async",
-        num_async=config["max_requests_in_flight_per_sampler_worker"],
-    )
-
-    # Augment with replay and concat to desired train batch size.
-    train_batches = (
-        rollouts.for_each(lambda batch: batch.decompress_if_needed())
-        .for_each(
-            MixInReplay(
-                num_slots=config["replay_buffer_num_slots"],
-                replay_proportion=config["replay_proportion"],
-            )
-        )
-        .flatten()
-        .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
-        )
-    )
-
-    return train_batches
 
 
 class Impala(Algorithm):
