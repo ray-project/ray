@@ -223,13 +223,20 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=("route",),
+            tag_keys=(
+                "route",
+                "method",
+            ),
         )
 
         self.request_error_counter = metrics.Counter(
             "serve_num_http_error_requests",
             description="The number of non-200 HTTP responses.",
-            tag_keys=("route", "error_code"),
+            tag_keys=(
+                "route",
+                "error_code",
+                "method",
+            ),
         )
 
         self.deployment_request_error_counter = metrics.Counter(
@@ -237,7 +244,11 @@ class HTTPProxy:
             description=(
                 "The number of non-200 HTTP responses returned by each deployment."
             ),
-            tag_keys=("deployment",),
+            tag_keys=(
+                "deployment",
+                "error_code",
+                "method",
+            ),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -282,7 +293,9 @@ class HTTPProxy:
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
-        self.request_counter.inc(tags={"route": route_path})
+        self.request_counter.inc(
+            tags={"route": route_path, "method": scope["method"].upper()}
+        )
 
         if route_path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
@@ -297,7 +310,11 @@ class HTTPProxy:
         route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
-                tags={"route": route_path, "error_code": "404"}
+                tags={
+                    "route": route_path,
+                    "error_code": "404",
+                    "method": scope["method"].upper(),
+                }
             )
             return await self._not_found(scope, receive, send)
 
@@ -322,10 +339,18 @@ class HTTPProxy:
         )
         if status_code != "200":
             self.request_error_counter.inc(
-                tags={"route": route_path, "error_code": status_code}
+                tags={
+                    "route": route_path,
+                    "error_code": status_code,
+                    "method": scope["method"].upper(),
+                }
             )
             self.deployment_request_error_counter.inc(
-                tags={"deployment": handle.deployment_name}
+                tags={
+                    "deployment": handle.deployment_name,
+                    "error_code": status_code,
+                    "method": scope["method"].upper(),
+                }
             )
 
 
