@@ -140,7 +140,10 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         num_loaded_samples = {}
         for policy_id, batch in train_batch.policy_batches.items():
             # Not a policy-to-train.
-            if not local_worker.is_policy_to_train(policy_id, train_batch):
+            if (
+                local_worker.is_policy_to_train is not None
+                and not local_worker.is_policy_to_train(policy_id, train_batch)
+            ):
                 continue
 
             # Decompress SampleBatch, in case some columns are compressed.
@@ -315,7 +318,10 @@ class MultiGPUTrainOneStep:
             num_loaded_samples = {}
             for policy_id, batch in samples.policy_batches.items():
                 # Not a policy-to-train.
-                if not self.local_worker.is_policy_to_train(policy_id, samples):
+                if (
+                    self.local_worker.is_policy_to_train is not None
+                    and not self.local_worker.is_policy_to_train(policy_id, samples)
+                ):
                     continue
 
                 # Decompress SampleBatch, in case some columns are compressed.

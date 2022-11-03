@@ -84,7 +84,7 @@ py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
     args = ["--yaml-dir=tuned_examples/a2c"]
@@ -761,6 +761,13 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_config",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_config.py"],
+)
+
+py_test(
     name = "test_algorithm_export_checkpoint",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
@@ -778,7 +785,7 @@ py_test(
     name = "test_memory_leaks_generic",
     main = "algorithms/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/tests/test_memory_leaks.py"]
 )
 
@@ -873,7 +880,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
@@ -1619,7 +1626,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_unity3d",
     tags = ["team:rllib", "env", "exclusive"],
-    size = "medium",
+    size = "small",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "unity3d", "8860"],
     data = glob(["examples/serving/*.py"]),
@@ -1676,7 +1683,7 @@ py_test(
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
     tags = ["team:rllib", "evaluation"],
-    size = "large",
+    size = "medium",
     srcs = ["evaluation/tests/test_envs_that_crash.py"]
 )
 
@@ -1737,6 +1744,27 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# RLlib core
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+py_test(
+    name = "test_torch_marl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_marl_module.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -1748,6 +1776,13 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
+)
+
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -1773,6 +1808,13 @@ py_test(
 )
 
 py_test(
+    name = "test_distributions_v2",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_distributions_v2.py"]
+)
+
+py_test(
     name = "test_lstms",
     tags = ["team:rllib", "models"],
     size = "large",
@@ -1795,10 +1837,10 @@ py_test(
 
 # Test Tensor specs
 py_test(
-    name = "test_tensor_specs",
+    name = "test_tensor_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs.py"]
+    srcs = ["models/specs/tests/test_tensor_spec.py"]
 )
 
 # test abstract base models
@@ -1817,12 +1859,12 @@ py_test(
     srcs = ["models/tests/test_torch_model.py"]
 )
 
-# test ModelSpecDict
+# test ModelSpec
 py_test(
-    name = "test_tensor_specs_dict",
+    name = "test_model_spec",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
+    srcs = ["models/specs/tests/test_model_spec.py"]
 )
 
 
@@ -2112,6 +2154,14 @@ py_test(
     srcs = ["utils/tests/test_check_multi_agent.py"]
 )
 
+py_test(
+    name = "test_actor_manager",
+    tags = ["team:rllib", "utils", "exclusive"],
+    size = "medium",
+    srcs = ["utils/tests/test_actor_manager.py"],
+    data = ["utils/tests/random_numbers.pkl"],
+)
+
 # --------------------------------------------------------------------
 # rllib/tests/ directory
 #
@@ -2144,29 +2194,56 @@ py_test(
 
 py_test(
     name = "tests/test_checkpoint_restore_pg",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestorePG"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
-    main = "tests/test_checkpoint_restore.py",
+    main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
-    srcs = ["tests/test_checkpoint_restore.py"],
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_tf",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTF"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_tf2",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTF2"]
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore_twice_torch",
+    main = "policy/tests/test_policy_checkpoint_restore_twice.py",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore_twice.py"],
+    args = ["TestPolicyFromCheckpointTwiceTorch"]
 )
 
 py_test(
@@ -2366,7 +2443,7 @@ py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
     args = ["TestSupportedMultiAgentPG"]
 )
@@ -2375,7 +2452,7 @@ py_test(
     name = "tests/test_supported_multi_agent_off_policy",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
@@ -2426,7 +2503,7 @@ py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
 )
@@ -2435,7 +2512,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )
@@ -2652,7 +2729,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
+    args = ["--framework=tf2"],
 )
 
 py_test(
@@ -3528,7 +3605,7 @@ py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 

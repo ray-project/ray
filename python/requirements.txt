@@ -8,12 +8,11 @@
 
 ## setup.py install_requires
 attrs
-click<=8.0.4,>=7.0
+click>=7.0
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-protobuf<4.0.0,>=3.15.35; platform_system != "Windows"
-protobuf>= 3.15.3, != 3.19.55; platform_system == "Windows"
+protobuf>= 3.15.3, != 3.19.55
 pyyaml
 aiosignal
 frozenlist

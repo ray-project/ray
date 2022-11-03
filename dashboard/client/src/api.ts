@@ -136,23 +136,6 @@ export type RayletData = {
   metricsExportPort: number;
 };
 
-export type ViewData = {
-  viewName: string;
-  measures: Measure[];
-};
-
-export type Measure = {
-  tags: string; // e.g.  "Tag1:Value1,Tag2:Value2,Tag3:Value3"
-  intValue?: number;
-  doubleValue?: number;
-  distributionMin?: number;
-  distributionMean?: number;
-  distributionMax?: number;
-  distributionCount?: number;
-  distributionBucketBoundaries?: number[];
-  distributionBucketCounts?: number[];
-};
-
 type BaseNodeInfo = {
   now: number;
   hostname: string;

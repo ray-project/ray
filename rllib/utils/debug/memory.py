@@ -189,7 +189,7 @@ def check_memory_leaks(
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=repeats or 200,
+            repeats=repeats or 100,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
