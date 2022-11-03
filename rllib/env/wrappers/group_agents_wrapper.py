@@ -87,25 +87,42 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
     def reset(self, seed: Optional[int] = None):
         if seed is None:
-            obs = self.env.reset()
+            obs_and_info = self.env.reset()
         else:
-            obs = self.env.seed(seed)
-        return self._group_items(obs)
+            obs_and_info = self.env.seed(seed)
+
+        if check_old_gym_env(self.env, reset_results=obs_and_info):
+            obs_and_info = obs_and_info, {}
+
+        return (
+            self._group_items(obs_and_info[0]),
+            self._group_items(
+                obs_and_info[1],
+                agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values()),
+            ),
+        )
 
     def step(self, action_dict):
         # Ungroup and send actions
         action_dict = self._ungroup_items(action_dict)
-        obs, rewards, dones, infos = self.env.step(action_dict)
+        results = self.env.step(action_dict)
+
+        if check_old_gym_env(self.env, step_results=results):
+            obs, rewards, dones, infos = results
+            truncateds =
+        else:
+            obs, rewards, dones, truncateds, infos = results
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
         rewards = self._group_items(rewards, agg_fn=lambda gvals: list(gvals.values()))
         dones = self._group_items(dones, agg_fn=lambda gvals: all(gvals.values()))
+        truncateds = self._group_items(truncateds, agg_fn=lambda gvals: all(gvals.values()))
         infos = self._group_items(
             infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())}
         )
 
-        # Aggregate rewards, but preserve the original values in infos
+        # Aggregate rewards, but preserve the original values in infos.
         for agent_id, rew in rewards.items():
             if isinstance(rew, list):
                 rewards[agent_id] = sum(rew)

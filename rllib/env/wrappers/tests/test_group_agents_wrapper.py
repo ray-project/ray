@@ -11,7 +11,7 @@ class TestGroupAgentsWrapper(unittest.TestCase):
             env=MultiAgentCartPole({"num_agents": 4}),
             groups={"group1": [0, 1], "group2": [2, 3]},
         )
-        obs = grouped_ma_cartpole.reset()
+        obs, _ = grouped_ma_cartpole.reset()
         self.assertTrue(len(obs) == 2)
         self.assertTrue("group1" in obs and "group2" in obs)
         self.assertTrue(isinstance(obs["group1"], list) and len(obs["group1"]) == 2)
