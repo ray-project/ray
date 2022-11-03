@@ -85,10 +85,10 @@ def ray_4_node_4_cpu():
 
 
 @pytest.fixture
-def ray_2_node_3_worker():
+def ray_2_node_4_gpu():
     cluster = Cluster()
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=1)
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=4)
 
     ray.init(address=cluster.address)
 
@@ -99,10 +99,10 @@ def ray_2_node_3_worker():
 
 
 @pytest.fixture
-def ray_2_node_4_gpu():
+def ray_2_node_2_cpu():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=2, num_gpus=4)
+        cluster.add_node(num_cpus=2)
 
     ray.init(address=cluster.address)
 

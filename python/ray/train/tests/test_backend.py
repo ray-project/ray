@@ -131,7 +131,7 @@ def test_local_ranks(ray_start_2_cpus):
     assert set(e.finish_training()) == {0, 1}
 
 
-def test_local_world_size(ray_2_node_3_worker):
+def test_local_world_size(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
         e = BackendExecutor(config, num_workers=3)
@@ -144,7 +144,7 @@ def test_local_world_size(ray_2_node_3_worker):
         assert set(e.finish_training()) == {2, 1}
 
 
-def test_node_ranks(ray_2_node_3_worker):
+def test_node_ranks(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
         e = BackendExecutor(config, num_workers=3)
