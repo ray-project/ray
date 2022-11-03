@@ -274,7 +274,7 @@ install_npm_project() {
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
-    npm install
+    npm ci
   fi
 }
 
