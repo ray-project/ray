@@ -140,6 +140,9 @@ class PPOTorchPolicy(
             ),
         )
 
+        print("surrogate_loss: ", surrogate_loss)
+        breakpoint()
+
         # Compute a value function loss.
         if self.config["use_critic"]:
             value_fn_out = model.value_function()

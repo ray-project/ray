@@ -82,18 +82,48 @@ class PPOTorchPolicyV2(
         self._initialize_loss_from_dummy_batch()
 
     def make_rl_module(self):
+
+        activation = self.config["model"]["fcnet_activation"]
+        if activation == "tanh":
+            activation = "Tanh"
+        elif activation == "relu":
+            activation = "ReLU"
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
+
+        fcnet_hiddens = self.config["model"]["fcnet_hiddens"]
+        vf_share_layers = self.config["model"]["vf_share_layers"]
+        free_log_std = self.config["model"]["free_log_std"]
+
+        if vf_share_layers:
+            encoder_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            # TODO
+            pi_config = FCConfig()
+            vf_config = FCConfig()
+        else:
+            pi_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            vf_config = FCConfig(
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+            )
+            encoder_config = None
+
         config_ = PPOModuleConfig(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            pi_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
-            vf_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
+            encoder_config=encoder_config,
+            pi_config=pi_config,
+            vf_config=vf_config,
+            free_log_std=free_log_std,
         )
+
+        breakpoint()
 
         return SimplePPOModule(config_)
 

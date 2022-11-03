@@ -101,6 +101,9 @@ class PPOModuleConfig:
         pi_config: The configuration for the policy network.
         vf_config: The configuration for the value network.
         encoder_config: The configuration for the encoder network.
+        free_log_std: For DiagGaussian action distributions, make the second half of 
+            the model outputs floating bias variables instead of state-dependent. This 
+            only has an effect is using the default fully connected net.
     """
 
     observation_space: gym.Space = None
@@ -108,6 +111,7 @@ class PPOModuleConfig:
     pi_config: FCConfig = None
     vf_config: FCConfig = None
     encoder_config: FCConfig = None
+    free_log_std: bool = False
 
 
 class FCNet(nn.Module):
@@ -125,7 +129,6 @@ class FCNet(nn.Module):
         super().__init__()
         self.input_dim = config.input_dim
         self.hidden_layers = config.hidden_layers
-
 
         activation_class = getattr(nn, config.activation)()
         self.layers = []
@@ -353,7 +356,7 @@ class SimplePPOModule(TorchRLModule):
         e3 = time.time()
         print("action_dist_construction_ms: ", (e3 - s3) * 1000)
         s4 = time.time()
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS].squeeze(-1))
+        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
         e4 = time.time()
         print("logp_ms: ", (e4 - s4) * 1000)
         s5 = time.time()
