@@ -2960,8 +2960,13 @@ class Dataset(Generic[T]):
 
             If your model accepts a single tensor as input, specify a single feature column.
 
-            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your model accepts a dictionary as input, specify a list of feature columns.
+
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
             tensor as input, combine features with
@@ -2972,13 +2977,8 @@ class Dataset(Generic[T]):
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
-            >>> ds.to_tf("features", "target")
+            >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
-
-            If your model accepts a dictionary as input, specify a list of feature columns.
-
-            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
-            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
