@@ -10,6 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
+from ray.train.torch import TorchCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -73,7 +74,9 @@ class TorchPredictor(DLPredictor):
         model: Optional[torch.nn.Module] = None,
         use_gpu: bool = False,
     ) -> "TorchPredictor":
-        """Instantiate the predictor from a Checkpoint.
+        """Instantiate the predictor from a Checkpoint. If the checkpoint object does
+        not have ``get_model`` or ``get_preprocessor`` function implemented, then the
+        checkpoint is laoded via ``TorchCheckpoint.from_checkpoint``.
 
         The checkpoint is expected to be a result of ``TorchTrainer``.
 
@@ -88,7 +91,11 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        # checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        if not hasattr(checkpoint, "get_model") or not hasattr(
+            checkpoint, "get_preprocessor"
+        ):
+            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
