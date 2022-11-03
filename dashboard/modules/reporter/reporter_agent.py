@@ -89,6 +89,8 @@ def jsonify_asdict(o) -> str:
 
 
 # A list of gauges to record and export metrics.
+# NOTE: SessionName tag is automatically recorded when metrics are reported
+# by metrics_agent.py
 METRICS_GAUGES = {
     "node_cpu_utilization": Gauge(
         "node_cpu_utilization",
@@ -245,6 +247,12 @@ METRICS_GAUGES = {
         "Pending nodes on the cluster",
         "count",
         ["node_type", "SessionName"],
+    ),
+    "head_node_connections_total": Gauge(
+        "head_node_connections_total",
+        "Number of connections on a head node",
+        "",
+        ["SessionName"],
     ),
 }
 
@@ -550,6 +558,14 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
+        connections_total = None
+        try:
+            # MacOS and AIX requires the root previlege, so we don't report this.
+            if not sys.platform == "darwin":
+                connections_total = len(psutil.net_connections())
+        except psutil.AccessDenied:
+            pass
+
         return {
             "now": now,
             "hostname": self._hostname,
@@ -570,6 +586,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
+            "connections_total": connections_total,
         }
 
     def _record_stats(self, stats, cluster_stats):
@@ -622,6 +639,19 @@ class ReporterAgent(
                         tags={"node_type": node_type},
                     )
                 )
+
+        #  -- Connections on a head node --
+        # MacOS and AIX requires the root privilege.
+        # In that case, this will return None.
+        num_connections = stats.get("connections_total")
+        if self._is_head_node and num_connections:
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["head_node_connections_total"],
+                    value=num_connections,
+                    tags={},
+                )
+            )
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])

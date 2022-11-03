@@ -372,6 +372,10 @@ def test_metrics_export_node_metrics(shutdown_only):
             assert node_metric in avail_metrics
         for node_metric in _NODE_COMPONENT_METRICS:
             assert node_metric in avail_metrics
+
+        if sys.platform != "darwin":
+            assert "ray_head_node_connections_total" in avail_metrics
+
         return True
 
     def verify_dashboard_metrics():
