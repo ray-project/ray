@@ -66,14 +66,14 @@ class CounterMap {
     }
   }
 
-  /// Decrement the specified key by `val`, default to 1. If the count for the key drops
-  /// to zero, the entry for the key is erased from the counter. It is not allowed for the
-  /// count to be decremented below zero.
-  void Decrement(const K &key, int64_t val = 1) {
+  /// Decrement the specified key by one. If the count for the key drops to zero,
+  /// the entry for the key is erased from the counter. It is not allowed for
+  /// the count to be decremented below zero.
+  void Decrement(const K &key) {
     auto it = counters_.find(key);
     RAY_CHECK(it != counters_.end());
-    it->second -= val;
-    total_ -= val;
+    it->second -= 1;
+    total_ -= 1;
     int64_t new_value = it->second;
     if (new_value <= 0) {
       counters_.erase(it);
@@ -94,11 +94,11 @@ class CounterMap {
     }
   }
 
-  /// Decrement `old_key` by one and increment `new_key` by `val`, default to 1.
-  void Swap(const K &old_key, const K &new_key, int64_t val = 1) {
+  /// Decrement `old_key` by one and increment `new_key` by one.
+  void Swap(const K &old_key, const K &new_key) {
     if (old_key != new_key) {
-      Decrement(old_key, val);
-      Increment(new_key, val);
+      Decrement(old_key);
+      Increment(new_key);
     }
   }
 

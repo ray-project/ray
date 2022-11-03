@@ -32,13 +32,10 @@ T Random(T max = std::numeric_limits<T>::max()) {
   return absl::Uniform(bitgen, 0, max);
 }
 
-Allocation CreateAllocation(Allocation alloc,
-                            int64_t size,
-                            bool fallback_allocated = false) {
+Allocation CreateAllocation(Allocation alloc, int64_t size) {
   alloc.size = size;
   alloc.offset = Random<ptrdiff_t>();
   alloc.mmap_size = Random<int64_t>();
-  alloc.fallback_allocated = fallback_allocated;
   return alloc;
 }
 
@@ -103,7 +100,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_FALSE(entry->allocation.fallback_allocated);
 
     // verify get
     auto entry1 = store.GetObject(kId1);
@@ -149,9 +145,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(nullptr, store.CreateObject(info, {}, /*fallback_allocate*/ false));
 
     // fallback allocation successful
-    allocation = CreateAllocation(Allocation(), 12, /* fallback_allocated */ true);
-    alloc_str = Serialize(allocation);
-
     EXPECT_CALL(allocator, FallbackAllocate(12))
         .Times(1)
         .WillOnce(Invoke([&](size_t bytes) {
@@ -165,7 +158,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_TRUE(entry->allocation.fallback_allocated);
 
     // delete unsealed
     EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {

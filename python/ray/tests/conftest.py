@@ -362,6 +362,16 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
+def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+    param = getattr(request, "param", {})
+    env_vars = param.pop("env_vars", {})
+    for k, v in env_vars.items():
+        monkeypatch.setenv(k, v)
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_2_nodes(request, maybe_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:

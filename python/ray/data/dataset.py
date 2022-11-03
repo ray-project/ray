@@ -1998,7 +1998,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
-    def take_all(self, limit: int = 100000) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
         This will move the entire dataset to the caller's machine; if the
@@ -2016,7 +2016,7 @@ class Dataset(Generic[T]):
         output = []
         for row in self.iter_rows():
             output.append(row)
-            if len(output) > limit:
+            if limit is not None and len(output) > limit:
                 raise ValueError(
                     "The dataset has more than the given limit of {} records.".format(
                         limit
