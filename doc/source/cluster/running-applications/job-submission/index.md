@@ -1,8 +1,10 @@
 (jobs-overview)=
 
-# Ray Jobs API
+# Ray Jobs Overview
 
 Once you have deployed a Ray cluster (on [VMs](vm-cluster-quick-start) or [Kubernetes](kuberay-quickstart)), you are ready to run a Ray application!
+
+## Ray Jobs API
 
 The recommended way to run a job on a Ray cluster is to use the *Ray Jobs API*, which consists of a CLI tool, Python SDK, and a REST API.
 
@@ -23,9 +25,9 @@ Jobs are bound to the lifetime of a Ray cluster, so if the cluster goes down, al
 
 To get started with the Ray Jobs API, check out the [quickstart](jobs-quickstart) guide, which walks you through the CLI tools for submitting and interacting with a Ray Job.
 This is suitable for any client that can communicate over HTTP to the Ray Cluster.
-If needed, Ray Jobs also provides APIs for [programmatic job submission](ray-job-sdk) and [job submission using REST](ray-job-rest-api).
+If needed, the Ray Jobs API also provides APIs for [programmatic job submission](ray-job-sdk) and [job submission using REST](ray-job-rest-api).
 
-# Running Jobs Interactively
+## Running Jobs Interactively
 
 If you would like to run an application *interactively* and see the output in real time (for example, during development or debugging), you can:
 
