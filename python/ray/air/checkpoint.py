@@ -454,6 +454,7 @@ class Checkpoint:
 
         return checkpoint
 
+    # TODO: Deprecate `from_checkpoint`. For context, see #29058.
     @classmethod
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
         """Create a checkpoint from a generic :py:class:`Checkpoint`.
