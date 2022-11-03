@@ -53,6 +53,7 @@ extern const TagKeyType LocationKey;
 constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
 constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
 constexpr char kObjectLocSpilled[] = "SPILLED";
+constexpr char kObjectLocWorkerHeap[] = "WORKER_HEAP";
 
 // Object store memory sealed/unsealed tag
 extern const TagKeyType ObjectStateKey;

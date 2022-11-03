@@ -839,6 +839,8 @@ void CoreWorker::RecordMetrics() {
   task_manager_->RecordMetrics();
   // Record metrics for executed tasks.
   task_counter_.RecordMetrics();
+  // Record worker heap memory metrics.
+  memory_store_->RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -3226,7 +3228,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_in_plasma(memory_store_stats.num_in_plasma);
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
-  stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
+  stats->set_used_object_store_memory(memory_store_stats.num_local_objects_bytes);
 
   if (request.include_memory_info()) {
     reference_counter_->AddObjectRefStats(
