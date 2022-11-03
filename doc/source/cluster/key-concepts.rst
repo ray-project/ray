@@ -61,21 +61,13 @@ It is important to understand that the autoscaler only reacts to task and actor 
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
 
-.. _ray_driver:
-
-Ray Driver
-----------
-
-A Ray driver is the process that calls the Ray tasks and actors in the user application.
-A driver is started by running `ray.init()`. The script that calls `ray.init()` may also be referred to as the "driver script".
-
-
 .. _cluster-clients-and-jobs:
 
 Ray Job
 -------
 
-A Ray Job is a user application that includes a Ray driver. There are two ways of running Ray Jobs on Ray clusters:
+A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
+The worker that runs the Python script is known as the *driver* of the job.
 
 The recommended method for running a workload on a Ray cluster is to use Ray Job Submission.
 Ray Job submission enables users to submit locally developed and tested applications to a
