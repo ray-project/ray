@@ -33,7 +33,7 @@ class MyCallBack(DefaultCallbacks):
     ):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 8, pos // 8
-        self.deltas.extend((x ** 2 + y ** 2) ** 0.5)
+        self.deltas.extend((x**2 + y**2) ** 0.5)
 
     def on_sample_end(self, *, worker, samples, **kwargs):
         print("mean. distance from origin={}".format(np.mean(self.deltas)))

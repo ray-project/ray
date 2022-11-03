@@ -44,8 +44,8 @@ def test_simple_serialization(ray_start_regular):
         "a",
         string.printable,
         "\u262F",
-        u"hello world",
-        u"\xff\xfe\x9c\x001\x000\x00",
+        "hello world",
+        "\xff\xfe\x9c\x001\x000\x00",
         None,
         True,
         False,
@@ -152,7 +152,7 @@ def test_complex_serialization(ray_start_regular):
         else:
             assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
-    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    long_extras = [0, np.array([["hi", "hi"], [1.3, 1]])]
 
     PRIMITIVE_OBJECTS = [
         0,
@@ -165,8 +165,8 @@ def test_complex_serialization(ray_start_regular):
         "a",
         string.printable,
         "\u262F",
-        u"hello world",
-        u"\xff\xfe\x9c\x001\x000\x00",
+        "hello world",
+        "\xff\xfe\x9c\x001\x000\x00",
         None,
         True,
         False,
@@ -299,7 +299,7 @@ def test_complex_serialization(ray_start_regular):
         assert_equal(obj, ray.get(ray.put(obj)))
 
     # Test StringIO serialization
-    s = io.StringIO(u"Hello, world!\n")
+    s = io.StringIO("Hello, world!\n")
     s.seek(0)
     line = s.readline()
     s.seek(0)

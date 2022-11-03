@@ -127,7 +127,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock():
+def test_autoscaler_warn_deadlock(enable_syncer_test):
     script = """
 import ray
 import time
@@ -654,7 +654,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:

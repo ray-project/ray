@@ -125,8 +125,8 @@ class AgentCollector:
         episode_id: EpisodeID,
         agent_index: int,
         env_id: EnvID,
-        t: int,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -136,10 +136,10 @@ class AgentCollector:
             agent_index: Unique int index (starting from 0) for the agent
                 within its episode. Not to be confused with AGENT_ID (Any).
             env_id: The environment index (in a vectorized setup).
-            t: The time step (episode length - 1). The initial obs has
-                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs: The initial observation tensor (after
             `env.reset()`).
+            t: The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
         """
         # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
@@ -188,6 +188,10 @@ class AgentCollector:
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
+
+        # Default to next timestep if not provided in input values
+        if SampleBatch.T not in input_values:
+            values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
@@ -321,9 +325,9 @@ class AgentCollector:
                     data_col, view_req, build_for_inference=False
                 )
 
-                # we need to skip this view_col if it does not exist in the buffers and
+                # We need to skip this view_col if it does not exist in the buffers and
                 # is not an RNN state because it could be the special keys that gets
-                # added by policy's postprocessing function for trianing.
+                # added by policy's postprocessing function for training.
                 if not is_state:
                     continue
 

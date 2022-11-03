@@ -176,6 +176,7 @@ test_python() {
       -python/ray/serve:test_gradio
       -python/ray/serve:test_gradio_visualization
       -python/ray/serve:test_air_integrations_gpu
+      -python/ray/serve:test_fastapi
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -249,7 +250,7 @@ test_cpp() {
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
-  rm -rf ray-template && mkdir ray-template
+  rm -rf ray-template
   ray cpp --generate-bazel-project-template-to ray-template
   pushd ray-template && bash run.sh
 }
@@ -573,6 +574,17 @@ lint_web() {
   )
 }
 
+check_python_test_directories_contain_init_file() {
+  cd "${WORKSPACE_DIR}"
+  while IFS= read -r -d '' test_directory
+  do
+    if [ ! -e "$test_directory"/__init__.py ]; then
+      echo "Add '__init__.py' to '$test_directory'"
+      exit 1
+    fi
+  done <   <(find python -name "tests" -type d -print0)
+}
+
 lint_copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
@@ -609,6 +621,9 @@ _lint() {
 
   # Run annotations check.
   lint_annotations
+
+  # Check Python test directories contain `__init__.py` file.
+  check_python_test_directories_contain_init_file
 
   # Make sure that the README is formatted properly.
   lint_readme

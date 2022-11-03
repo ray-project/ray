@@ -325,6 +325,10 @@ std::string DependencyManager::DebugString() const {
   return result.str();
 }
 
+void DependencyManager::RecordMetrics() {
+  waiting_tasks_counter_.FlushOnChangeCallbacks();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

@@ -62,10 +62,6 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
-# The key used to identify whether we have already warned about ray.train
-# functions being used outside of the session
-SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
-
 # Default NCCL_SOCKET_IFNAME.
 # Use ethernet when possible.
 # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
