@@ -299,8 +299,8 @@ Supported Output Formats
    * - PyTorch Tensor Iterator
      - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
      - ✅
-   * - TensorFlow Tensor Iterator
-     - :meth:`ds.iter_tf_batches() <ray.data.Dataset.iter_tf_batches>`
+   * - TensorFlow Dataset
+     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
    * - Random Access Dataset
      - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
