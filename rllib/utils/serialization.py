@@ -81,11 +81,10 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         }
 
     def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
-        d = {
+        return {
             "space": "multi-binary",
             "n": sp.n,
         }
-        return d
 
     def _tuple(sp: gym.spaces.Tuple) -> Dict:
         return {
