@@ -551,15 +551,14 @@ class Dataset(Generic[T]):
                 if isinstance(batch, dict):
                     for key, value in batch.items():
                         if not isinstance(value, np.ndarray):
-                            with np.printoptions(edgeitems=1):
-                                raise ValueError(
-                                    "The `fn` you passed to `map_batches` returned a "
-                                    f"`dict`. `map_batches` expects all `dict` values "
-                                    f"to be of type `numpy.ndarray`, but the value "
-                                    f"corresponding to key {key!r} is of type "
-                                    f"{type(value)}. To fix this issue, convert "
-                                    f"the {type(value)} to a `numpy.ndarray`."
-                                )
+                            raise ValueError(
+                                "The `fn` you passed to `map_batches` returned a "
+                                f"`dict`. `map_batches` expects all `dict` values "
+                                f"to be of type `numpy.ndarray`, but the value "
+                                f"corresponding to key {key!r} is of type "
+                                f"{type(value)}. To fix this issue, convert "
+                                f"the {type(value)} to a `numpy.ndarray`."
+                            )
 
             def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
