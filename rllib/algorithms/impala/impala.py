@@ -641,7 +641,7 @@ class Impala(Algorithm):
         # Extract most recent train results from learner thread.
         train_results = self.process_trained_results()
 
-        # Sync worker weights.
+        # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.update_workers_if_necessary(policy_ids=list(train_results.keys()))
 
