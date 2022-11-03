@@ -121,14 +121,14 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
@@ -200,13 +200,13 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
   return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
 
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
@@ -439,14 +439,14 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
   return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   // The task is still pinned because its return ID is still in scope.
   ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
@@ -485,7 +485,7 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   rpc::Address worker_addr;
   worker_addr.set_raylet_id(node_id.Binary());
   manager_.AddPendingTask(rpc::Address(), spec, "", 0);
-  manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr);
+  manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr, false);
 }
 
 // Test to make sure that the task spec and dependencies for an object are
@@ -508,7 +508,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -516,7 +516,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   // The task should still be in the lineage because its return ID is in scope.
   ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
   ASSERT_TRUE(reference_counter_->HasReference(dep1));
@@ -551,7 +551,7 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -559,7 +559,7 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   return_object->set_in_plasma(false);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   // All lineage should be erased because the return object was not stored in
   // plasma.
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
@@ -597,7 +597,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -605,7 +605,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   // All lineage should be erased.
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(reference_counter_->HasReference(dep1));
@@ -630,7 +630,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -638,7 +638,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     auto data = GenerateRandomBuffer();
     return_object->set_data(data->Data(), data->Size());
     return_object->set_in_plasma(true);
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
 
     // All tasks should be pinned in the lineage.
     ASSERT_EQ(manager_.NumSubmissibleTasks(), i + 1);
@@ -676,7 +676,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -684,7 +684,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     auto data = GenerateRandomBuffer();
     return_object->set_data(data->Data(), data->Size());
     return_object->set_in_plasma(false);
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
 
     // No tasks should be pinned because they returned direct objects.
     ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
@@ -729,7 +729,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
-  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -737,7 +737,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task finished, its return ID is still in scope, and the return object
@@ -760,7 +760,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The resubmitted task finishes.
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // The task cannot be resubmitted because its spec has been released.
   ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
@@ -785,7 +785,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
 
   // The task completes. Both return objects are stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -797,7 +797,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
     return_object2->set_object_id(return_id2.Binary());
     return_object2->set_data(data->Data(), data->Size());
     return_object2->set_in_plasma(true);
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   }
 
   // The task finished, its return ID is still in scope, and the return object
@@ -815,7 +815,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -827,7 +827,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
     return_object2->set_object_id(return_id2.Binary());
     return_object2->set_data(data->Data(), data->Size());
     return_object2->set_in_plasma(true);
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   }
   ASSERT_TRUE(stored_in_plasma.count(return_id1));
   ASSERT_FALSE(stored_in_plasma.count(return_id2));
@@ -847,7 +847,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
 
   // The task completes. One return object is stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -858,7 +858,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
     auto return_object2 = reply.add_return_objects();
     return_object2->set_object_id(return_id2.Binary());
     return_object2->set_data(data->Data(), data->Size());
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   }
 
   // The task finished, its return ID is still in scope, and the return object
@@ -875,7 +875,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
@@ -897,7 +897,7 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -914,7 +914,7 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
       dynamic_return_object->set_in_plasma(true);
     }
 
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   }
 
   // The task finished, its return ID is still in scope, and the return object
@@ -958,7 +958,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -975,7 +975,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
       dynamic_return_object->set_in_plasma(true);
     }
 
-    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   }
 
   // Resubmit the task.
@@ -997,7 +997,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);

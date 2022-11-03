@@ -2,6 +2,7 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -247,14 +248,23 @@ class GroupedDataset(Generic[T]):
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
-            >>> # list of a single record out). Note that median is not an
-            >>> # associative function so cannot be computed with aggregate().
+            >>> # list of a single record out).
             >>> import ray
             >>> import pandas as pd
             >>> import numpy as np
+            >>> # Get median per group. Note that median is not an associative
+            >>> # function so cannot be computed with aggregate().
             >>> ds = ray.data.range(100) # doctest: +SKIP
             >>> ds.groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
             ...     lambda x: [np.median(x)])
+            >>> # Get first value per group.
+            >>> ds = ray.data.from_items([ # doctest: +SKIP
+            ...     {"group": 1, "value": 1},
+            ...     {"group": 1, "value": 2},
+            ...     {"group": 2, "value": 3},
+            ...     {"group": 2, "value": 4}])
+            >>> ds.groupby("group").map_groups( # doctest: +SKIP
+            ...     lambda g: [g["value"][0]])
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
@@ -317,7 +327,7 @@ class GroupedDataset(Generic[T]):
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = block_accessor.builder()
+            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)

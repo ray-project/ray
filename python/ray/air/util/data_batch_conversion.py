@@ -7,14 +7,8 @@ import pandas as pd
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
-from ray.air.util.transform_pyarrow import (
-    _is_column_extension_type,
-    _concatenate_extension_column,
-)
-
 try:
     import pyarrow
 except ImportError:
@@ -139,6 +133,12 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
+        from ray.air.util.tensor_extensions.arrow import ArrowTensorType
+        from ray.air.util.transform_pyarrow import (
+            _is_column_extension_type,
+            _concatenate_extension_column,
+        )
+
         if data.column_names == [TENSOR_COLUMN_NAME] and (
             isinstance(data.schema.types[0], ArrowTensorType)
         ):
@@ -214,18 +214,19 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
     # this. See https://github.com/pandas-dev/pandas/issues/41848
-    for col_name, col in df.items():
-        if column_needs_tensor_extension(col):
-            try:
-                df.loc[:, col_name] = TensorArray(col)
-            except Exception as e:
-                raise ValueError(
-                    f"Tried to cast column {col_name} to the TensorArray tensor "
-                    "extension type but the conversion failed. To disable automatic "
-                    "casting to this tensor extension, set "
-                    "ctx = DatasetContext.get_current(); "
-                    "ctx.enable_tensor_extension_casting = False."
-                ) from e
+    with pd.option_context("chained_assignment", None):
+        for col_name, col in df.items():
+            if column_needs_tensor_extension(col):
+                try:
+                    df.loc[:, col_name] = TensorArray(col)
+                except Exception as e:
+                    raise ValueError(
+                        f"Tried to cast column {col_name} to the TensorArray tensor "
+                        "extension type but the conversion failed. To disable "
+                        "automatic casting to this tensor extension, set "
+                        "ctx = DatasetContext.get_current(); "
+                        "ctx.enable_tensor_extension_casting = False."
+                    ) from e
     return df
 
 
@@ -233,8 +234,9 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     from ray.air.util.tensor_extensions.pandas import TensorDtype
 
-    # Try to convert any tensor extension columns to ndarray columns.
-    for col_name, col in df.items():
-        if isinstance(col.dtype, TensorDtype):
-            df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
-    return df
+    with pd.option_context("chained_assignment", None):
+        # Try to convert any tensor extension columns to ndarray columns.
+        for col_name, col in df.items():
+            if isinstance(col.dtype, TensorDtype):
+                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+        return df

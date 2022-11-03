@@ -96,7 +96,7 @@ class _StatsActor:
     extracted without using an out-of-band actor."""
 
     def __init__(self, max_stats=1000):
-        # Mapping from uuid -> dataset-specific stats.
+        # Mapping from uuid -> (task_id -> list of blocks statistics).
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
         self.start_time = {}
@@ -116,11 +116,15 @@ class _StatsActor:
             if uuid in self.metadata:
                 del self.metadata[uuid]
 
-    def record_task(self, stats_uuid, task_idx, metadata):
+    def record_task(
+        self, stats_uuid: str, task_idx: int, blocks_metadata: List[BlockMetadata]
+    ):
         # Null out the schema to keep the stats size small.
-        metadata.schema = None
+        # TODO(chengsu): ideally schema should be null out on caller side.
+        for metadata in blocks_metadata:
+            metadata.schema = None
         if stats_uuid in self.start_time:
-            self.metadata[stats_uuid][task_idx] = metadata
+            self.metadata[stats_uuid][task_idx] = blocks_metadata
             self.last_time[stats_uuid] = time.perf_counter()
 
     def get(self, stats_uuid):
@@ -230,10 +234,15 @@ class DatasetStats:
 
         if self.needs_stats_actor:
             ac = self.stats_actor
-            # XXX this is a super hack, clean it up.
+            # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            for i, metadata in stats_map.items():
-                self.stages["read"][i] = metadata
+            if DatasetContext.get_current().block_splitting_enabled:
+                self.stages["read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["read"] += blocks_metadata
+            else:
+                for i, metadata in stats_map.items():
+                    self.stages["read"][i] = metadata[0]
         out = ""
         if self.parents:
             for p in self.parents:

@@ -14,7 +14,7 @@ logger = logging.getLogger()
 
 @DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
-    """The Direct Method estimator.
+    r"""The Direct Method estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 
@@ -73,7 +73,7 @@ class DirectMethod(OffPolicyEstimator):
 
         v_behavior = 0.0
         for t in range(episode.count):
-            v_behavior += rewards[t] * self.gamma ** t
+            v_behavior += rewards[t] * self.gamma**t
 
         v_target = self._compute_v_target(episode[:1])
 

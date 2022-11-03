@@ -26,6 +26,7 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = (
             dqn.dqn.DQNConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -33,8 +34,7 @@ class TestDQN(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
-            plain_config = deepcopy(config)
-            trainer = dqn.DQN(config=plain_config, env="CartPole-v0")
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -48,7 +48,7 @@ class TestDQN(unittest.TestCase):
             rainbow_config = deepcopy(config).training(
                 num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
             )
-            trainer = dqn.DQN(config=rainbow_config, env="CartPole-v0")
+            trainer = rainbow_config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -65,6 +65,7 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = (
             dqn.dqn.DQNConfig()
+            .environment("Taxi-v3")
             .rollouts(num_rollout_workers=2)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -72,8 +73,7 @@ class TestDQN(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
-            plain_config = deepcopy(config)
-            trainer = dqn.DQN(config=plain_config, env="Taxi-v3")
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -87,7 +87,7 @@ class TestDQN(unittest.TestCase):
             rainbow_config = deepcopy(config).training(
                 num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
             )
-            trainer = dqn.DQN(config=rainbow_config, env="Taxi-v3")
+            trainer = rainbow_config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -101,6 +101,7 @@ class TestDQN(unittest.TestCase):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
         config = (
             dqn.dqn.DQNConfig()
+            .environment("FrozenLake-v1")
             .rollouts(num_rollout_workers=0)
             .environment(env_config={"is_slippery": False, "map_name": "4x4"})
         ).training(num_steps_sampled_before_learning_starts=0)
@@ -110,7 +111,7 @@ class TestDQN(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(config):
             # Default EpsilonGreedy setup.
-            trainer = dqn.DQN(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             for _ in range(50):
@@ -128,7 +129,7 @@ class TestDQN(unittest.TestCase):
             config.exploration(
                 exploration_config={"type": "SoftQ", "temperature": 0.000001}
             )
-            trainer = dqn.DQN(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # Due to the low temp, always expect the same action.
             actions = [trainer.compute_single_action(obs)]
             for _ in range(50):
@@ -138,7 +139,7 @@ class TestDQN(unittest.TestCase):
 
             # Higher softmax temperature.
             config.exploration_config["temperature"] = 1.0
-            trainer = dqn.DQN(config=config, env="FrozenLake-v1")
+            trainer = config.build()
 
             # Even with the higher temperature, if we set explore=False, we
             # should expect the same actions always.
@@ -157,7 +158,7 @@ class TestDQN(unittest.TestCase):
 
             # With Random exploration.
             config.exploration(exploration_config={"type": "Random"}, explore=True)
-            trainer = dqn.DQN(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             actions = []
             for _ in range(300):
                 actions.append(trainer.compute_single_action(obs))

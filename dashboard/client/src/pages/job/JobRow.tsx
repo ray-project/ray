@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { DurationText } from "../../common/DurationText";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
@@ -25,18 +26,31 @@ export const JobRow = ({
   const { ipLogMap } = useContext(GlobalContext);
   const { progress, error } = useJobProgress(job_id ?? undefined);
 
+  const progressBar = (() => {
+    if (!progress || error) {
+      if (status === "SUCCEEDED" || status === "FAILED") {
+        // Show a fake all-green progress bar.
+        return <MiniTaskProgressBar numFinished={1} showTooltip={false} />;
+      } else {
+        return "unavailable";
+      }
+    }
+    if (status === "SUCCEEDED" || status === "FAILED") {
+      // TODO(aguo): Show failed tasks in progress bar once supported.
+      return <MiniTaskProgressBar {...progress} showAsComplete />;
+    } else {
+      return <MiniTaskProgressBar {...progress} />;
+    }
+  })();
+
   return (
     <TableRow>
-      <TableCell align="center">{job_id ?? "-"}</TableCell>
+      <TableCell align="center">
+        {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
+      </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
-      <TableCell align="center">
-        {progress && !error ? (
-          <MiniTaskProgressBar {...progress} />
-        ) : (
-          "unavailable"
-        )}
-      </TableCell>
+      <TableCell align="center">{progressBar}</TableCell>
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
@@ -62,6 +76,13 @@ export const JobRow = ({
         {end_time && end_time > 0
           ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
           : "-"}
+      </TableCell>
+      <TableCell align="center">
+        {start_time && start_time > 0 ? (
+          <DurationText startTime={start_time} endTime={end_time} />
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>

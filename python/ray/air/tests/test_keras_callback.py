@@ -4,10 +4,10 @@ import tensorflow as tf
 import ray
 from ray.air import session
 from ray.air.callbacks.keras import Callback
-from ray.air.constants import MODEL_KEY
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (
+    TensorflowCheckpoint,
     TensorflowTrainer,
     prepare_dataset_shard,
     TensorflowPredictor,
@@ -79,8 +79,8 @@ def test_keras_callback_e2e():
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
-    checkpoint_dict = checkpoint.to_dict()
-    assert MODEL_KEY in checkpoint_dict
+    assert isinstance(checkpoint, TensorflowCheckpoint)
+    assert checkpoint._flavor == TensorflowCheckpoint.Flavor.MODEL_WEIGHTS
 
     predictor = TensorflowPredictor.from_checkpoint(
         checkpoint, model_definition=build_model

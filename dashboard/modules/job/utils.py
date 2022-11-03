@@ -20,7 +20,9 @@ from ray.dashboard.modules.job.common import (
     validate_request_type,
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobInfoStorageClient,
 )
+from ray.core.generated import gcs_service_pb2
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -178,7 +180,7 @@ async def get_driver_jobs(
 
 async def find_job_by_ids(
     gcs_aio_client: GcsAioClient,
-    job_manager: "JobManager",  # noqa: F821
+    job_info_client: JobInfoStorageClient,
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
     """
@@ -204,7 +206,7 @@ async def find_job_by_ids(
         # then lets try to search for a submission with given id
         submission_id = job_or_submission_id
 
-    job_info = await job_manager.get_job_info(submission_id)
+    job_info = await job_info_client.get_info(submission_id)
     if job_info:
         driver = submission_job_drivers.get(submission_id)
         job = JobDetails(
@@ -221,7 +223,7 @@ async def find_job_by_ids(
 
 async def get_supervisor_actor_into(
     gcs_aio_client: GcsAioClient, job_submission_id: str
-):
+) -> gcs_service_pb2.GetNamedActorInfoReply:
     actor_info = await gcs_aio_client.get_named_actor_info(
         JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id),
         SUPERVISOR_ACTOR_RAY_NAMESPACE,

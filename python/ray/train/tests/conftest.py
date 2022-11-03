@@ -5,6 +5,7 @@ from ray.tests.conftest import pytest_runtest_makereport  # noqa
 import pytest
 
 import ray
+from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -24,3 +25,38 @@ def ray_start_runtime_env():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_1_cpu_1_gpu():
+    address_info = ray.init(num_cpus=1, num_gpus=1)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpus_2_gpus():
+    address_info = ray.init(num_cpus=4, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_2_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()

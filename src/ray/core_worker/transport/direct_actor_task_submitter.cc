@@ -468,7 +468,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         reply_callback(status, reply);
       };
 
-  task_finisher_.MarkTaskWaitingForExecution(task_id);
+  task_finisher_.MarkTaskWaitingForExecution(task_id,
+                                             NodeID::FromBinary(addr.raylet_id()));
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
@@ -490,7 +491,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
   } else if (status.ok()) {
-    task_finisher_.CompletePendingTask(task_id, reply, addr);
+    task_finisher_.CompletePendingTask(
+        task_id, reply, addr, reply.is_application_error());
   } else {
     bool is_actor_dead = false;
     rpc::ErrorType error_type;

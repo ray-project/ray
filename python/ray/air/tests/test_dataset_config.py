@@ -255,13 +255,13 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         assert results[0] == results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
 
     def rand(x):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand)
-    ds = ray.data.range_table(5)
+    ds = ray.data.range_table(5, parallelism=1)
     test = TestStream(
         checker,
         preprocessor=prep,
@@ -287,7 +287,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert (
-            "Stage 1 read->randomize_block_order->map_batches: 5/5 blocks executed "
+            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
             in stats
         ), stats
 

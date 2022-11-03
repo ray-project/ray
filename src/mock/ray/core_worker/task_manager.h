@@ -23,7 +23,8 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               CompletePendingTask,
               (const TaskID &task_id,
                const rpc::PushTaskReply &reply,
-               const rpc::Address &actor_addr),
+               const rpc::Address &actor_addr,
+               bool is_application_error),
               (override));
   MOCK_METHOD(void,
               FailPendingTask,
@@ -55,7 +56,10 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const TaskID &task_id, bool task_failed_due_to_oom),
               (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
-  MOCK_METHOD(void, MarkTaskWaitingForExecution, (const TaskID &task_id), (override));
+  MOCK_METHOD(void,
+              MarkTaskWaitingForExecution,
+              (const TaskID &task_id, const NodeID &node_id),
+              (override));
 };
 
 }  // namespace core

@@ -47,6 +47,7 @@ message ReportMetricsReply {
 
 message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
+  bytes worker_id = 2;
 }
 
 message ReportOCMetricsReply {

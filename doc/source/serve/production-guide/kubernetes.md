@@ -20,6 +20,7 @@ This section walks through how to deploy, monitor, and upgrade the [`FruitStand`
 Although it's actively developed and maintained, [KubeRay] is still considered alpha, or experimental, so some APIs may be subject to change.
 :::
 
+(serve-installing-kuberay-operator)=
 ## Installing the KubeRay operator
 
 This guide assumes that you have a running Kubernetes cluster and have `kubectl` configured to run commands on it.
@@ -42,12 +43,17 @@ kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
 
 For more details, see the [KubeRay quickstart guide](kuberay-quickstart).
 
+(serve-deploy-app-on-kuberay)=
 ## Deploying a Serve application
 
 Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR).
 `RayService` custom resources consist of the following:
 - a `KubeRay` `RayCluster` config defining the cluster that the Serve application runs on.
 - a Ray Serve [config](serve-in-production-config-file) defining the Serve application to run on the cluster.
+
+:::{tip}
+You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+:::
 
 When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration.
 Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
@@ -245,6 +251,10 @@ $ kubectl describe rayservice rayservice-sample
 
 In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
+
+## Next Steps
+
+Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
 
 [KubeRay]: https://ray-project.github.io/kuberay/
 [RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/

@@ -52,7 +52,7 @@ if __name__ == "__main__":
             input_files.append(input_file)
 
     # Get max_ep_len
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     max_ep_len = env.spec.max_episode_steps
     env.close()
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     config = (
         DTConfig()
         .environment(
-            env="CartPole-v0",
+            env="CartPole-v1",
             clip_actions=False,
             normalize_actions=False,
         )
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     algo.restore(checkpoint)
 
     # Create the env to do inference in.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
     obs = env.reset()
     input_dict = algo.get_initial_input_dict(obs)

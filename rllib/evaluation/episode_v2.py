@@ -43,7 +43,7 @@ class EpisodeV2:
             worker: The RolloutWorker instance, in which this episode runs.
         """
         # Unique id identifying this trajectory.
-        self.episode_id: int = random.randrange(2e9)
+        self.episode_id: int = random.randrange(int(1e18))
         # ID of the environment this episode is tracking.
         self.env_id = env_id
         # Summed reward across all agents in this episode.
@@ -163,15 +163,15 @@ class EpisodeV2:
     def add_init_obs(
         self,
         agent_id: AgentID,
-        t: int,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         """Add initial env obs at the start of a new episode
 
         Args:
             agent_id: Agent ID.
-            t: timestamp.
             init_obs: Initial observations.
+            t: timestamp.
         """
         policy = self.policy_map[self.policy_for(agent_id)]
 
@@ -189,8 +189,8 @@ class EpisodeV2:
             episode_id=self.episode_id,
             agent_index=self.agent_index(agent_id),
             env_id=self.env_id,
-            t=t,
             init_obs=init_obs,
+            t=t,
         )
 
         self._has_init_obs[agent_id] = True

@@ -200,23 +200,22 @@ class StateApiClient(SubmissionClient):
                 )
 
                 response.raise_for_status()
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 err_str = f"Failed to make request to {self._address}{endpoint}. "
 
                 # Best-effort to give hints to users on potential reasons of connection
                 # failure.
-                if isinstance(e, requests.exceptions.ConnectionError):
-                    err_str += (
-                        "Failed to connect to API server. Please check the API server "
-                        "log for details. Make sure dependencies are installed with "
-                        "`pip install ray[default]`."
-                    )
+                err_str += (
+                    "Failed to connect to API server. Please check the API server "
+                    "log for details. Make sure dependencies are installed with "
+                    "`pip install ray[default]`. Please also check dashboard is "
+                    "available, and included when starting ray cluster, "
+                    "i.e. `ray start --include-dashboard=True --head`. "
+                )
+                if response is None:
                     raise ServerUnavailable(err_str)
 
-                if response is not None:
-                    err_str += (
-                        f"Response(url={response.url},status={response.status_code})"
-                    )
+                err_str += f"Response(url={response.url},status={response.status_code})"
                 raise RayStateApiException(err_str) from e
 
         # Process the response.
@@ -1068,6 +1067,25 @@ def list_runtime_envs(
     """
     return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
+def list_cluster_events(
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[Dict]:
+    return StateApiClient(address=address).list(
+        StateResource.CLUSTER_EVENTS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),

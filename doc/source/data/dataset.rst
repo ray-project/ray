@@ -201,6 +201,9 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
+   * - Image Files (experimental)
+     - :func:`ray.data.read_images()`
+     - 🚧
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
@@ -259,6 +262,9 @@ Supported Output Formats
      - ✅
    * - Numpy File Format
      - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
+     - ✅
+   * - TFRecords File Format
+     - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
      - ✅
    * - Spark Dataframe
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
