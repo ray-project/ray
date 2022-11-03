@@ -129,3 +129,20 @@ To do that, you may want to customize the port that metrics gets exposed to a pr
     ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
 
 Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
+
+
+Troubleshooting
+---------------
+
+Mac does not trust the developer when installing prometheus or grafana
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may have received an error that looks like this:
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png
+    :align: center
+
+When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
+Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
+
+See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
