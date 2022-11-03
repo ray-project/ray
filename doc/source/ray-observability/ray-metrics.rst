@@ -75,15 +75,91 @@ Then go to to the location of the binary and run grafana using the built in conf
     ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
-If this is your first time, you can login with the username: `admin` and password `admin`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/grafana_login.png
-    :align: center
-
 You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same metric graphs are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
+.. tip::
+
+  If this is your first time using Grafana, you can login with the username: `admin` and password `admin`.
+
+.. image:: images/graphs.png
     :align: center
+
+.. _system-metrics:
+
+System Metrics
+--------------
+Ray exports a number of system metrics, which provide introspection into the state of Ray workloads, as well as hardware utilization statistics. The following table describes the officially supported metrics:
+
+.. note::
+
+   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus, and `JobId` (Ray job id, as applicable).
+
+.. list-table:: Ray System Metrics
+   :header-rows: 1
+
+   * - Prometheus Metric
+     - Labels
+     - Description
+   * - `ray_tasks`
+     - `Name`, `State`
+     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See rpc::TaskState for more information. The function/method name is available as the Name label.
+   * - `ray_actors`
+     - `Name`, `State`
+     - Current number of actors in a particular state. The State label is described by rpc::ActorTableData proto in gcs.proto. The actor class name is available in the Name label.
+   * - `ray_resources`
+     - `Name`, `State`
+     - Logical resource usage aggregated across all nodes of the cluster. Each resource has some quantity that is in USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
+   * - `ray_object_store_memory`
+     - `Location`, `ObjectState`
+     - Object store memory usage in bytes, broken down by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
+   * - `ray_node_cpu_utilization`
+     - N/A
+     - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
+   * - `ray_node_cpu_count`
+     - N/A
+     - The number of CPU cores per node.
+   * - `ray_node_gpus_utilization`
+     - N/A
+     - The GPU utilization per node as a percentage quantity (0..NGPU*100). Note that unlike ray_node_cpu_utilization, this quantity is pre-multiplied by the number of GPUs per node.
+   * - `ray_node_disk_usage`
+     - N/A
+     - The amount of disk space used per node, in bytes.
+   * - `ray_node_disk_free`
+     - N/A
+     - The amount of disk space available per node, in bytes.
+   * - `ray_node_disk_io_write_speed`
+     - N/A
+     - The disk write throughput per node, in bytes per second.
+   * - `ray_node_disk_io_read_speed`
+     - N/A
+     - The disk read throughput per node, in bytes per second.
+   * - `ray_node_mem_used`
+     - N/A
+     - The amount of physical memory used per node, in bytes.
+   * - `ray_node_mem_total`
+     - N/A
+     - The amount of physical memory available per node, in bytes.
+   * - `ray_component_uss_mb`
+     - `Component`
+     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+   * - `ray_node_gram_used`
+     - N/A
+     - The amount of GPU memory used per node, in bytes.
+   * - `ray_node_network_receive_speed`
+     - N/A
+     - The network receive throughput per node, in bytes per second.
+   * - `ray_node_network_send_speed`
+     - N/A
+     - The network send throughput per node, in bytes per second.
+   * - `ray_cluster_active_nodes`
+     - `node_type`
+     - The number of healthy nodes in the cluster, broken down by autoscaler node type.
+   * - `ray_cluster_failed_nodes`
+     - `node_type`
+     - The number of failed nodes reported by the autoscaler, broken down by node type.
+   * - `ray_cluster_pending_nodes`
+     - `node_type`
+     - The number of pending nodes reported by the autoscaler, broken down by node type.
 
 .. _application-level-metrics:
 
