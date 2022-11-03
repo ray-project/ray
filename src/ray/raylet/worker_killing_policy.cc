@@ -54,9 +54,8 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
             });
 
   const static int32_t max_to_print = 10;
-  RAY_LOG_EVERY_MS(INFO, 5000)
-      << "Top 10 worker candidates to kill based on worker killing policy:\n"
-      << WorkersDebugString(sorted, max_to_print, memory_monitor);
+  RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
+                << WorkersDebugString(sorted, max_to_print, memory_monitor);
 
   return sorted.front();
 }

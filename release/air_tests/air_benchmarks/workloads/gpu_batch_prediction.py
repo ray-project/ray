@@ -31,9 +31,21 @@ def preprocess(batch: np.ndarray) -> pd.DataFrame:
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
 @click.option("--data-size-gb", type=int, default=1)
-def main(data_size_gb: int):
-    data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
-    print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(data_size_gb: int, smoke_test: bool = False):
+    data_url = (
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    )
+
+    if smoke_test:
+        # Only read one image
+        data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(
+            f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}"
+        )
+
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
@@ -44,7 +56,10 @@ def main(data_size_gb: int):
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
     predictor.predict(
-        dataset, num_gpus_per_worker=1, feature_columns=["image"], batch_size=512
+        dataset,
+        num_gpus_per_worker=int(not smoke_test),
+        feature_columns=["image"],
+        batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)
 

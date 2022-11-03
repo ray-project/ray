@@ -20,7 +20,7 @@ def test_allreduce_different_name(ray_start_single_node, group_name, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 def test_allreduce_different_array_size(ray_start_single_node, array_size, backend):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
