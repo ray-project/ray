@@ -178,7 +178,7 @@ class AgentCollector:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
         Args:
-            values: Data dict (interpreted as a single row) to be added to buffer.
+            input_values: Data dict (interpreted as a single row) to be added to buffer.
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
