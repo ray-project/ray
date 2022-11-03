@@ -827,17 +827,23 @@ def assert_no_user_info_in_logs(user_info: str, file_whitelist: List[str] = None
         for file in files:
             if any(fnmatch.fnmatch(file, pattern) for pattern in file_whitelist):
                 continue
-            with open(os.path.join(root, file), "r") as f:
+            # Some lines contain hex IDs, so ignore the UTF decoding errors.
+            with open(os.path.join(root, file), "r", errors='ignore') as f:
                 for line in f:
                     assert user_info not in line, (file, user_info, line)
 
 
 # TODO(architkulkarni): Also test Ray Client and Ray Job Submission codepaths
-def test_no_user_info_in_logs(monkeypatch):
+def test_no_user_info_in_logs(monkeypatch, tmp_path):
     monkeypatch.setenv("RAY_BACKEND_LOG_LEVEL", "debug")
-    USER_SECRET = "pip-install-test"
-    ray.init(runtime_env={"pip": [USER_SECRET], "env_vars": {USER_SECRET: USER_SECRET}})
 
+    # Reuse the same "secret" for working_dir, pip, env_vars for convenience.
+    USER_SECRET = "pip-install-test"
+    working_dir = tmp_path / USER_SECRET
+    working_dir.mkdir()
+    ray.init(runtime_env={"working_dir": str(working_dir), "pip": [USER_SECRET], "env_vars": {USER_SECRET: USER_SECRET}})
+
+    # Run a function to ensure the runtime env is set up.
     @ray.remote
     def f():
         return os.environ.get(USER_SECRET)
@@ -855,7 +861,7 @@ def test_no_user_info_in_logs(monkeypatch):
     foo = Foo.remote()
     assert ray.get(foo.get_x.remote()) == USER_SECRET
 
-    # Generate runtime env failure logs.
+    # Generate runtime env failure logs too.
     bad_runtime_env = {
         "pip": ["pkg-which-sadly-does-not-exist"],
         "env_vars": {USER_SECRET: USER_SECRET},
