@@ -307,6 +307,7 @@ FIELDS = [
     "num_epochs",
     "num_images_per_epoch",
     "num_images_per_input_file",
+    "num_files",
     "batch_size",
     "shuffle_buffer_size",
     "ray_mem_monitor_enabled",
@@ -380,13 +381,14 @@ def append_to_test_output_json(path, metrics):
     output_json["runs"] = runs
 
     num_images_per_file = metrics["num_images_per_input_file"]
+    num_files = metrics["num_files"]
     data_loader = metrics["data_loader"]
 
     # Append select performance metrics to perf_metrics.
     perf_metrics = output_json.get("perf_metrics", [])
     perf_metrics.append(
         {
-            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",  # noqa: E501
+            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files_throughput-img-per-second",  # noqa: E501
             "perf_metric_value": metrics["tput_images_per_s"],
             "perf_metric_type": "THROUGHPUT",
         }
@@ -521,6 +523,14 @@ if __name__ == "__main__":
     result[
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
+
+    result["num_files"] = len(
+        get_tfrecords_filenames(
+            train_loop_config["data_root"],
+            train_loop_config["num_images_per_epoch"],
+            train_loop_config["num_images_per_input_file"],
+        )
+    )
 
     write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
 
