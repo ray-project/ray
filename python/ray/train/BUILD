@@ -229,7 +229,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_backend.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":train_lib",  ":conftest"]
 )
 
 py_test(
