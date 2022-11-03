@@ -45,12 +45,13 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
         ValueError: If the given `policy_id` is not a valid one and `error` is True.
     """
     if (
-        len(policy_id) == 0
+        not isinstance(policy_id, str)
+        or len(policy_id) == 0
         or re.search('[<>:"/\\\\|?]', policy_id)
         or policy_id[-1] in (" ", ".")
     ):
         msg = (
-            f"PolicyID `{policy_id}` not valid! IDs must not be an empty string, "
+            f"PolicyID `{policy_id}` not valid! IDs must be a non-empty string, "
             "must not contain characters that are also disallowed file- or directory "
             "names on Unix/Windows and must not end with a dot `.` or a space ` `."
         )

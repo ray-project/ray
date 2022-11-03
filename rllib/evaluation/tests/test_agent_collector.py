@@ -332,6 +332,19 @@ class TestAgentCollector(unittest.TestCase):
         # check if the padding in the beginning is correct
         check(sample_batch["prev_obses"][0], np.ones((3, 1)) * expected_obses[0])
 
+    def test_begin_with_inference(self):
+        # Test if AC is able to build for inference immediately
+        obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
+        view_reqs = {
+            SampleBatch.T: ViewRequirement(SampleBatch.T),
+            SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
+            "prev_obs": ViewRequirement("obs", shift=-1),
+        }
+
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+
+        ac.build_for_inference()
+
 
 if __name__ == "__main__":
     import pytest
