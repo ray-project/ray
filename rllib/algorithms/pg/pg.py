@@ -95,8 +95,8 @@ class PG(Algorithm):
     https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
-    (`get_default_policy` and `get_default_config`). Utilizes
-    the default `execution_plan()` of `Trainer`.
+    (`get_default_policy_class` and `get_default_config`). Utilizes
+    the default `training_step()` method of `Algorithm`.
     """
 
     @classmethod
@@ -110,7 +110,7 @@ class PG(Algorithm):
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 
             return PGTorchPolicy
-        elif config["framework"] == "tf":
+        elif config.framework_str == "tf":
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
             return PGTF1Policy

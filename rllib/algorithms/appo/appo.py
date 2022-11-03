@@ -12,6 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
@@ -28,7 +29,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,16 +207,9 @@ class APPO(Impala):
 
     @override(Impala)
     def setup(self, config: PartialAlgorithmConfigDict):
-        # Before init: Add the update target and kl hook.
-        # This hook is called explicitly after each learner step in the
-        # execution setup for IMPALA.
-        if config.get("_disable_execution_plan_api", True) is False:
-            config["after_train_step"] = UpdateTargetAndKL
-
         super().setup(config)
 
-        if self.config["_disable_execution_plan_api"] is True:
-            self.update_kl = UpdateKL(self.workers)
+        self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
@@ -280,8 +273,8 @@ class APPO(Impala):
 
     @classmethod
     @override(Impala)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return APPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return APPOConfig()
 
     @override(Impala)
     def get_default_policy_class(
