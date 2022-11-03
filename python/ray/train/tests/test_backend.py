@@ -141,7 +141,7 @@ def test_local_world_size(ray_2_node_2_cpu):
             return session.get_local_world_size()
 
         e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-        assert set(e.finish_training()) == {2, 1}
+        assert list(e.finish_training()) == [2, 1, 2]
 
 
 def test_node_ranks(ray_2_node_2_cpu):
@@ -154,7 +154,7 @@ def test_node_ranks(ray_2_node_2_cpu):
             return session.get_node_rank()
 
         e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-        assert set(e.finish_training()) == {0, 1}
+        assert list(e.finish_training()) == [0, 1, 0]
 
 
 def test_train_failure(ray_start_2_cpus):
