@@ -101,7 +101,7 @@ def test_predict_pandas_with_pandas_data():
         pd.DataFrame({"x": [2, 4, 6]}),
     )
 
-    # Test predcit with both Numpy and Pandas preprocessor available
+    # Test predict with both Numpy and Pandas preprocessor available
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
     )
