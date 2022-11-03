@@ -81,8 +81,14 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
+
+class DefaultBatchSize:
+    def __init__(self, value: int):
+        self.value = value
+
+
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 4096
+DEFAULT_BATCH_SIZE = DefaultBatchSize(4096)
 
 
 @DeveloperAPI
