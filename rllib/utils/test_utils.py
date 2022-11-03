@@ -518,9 +518,12 @@ def check_compute_single_action(
                             unsquash,
                             clip,
                         )
-    print(f"Average action computation ({algorithm}): {np.average(algo_times)}")
     print(
-        f"Average action computation ({pol} + connectors):"
+        f"Average t/ns to compute action (Algorithm: {algorithm}):"
+        f" {np.average(algo_times)}"
+    )
+    print(
+        f"AAverage t/ns to compute action ({pol} + connectors):"
         f" {np.average(policy_with_connectors_times)}"
     )
 

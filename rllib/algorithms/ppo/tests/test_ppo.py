@@ -83,7 +83,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -120,12 +120,10 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(
-            config, frameworks=["tf"], with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [True]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(

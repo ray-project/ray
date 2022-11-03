@@ -207,7 +207,7 @@ class AgentCollector:
                     "Agent collector is not receiving rewards."
                     "Rewards are set to zero."
                 )
-            values[SampleBatch.REWARDS] = [0]
+            values[SampleBatch.REWARDS] = 0
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
@@ -571,7 +571,7 @@ class AgentCollector:
                 if isinstance(space, Space):
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space
