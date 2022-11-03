@@ -327,6 +327,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        allow_mutate_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -363,6 +364,10 @@ class Dataset(Generic[T]):
             If you have a small number of big blocks, it may limit parallelism. You may
             consider increase the number of blocks via ``.repartition()`` before
             applying the ``.map_batches()``.
+
+        .. note::
+            If ``fn`` mutates its input, you will need to ensure that the batch provided
+            to ``fn`` is writable. See the ``allow_mutate_batch`` parameter.
 
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
@@ -461,6 +466,14 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            allow_mutate_batch: Whether the ``fn`` UDF needs to be able to mutate the
+                input batch. If this is ``True``, the batch will be writable, which may
+                require an extra copy. If this is ``False``, the batch may be a
+                zero-copy, read-only view on data in Ray's object store, which can
+                decrease memory utilization and improve performance. If ``fn`` mutates
+                its input, this will need to be ``True`` in order to avoid "assignment
+                destination is read-only" or "buffer source array is read-only" errors.
+                Default is ``True``.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -545,7 +558,9 @@ class Dataset(Generic[T]):
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+            batcher = Batcher(
+                batch_size, ensure_copy=allow_mutate_batch and batch_size is not None
+            )
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(
@@ -574,7 +589,26 @@ class Dataset(Generic[T]):
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
-                batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                try:
+                    batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass allow_mutate_batch=True to map_batches(); "
+                            "this will copy the batch before giving it to fn. To elide "
+                            "this copy, modify your mapper function so it doesn't try "
+                            "to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
+
                 validate_batch(batch)
                 # Add output batch to output buffer.
                 output_buffer.add_batch(batch)
@@ -660,7 +694,11 @@ class Dataset(Generic[T]):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
-            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+            process_batch,
+            batch_format="pandas",
+            compute=compute,
+            allow_mutate_batch=True,
+            **ray_remote_args,
         )
 
     def drop_columns(
