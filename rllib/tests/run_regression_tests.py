@@ -82,9 +82,7 @@ if __name__ == "__main__":
     # Path given -> Get all yaml files in there via rglob.
     elif os.path.isdir(abs_path):
         files = rllib_dir.rglob(args.dir + "/*.yaml")
-        files = sorted(
-            map(lambda path: str(path.absolute()), files), reverse=True
-        )
+        files = sorted(map(lambda path: str(path.absolute()), files), reverse=True)
     # Given path/file does not exist.
     else:
         raise ValueError(f"--dir ({args.dir}) not found!")
@@ -95,11 +93,11 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for file in files:
+        # For python files, need to make sure, we only deliver the module name into the
+        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
             file = re.sub("^.*/ray/rllib/", "ray/rllib/", file)
-            experiments = load_experiments_from_file(
-                file, SupportedFileType.python
-            )
+            experiments = load_experiments_from_file(file, SupportedFileType.python)
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
 
