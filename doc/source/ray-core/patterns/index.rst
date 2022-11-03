@@ -12,6 +12,7 @@ This section is a collection of common design patterns and anti-patterns for wri
     generators
     limit-pending-tasks
     limit-running-tasks
+    actor-sync
     ray-get-loop
     unnecessary-ray-get
     ray-get-submission-order

@@ -7,6 +7,7 @@ import pytest
 
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorArray,
+    ArrowTensorType,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
 )
@@ -63,9 +64,9 @@ def test_scalar_tensor_array_roundtrip():
 
 
 def test_arrow_variable_shaped_tensor_array_validation():
-    # Test homogeneous-typed tensor raises ValueError.
+    # Test tensor elements with differing dimensions raises ValueError.
     with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(np.ones((3, 2, 2)))
+        ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
 
     # Test arbitrary object raises ValueError.
     with pytest.raises(ValueError):
@@ -385,24 +386,51 @@ def test_arrow_tensor_array_slice(test_arr, dtype):
 
 
 pytest_tensor_array_concat_shapes = [(1, 2, 2), (3, 2, 2), (2, 3, 3)]
-
-
-@pytest.mark.parametrize(
-    "shape1,shape2", list(itertools.combinations(pytest_tensor_array_concat_shapes, 2))
+pytest_tensor_array_concat_arrs = [
+    np.arange(np.prod(shape)).reshape(shape)
+    for shape in pytest_tensor_array_concat_shapes
+]
+pytest_tensor_array_concat_arrs += [
+    np.array([np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))])
+]
+pytest_tensor_array_concat_arr_combinations = list(
+    itertools.combinations(pytest_tensor_array_concat_arrs, 2)
 )
-def test_tensor_array_concat(shape1, shape2):
-    a1 = np.arange(np.prod(shape1)).reshape(shape1)
-    a2 = np.arange(np.prod(shape2)).reshape(shape2)
+
+
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_tensor_array_concat(a1, a2):
     ta1 = TensorArray(a1)
     ta2 = TensorArray(a2)
     ta = TensorArray._concat_same_type([ta1, ta2])
-    assert len(ta) == shape1[0] + shape2[0]
+    assert len(ta) == a1.shape[0] + a2.shape[0]
     assert ta.dtype.element_dtype == ta1.dtype.element_dtype
-    if shape1[1:] == shape2[1:]:
-        assert ta.dtype.element_shape == shape1[1:]
+    if a1.shape[1:] == a2.shape[1:]:
+        assert ta.dtype.element_shape == a1.shape[1:]
         np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
     else:
-        assert ta.dtype.element_shape is None
+        assert ta.dtype.element_shape == (None,) * (len(a1.shape) - 1)
+        for arr, expected in zip(
+            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+        ):
+            np.testing.assert_array_equal(arr, expected)
+
+
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_arrow_tensor_array_concat(a1, a2):
+    ta1 = ArrowTensorArray.from_numpy(a1)
+    ta2 = ArrowTensorArray.from_numpy(a2)
+    ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+    assert len(ta) == a1.shape[0] + a2.shape[0]
+    if a1.shape[1:] == a2.shape[1:]:
+        assert isinstance(ta.type, ArrowTensorType)
+        assert ta.type.storage_type == ta1.type.storage_type
+        assert ta.type.storage_type == ta2.type.storage_type
+        assert ta.type.shape == a1.shape[1:]
+        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+    else:
+        assert isinstance(ta.type, ArrowVariableShapedTensorType)
+        assert pa.types.is_struct(ta.type.storage_type)
         for arr, expected in zip(
             ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
         ):

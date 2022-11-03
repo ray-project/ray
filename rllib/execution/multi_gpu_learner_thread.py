@@ -153,7 +153,10 @@ class MultiGPULearnerThread(LearnerThread):
 
             for pid in self.policy_map.keys():
                 # Not a policy-to-train.
-                if not self.local_worker.is_policy_to_train(pid):
+                if (
+                    self.local_worker.is_policy_to_train is not None
+                    and not self.local_worker.is_policy_to_train(pid)
+                ):
                     continue
                 policy = self.policy_map[pid]
                 default_policy_results = policy.learn_on_loaded_batch(
@@ -213,7 +216,10 @@ class _MultiGPULoaderThread(threading.Thread):
         # Load the batch into the idle stack.
         with self.load_timer:
             for pid in policy_map.keys():
-                if not s.local_worker.is_policy_to_train(pid, batch):
+                if (
+                    s.local_worker.is_policy_to_train is not None
+                    and not s.local_worker.is_policy_to_train(pid, batch)
+                ):
                     continue
                 policy = policy_map[pid]
                 if isinstance(batch, SampleBatch):

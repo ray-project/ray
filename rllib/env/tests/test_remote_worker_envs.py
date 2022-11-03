@@ -21,7 +21,7 @@ def env_creator(config):
     return env
 
 
-tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v0"))
+tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v1"))
 
 tune.register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 
@@ -41,7 +41,7 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
         config["num_envs_per_worker"] = 4
 
         # Simple string env definition (gym.make(...)).
-        config["env"] = "CartPole-v0"
+        config["env"] = "CartPole-v1"
         algo = pg.PG(config=config)
         print(algo.train())
         algo.stop()
