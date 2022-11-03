@@ -127,7 +127,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock():
+def test_autoscaler_warn_deadlock(enable_syncer_test):
     script = """
 import ray
 import time
@@ -624,27 +624,43 @@ time.sleep(5)
     assert actor_repr not in out
 
 
-def test_node_name_in_raylet_death():
+@pytest.mark.parametrize("pull_based", [True, False])
+def test_node_name_in_raylet_death(pull_based):
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
-import ray
 import time
 import os
 
-NUM_HEARTBEATS=10
-HEARTBEAT_PERIOD=500
 WAIT_BUFFER_SECONDS=5
 
-os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+if {pull_based}:
+    os.environ["RAY_pull_based_healthcheck"]="true"
+    os.environ["RAY_health_check_initial_delay_ms"]="0"
+    os.environ["RAY_health_check_period_ms"]="1000"
+    os.environ["RAY_health_check_timeout_ms"]="10"
+    os.environ["RAY_health_check_failure_threshold"]="2"
+    sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+        int(os.environ["RAY_health_check_failure_threshold"])
+    sleep_time += WAIT_BUFFER_SECONDS
+else:
+    NUM_HEARTBEATS=10
+    HEARTBEAT_PERIOD=500
+    os.environ["RAY_pull_based_healthcheck"]="false"
+    os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
+    os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+    sleep_time = NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS
+
+import ray
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
 ray._private.worker._global_node.kill_raylet()
-time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
+
+time.sleep(sleep_time)
 ray.shutdown()
     """
     out = run_string_as_driver(script)
+    print(out)
     assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 

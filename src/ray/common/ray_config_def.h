@@ -88,7 +88,7 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.98)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 250)
 
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold_fraction and free space is below min_memory_free_bytes then it
@@ -699,3 +699,11 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+/// A feature flag to enable pull based health check.
+/// TODO: Turn it on by default
+RAY_CONFIG(bool, pull_based_healthcheck, false)
+RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
