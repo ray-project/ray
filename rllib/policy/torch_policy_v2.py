@@ -468,6 +468,7 @@ class TorchPolicyV2(Policy):
                 model_config=self.config["model"],
                 framework=self.framework,
             )
+            
         return model, dist_class
 
     @override(Policy)
@@ -777,7 +778,7 @@ class TorchPolicyV2(Policy):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
-                    "model": model.metrics(),
+                    "model": {} if is_overridden(self.make_rl_module) else model.metrics(),
                 }
             )
 
