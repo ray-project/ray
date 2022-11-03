@@ -264,8 +264,7 @@ class MARWIL(Algorithm):
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
-                    policies=list(train_results.keys()),
-                    global_vars=global_vars
+                    policies=list(train_results.keys()), global_vars=global_vars
                 )
 
         # Update global vars on local worker as well.
