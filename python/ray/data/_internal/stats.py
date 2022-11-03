@@ -233,8 +233,8 @@ class DatasetStats:
         """Return a human-readable summary of this Dataset's stats.
 
         Args:
-        `already_printed`: Set of stage IDs that have already had its stats printed out.
-        `include_parent`: If true, also include parent stats summary; otherwise, only
+        already_printed: Set of stage IDs that have already had its stats printed out.
+        include_parent: If true, also include parent stats summary; otherwise, only
         log stats of the latest stage.
         """
         if already_printed is None:
