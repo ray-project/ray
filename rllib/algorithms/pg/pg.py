@@ -95,8 +95,8 @@ class PG(Algorithm):
     https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
-    (`get_default_policy` and `get_default_config`). Utilizes
-    the default `execution_plan()` of `Trainer`.
+    (`get_default_policy_class` and `get_default_config`). Utilizes
+    the default `training_step()` method of `Algorithm`.
     """
 
     @classmethod
