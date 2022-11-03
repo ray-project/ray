@@ -149,6 +149,8 @@ Finally, you can invoke your Python script:
 
 .. _slurm-network-ray:
 
+NOTE: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
+
 SLURM networking caveats
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
