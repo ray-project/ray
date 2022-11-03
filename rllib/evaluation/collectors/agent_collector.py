@@ -551,10 +551,10 @@ class AgentCollector:
         except KeyError:
             space = view_requirement.space
 
-        is_recurrent_input = True
+        # special treatment for state_out_<i>
+        # add them to the buffer in case they don't exist yet
+        is_state = True
         if data_col.startswith("state_out_"):
-            # special treatment for state_out_<i>
-            # add them to the buffer in case they don't exist yet
             if not self.is_policy_recurrent:
                 raise ValueError(
                     f"{data_col} is not available, because the given policy is"
@@ -565,7 +565,7 @@ class AgentCollector:
             state_ind = int(data_col.split("_")[-1])
             self._build_buffers({data_col: self.intial_states[state_ind]})
         else:
-            is_recurrent_input = False
+            is_state = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
@@ -578,4 +578,4 @@ class AgentCollector:
 
                 self._build_buffers({data_col: fill_value})
 
-        return is_recurrent_input
+        return is_state
