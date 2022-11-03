@@ -15,9 +15,12 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
+import time
+import logging
+from ray.rllib.models.specs.specs_base import TensorSpec
 
 ModuleID = str
-
+logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
@@ -79,6 +82,20 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: Mapping[str, Any] = None) -> None:
         self.config = config or {}
+        self.setup()
+        self._input_specs_train = self.input_specs_train()
+        self._output_specs_train = self.output_specs_train()
+        self._input_specs_exploration = self.input_specs_exploration()
+        self._output_specs_exploration = self.output_specs_exploration()
+        self._input_specs_inference = self.input_specs_inference()
+        self._output_specs_inference = self.output_specs_inference()
+
+    def setup(self) -> None:
+        """Called once during initialization.
+
+        Override this method to perform any setup logic.
+        """
+        pass
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -126,7 +143,7 @@ class RLModule(abc.ABC):
         return ModelSpec()
 
     @check_specs(
-        input_spec="input_specs_inference", output_spec="output_specs_inference"
+        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
     )
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
@@ -148,7 +165,7 @@ class RLModule(abc.ABC):
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_specs(
-        input_spec="input_specs_exploration", output_spec="output_specs_exploration"
+        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
     )
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
@@ -171,8 +188,15 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    # @check_specs(input_spec="input_specs_train", output_spec="output_specs_train")
+    def forward_train(self, 
+        batch: SampleBatchType, 
+        filter: bool = True,
+        cache: bool = False,
+        input_exact_match: bool = False,
+        output_exact_match: bool = False, 
+        **kwargs
+    ) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -185,7 +209,18 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch, **kwargs)
+        # output = self._forward_train(batch)
+
+        output = self._check_specs(
+            "forward_train", 
+            batch, 
+            filter=filter,
+            cache=cache, 
+            input_exact_match=input_exact_match, 
+            output_exact_match=output_exact_match, 
+            **kwargs
+        )
+        return output
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
@@ -218,3 +253,100 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule
+
+
+    def _check_specs(
+        self, 
+        method_name: str, 
+        input_data, 
+        filter: bool = True,
+        cache: bool = False,
+        input_exact_match: bool = False,
+        output_exact_match: bool = False,
+        **kwargs
+    ):  
+        s = time.time()
+        func = getattr(self, "_" + method_name)
+        input_spec = f"_input_specs_{method_name.split('_')[-1]}"
+        output_spec = f"_output_specs_{method_name.split('_')[-1]}"
+        if cache and not hasattr(self, "__checked_specs_cache__"):
+            self.__checked_specs_cache__ = {}
+
+        input_data_ = input_data
+        if input_spec:
+            input_spec_ = getattr(self, input_spec)
+
+            input_data_ = self.__validate_specs(
+                input_data,
+                input_spec_,
+                exact_match=input_exact_match,
+                filter=filter,
+                func=func,
+                cache=cache,
+                tag="input_data",
+            )
+
+            if filter and isinstance(input_spec_, ModelSpec):
+                # filtering should happen regardless of cache
+                input_data_ = input_data_.filter(input_spec_)
+
+        print(f"pre_overhead: {1e6 * (time.time() - s):8.6f} us")
+        output_data = func(input_data_, **kwargs)
+        s = time.time()
+        if output_spec:
+            output_spec_ = getattr(self, output_spec)
+            output_data = self.__validate_specs(
+                output_data,
+                output_spec_,
+                exact_match=output_exact_match,
+                filter=filter,
+                func=func,
+                cache=cache,
+                tag="output_data",
+            )
+
+        if cache:
+            self.__checked_specs_cache__[func.__name__] = True
+
+        print(f"post_overhead: {1e6 * (time.time() - s):8.6f} us")
+
+        return output_data
+
+    def __validate_specs(self, data, spec, exact_match, filter, func, cache, tag="data"):
+        is_mapping = isinstance(spec, ModelSpec)
+        is_tensor = isinstance(spec, TensorSpec)
+
+        if is_mapping:
+            if not isinstance(data, Mapping):
+                raise ValueError(
+                    f"{tag} must be a Mapping, got {type(data).__name__}"
+                )
+            if self.__should_validate(cache, func) or filter:
+                data = NestedDict(data)
+
+        if self.__should_validate(cache, func):
+            try:
+                if is_mapping:
+                    spec.validate(data, exact_match=exact_match)
+                elif is_tensor:
+                    spec.validate(data)
+            except ValueError as e:
+                raise ValueError(
+                    f"{tag} spec validation failed on "
+                    f"{self.__class__.__name__}.{func.__name__}, {e}."
+                )
+
+            if not (is_tensor or is_mapping):
+                if not isinstance(data, spec):
+                    raise ValueError(
+                        f"Input spec validation failed on "
+                        f"{self.__class__.__name__}.{func.__name__}, "
+                        f"expected {spec.__name__}, got "
+                        f"{type(data).__name__}."
+                    )
+
+        return data
+
+
+    def __should_validate(self, cache, func):
+        return not cache or func.__name__ not in self.__checked_specs_cache__

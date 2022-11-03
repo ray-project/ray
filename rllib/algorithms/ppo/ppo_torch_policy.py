@@ -27,6 +27,7 @@ from ray.rllib.utils.torch_utils import (
     warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
+import time
 
 torch, nn = try_import_torch()
 
@@ -84,6 +85,8 @@ class PPOTorchPolicy(
             The PPO loss tensor given the input batch.
         """
 
+        print("-"*80)
+        s = time.time()
         logits, state = model(train_batch)
         curr_action_dist = dist_class(logits, model)
 
@@ -172,6 +175,8 @@ class PPOTorchPolicy(
         model.tower_stats["mean_entropy"] = mean_entropy
         model.tower_stats["mean_kl_loss"] = mean_kl_loss
 
+        e2 = time.time()
+        print(f"fwd_batch_size: {train_batch.count}, loss_pass: {(e2 - s) * 1000 :8.6f} ms")
         return total_loss
 
     # TODO: Make this an event-style subscription (e.g.:

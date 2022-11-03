@@ -149,8 +149,8 @@ class ModelSpec(NestedDict[SPEC_LEAF_TYPE]):
 def check_specs(
     input_spec: str = "",
     output_spec: str = "",
-    filter: bool = True,
-    cache: bool = False,
+    filter: bool = False,
+    cache: bool = True,
     input_exact_match: bool = False,
     output_exact_match: bool = False,
 ):
@@ -258,7 +258,7 @@ def check_specs(
 
             input_data_ = input_data
             if input_spec:
-                input_spec_ = getattr(self, input_spec)()
+                input_spec_ = getattr(self, input_spec)
 
                 input_data_ = validate(
                     input_data,
@@ -273,7 +273,7 @@ def check_specs(
 
             output_data = func(self, input_data_, **kwargs)
             if output_spec:
-                output_spec_ = getattr(self, output_spec)()
+                output_spec_ = getattr(self, output_spec)
                 validate(
                     output_data,
                     output_spec_,

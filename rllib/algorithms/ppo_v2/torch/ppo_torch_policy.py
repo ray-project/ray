@@ -32,6 +32,7 @@ from ray.rllib.algorithms.ppo_v2.torch.ppo_torch_rl_module import (
     FCConfig,
 )
 
+import time
 
 torch, nn = try_import_torch()
 
@@ -71,7 +72,6 @@ class PPOTorchPolicyV2(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        # ValueNetworkMixin.__init__(self, config)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -82,14 +82,9 @@ class PPOTorchPolicyV2(
         self._initialize_loss_from_dummy_batch()
 
     def make_rl_module(self):
-
         config_ = PPOModuleConfig(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            encoder_config=FCConfig(
-                hidden_layers=[32],
-                activation="ReLU",
-            ),
             pi_config=FCConfig(
                 hidden_layers=[32],
                 activation="ReLU",
@@ -120,7 +115,9 @@ class PPOTorchPolicyV2(
             The PPO loss tensor given the input batch.
         """
 
-        fwd_out = model.forward_train(train_batch)
+        print("-"*80)
+        s = time.time()
+        fwd_out = model.forward_train(train_batch, filter=False, cache=True)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         state = fwd_out.get("state_out", {})
 
@@ -151,7 +148,7 @@ class PPOTorchPolicyV2(
         )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            fwd_out[SampleBatch.ACTION_LOGP]
             - train_batch[SampleBatch.ACTION_LOGP]
         )
 
@@ -165,7 +162,7 @@ class PPOTorchPolicyV2(
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = curr_action_dist.entropy()
+        curr_entropy = fwd_out["entropy"]
         mean_entropy = reduce_mean_valid(curr_entropy)
 
         surrogate_loss = torch.min(
@@ -211,6 +208,8 @@ class PPOTorchPolicyV2(
         self.tower_stats[model]["mean_entropy"] = mean_entropy
         self.tower_stats[model]["mean_kl_loss"] = mean_kl_loss
 
+        e2 = time.time()
+        print(f"fwd_batch_size: {train_batch.count}, loss_pass: {(e2 - s) * 1000 :8.6f} ms")
         return total_loss
 
     # TODO: Make this an event-style subscription (e.g.:

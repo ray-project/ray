@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import logging
 import gym
 from typing import List, Mapping, Any
 
@@ -16,7 +17,12 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
 )
 
+import time
+
+
 torch, nn = try_import_torch()
+logger = logging.getLogger(__name__)
+
 
 
 def get_ppo_loss(fwd_in, fwd_out):
@@ -119,16 +125,19 @@ class FCNet(nn.Module):
         super().__init__()
         self.input_dim = config.input_dim
         self.hidden_layers = config.hidden_layers
-        self.activation = config.activation
-        self.output_activation = config.output_activation
 
+
+        activation_class = getattr(nn, config.activation)()
         self.layers = []
         self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
         for i in range(len(self.hidden_layers) - 1):
+            self.layers.append(activation_class)
             self.layers.append(
                 nn.Linear(self.hidden_layers[i], self.hidden_layers[i + 1])
             )
+
         if config.output_dim is not None:
+            self.layers.append(activation_class)
             self.layers.append(nn.Linear(self.hidden_layers[-1], config.output_dim))
 
         if config.output_dim is None:
@@ -136,28 +145,23 @@ class FCNet(nn.Module):
         else:
             self.output_dim = config.output_dim
 
-        self.layers = nn.ModuleList(self.layers)
-        self.activation = getattr(nn, self.activation)()
-        if self.output_activation is not None:
-            self.output_activation = getattr(nn, self.output_activation)()
+        self.layers = nn.Sequential(*self.layers)
+
+        self._input_specs = self.input_specs()
 
     def input_specs(self):
         return TorchTensorSpec("b, h", h=self.input_dim)
 
-    @check_specs(input_spec="input_specs")
+    @check_specs(input_spec="_input_specs")
     def forward(self, x):
-        for layer in self.layers[:-1]:
-            x = self.activation(layer(x))
-        x = self.layers[-1](x)
-        if self.output_activation is not None:
-            x = self.output_activation(x)
-        return x
+        return self.layers(x)
 
 
 class SimplePPOModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self) -> None:
         assert isinstance(
             self.config.observation_space, gym.spaces.Box
         ), "This simple PPOModule only supports Box observation space."
@@ -188,7 +192,6 @@ class SimplePPOModule(TorchRLModule):
 
         if isinstance(self.config.action_space, gym.spaces.Discrete):
             pi_config.output_dim = self.config.action_space.n
-            pi_config.output_activation = "Softmax"
         else:
             pi_config.output_dim = self.config.action_space.shape[0] * 2
         self.pi = FCNet(pi_config)
@@ -205,6 +208,7 @@ class SimplePPOModule(TorchRLModule):
 
         self._is_discrete = isinstance(self.config.action_space, gym.spaces.Discrete)
 
+
     @override(RLModule)
     def input_specs_inference(self) -> ModelSpec:
         return self.input_specs_exploration()
@@ -218,12 +222,12 @@ class SimplePPOModule(TorchRLModule):
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
-        pi_out = self.pi(encoded_state)
+        action_logits = self.pi(encoded_state)
 
         if self._is_discrete:
-            action = torch.argmax(pi_out, dim=-1)
+            action = torch.argmax(action_logits, dim=-1)
         else:
-            action, _ = pi_out.chunk(2, dim=-1)
+            action, _ = action_logits.chunk(2, dim=-1)
 
         action_dist = TorchDeterministic(action)
         return {SampleBatch.ACTION_DIST: action_dist}
@@ -266,14 +270,14 @@ class SimplePPOModule(TorchRLModule):
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
-        pi_out = self.pi(encoded_state)
+        action_logits = self.pi(encoded_state)
 
         output = {}
         if self._is_discrete:
-            action_dist = TorchCategorical(logits=pi_out)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": pi_out}
+            action_dist = TorchCategorical(logits=action_logits)
+            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
         else:
-            loc, log_std = pi_out.chunk(2, dim=-1)
+            loc, log_std = action_logits.chunk(2, dim=-1)
             scale = log_std.exp()
             action_dist = TorchDiagGaussian(loc, scale)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
@@ -285,6 +289,7 @@ class SimplePPOModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> ModelSpec:
+        s = time.time()
         if self._is_discrete:
             action_spec = TorchTensorSpec("b")
         else:
@@ -294,7 +299,7 @@ class SimplePPOModule(TorchRLModule):
         obs_specs = (
             self.encoder.input_specs() if self.encoder else self.pi.input_specs()
         )
-        return ModelSpec(
+        spec = ModelSpec(
             {
                 SampleBatch.OBS: obs_specs,
                 SampleBatch.NEXT_OBS: obs_specs,
@@ -302,9 +307,15 @@ class SimplePPOModule(TorchRLModule):
             }
         )
 
+        logger.info(f"input_specs_train_ms: {(time.time() - s) * 1000:8.6f}")
+
+        return spec
+
     @override(RLModule)
     def output_specs_train(self) -> ModelSpec:
-        return ModelSpec(
+
+        s = time.time()
+        spec = ModelSpec(
             {
                 SampleBatch.ACTION_DIST: self.__get_action_dist_type(),
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
@@ -314,35 +325,63 @@ class SimplePPOModule(TorchRLModule):
             }
         )
 
+        logger.info(f"output_specs_train_ms: {(time.time() - s) * 1000:8.6f}")
+        return spec
+
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+        s = time.time()
         encoded_state = batch[SampleBatch.OBS]
         if self.encoder:
             encoded_state = self.encoder(encoded_state)
-        pi_out = self.pi(encoded_state)
+        s1 = time.time()
+        action_logits = self.pi(encoded_state)
+        e1 = time.time()
+        print("pi_fwd_pass_ms: ", (e1 - s1) * 1000)
+        s2 = time.time()
         vf = self.vf(encoded_state)
+        e2 = time.time()
+        print("vf_fwd_pass_ms: ", (e2 - s2) * 1000)
 
+        s3 = time.time()
         if self._is_discrete:
-            action_dist = TorchCategorical(pi_out)
+            action_dist = TorchCategorical(logits=action_logits)
         else:
-            mu, scale = pi_out.chunk(2, dim=-1)
+            mu, scale = action_logits.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
 
+        e3 = time.time()
+        print("action_dist_construction_ms: ", (e3 - s3) * 1000)
+        s4 = time.time()
         logp = action_dist.logp(batch[SampleBatch.ACTIONS].squeeze(-1))
+        e4 = time.time()
+        print("logp_ms: ", (e4 - s4) * 1000)
+        s5 = time.time()
         entropy = action_dist.entropy()
+        e5 = time.time()
+        print("entropy_ms: ", (e5 - s5) * 1000)
 
+        s6 = time.time()
         # get vf of the next obs
         encoded_next_state = batch[SampleBatch.NEXT_OBS]
         if self.encoder:
             encoded_next_state = self.encoder(encoded_next_state)
         vf_next_obs = self.vf(encoded_next_state)
-        return {
+        e6 = time.time()
+        print("vf_next_obs_ms: ", (e6 - s6) * 1000)
+
+        output = {
             SampleBatch.ACTION_DIST: action_dist,
             SampleBatch.ACTION_LOGP: logp,
             SampleBatch.VF_PREDS: vf.squeeze(-1),
             "entropy": entropy,
             "vf_preds_next_obs": vf_next_obs.squeeze(-1),
         }
+        bsize = batch['obs'].shape[0]
+        print(f"keys in the batch = {list(batch.keys())}")
+        e = time.time()
+        print(f"bsize: {bsize}, fwd_train_time_ms: {(e - s) * 1000:8.6f}")
+        return output
 
     def __get_action_dist_type(self):
         return TorchCategorical if self._is_discrete else TorchDiagGaussian

@@ -144,7 +144,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return True
 
     def get(
-        self, k: SeqStrType, *, default: Optional[T] = None
+        self, k: SeqStrType, default: Optional[T] = None
     ) -> Union[T, "NestedDict[T]"]:
         """Returns `self[k]`, with partial indexing allowed.
         If `k` is not in the `NestedDict`, returns default. If default is `None`,
