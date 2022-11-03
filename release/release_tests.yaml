@@ -2160,7 +2160,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop 
     script: python workloads/long_running_many_jobs.py --num-clients=1
     long_running: true
     type: sdk_command
