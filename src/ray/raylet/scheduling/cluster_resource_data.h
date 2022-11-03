@@ -474,9 +474,15 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  Node(const NodeResources &resources)
+      : local_view_(resources), view_modified_ts_(absl::Now()) {}
 
-  NodeResources *GetMutableLocalView() { return &local_view_; }
+  NodeResources *GetMutableLocalView() {
+    view_modified_ts_ = absl::Now();
+    return &local_view_;
+  }
+
+  std::optional<absl::Time> GetViewModifiedTs() const { return view_modified_ts_; }
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
@@ -488,6 +494,8 @@ struct Node {
   /// make sure that our local view does not skew too much from the actual
   /// resources when light heartbeats are enabled.
   NodeResources local_view_;
+  /// The timestamp this node got updated.
+  std::optional<absl::Time> view_modified_ts_;
 };
 
 /// \request Conversion result to a ResourceRequest data structure.

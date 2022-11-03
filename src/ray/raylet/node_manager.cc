@@ -430,10 +430,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           auto now = absl::Now();
           auto threshold = now - absl::Milliseconds(
                                      RayConfig::instance().message_refresh_interval_ms());
+          auto &resource_manager =
+              cluster_resource_scheduler_->GetClusterResourceManager();
           for (auto &[node_id, resource] : resource_message_udpated_) {
-            if (resource.second < threshold) {
-              resource.second = now;
-              UpdateResourceUsage(node_id, resource.first);
+            auto modified_ts = resource_manager.GetNodeResourceModifiedTs(
+                scheduling::NodeID(node_id.Binary()));
+            if (modified_ts && *modified_ts < threshold) {
+              UpdateResourceUsage(node_id, resource);
             }
           }
         },
@@ -2831,7 +2834,7 @@ void NodeManager::ConsumeSyncMessage(
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
     data.set_should_global_gc(false);
-    resource_message_udpated_[node_id] = std::make_pair(std::move(data), absl::Now());
+    resource_message_udpated_[node_id] = std::move(data);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
