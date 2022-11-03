@@ -65,6 +65,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             return_when=FIRST_COMPLETED,
             timeout=SERVE_PROXY_FORWARD_ATTEMPT_TIMEOUT_S,
         )
+        logger.debug(f"Finished asyncio.wait. Got {len(done)} things in done.")
         if len(done) == 0:
             logger.debug(
                 "HTTPProxy couldn't reach target replica in "
