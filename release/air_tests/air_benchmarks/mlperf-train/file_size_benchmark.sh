@@ -2,7 +2,7 @@
 # Test Ray Data bulk ingestion performance as the size of input files change.
 
 # Exit if any of the test commands fail.
-set -x -e
+set -x -e pipeline
 
 NUM_IMAGES_PER_FILE=${NUM_IMAGES_PER_FILE:-"32 512 6144"}
 MIN_PARALLELISM=10
