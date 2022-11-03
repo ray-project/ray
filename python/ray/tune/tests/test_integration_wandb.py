@@ -152,7 +152,7 @@ def wandb_env():
 class TestWandbLogger:
     def test_wandb_logger_project_group(self, monkeypatch):
         monkeypatch.setenv(WANDB_PROJECT_ENV_VAR, "test_project_from_env_var")
-        monkeypatch.setenv(WANDB_GROUP_ENV_VAR, "test_group_env_var")
+        monkeypatch.setenv(WANDB_GROUP_ENV_VAR, "test_group_from_env_var")
         # Read project and group name from environment variable
         logger = WandbTestExperimentLogger(api_key="1234")
         logger.setup()
@@ -191,7 +191,7 @@ class TestWandbLogger:
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
 
-    def test_wandb_logger_start(self, monkeypatch):
+    def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
         # API Key in env
         logger = WandbTestExperimentLogger(project="test_project")
@@ -225,7 +225,7 @@ class TestWandbLogger:
 
         del logger
 
-    def test_wandb_logger_reporting(trial):
+    def test_wandb_logger_reporting(self, trial):
         logger = WandbTestExperimentLogger(
             project="test_project", api_key="1234", excludes=["metric2"]
         )

@@ -699,3 +699,11 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+/// A feature flag to enable pull based health check.
+/// TODO: Turn it on by default
+RAY_CONFIG(bool, pull_based_healthcheck, false)
+RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
+RAY_CONFIG(int64_t, health_check_period_ms, 3000)
+RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
+RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
