@@ -869,6 +869,7 @@ def test_no_user_info_in_logs(monkeypatch):
     # Check that no_user_info_in_logs works.
     with pytest.raises(AssertionError):
         assert_no_user_info_in_logs("ray")
+    with pytest.raises(AssertionError):
         assert_no_user_info_in_logs(USER_SECRET)
 
     # TODO(architkulkarni): Remove runtime env user info from dashboard_agent.log
