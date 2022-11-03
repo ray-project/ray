@@ -1348,8 +1348,8 @@ def from_tf(
         >>> import ray
         >>> import tensorflow_datasets as tfds
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])
-        >>> dataset = ray.data.from_tf(dataset)
-        >>> dataset
+        >>> dataset = ray.data.from_tf(dataset)  # doctest: +SKIP
+        >>> dataset  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> dataset.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
@@ -1376,6 +1376,7 @@ def from_tf(
     Returns:
         A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
     """  # noqa: E501
+    # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
     return from_items(list(dataset.as_numpy_iterator()))
 
 
