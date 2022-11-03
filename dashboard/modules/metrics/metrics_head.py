@@ -231,6 +231,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # Copy default grafana configurations
         if os.path.exists(grafana_config_output_path):
             shutil.rmtree(grafana_config_output_path)
+        os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
+        shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
