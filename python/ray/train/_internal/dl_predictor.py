@@ -83,7 +83,7 @@ class DLPredictor(Predictor):
         # Single column selection return numpy array so preprocessors can be
         # reused in both training and prediction
         if isinstance(data, dict) and len(data) == 1:
-            data = data[list(data.keys())[0]]
+            data = next(iter(data.values()))
         model_input = self._arrays_to_tensors(data, dtype)
         model_output = self.call_model(model_input)
         # TODO (jiaodong): Investigate perf implication of this.
