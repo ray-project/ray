@@ -11,10 +11,6 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.execution.common import (
-    _get_global_vars,
-    _get_shared_metrics,
-)
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
