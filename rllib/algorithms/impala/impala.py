@@ -409,33 +409,6 @@ def gather_experiences_directly(workers, config):
     return train_batches
 
 
-# Update worker weights as they finish generating experiences.
-class BroadcastUpdateLearnerWeights:
-    def __init__(self, learner_thread, workers, broadcast_interval):
-        self.learner_thread = learner_thread
-        self.steps_since_broadcast = 0
-        self.broadcast_interval = broadcast_interval
-        self.workers = workers
-        self.weights = workers.local_worker().get_weights()
-
-    def __call__(self, item):
-        actor, batch = item
-        self.steps_since_broadcast += 1
-        if (
-            self.steps_since_broadcast >= self.broadcast_interval
-            and self.learner_thread.weights_updated
-        ):
-            self.weights = ray.put(self.workers.local_worker().get_weights())
-            self.steps_since_broadcast = 0
-            self.learner_thread.weights_updated = False
-            # Update metrics.
-            metrics = _get_shared_metrics()
-            metrics.counters["num_weight_broadcasts"] += 1
-        actor.set_weights.remote(self.weights, _get_global_vars())
-        # Also update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(_get_global_vars())
-
-
 class Impala(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
@@ -866,8 +839,8 @@ class Impala(Algorithm):
             and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
-            self._learner_thread.weights_updated = False
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
             for worker in self.workers_that_need_updates:
