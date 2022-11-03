@@ -61,6 +61,7 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
 
 
 def get_user_temp_dir():
@@ -1596,3 +1597,20 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION
