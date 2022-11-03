@@ -120,6 +120,8 @@ MOCK_MODULES = [
     "composer.core.state",
     "composer.callbacks",
     "composer.callbacks.checkpoint_saver",
+    "composer.utils",
+    "composer.utils.checkpoint",
 ]
 
 
