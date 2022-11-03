@@ -69,14 +69,10 @@ Ray Job
 A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 The worker that runs the Python script is known as the *driver* of the job.
 
-The recommended method for running a workload on a Ray cluster is to use Ray Job Submission.
-Ray Job submission enables users to submit locally developed and tested applications to a
-remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
-deploying, and managing a Ray application.
+There are three ways to run a Ray job on a Ray cluster:
 
-An alternative method is to run Ray Jobs interactively.  For interactive development, the following methods are available:
+1. (Recommended) Submit the job using the :ref:`Ray Jobs API <jobs-overview>`.
+2. Run the driver script directly on any node of the Ray cluster.
+3. Use :ref:`Ray Client <ray-client-ref>` to connect remotely to the cluster within a driver script, for interactive development.
 
-* Directly running a driver on any head or worker node.
-* Using the Ray Client to connect remotely to the cluster within a driver script.
-
-For details on these workflows, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
+For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
