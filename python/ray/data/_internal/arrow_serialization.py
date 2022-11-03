@@ -82,9 +82,9 @@ def _register_arrow_data_serializer(serialization_context):
         and only serializes the slice of the buffer. I.e., array-level slicing doesn't
         propagate the slice down to the buffer when serializing the array.
 
-        All that these copy methods do is, at serialization time, take the array-level
-        slicing and translate them to buffer-level slicing, so only the buffer slice is
-        sent over the wire instead of the entire buffer.
+        We work around this by registering a custom cloudpickle reducers for Arrow
+        Tables that delegates serialization to the Arrow IPC format; thankfully, Arrow's
+        IPC serialization has fixed this buffer truncation bug.
 
     See https://issues.apache.org/jira/browse/ARROW-10739.
     """
