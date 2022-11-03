@@ -90,7 +90,7 @@ which implements the proximal policy optimization algorithm in RLlib.
         config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Train via Ray Tune.
-        tune.run("PPO", config=config.)
+        tune.run("PPO", config=config)
 
 
 .. tabbed:: RLlib Command Line

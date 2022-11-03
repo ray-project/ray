@@ -300,7 +300,7 @@ As RLlib algorithms are fairly complex, they come with many configuration option
 To make things easier, the common properties of algorithms are naturally grouped into
 the following categories:
 
-- :ref:`Training options <rllib-config-train>`,
+- :ref:`training options <rllib-config-train>`,
 - :ref:`environment options <rllib-config-env>`,
 - :ref:`deep learning framework options <rllib-config-framework>`,
 - :ref:`rollout worker options <rllib-config-rollouts>`,

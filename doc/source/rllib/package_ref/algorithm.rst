@@ -69,8 +69,8 @@ Interacting with an Algorithm
 -----------------------------
 
 Once you've built an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you can use it
-to train and evaluate your experiments.
+and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from it via
+the ``build()`` method , you can use it to train and evaluate your experiments.
 
 Here's the full ``Algorithm`` API reference.
 

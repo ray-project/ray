@@ -70,7 +70,7 @@ We first create a `config` for the algorithm, which sets the right environment, 
 defines all training parameters we want.
 Next, we `build` the algorithm and `train` it for a total of `5` iterations.
 A training iteration includes parallel sample collection by the environment workers, as well as loss calculation on the collected batch and a model update.
-As a last step, we `evaluate` the trained Algorithm and and render each timestep to the shell's output:
+As a last step, we `evaluate` the trained Algorithm:
 
 .. literalinclude:: doc_code/rllib_in_60s.py
     :language: python

@@ -30,12 +30,7 @@ from ray import air, tune
 
 ray.init()
 
-config = {
-    "env": "CartPole-v1",
-    "num_gpus": 0,
-    "num_workers": 1,
-    "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-}
+config = PPOConfig().training(lr=tune.grid_search([0.01, 0.001, 0.0001]))
 
 tuner = tune.Tuner(
     "PPO",
