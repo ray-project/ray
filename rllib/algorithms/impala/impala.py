@@ -643,7 +643,7 @@ class Impala(Algorithm):
 
         # Sync worker weights.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.update_workers_if_necessary()
+            self.update_workers_if_necessary(policy_ids=list(train_results.keys()))
 
         return train_results
 
@@ -840,7 +840,21 @@ class Impala(Algorithm):
 
         return ready_processed_batches
 
-    def update_workers_if_necessary(self) -> None:
+    def update_workers_if_necessary(
+        self,
+        policy_ids: Optional[List[PolicyID]] = None,
+    ) -> None:
+        """Updates all RolloutWorkers that require updating.
+
+        Updates only if NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS has been
+        reached and the worker has sent samples in this iteration. Also only updates
+        those policies, whose IDs are given via `policies` (if None, update all
+        policies).
+
+        Args:
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
+        """
         # Only need to update workers if there are remote workers.
         global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
@@ -850,7 +864,7 @@ class Impala(Algorithm):
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights())
+            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._learner_thread.weights_updated = False
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1

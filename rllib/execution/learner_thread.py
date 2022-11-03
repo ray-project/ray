@@ -61,7 +61,7 @@ class LearnerThread(threading.Thread):
         self.load_timer = _Timer()
         self.load_wait_timer = _Timer()
         self.daemon = True
-        self.weights_updated = False
+        self.policy_ids_updated = []
         self.learner_info = {}
         self.stopped = False
         self.num_steps = 0
@@ -90,7 +90,7 @@ class LearnerThread(threading.Thread):
             for pid, results in multi_agent_results.items():
                 learner_info_builder.add_learn_on_batch_results(results, pid)
             self.learner_info = learner_info_builder.finalize()
-            self.weights_updated = True
+            self.policy_ids_updated.extend(list(self.learner_info.keys()))
 
         self.num_steps += 1
         # Put tuple: env-steps, agent-steps, and learner info into the queue.
