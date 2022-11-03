@@ -186,7 +186,7 @@ class BatchPredictor:
         has_predict_numpy = (
             self._predictor_cls._predict_numpy != Predictor._predict_numpy
         )
-        # Setting batch_format at map_batches is much preferable for pref as it
+        # Setting batch_format at map_batches is more preferable for perf as it
         # pushes block formatting work upstream to dataset level
         batch_format = BatchFormat.NUMPY if has_predict_numpy else BatchFormat.PANDAS
 
