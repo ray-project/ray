@@ -161,3 +161,7 @@ cdef class Config:
     def memory_monitor_interval_ms():
         return (RayConfig.instance()
                 .memory_monitor_interval_ms())
+
+    @staticmethod
+    def gcs_actor_scheduling_enabled():
+        return RayConfig.instance().gcs_actor_scheduling_enabled()

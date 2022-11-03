@@ -198,7 +198,7 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+RAY_CONFIG(float, scheduler_spread_threshold, 0);
 
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
@@ -594,7 +594,7 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled, true);
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
