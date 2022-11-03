@@ -558,7 +558,7 @@ class Dataset(Generic[T]):
                                     f"to be of type `numpy.ndarray`, but the value "
                                     f"corresponding to key {key!r} is of type "
                                     f"{type(value)}. To fix this issue, convert "
-                                    f"the {type(value)} to a `numpy.ndarray`." 
+                                    f"the {type(value)} to a `numpy.ndarray`."
                                 )
 
             def process_next_batch(batch: Block) -> Iterator[Block]:
