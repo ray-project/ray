@@ -298,7 +298,7 @@ def get_local_world_size() -> int:
     session = _get_session()
     if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
-            "`get_local_rank` can only be called for TrainSession! "
+            "`get_local_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
             "that is passed into `DataParallelTrainer`."
         )
