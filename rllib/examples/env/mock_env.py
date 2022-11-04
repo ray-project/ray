@@ -48,11 +48,12 @@ class MockEnv2(gym.Env):
 
     def reset(self):
         self.i = 0
-        return self.i
+        return self.i, {}
 
     def step(self, action):
         self.i += 1
-        return self.i, 100.0, self.i >= self.episode_length, {}
+        done = self.i >= self.episode_length
+        return self.i, 100.0, done, done, {}
 
     def seed(self, rng_seed):
         self.rng_seed = rng_seed
@@ -103,22 +104,26 @@ class VectorizedMockEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(self):
-        return [e.reset() for e in self.envs]
+        obs_and_infos = [e.reset() for e in self.envs]
+        return [oi[0] for oi in obs_and_infos], [oi[1] for oi in obs_and_infos]
 
     @override(VectorEnv)
-    def reset_at(self, index):
+    def reset_at(self, index, seed=None):
         return self.envs[index].reset()
 
     @override(VectorEnv)
     def vector_step(self, actions):
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+            [], [], [], [], []
+        )
         for i in range(len(self.envs)):
-            obs, rew, done, info = self.envs[i].step(actions[i])
+            obs, rew, done, truncated, info = self.envs[i].step(actions[i])
             obs_batch.append(obs)
             rew_batch.append(rew)
             done_batch.append(done)
+            truncated_batch.append(done)
             info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, info_batch
+        return obs_batch, rew_batch, done_batch, truncted_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):
@@ -145,11 +150,14 @@ class MockVectorEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(self):
-        obs = self.env.reset()
-        return [obs for _ in range(self.num_envs)]
+        obs, infos = self.env.reset()
+        return (
+            [obs for _ in range(self.num_envs)],
+            [infos for _ in range(self.num_envs)],
+        )
 
     @override(VectorEnv)
-    def reset_at(self, index):
+    def reset_at(self, index, seed=None):
         self.ts = 0
         return self.env.reset()
 
@@ -158,9 +166,11 @@ class MockVectorEnv(VectorEnv):
         self.ts += 1
         # Apply all actions sequentially to the same env.
         # Whether this would make a lot of sense is debatable.
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+            [], [], [], [], []
+        )
         for i in range(self.num_envs):
-            obs, rew, done, info = self.env.step(actions[i])
+            obs, rew, done, truncated, info = self.env.step(actions[i])
             # Artificially terminate once time step limit has been reached.
             # Note: Also terminate, when underlying CartPole is terminated.
             if self.ts >= self.episode_len:
@@ -168,15 +178,17 @@ class MockVectorEnv(VectorEnv):
             obs_batch.append(obs)
             rew_batch.append(rew)
             done_batch.append(done)
+            truncated_batch.append(done)
             info_batch.append(info)
             if done:
                 remaining = self.num_envs - (i + 1)
                 obs_batch.extend([obs for _ in range(remaining)])
                 rew_batch.extend([rew for _ in range(remaining)])
                 done_batch.extend([done for _ in range(remaining)])
+                truncated_batch.extend([truncated for _ in range(remaining)])
                 info_batch.extend([info for _ in range(remaining)])
                 break
-        return obs_batch, rew_batch, done_batch, info_batch
+        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):
