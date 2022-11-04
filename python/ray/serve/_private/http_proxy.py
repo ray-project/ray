@@ -64,16 +64,12 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
         )
-        logger.debug(f"Finished asyncio.wait. Got {len(done)} things in done.")
         if client_disconnection_task in done:
-            logger.debug("Received client disconnection task.")
             message = await client_disconnection_task
-            logger.debug("Finished client disconnection task.")
             assert message["type"] == "http.disconnect", (
                 "Received additional request payload that's not disconnect. "
                 "This is an invalid HTTP state."
             )
-
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
                 "request."
@@ -82,8 +78,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
-            logger.debug("Finished assigning query. Waiting for result.")
-            results, timed_out = await asyncio.wait(
+            _, timed_out = await asyncio.wait(
                 [object_ref], timeout=REQUEST_PROCESSING_TIMEOUT_S
             )
             if timed_out:
@@ -96,7 +91,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 retries += 1
             else:
                 result = await object_ref
-                logger.debug("Got result.")
                 client_disconnection_task.cancel()
                 break
         except asyncio.CancelledError:
