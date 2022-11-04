@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Dict, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete
 import logging
 import numpy as np
 import pytest

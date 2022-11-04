@@ -11,7 +11,7 @@ SampleCollector's `postprocess_trajectory` method.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import ray
 
 from ray.rllib.env.policy_client import PolicyClient

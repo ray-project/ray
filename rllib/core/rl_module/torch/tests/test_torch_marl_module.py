@@ -1,5 +1,5 @@
 import unittest
-import gym
+import gymnasium as gym
 import tree
 import torch
 import numpy as np

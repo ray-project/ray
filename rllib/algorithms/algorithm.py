@@ -3,7 +3,7 @@ import concurrent
 import copy
 from datetime import datetime
 import functools
-import gym
+import gymnasium as gym
 import importlib
 import json
 import logging

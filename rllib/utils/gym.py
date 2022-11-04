@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Optional
 
 from ray.util.annotations import DeveloperAPI

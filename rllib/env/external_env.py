@@ -1,5 +1,5 @@
 from six.moves import queue
-import gym
+import gymnasium as gym
 import threading
 import uuid
 from typing import Callable, Tuple, Optional, TYPE_CHECKING

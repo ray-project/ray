@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError

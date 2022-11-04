@@ -8,8 +8,8 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-import gym
-from gym.spaces import Box, Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, Optional, Union

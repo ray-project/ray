@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import tensorflow_probability as tfp
 
 from ray.rllib.models.modelv2 import ModelV2

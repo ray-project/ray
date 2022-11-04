@@ -3,7 +3,7 @@ has more explicit input args. So that the input format does not have to be guess
 the code. This matches the design pattern of torch distribution which developers may
 already be familiar with.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 import abc

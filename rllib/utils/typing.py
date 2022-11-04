@@ -12,7 +12,7 @@ from typing import (
 )
 
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 

@@ -7,7 +7,7 @@ one a ray Actor.
 You can access your Env's API via a custom callback as shown below.
 """
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray

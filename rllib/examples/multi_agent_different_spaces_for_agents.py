@@ -12,7 +12,7 @@ Run this example with defaults (using Tune):
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray

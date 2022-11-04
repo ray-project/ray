@@ -7,7 +7,7 @@ Keep in sync with changes to VTraceTFPolicy.
 
 import numpy as np
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
 
 import ray

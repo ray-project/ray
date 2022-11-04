@@ -1,5 +1,5 @@
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, Tuple, List, Optional, Any, Type
 
 import ray

@@ -1,7 +1,7 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import unittest
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy

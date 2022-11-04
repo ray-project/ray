@@ -1,5 +1,5 @@
 from gym import Env
-from gym.spaces import Box, Dict, Discrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 from gym.envs.registration import EnvSpec
 import numpy as np
 import re

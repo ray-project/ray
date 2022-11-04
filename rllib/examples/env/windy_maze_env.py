@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Tuple
 import logging
 import random
 

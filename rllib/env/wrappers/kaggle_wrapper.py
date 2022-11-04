@@ -11,10 +11,10 @@ try:
 except (ImportError, ModuleNotFoundError):
     pass
 import numpy as np
-from gym.spaces import Box
-from gym.spaces import Dict as DictSpace
-from gym.spaces import Discrete, MultiBinary, MultiDiscrete, Space
-from gym.spaces import Tuple as TupleSpace
+from gymnasium.spaces import Box
+from gymnasium.spaces import Dict as DictSpace
+from gymnasium.spaces import Discrete, MultiBinary, MultiDiscrete, Space
+from gymnasium.spaces import Tuple as TupleSpace
 
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.utils.typing import MultiAgentDict, AgentID

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from gym.spaces import Space
+from gymnasium.spaces import Space
 import math
 import numpy as np
 import tree  # pip install dm_tree

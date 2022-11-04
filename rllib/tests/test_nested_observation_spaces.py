@@ -1,6 +1,6 @@
 from gym import spaces
 from gym.envs.registration import EnvSpec
-import gym
+import gymnasium as gym
 import numpy as np
 import pickle
 import unittest

@@ -2,7 +2,7 @@
 PyTorch policy class used for CQL.
 """
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Tuple, Type, Union

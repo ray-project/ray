@@ -16,7 +16,7 @@ from pprint import pformat
 
 from numpy.random import RandomState
 
-import gym
+import gymnasium as gym
 from ray.rllib.env import MultiAgentEnv
 
 from ray.rllib.contrib.sumo.utils import SUMOUtils, sumo_default_config

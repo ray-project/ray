@@ -3,8 +3,8 @@ TensorFlow policy class used for SAC.
 """
 
 import copy
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 from functools import partial
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union

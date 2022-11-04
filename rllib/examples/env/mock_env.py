@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.env.vector_env import VectorEnv

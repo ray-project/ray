@@ -1,5 +1,5 @@
 import logging
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Callable, List, Optional, Tuple, Union, Set
 

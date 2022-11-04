@@ -1,5 +1,5 @@
 from collections import deque
-import gym
+import gymnasium as gym
 import gym_minigrid
 import numpy as np
 import sys

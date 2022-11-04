@@ -6,7 +6,7 @@ https://docs.ray.io/en/master/serve/tutorials/rllib.html
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import requests
 from starlette.requests import Request
 

@@ -38,7 +38,7 @@ In either case, the user of PolicyClient must:
 """
 
 import argparse
-import gym
+import gymnasium as gym
 
 from ray.rllib.env.policy_client import PolicyClient
 

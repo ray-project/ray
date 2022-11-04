@@ -21,7 +21,7 @@ import numpy as np
 import tree  # pip install dm_tree
 import yaml
 import pprint
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 import ray
 from ray import air, tune

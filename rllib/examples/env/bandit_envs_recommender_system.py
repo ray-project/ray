@@ -2,7 +2,7 @@
    RLlib Trainers.
    This env follows RecSim obs and action APIs.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 

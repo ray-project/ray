@@ -3,7 +3,7 @@
 # https://github.com/ray-project/ray/issues/6732
 
 import argparse
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 

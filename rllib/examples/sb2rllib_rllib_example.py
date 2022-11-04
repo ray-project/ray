@@ -5,7 +5,7 @@ Demonstrates transition from stable_baselines to Ray RLlib.
 
 Run example: python sb2rllib_rllib_example.py
 """
-import gym
+import gymnasium as gym
 from ray import tune, air
 import ray.rllib.algorithms.ppo as ppo
 

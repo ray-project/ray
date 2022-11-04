@@ -1,6 +1,6 @@
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector

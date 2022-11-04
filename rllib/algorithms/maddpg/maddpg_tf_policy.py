@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
 import logging
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
 # __rllib-custom-gym-env-begin__
-import gym
+import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig

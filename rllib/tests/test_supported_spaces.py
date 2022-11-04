@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
 import numpy as np
 import unittest
 

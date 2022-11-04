@@ -8,8 +8,8 @@ https://github.com/google-research/recsim
 """
 
 from collections import OrderedDict
-import gym
-from gym.spaces import Dict, Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Dict, Discrete, MultiDiscrete
 import numpy as np
 from recsim.document import AbstractDocumentSampler
 from recsim.simulator import environment, recsim_gym

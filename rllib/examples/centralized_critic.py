@@ -15,7 +15,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 import os
 
 import ray

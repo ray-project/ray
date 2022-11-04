@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import logging
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import Any, List
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI

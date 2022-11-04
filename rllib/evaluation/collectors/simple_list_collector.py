@@ -1,5 +1,5 @@
 import collections
-from gym.spaces import Space
+from gymnasium.spaces import Space
 import logging
 import numpy as np
 import tree  # pip install dm_tree

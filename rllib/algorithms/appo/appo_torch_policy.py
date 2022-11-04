@@ -5,7 +5,7 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union

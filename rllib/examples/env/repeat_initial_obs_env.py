@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete
 import random
 
 

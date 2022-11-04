@@ -1,5 +1,5 @@
 import logging
-import gym
+import gymnasium as gym
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext

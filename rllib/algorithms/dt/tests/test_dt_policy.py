@@ -1,7 +1,7 @@
 import unittest
 from typing import Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import ray

@@ -3,7 +3,7 @@ and adapt/use it with a different version of the environment.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 from pathlib import Path
 from typing import Dict

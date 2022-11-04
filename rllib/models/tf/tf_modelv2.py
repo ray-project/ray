@@ -1,5 +1,5 @@
 import contextlib
-import gym
+import gymnasium as gym
 import re
 from typing import Dict, List, Union
 

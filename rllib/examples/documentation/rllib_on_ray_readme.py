@@ -1,5 +1,5 @@
 # __quick_start_begin__
-import gym
+import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 
 

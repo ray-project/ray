@@ -14,8 +14,8 @@ For CLI options:
 $ python custom_env.py --help
 """
 import argparse
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 import random

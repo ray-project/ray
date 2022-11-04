@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import json
 import logging
 import numpy as np

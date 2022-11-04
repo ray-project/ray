@@ -39,7 +39,7 @@ Other options for running this example:
 import argparse
 import os
 
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import ray
 from ray import air, tune
 from ray.rllib.algorithms import ppo

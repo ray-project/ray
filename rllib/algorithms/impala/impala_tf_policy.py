@@ -4,7 +4,7 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 import numpy as np
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, List, Type, Union
 
 import ray

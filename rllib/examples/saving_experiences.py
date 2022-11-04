@@ -1,7 +1,7 @@
 """Simple example of writing experiences to a file using JsonWriter."""
 
 # __sphinx_doc_begin__
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 

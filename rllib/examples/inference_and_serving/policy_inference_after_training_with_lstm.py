@@ -6,7 +6,7 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 (--use-attention), and plain (non-recurrent) models.
 """
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 

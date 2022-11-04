@@ -2,7 +2,7 @@
 
 import collections
 import copy
-import gym
+import gymnasium as gym
 import json
 import os
 from pathlib import Path

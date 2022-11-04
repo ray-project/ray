@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 
 
 def create_cartpole_deterministic(config):

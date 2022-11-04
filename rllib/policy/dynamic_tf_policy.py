@@ -1,5 +1,5 @@
 from collections import namedtuple, OrderedDict
-import gym
+import gymnasium as gym
 import logging
 import re
 import tree  # pip install dm_tree

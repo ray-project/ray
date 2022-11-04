@@ -1,4 +1,4 @@
-from gym.spaces import Box
+from gymnasium.spaces import Box
 import numpy as np
 import random
 import tree  # pip install dm_tree

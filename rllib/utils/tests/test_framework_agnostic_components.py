@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 import numpy as np
 from pathlib import Path
 import unittest

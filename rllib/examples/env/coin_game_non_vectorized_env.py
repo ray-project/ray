@@ -6,10 +6,10 @@
 import copy
 from collections import Iterable
 
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override

@@ -10,7 +10,7 @@ modifies the policy to add a centralized value function.
 """
 
 import numpy as np
-from gym.spaces import Dict, Discrete
+from gymnasium.spaces import Dict, Discrete
 import argparse
 import os
 

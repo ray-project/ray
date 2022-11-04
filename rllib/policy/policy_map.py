@@ -1,5 +1,5 @@
 from collections import deque
-import gym
+import gymnasium as gym
 import os
 import threading
 from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING, Union

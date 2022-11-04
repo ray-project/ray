@@ -5,7 +5,7 @@ inference (computing actions) in an environment.
 import argparse
 from pathlib import Path
 
-import gym
+import gymnasium as gym
 import os
 
 import ray

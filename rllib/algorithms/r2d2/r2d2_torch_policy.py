@@ -2,7 +2,7 @@
 
 from typing import Dict, Tuple
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,

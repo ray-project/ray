@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import random
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv

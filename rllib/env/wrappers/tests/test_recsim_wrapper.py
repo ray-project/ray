@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import unittest
 
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (

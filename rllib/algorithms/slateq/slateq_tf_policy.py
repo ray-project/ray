@@ -1,7 +1,7 @@
 """TensorFlow policy class used for SlateQ."""
 
 import functools
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 from typing import Dict

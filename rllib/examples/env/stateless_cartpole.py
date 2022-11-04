@@ -1,4 +1,4 @@
-from gym.spaces import Box
+from gymnasium.spaces import Box
 import numpy as np
 
 from gym.envs.classic_control import CartPoleEnv

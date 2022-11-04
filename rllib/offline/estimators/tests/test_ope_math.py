@@ -1,6 +1,6 @@
 import unittest
 import time
-import gym
+import gymnasium as gym
 import torch
 
 import numpy as np

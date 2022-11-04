@@ -34,7 +34,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput

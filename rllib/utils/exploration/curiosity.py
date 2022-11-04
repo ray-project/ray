@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import numpy as np
 from typing import Optional, Tuple, Union
 

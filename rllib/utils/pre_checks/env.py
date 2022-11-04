@@ -2,7 +2,7 @@
 from copy import copy
 import inspect
 import logging
-import gym
+import gymnasium as gym
 import numpy as np
 import traceback
 import tree  # pip install dm_tree

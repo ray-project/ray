@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from gym import spaces
 
 ACTION_UP = 0

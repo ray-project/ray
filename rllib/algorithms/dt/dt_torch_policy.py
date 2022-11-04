@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from typing import (
@@ -13,7 +13,7 @@ from typing import (
 )
 
 import tree
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 
 from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
 from ray.rllib.models.catalog import ModelCatalog

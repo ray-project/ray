@@ -1,6 +1,6 @@
 from functools import partial
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
 import ray

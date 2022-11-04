@@ -3,7 +3,7 @@ TensorFlow policy class used for CQL.
 """
 from functools import partial
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Type, Union

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 import time
 from typing import Dict

@@ -4,7 +4,7 @@ Code taken and adjusted from SB2 docs:
 https://stable-baselines.readthedocs.io/en/master/guide/quickstart.html
 Equivalent script with RLlib: sb2rllib_rllib_example.py
 """
-import gym
+import gymnasium as gym
 
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines import PPO2

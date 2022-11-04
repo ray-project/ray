@@ -1,6 +1,6 @@
 from collections import defaultdict
 import copy
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
 import numpy as np
@@ -159,7 +159,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -170,7 +170,7 @@ class RolloutWorker(ParallelIteratorWorker):
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "dones": [[...]], "new_obs": [[...]]})
         >>> # Creating a multi-agent rollout worker
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> import random
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -851,7 +851,7 @@ class RolloutWorker(ParallelIteratorWorker):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -932,7 +932,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 size of the collected batch.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -958,7 +958,7 @@ class RolloutWorker(ParallelIteratorWorker):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1079,7 +1079,7 @@ class RolloutWorker(ParallelIteratorWorker):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1152,7 +1152,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 structs.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP

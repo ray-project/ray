@@ -1,8 +1,8 @@
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 import ray
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig

@@ -3,7 +3,7 @@ and use it in a serving/inference setting.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 from pathlib import Path
 
 from ray.rllib.policy.policy import Policy

@@ -1,7 +1,7 @@
 import random
 import unittest
 
-import gym
+import gymnasium as gym
 from ray.rllib.env.wrappers.exception_wrapper import (
     ResetOnExceptionWrapper,
     TooManyResetAttemptsException,

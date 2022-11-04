@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 

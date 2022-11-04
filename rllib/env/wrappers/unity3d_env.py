@@ -1,4 +1,4 @@
-from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
+from gymnasium.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
 import random

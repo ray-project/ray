@@ -1,8 +1,8 @@
 from copy import deepcopy
 
-import gym
+import gymnasium as gym
 import numpy as np
-from gym.spaces import Discrete, Dict, Box
+from gymnasium.spaces import Discrete, Dict, Box
 
 
 class CartPoleSparseRewards(gym.Env):

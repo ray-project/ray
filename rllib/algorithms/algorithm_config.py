@@ -1,6 +1,6 @@
 import copy
-import gym
-from gym.spaces import Space
+import gymnasium as gym
+from gymnasium.spaces import Space
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
