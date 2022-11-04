@@ -402,7 +402,10 @@ class BatchPredictor:
         )
 
     def _determine_predictor_batch_format(self, dataset: ray.data.Dataset):
-        """Determine the batch format to use in map_batches.
+        """Determine the batch format to use in BatchPredictor's map_batches.
+
+        Same final batch format will be applied to both predictor's map_batches
+        call as well as the preprocessor in case of separated GPU stage.
 
         We consider all 2x2x2 combinations of the following:
 
@@ -410,14 +413,38 @@ class BatchPredictor:
             - D(pandas): Dataset block format is Pandas
             - D(arrow): Dataset block format is Arrow
         Preprocessor batch format:
-            - B(pandas): Preprocessor with _transform_pandas implementation
-            - B(numpy): Preprocessor with _transform_numpy implementation
+            - B(pandas): Preprocessor with "pandas" batch format
+            - B(numpy): Preprocessor with "numpy" batch format
         Predictor implementation
             - P(pandas): Predictor with _predict_pandas implementation
             - P(numpy): Predictor with _predict_numpy implementation
 
         Example:
-            1) D(pandas), B(pandas), P(pandas) -> pandas
+            1) D(pandas) -> B(pandas) -> P(pandas+numpy) -> pandas
+            2) D(arrow) -> B(numpy) -> P(pandas+numpy) -> numpy
+
+            # The DL model path with inevtiable conversion
+            3) D(pandas) -> B(pandas) -> P(pandas+numpy) -> numpy
+
+            # Chain of preprocessors, non-DL predictor
+            4) D(pandas) -> B1(pandas) -> B2(numpy) -> P(pandas+numpy) -> numpy
+            5) D(pandas) -> B1(pandas) -> B2(pandas) -> P(pandas+numpy) -> pandas
 
         """
-        pass
+        # # If the preprocessor is a chain, we need to determine the batch format
+        # latest_batch_format = self._preprocessor.batch_format
+
+        # # For DL predictors that implemented _predict_numpy, we prefer to use
+        # # numpy batch format for better perf and user experience.
+        # has_predict_numpy = (
+        #     self._predictor_cls._predict_numpy != Predictor._predict_numpy
+        # )
+        # # Setting batch_format at map_batches is more preferable for perf as it
+        # # pushes block formatting work upstream to dataset level
+        # batch_format = BatchFormat.NUMPY if has_predict_numpy else BatchFormat.PANDAS
+
+        # if latest_batch_format = "arrow":
+
+        # else:
+
+        return

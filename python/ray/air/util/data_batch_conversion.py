@@ -23,6 +23,14 @@ class BatchFormat(str, Enum):
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
 
 
+class BlockFormat(str, Enum):
+    """Internal Dataset block format enum."""
+
+    PANDAS = "pandas"
+    ARROW = "arrow"
+    SIMPLE = "simple"
+
+
 @DeveloperAPI
 def convert_batch_type_to_pandas(
     data: DataBatchType,

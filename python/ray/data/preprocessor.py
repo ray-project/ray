@@ -3,6 +3,7 @@ import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict
 
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Dataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -183,7 +184,7 @@ class Preprocessor(abc.ABC):
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
-    def _determine_transform_to_use(self, data_format: str) -> str:
+    def determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
         """Determine which transform to use based on data format and implementation.
 
         We will infer and pick the best transform to use:
@@ -207,23 +208,23 @@ class Preprocessor(abc.ABC):
 
         # Infer transform type by prioritizing native transformation to minimize
         # data conversion cost.
-        if data_format == "pandas":
+        if data_format == BlockFormat.PANDAS:
             # Perform native pandas transformation if possible.
             if has_transform_pandas:
-                transform_type = "pandas"
+                transform_type = BatchFormat.PANDAS
             elif has_transform_numpy:
-                transform_type = "numpy"
+                transform_type = BatchFormat.NUMPY
             else:
                 raise NotImplementedError(
                     "None of `_transform_numpy` or `_transform_pandas` "
                     f"are implemented for dataset format `{data_format}`."
                 )
-        elif data_format == "arrow" or data_format == "numpy":
+        elif data_format == BlockFormat.ARROW or data_format == "numpy":
             # Arrow -> Numpy is more efficient
             if has_transform_numpy:
-                transform_type = "numpy"
+                transform_type = BatchFormat.NUMPY
             elif has_transform_pandas:
-                transform_type = "pandas"
+                transform_type = BatchFormat.PANDAS
             else:
                 raise NotImplementedError(
                     "None of `_transform_numpy` or `_transform_pandas` "
@@ -236,24 +237,28 @@ class Preprocessor(abc.ABC):
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 
-        dataset_format = dataset._dataset_format()
-        if dataset_format not in ("pandas", "arrow"):
+        dataset_format = dataset.dataset_format()
+        if dataset_format not in (BlockFormat.PANDAS, BlockFormat.ARROW):
             raise ValueError(
                 f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' "
                 "and 'arrow' Dataset formats are supported."
             )
 
-        transform_type = self._determine_transform_to_use(dataset_format)
+        transform_type = self.determine_transform_to_use(dataset_format)
 
         # Our user facing batch format should only be pandas or numpy, other
         # formats {arrow, simple} are internal.
-        if transform_type == "pandas":
-            return dataset.map_batches(self._transform_pandas, batch_format="pandas")
-        elif transform_type == "numpy":
-            return dataset.map_batches(self._transform_numpy, batch_format="numpy")
+        if transform_type == BatchFormat.PANDAS:
+            return dataset.map_batches(
+                self._transform_pandas, batch_format=BatchFormat.PANDAS
+            )
+        elif transform_type == BatchFormat.NUMPY:
+            return dataset.map_batches(
+                self._transform_numpy, batch_format=BatchFormat.NUMPY
+            )
         else:
             raise ValueError(
-                "Invalid transform type returned from _determine_transform_to_use; "
+                "Invalid transform type returned from determine_transform_to_use; "
                 f'"pandas" and "numpy" allowed, but got: {transform_type}'
             )
 
@@ -272,9 +277,9 @@ class Preprocessor(abc.ABC):
             pyarrow = None
 
         if isinstance(data, pd.DataFrame):
-            data_format = "pandas"
+            data_format = BlockFormat.PANDAS
         elif pyarrow is not None and isinstance(data, pyarrow.Table):
-            data_format = "arrow"
+            data_format = BlockFormat.ARROW
         elif isinstance(data, (dict, np.ndarray)):
             data_format = "numpy"
         else:
@@ -284,11 +289,11 @@ class Preprocessor(abc.ABC):
                 f"ndarray. Got {type(data)}."
             )
 
-        transform_type = self._determine_transform_to_use(data_format)
+        transform_type = self.determine_transform_to_use(data_format)
 
-        if transform_type == "pandas":
+        if transform_type == BatchFormat.PANDAS:
             return self._transform_pandas(convert_batch_type_to_pandas(data))
-        elif transform_type == "numpy":
+        elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
     @DeveloperAPI

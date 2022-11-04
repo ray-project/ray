@@ -160,7 +160,7 @@ def test_predict_numpy_with_numpy_data():
 
 def test_predict_pandas_with_numpy_data():
     """Data batch level predictor test where both input data is numpy format but
-    and predictor only has _predict_pandas implementation.
+    predictor only has _predict_pandas implementation.
     """
     input = np.array([1, 2, 3])
     # Test predict with only Pandas preprocessor
