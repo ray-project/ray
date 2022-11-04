@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.pre_checks.env import check_old_gym_env
 from ray.rllib.utils.typing import AgentID
 
 # info key for the individual rewards of an agent, for example:
@@ -98,7 +99,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
             self._group_items(obs_and_info[0]),
             self._group_items(
                 obs_and_info[1],
-                agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values()),
+                agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())},
             ),
         )
 
@@ -109,15 +110,20 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
         if check_old_gym_env(self.env, step_results=results):
             obs, rewards, dones, infos = results
-            truncateds =
+            truncateds = {k: False for k in dones.keys() if k != "__all__"}
         else:
             obs, rewards, dones, truncateds, infos = results
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
         rewards = self._group_items(rewards, agg_fn=lambda gvals: list(gvals.values()))
+        # Only if all of the agents are done, the group is done as well.
         dones = self._group_items(dones, agg_fn=lambda gvals: all(gvals.values()))
-        truncateds = self._group_items(truncateds, agg_fn=lambda gvals: all(gvals.values()))
+        # If all of the agents are truncated, the group is truncated as well.
+        truncateds = self._group_items(
+            truncateds,
+            agg_fn=lambda gvals: all(gvals.values()),
+        )
         infos = self._group_items(
             infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())}
         )
