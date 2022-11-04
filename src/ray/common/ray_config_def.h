@@ -436,7 +436,8 @@ RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 10
 RAY_CONFIG(bool, use_ray_syncer, false)
 /// Due to the protocol draw back, raylet needs to refresh the message if
 /// no message is received for a while.
-RAY_CONFIG(int64_t, message_refresh_interval_ms, 3000)
+/// Refer to https://tinyurl.com/n6kvsp87 for more details
+RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
