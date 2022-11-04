@@ -1418,7 +1418,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
         ]
 )
 
@@ -1431,7 +1431,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 5000, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
         ]
 )
 
@@ -1444,7 +1444,7 @@ py_test(
         "--env", "Pong-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -1718,14 +1718,14 @@ py_test(
 py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:rllib", "evaluation"],
-    size = "medium",
+    size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "evaluation/tests/test_trajectory_view_api",
     tags = ["team:rllib", "evaluation"],
-    size = "medium",
+    size = "large",
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 

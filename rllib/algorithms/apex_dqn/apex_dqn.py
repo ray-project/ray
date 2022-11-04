@@ -320,6 +320,13 @@ class ApexDQNConfig(DQNConfig):
 
         return self
 
+    @override(DQNConfig)
+    def validate(self) -> None:
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
+        # Call DQN's validation method.
+        super().validate()
+
 
 class ApexDQN(DQN):
     @override(Trainable)
@@ -394,13 +401,6 @@ class ApexDQN(DQN):
         return ApexDQNConfig()
 
     @override(DQN)
-    def validate_config(self, config):
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
-        # Call DQN's validation method.
-        super().validate_config(config)
-
-    @override(DQN)
     def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         num_worker_samples_collected = defaultdict(int)
@@ -419,7 +419,9 @@ class ApexDQN(DQN):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -515,7 +517,7 @@ class ApexDQN(DQN):
                         {
                             "timestep": self._counters[
                                 NUM_AGENT_STEPS_TRAINED
-                                if self._by_agent_steps
+                                if self.config.count_steps_by == "agent_steps"
                                 else NUM_ENV_STEPS_TRAINED
                             ]
                         },
@@ -628,7 +630,7 @@ class ApexDQN(DQN):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 NUM_AGENT_STEPS_TRAINED
-                if self._by_agent_steps
+                if self.config.count_steps_by == "agent_steps"
                 else NUM_ENV_STEPS_TRAINED
             ]
 
