@@ -16,12 +16,27 @@ can install `py-spy` and give it root permissions as follows:
   $ sudo chown root:root `which py-spy`
   $ sudo chmod u+s `which py-spy`
 
+Alternatively, you can start Ray with passwordless sudo / root permissions.
+
 === stdout ===
 {stdout.decode("utf-8")}
 
 === stderr ===
 {stderr.decode("utf-8")}
 """
+
+
+# If we can sudo, always try that. Otherwise, py-spy will only work if the user has
+# root privileges or has configured setuid on the py-spy script.
+async def _can_passwordless_sudo() -> bool:
+    process = await asyncio.create_subprocess_shell(
+        "sudo -n true",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=True,
+    )
+    _, _ = await process.communicate()
+    return process.returncode == 0
 
 
 class CpuProfilingManager:
@@ -31,6 +46,8 @@ class CpuProfilingManager:
 
     async def trace_dump(self, pid: int) -> (bool, str):
         cmd = f"$(which py-spy) dump --native -p {pid}"
+        if await _can_passwordless_sudo():
+            cmd = "sudo -n " + cmd
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=subprocess.PIPE,
@@ -57,6 +74,8 @@ class CpuProfilingManager:
             f"$(which py-spy) record --native "
             f"-o {profile_file_path} -p {pid} -d {duration} -f {format}"
         )
+        if await _can_passwordless_sudo():
+            cmd = "sudo -n " + cmd
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=subprocess.PIPE,

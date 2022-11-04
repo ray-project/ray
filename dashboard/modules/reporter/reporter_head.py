@@ -178,15 +178,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
-        duration = int(req.get("duration", 5))
+        duration = int(req.query.get("duration", 5))
+        if duration > 60:
+            raise ValueError(f"The max duration allowed is 60: {duration}.")
         format = req.query.get("format", "flamegraph")
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
         )
         logger.info(reply)
         if reply.success:
-            return aiohttp.web.HTTPInternalServerError(text=reply.output)
-        else:
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
@@ -195,6 +195,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     else "text/plain"
                 },
             )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     async def run(self, server):
         # Need daemon True to avoid dashboard hangs at exit.
