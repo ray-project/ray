@@ -229,7 +229,7 @@ class RayTrialExecutor:
 
         # Actor re-use
         self._reuse_actors = reuse_actors
-        self._max_staged_actors = 0
+        self._max_staged_actors = 1
         self._cached_resources_to_actor = defaultdict(list)
 
         # Resource management
@@ -304,8 +304,12 @@ class RayTrialExecutor:
         Stages placement groups of all trials.
         """
         for trial in trials:
+            if len(self._staged_trials) >= self._max_staged_actors:
+                break
+
             if trial.status not in (Trial.PENDING, Trial.PAUSED):
                 continue
+
             if trial in self._staged_trials:
                 continue
 
@@ -766,10 +770,11 @@ class RayTrialExecutor:
 
         """
         resource_request = trial.placement_group_factory
+
         return (
             trial in self._staged_trials
             or self._cached_resources_to_actor[resource_request]
-            or len(self._staged_trials) <= self._max_staged_actors
+            or len(self._staged_trials) < self._max_staged_actors
             or self._resource_manager.has_resources_ready(resource_request)
         )
 

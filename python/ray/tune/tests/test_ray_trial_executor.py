@@ -22,10 +22,8 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.tune.execution.placement_groups import (
-    PlacementGroupFactory,
-    _PlacementGroupManager,
-)
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+
 from unittest.mock import patch
 
 
@@ -564,12 +562,10 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         self.assertEqual(counter[pgf_3], 3)
 
     def testHasResourcesForTrialWithCaching(self):
-        pgm = _PlacementGroupManager()
         pgf1 = PlacementGroupFactory([{"CPU": self.head_cpus}])
         pgf2 = PlacementGroupFactory([{"CPU": self.head_cpus - 1}])
 
         executor = RayTrialExecutor(reuse_actors=True)
-        executor._pg_manager = pgm
         executor.setup(max_pending_trials=1)
 
         def train(config):
@@ -590,8 +586,10 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         executor._stage_and_update_status([trial1, trial2, trial3])
 
-        while not pgm.has_ready(trial1):
-            time.sleep(1)
+        while not executor._resource_manager.has_resources_ready(
+            trial1.placement_group_factory
+        ):
+            time.sleep(0.1)
             executor._stage_and_update_status([trial1, trial2, trial3])
 
         # Fill staging
@@ -605,14 +603,13 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         executor._stage_and_update_status([trial1, trial2, trial3])
         executor.pause_trial(trial1)  # Caches the PG and removes a PG from staging
 
-        assert len(pgm._staging_futures) == 0
+        assert len(executor._staged_trials) == 0
 
         # This will re-schedule a placement group
-        pgm.reconcile_placement_groups([trial1, trial2])
+        executor._stage_and_update_status([trial1, trial2, trial3])
+        executor._resource_manager.update_state()
 
-        assert len(pgm._staging_futures) == 1
-
-        assert not pgm.can_stage()
+        assert len(executor._staged_trials) == 1
 
         # We should still have resources for this trial as it has a cached PG
         assert executor.has_resources_for_trial(trial1)
