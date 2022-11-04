@@ -138,9 +138,9 @@ class TorchPredictor(DLPredictor):
                 print(f"Custom results: {predictions}")
 
             .. code-block:: text
-                
-                Custom results: {'0': array([1., 2.], dtype=float32), 
-                                '1': array([1., 2.], dtype=float32)} 
+
+                Custom results: {'0': array([1., 2.], dtype=float32),
+                                '1': array([1., 2.], dtype=float32)}
         """
         with torch.no_grad():
             output = self.model(tensor)
@@ -180,22 +180,22 @@ class TorchPredictor(DLPredictor):
                     import torch
                     import ray
                     from ray.train.torch import TorchPredictor
-                    
+
                     # Define a custom PyTorch module
                     class CustomModule(torch.nn.Module):
                         def __init__(self):
                             super().__init__()
                             self.linear1 = torch.nn.Linear(1, 1)
                             self.linear2 = torch.nn.Linear(1, 1)
-                    
+
                         def forward(self, input_dict: dict):
                             out1 = self.linear1(input_dict["A"].unsqueeze(1))
                             out2 = self.linear2(input_dict["B"].unsqueeze(1))
                             return out1 + out2
-                    
+
                     # Set manul seed so we get consistent output
                     torch.manual_seed(42)
-                    
+
                     # Use Standard PyTorch model
                     model = torch.nn.Linear(2, 1)
                     predictor = TorchPredictor(model=model)
