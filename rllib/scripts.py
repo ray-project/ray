@@ -10,10 +10,8 @@ from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
-    SupportedFileType,
     example_help,
     download_example_file,
-    get_file_type,
 )
 
 # Main Typer CLI app
