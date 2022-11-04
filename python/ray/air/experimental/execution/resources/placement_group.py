@@ -43,6 +43,7 @@ class PlacementGroupAllocatedResource(AllocatedResource):
                         placement_group=self.placement_group,
                         # Max ensures that empty head bundles are correctly placed
                         placement_group_bundle_index=max(0, i),
+                        placement_group_capture_child_tasks=True,
                     ),
                     num_cpus=num_cpus,
                     num_gpus=num_gpus,

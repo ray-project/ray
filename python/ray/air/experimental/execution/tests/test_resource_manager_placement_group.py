@@ -257,6 +257,39 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
     assert sum(v for k, v in res2.items() if k.startswith("CPU_group_0")) == 2
 
 
+def test_capture_child_tasks(ray_start_4_cpus):
+    """Test that child tasks are captured when creating placement groups.
+
+    - Request PG with 2 bundles (1 CPU and 2 CPUs)
+    - Bind a remote task that needs 2 CPUs to run
+    - Assert that it can be scheduled from within the first bundle
+
+    This is only the case if child tasks are captured in the placement groups, as
+    there is only 1 CPU available outside (on a 4 CPU cluster). The 2 CPUs
+    thus have to come from the placement group.
+    """
+    manager = PlacementGroupResourceManager(update_interval=0)
+    manager.request_resources(REQUEST_1_2_CPU)
+    ray.wait(manager.get_resource_futures(), num_returns=1)
+
+    assert manager.has_resources_ready(REQUEST_1_2_CPU)
+
+    @ray.remote
+    def needs_cpus():
+        return "Ok"
+
+    @ray.remote
+    def spawn_child_task(num_cpus: int):
+        return ray.get(needs_cpus.options(num_cpus=num_cpus).remote())
+
+    acq = manager.acquire_resources(REQUEST_1_2_CPU)
+    [av1] = acq.annotate_remote_objects([spawn_child_task])
+
+    res = ray.get(av1.remote(2), timeout=2.0)
+
+    assert res
+
+
 if __name__ == "__main__":
     import sys
 
