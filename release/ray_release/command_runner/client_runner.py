@@ -51,6 +51,7 @@ class ClientRunner(CommandRunner):
 
         self.last_logs = None
         self.result_output_json = tempfile.mktemp()
+        self.metrics_output_json = tempfile.mktemp()
 
     def prepare_remote_env(self):
         pass

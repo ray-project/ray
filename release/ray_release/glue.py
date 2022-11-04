@@ -43,7 +43,6 @@ from ray_release.util import (
     get_pip_packages,
     reinstall_anyscale_dependencies,
 )
-from ray_release.prometheus_metrics import get_prometheus_metrics
 
 type_str_to_command_runner = {
     "command": SDKRunner,
@@ -104,7 +103,6 @@ def run_release_test(
     os.chdir(new_wd)
 
     start_time = time.monotonic()
-    start_time_unix = time.time()
 
     run_type = test["run"].get("type", "sdk_command")
 
@@ -272,6 +270,8 @@ def run_release_test(
 
         is_long_running = test["run"].get("long_running", False)
 
+        start_time_unix = time.time()
+
         try:
             command_runner.run_command(
                 command, env=command_env, timeout=command_timeout
@@ -291,6 +291,14 @@ def run_release_test(
             logger.exception(e)
             command_results = {}
 
+        try:
+            command_runner.save_metrics(start_time_unix)
+            metrics = command_runner.fetch_metrics()
+        except Exception as e:
+            logger.error("Could not fetch metrics for test command")
+            logger.exception(e)
+            metrics = {}
+
         # Postprocess result:
         if "last_update" in command_results:
             command_results["last_update_diff"] = time.time() - command_results.get(
@@ -306,6 +314,7 @@ def run_release_test(
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
+        metrics = {}
 
     try:
         last_logs = command_runner.get_last_logs()
@@ -323,9 +332,8 @@ def run_release_test(
             logger.error(f"Could not terminate cluster: {e}")
 
     time_taken = time.monotonic() - start_time
-    end_time_unix = time.time()
     result.runtime = time_taken
-    result.prometheus_metrics = get_prometheus_metrics(start_time_unix, end_time_unix)
+    result.prometheus_metrics = metrics
 
     os.chdir(old_wd)
 

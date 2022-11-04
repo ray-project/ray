@@ -5,8 +5,11 @@ import time
 import traceback
 from urllib.parse import quote
 from typing import Optional
+import logging
+import json
+import argparse
 
-from ray_release.logger import logger
+logger = logging.getLogger(__name__)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
@@ -100,7 +103,7 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
     return metrics
 
 
-def get_prometheus_metrics(start_time: float, end_time: float) -> Optional[dict]:
+def get_prometheus_metrics(start_time: float, end_time: float) -> dict:
     try:
         return asyncio.run(_get_prometheus_metrics(start_time, end_time))
     except Exception:
@@ -108,4 +111,30 @@ def get_prometheus_metrics(start_time: float, end_time: float) -> Optional[dict]
             "Couldn't obtain Prometheus metrics. "
             f"Exception below:\n{traceback.format_exc()}"
         )
-        return None
+        return {}
+
+
+def save_prometheus_metrics(
+    start_time: float, end_time: Optional[float] = None, path: Optional[str] = None
+) -> bool:
+    path = path or os.environ.get("METRICS_OUTPUT_JSON", None)
+    if path:
+        if not end_time:
+            end_time = time.time()
+        metrics = get_prometheus_metrics(start_time, end_time)
+        with open(path, "w") as metrics_output_file:
+            json.dump(metrics, metrics_output_file)
+        return path
+    return None
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "start_time", type=float, help="Start time"
+    )
+    parser.add_argument(
+        "--path", default="", type=str, help="Where to save the metrics json"
+    )
+
+    args = parser.parse_args()
+    save_prometheus_metrics(args.start_time, path=args.path)

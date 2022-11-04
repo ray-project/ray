@@ -17,10 +17,14 @@ class CommandRunner(abc.ABC):
         self.working_dir = working_dir
 
         self.result_output_json = "/tmp/release_test_out.json"
+        self.metrics_output_json = "/tmp/metrics_test_out.json"
 
     @property
     def command_env(self):
-        return {"TEST_OUTPUT_JSON": self.result_output_json}
+        return {
+            "TEST_OUTPUT_JSON": self.result_output_json,
+            "METRICS_OUTPUT_JSON": self.metrics_output_json,
+        }
 
     def get_full_command_env(self, env: Optional[Dict] = None):
         full_env = self.command_env.copy()
@@ -39,6 +43,22 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900.0):
+        """Wait for cluster nodes to be up.
+
+        Args:
+            num_nodes: Number of nodes to wait for.
+            timeout: Timeout in seconds to wait for nodes before
+             raising a ``PrepareCommandTimeoutError``.
+
+        Returns:
+            None
+
+        Raises:
+            PrepareCommandTimeoutError
+        """
+        raise NotImplementedError
+
+    def save_metrics(self, start_time: float, timeout: float = 900.0):
         """Wait for cluster nodes to be up.
 
         Args:
@@ -74,4 +94,7 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def fetch_results(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def fetch_metrics(self) -> Dict[str, Any]:
         raise NotImplementedError
