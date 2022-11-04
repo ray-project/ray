@@ -177,8 +177,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
         )
         logger.info(reply)
-        return aiohttp.web.FileResponse(
-            reply.filename, headers={"Content-Type": "image/svg+xml"}
+        return aiohttp.web.Response(
+            reply.output, headers={"Content-Type": "image/svg+xml"}
         )
 
     async def run(self, server):

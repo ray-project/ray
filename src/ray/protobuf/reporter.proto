@@ -53,7 +53,7 @@ message CpuProfilingRequest {
 }
 
 message CpuProfilingReply {
-  string filename = 1;
+  string output = 1;
 }
 
 message ReportMetricsRequest {

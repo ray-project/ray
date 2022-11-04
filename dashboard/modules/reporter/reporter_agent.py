@@ -358,7 +358,7 @@ class ReporterAgent(
         format = request.format
         p = CpuProfilingManager(self._log_dir)
         output = await p.cpu_profile(pid, format=format, duration=duration)
-        return reporter_pb2.GetTracebackReply(output=output)
+        return reporter_pb2.CpuProfilingReply(output=output)
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
