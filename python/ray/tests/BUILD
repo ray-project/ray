@@ -265,6 +265,8 @@ py_test_module_list(
     "test_state_api.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
+    "test_reconstruction_stress.py",
+    "test_reconstruction_stress_spill.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
