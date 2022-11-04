@@ -38,7 +38,6 @@ class _MockTrainer(Algorithm):
         )
         self.config["env"] = self._env_id
 
-        self.validate_config(self.config)
         self.callbacks = self.config["callbacks"]()
 
         # Add needed properties.

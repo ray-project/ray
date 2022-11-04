@@ -300,7 +300,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_multi_g_p_u(self):
         self._do_test_fault_ignore(
             PPOConfig()
-            .rollouts(rollout_fragment_length=10)
+            .rollouts(rollout_fragment_length=5)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
@@ -912,7 +912,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Worker fault tolerance.
                 recreate_failed_workers=False,  # Do not ignore.
                 restart_failed_sub_environments=True,  # But recover.
-                rollout_fragment_length=10,
+                rollout_fragment_length=5,
                 # Use EMA PerfStat.
                 # Really large coeff to show the difference in env_wait_time_ms.
                 # Pretty much consider the last 2 data points.

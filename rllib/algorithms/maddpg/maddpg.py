@@ -18,7 +18,6 @@ from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -254,6 +253,24 @@ class MADDPGConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        """Adds the `before_learn_on_batch` hook to the config.
+
+        This hook is called explicitly prior to `train_one_step()` in the
+        `training_step()` methods of DQN and APEX.
+        """
+        # Call super's validation method.
+        super().validate()
+
+        def f(batch, workers, config):
+            policies = dict(
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
+            )
+            return before_learn_on_batch(batch, policies, config["train_batch_size"])
+
+        self.before_learn_on_batch = f
+
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     samples = {}
@@ -288,26 +305,11 @@ class MADDPG(DQN):
     def get_default_config(cls) -> AlgorithmConfig:
         return MADDPGConfig()
 
+    @classmethod
     @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Adds the `before_learn_on_batch` hook to the config.
-
-        This hook is called explicitly prior to `train_one_step()` in the
-        `training_step` methods of DQN and APEX-DQN.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        def f(batch, workers, config):
-            policies = dict(
-                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
-            )
-            return before_learn_on_batch(batch, policies, config["train_batch_size"])
-
-        config["before_learn_on_batch"] = f
-
-    @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return MADDPGTFPolicy
 
 

@@ -22,7 +22,6 @@ from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +214,7 @@ class SlateQConfig(AlgorithmConfig):
         return self
 
 
-def calculate_round_robin_weights(config: AlgorithmConfigDict) -> List[float]:
+def calculate_round_robin_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -233,8 +232,11 @@ class SlateQ(DQN):
     def get_default_config(cls) -> AlgorithmConfig:
         return SlateQConfig()
 
+    @classmethod
     @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:

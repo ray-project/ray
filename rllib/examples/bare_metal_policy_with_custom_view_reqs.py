@@ -52,7 +52,8 @@ if __name__ == "__main__":
 
     # Create q custom Algorithm class using our custom Policy.
     class BareMetalPolicyAlgorithm(Algorithm):
-        def get_default_policy_class(self, config):
+        @classmethod
+        def get_default_policy_class(cls, config):
             return BareMetalPolicyWithCustomViewReqs
 
     config = (

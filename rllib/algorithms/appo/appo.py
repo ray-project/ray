@@ -225,7 +225,9 @@ class APPO(Impala):
                 training step.
         """
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (
@@ -276,9 +278,10 @@ class APPO(Impala):
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
+    @classmethod
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

@@ -17,7 +17,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -198,8 +197,11 @@ class CRR(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return CRRConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
 
@@ -230,7 +232,9 @@ class CRR(Algorithm):
         # update target every few gradient updates
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 

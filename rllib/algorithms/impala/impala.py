@@ -129,6 +129,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
+        self._tf_policy_handles_more_than_one_loss = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -321,6 +322,8 @@ class ImpalaConfig(AlgorithmConfig):
         if vf_loss_coeff is not None:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not None:
+            if entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0!")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not None:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -332,6 +335,48 @@ class ImpalaConfig(AlgorithmConfig):
             self.after_train_step = after_train_step
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call the super class' validation method first.
+        super().validate()
+
+        if self.num_data_loader_buffers != DEPRECATED_VALUE:
+            deprecation_warning(
+                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
+            )
+
+        # Check whether worker to aggregation-worker ratio makes sense.
+        if self.num_aggregation_workers > self.num_rollout_workers:
+            raise ValueError(
+                "`num_aggregation_workers` must be smaller than or equal "
+                "`num_rollout_workers`! Aggregation makes no sense otherwise."
+            )
+        elif self.num_aggregation_workers > self.num_rollout_workers / 2:
+            logger.warning(
+                "`num_aggregation_workers` should be significantly smaller "
+                "than `num_workers`! Try setting it to 0.5*`num_workers` or "
+                "less."
+            )
+
+        # If two separate optimizers/loss terms used for tf, must also set
+        # `_tf_policy_handles_more_than_one_loss` to True.
+        if self._separate_vf_optimizer is True:
+            # Only supported to tf so far.
+            # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
+            #  models to return separate sets of weights in order to create
+            #  the different torch optimizers).
+            if self.framework_str not in ["tf", "tf2"]:
+                raise ValueError(
+                    "`_separate_vf_optimizer` only supported to tf so far!"
+                )
+            if self._tf_policy_handles_more_than_one_loss is False:
+                raise ValueError(
+                    "`_tf_policy_handles_more_than_one_loss` must be set to "
+                    "True, for TFPolicy to support more than one loss "
+                    "term/optimizer! Try setting config.training("
+                    "_tf_policy_handles_more_than_one_loss=True)."
+                )
 
 
 def make_learner_thread(local_worker, config):
@@ -394,9 +439,10 @@ class Impala(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return ImpalaConfig()
 
+    @classmethod
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
@@ -427,54 +473,6 @@ class Impala(Algorithm):
                 from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
                 return A3CTFPolicy
-
-    @override(Algorithm)
-    def validate_config(self, config):
-        # Call the super class' validation method first.
-        super().validate_config(config)
-
-        # Check the IMPALA specific config.
-
-        if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
-            )
-            config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
-
-        if config["entropy_coeff"] < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
-
-        # Check whether worker to aggregation-worker ratio makes sense.
-        if config["num_aggregation_workers"] > config["num_workers"]:
-            raise ValueError(
-                "`num_aggregation_workers` must be smaller than or equal "
-                "`num_workers`! Aggregation makes no sense otherwise."
-            )
-        elif config["num_aggregation_workers"] > config["num_workers"] / 2:
-            logger.warning(
-                "`num_aggregation_workers` should be significantly smaller "
-                "than `num_workers`! Try setting it to 0.5*`num_workers` or "
-                "less."
-            )
-
-        # If two separate optimizers/loss terms used for tf, must also set
-        # `_tf_policy_handles_more_than_one_loss` to True.
-        if config["_separate_vf_optimizer"] is True:
-            # Only supported to tf so far.
-            # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
-            #  models to return separate sets of weights in order to create
-            #  the different torch optimizers).
-            if config["framework"] not in ["tf", "tf2"]:
-                raise ValueError(
-                    "`_separate_vf_optimizer` only supported to tf so far!"
-                )
-            if config["_tf_policy_handles_more_than_one_loss"] is False:
-                logger.warning(
-                    "`_tf_policy_handles_more_than_one_loss` must be set to "
-                    "True, for TFPolicy to support more than one loss "
-                    "term/optimizer! Auto-setting it to True."
-                )
-                config["_tf_policy_handles_more_than_one_loss"] = True
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -697,7 +695,9 @@ class Impala(Algorithm):
                 self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
-                    batch.agent_steps() if self._by_agent_steps else batch.count
+                    batch.agent_steps()
+                    if self.config.count_steps_by == "agent_steps"
+                    else batch.count
                 )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1

@@ -204,10 +204,10 @@ class TestRolloutWorker(unittest.TestCase):
             .environment("test")
             .rollouts(
                 num_rollout_workers=2,
-                rollout_fragment_length=5,
                 num_envs_per_worker=2,
                 create_env_on_local_worker=True,
             )
+            .training(train_batch_size=20)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             pg = config.build()

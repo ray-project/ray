@@ -103,7 +103,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 # Re-create failed workers (then continue).
                 recreate_failed_workers=True,
             )
-            .training(train_batch_size=20)
+            .training(train_batch_size=60)
             .environment(
                 env=CartPoleCrashing,
                 env_config={

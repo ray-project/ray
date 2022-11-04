@@ -240,6 +240,35 @@ class MBMPOConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
+        if self.framework_str != "torch":
+            raise ValueError(
+                "MB-MPO only supported in PyTorch so far! Try setting config. "
+                "framework('torch')."
+            )
+        if self.inner_adaptation_steps <= 0:
+            raise ValueError("Inner adaptation steps must be >=1!")
+        if self.maml_optimizer_steps <= 0:
+            raise ValueError("PPO steps for meta-update needs to be >=0!")
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >=0.0!")
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("`batch_mode=truncate_episodes` not supported!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("Must have at least 1 worker/task.")
+        if self.create_env_on_local_worker is False:
+            raise ValueError(
+                "Must have an actual Env created on the local worker process!"
+                "Try setting `config.environment("
+                "create_env_on_local_worker=True)`."
+            )
+
 
 # Select Metric Keys for MAML Stats Tracing
 METRICS_KEYS = ["episode_reward_mean", "episode_reward_min", "episode_reward_max"]
@@ -464,37 +493,11 @@ class MBMPO(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return MBMPOConfig()
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
-        if config["framework"] != "torch":
-            logger.warning(
-                "MB-MPO only supported in PyTorch so far! Switching to "
-                "`framework=torch`."
-            )
-            config["framework"] = "torch"
-        if config["inner_adaptation_steps"] <= 0:
-            raise ValueError("Inner adaptation steps must be >=1!")
-        if config["maml_optimizer_steps"] <= 0:
-            raise ValueError("PPO steps for meta-update needs to be >=0!")
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >=0.0!")
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("`batch_mode=truncate_episodes` not supported!")
-        if config["num_workers"] <= 0:
-            raise ValueError("Must have at least 1 worker/task.")
-        if config["create_env_on_driver"] is False:
-            raise ValueError(
-                "Must have an actual Env created on the driver "
-                "(local) worker! Set `create_env_on_driver` to True."
-            )
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 
         return MBMPOTorchPolicy

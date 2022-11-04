@@ -232,8 +232,9 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
 
 
 class CentralizedCritic(PPO):
+    @classmethod
     @override(PPO)
-    def get_default_policy_class(self, config):
+    def get_default_policy_class(cls, config):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
         elif config["framework"] == "tf":

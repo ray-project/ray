@@ -56,7 +56,7 @@ class AgentIOTest(unittest.TestCase):
             PGConfig()
             .environment("CartPole-v1")
             .framework(fw)
-            .rollouts(rollout_fragment_length=250)
+            .training(train_batch_size=250)
             .offline_data(
                 output=output + (fw if output != "logdir" else ""),
                 output_config=output_config or {},
@@ -184,7 +184,7 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PGConfig()
             .environment("CartPole-v1")
-            .rollouts(rollout_fragment_length=99)
+            .training(train_batch_size=99)
             .evaluation(off_policy_estimation_methods={})
         )
 
@@ -295,7 +295,8 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PGConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2, rollout_fragment_length=250)
+            .rollouts(num_rollout_workers=2)
+            .training(train_batch_size=500)
             .evaluation(off_policy_estimation_methods={})
         )
 

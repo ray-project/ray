@@ -155,6 +155,53 @@ class DDPPOConfig(PPOConfig):
 
         return self
 
+    @override(PPOConfig)
+    def validate(self) -> None:
+        # Call (base) PPO's config validation function first.
+        # Note that this will not touch or check on the train_batch_size=-1
+        # setting.
+        super().validate()
+
+        # Must have `num_rollout_workers` >= 1.
+        if self.num_rollout_workers < 1:
+            raise ValueError(
+                "Due to its distributed, decentralized nature, "
+                "DD-PPO requires `num_workers` to be >= 1!"
+            )
+
+        # Only supported for PyTorch so far.
+        if self.framework_str != "torch":
+            raise ValueError("Distributed data parallel is only supported for PyTorch")
+        if self.torch_distributed_backend not in ("gloo", "mpi", "nccl"):
+            raise ValueError(
+                "Only gloo, mpi, or nccl is supported for "
+                "the backend of PyTorch distributed."
+            )
+        # `num_gpus` must be 0/None, since all optimization happens on Workers.
+        if self.num_gpus:
+            raise ValueError(
+                "When using distributed data parallel, you should set "
+                "num_gpus=0 since all optimization "
+                "is happening on workers. Enable GPUs for workers by setting "
+                "num_gpus_per_worker=1."
+            )
+        # `batch_mode` must be "truncate_episodes".
+        if not self.in_evaluation and self.batch_mode != "truncate_episodes":
+            raise ValueError(
+                "Distributed data parallel requires truncate_episodes batch mode."
+            )
+
+        # DDPPO doesn't support KL penalties like PPO-1.
+        # In order to support KL penalties, DDPPO would need to become
+        # undecentralized, which defeats the purpose of the algorithm.
+        # Users can still tune the entropy coefficient to control the
+        # policy entropy (similar to controlling the KL penalty).
+        if self.kl_coeff != 0.0 or self.kl_target != 0.0:
+            raise ValueError(
+                "Invalid zero-values for `kl_coeff` and/or `kl_target`! "
+                "DDPPO doesn't support KL penalties like PPO-1!"
+            )
+
 
 class DDPPO(PPO):
     def __init__(
@@ -198,60 +245,6 @@ class DDPPO(PPO):
     @override(PPO)
     def get_default_config(cls) -> AlgorithmConfig:
         return DDPPOConfig()
-
-    @override(PPO)
-    def validate_config(self, config):
-        """Validates the Algorithm's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
-        # Call (base) PPO's config validation function first.
-        # Note that this will not touch or check on the train_batch_size=-1
-        # setting.
-        super().validate_config(config)
-
-        # Must have `num_workers` >= 1.
-        if config["num_workers"] < 1:
-            raise ValueError(
-                "Due to its distributed, decentralized nature, "
-                "DD-PPO requires `num_workers` to be >= 1!"
-            )
-
-        # Only supported for PyTorch so far.
-        if config["framework"] != "torch":
-            raise ValueError("Distributed data parallel is only supported for PyTorch")
-        if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
-            raise ValueError(
-                "Only gloo, mpi, or nccl is supported for "
-                "the backend of PyTorch distributed."
-            )
-        # `num_gpus` must be 0/None, since all optimization happens on Workers.
-        if config["num_gpus"]:
-            raise ValueError(
-                "When using distributed data parallel, you should set "
-                "num_gpus=0 since all optimization "
-                "is happening on workers. Enable GPUs for workers by setting "
-                "num_gpus_per_worker=1."
-            )
-        # `batch_mode` must be "truncate_episodes".
-        if (
-            not config.get("in_evaluation")
-            and config["batch_mode"] != "truncate_episodes"
-        ):
-            raise ValueError(
-                "Distributed data parallel requires truncate_episodes batch mode."
-            )
-        # DDPPO doesn't support KL penalties like PPO-1.
-        # In order to support KL penalties, DDPPO would need to become
-        # undecentralized, which defeats the purpose of the algorithm.
-        # Users can still tune the entropy coefficient to control the
-        # policy entropy (similar to controlling the KL penalty).
-        if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
-            raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
     @override(PPO)
     def setup(self, config: PartialAlgorithmConfigDict):

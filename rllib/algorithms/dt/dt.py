@@ -18,7 +18,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     ResultDict,
     TensorStructType,
     PolicyID,
@@ -227,55 +226,39 @@ class DTConfig(AlgorithmConfig):
 
         return self
 
-
-class DT(Algorithm):
-    """Implements Decision Transformer: https://arxiv.org/abs/2106.01345"""
-
-    # TODO: we have a circular dependency for get
-    #  default config. config -> Trainer -> config
-    #  defining Config class in the same file for now as a workaround.
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Trainer's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
         # Call super's validation method.
-        super().validate_config(config)
+        super().validate()
 
         # target_return must be specified
         assert (
-            self.config.get("target_return") is not None
+            self.target_return is not None
         ), "Must specify a target return (total sum of rewards)."
 
         # horizon must be specified and >= 2
-        assert self.config.get("horizon") is not None, "Must specify rollout horizon."
-        assert self.config["horizon"] >= 2, "rollout horizon must be at least 2."
+        assert self.horizon is not None, "Must specify rollout horizon."
+        assert self.horizon >= 2, "rollout horizon must be at least 2."
 
         # replay_buffer's type must be MultiAgentSegmentationBuffer
         assert (
-            self.config.get("replay_buffer_config") is not None
+            self.replay_buffer_config is not None
         ), "Must specify replay_buffer_config."
-        replay_buffer_type = self.config["replay_buffer_config"].get("type")
+        replay_buffer_type = self.replay_buffer_config.get("type")
         assert (
             replay_buffer_type == MultiAgentSegmentationBuffer
         ), "replay_buffer's type must be MultiAgentSegmentationBuffer."
 
         # max_seq_len must be specified in model
-        model_max_seq_len = self.config["model"].get("max_seq_len")
+        model_max_seq_len = self.model.get("max_seq_len")
         assert model_max_seq_len is not None, "Must specify model's max_seq_len."
 
         # User shouldn't need to specify replay_buffer's max_seq_len.
         # Autofill for replay buffer API. If they did specify, make sure it
         # matches with model's max_seq_len
-        buffer_max_seq_len = self.config["replay_buffer_config"].get("max_seq_len")
+        buffer_max_seq_len = self.replay_buffer_config.get("max_seq_len")
         if buffer_max_seq_len is None:
-            self.config["replay_buffer_config"]["max_seq_len"] = model_max_seq_len
+            self.replay_buffer_config["max_seq_len"] = model_max_seq_len
         else:
             assert (
                 buffer_max_seq_len == model_max_seq_len
@@ -283,21 +266,28 @@ class DT(Algorithm):
 
         # Same thing for buffer's max_ep_len, which should be autofilled from
         # rollout's horizon, or check that it matches if user specified.
-        buffer_max_ep_len = self.config["replay_buffer_config"].get("max_ep_len")
+        buffer_max_ep_len = self.replay_buffer_config.get("max_ep_len")
         if buffer_max_ep_len is None:
-            self.config["replay_buffer_config"]["max_ep_len"] = self.config["horizon"]
+            self.replay_buffer_config["max_ep_len"] = self.horizon
         else:
             assert (
-                buffer_max_ep_len == self.config["horizon"]
+                buffer_max_ep_len == self.horizon
             ), "replay_buffer's max_ep_len must equal rollout horizon."
+
+
+class DT(Algorithm):
+    """Implements Decision Transformer: https://arxiv.org/abs/2106.01345."""
 
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return DTConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 

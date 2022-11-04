@@ -81,6 +81,34 @@ class RNNSACConfig(SACConfig):
 
         return self
 
+    @override(SACConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # Add the `burn_in` to the Model's max_seq_len.
+        replay_sequence_length = (
+            self.replay_buffer_config["replay_burn_in"] + self.model["max_seq_len"]
+        )
+        # Check if user tries to set replay_sequence_length (to anything
+        # other than the proper value)
+        if self.replay_buffer_config.get("replay_sequence_length", None) not in [
+            None,
+            -1,
+            replay_sequence_length,
+        ]:
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "config.model['max_seq_len'] + config['replay_burn_in']. Leave "
+                "config.replay_buffer_config['replay_sequence_length'] blank to avoid "
+                "this error."
+            )
+        # Set the replay sequence length to the max_seq_len of the model.
+        self.replay_buffer_config["replay_sequence_length"] = replay_sequence_length
+
+        if self.framework_str != "torch":
+            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
+
 
 class RNNSAC(SAC):
     @classmethod
@@ -88,38 +116,11 @@ class RNNSAC(SAC):
     def get_default_config(cls) -> AlgorithmConfig:
         return RNNSACConfig()
 
+    @classmethod
     @override(SAC)
-    def validate_config(self, config: AlgorithmConfig) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        # Add the `burn_in` to the Model's max_seq_len.
-        replay_sequence_length = (
-            config["replay_buffer_config"]["replay_burn_in"]
-            + config["model"]["max_seq_len"]
-        )
-        # Check if user tries to set replay_sequence_length (to anything
-        # other than the proper value)
-        if config["replay_buffer_config"].get("replay_sequence_length", None) not in [
-            None,
-            -1,
-            replay_sequence_length,
-        ]:
-            raise ValueError(
-                "`replay_sequence_length` is calculated automatically to be "
-                "config['model']['max_seq_len'] + config['burn_in']. Leave "
-                "config['replay_sequence_length'] blank to avoid this error."
-            )
-        # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_buffer_config"][
-            "replay_sequence_length"
-        ] = replay_sequence_length
-
-        if config["framework"] != "torch":
-            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
-
-    @override(SAC)
-    def get_default_policy_class(self, config: AlgorithmConfig) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return RNNSACTorchPolicy
 
 

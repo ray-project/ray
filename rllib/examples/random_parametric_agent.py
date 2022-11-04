@@ -65,7 +65,8 @@ class RandomParametricAlgorithm(Algorithm):
     rollout and performs no learning.
     """
 
-    def get_default_policy_class(self, config):
+    @classmethod
+    def get_default_policy_class(cls, config):
         return RandomParametricPolicy
 
     @override(Algorithm)

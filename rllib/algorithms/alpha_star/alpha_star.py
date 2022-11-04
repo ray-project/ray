@@ -36,7 +36,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
@@ -328,20 +327,17 @@ class AlphaStar(appo.APPO):
         return AlphaStarConfig()
 
     @override(appo.APPO)
-    def validate_config(self, config: AlgorithmConfigDict):
+    def setup(self, config: AlphaStarConfig):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
-        if not config.get("in_evaluation"):
-            self.league_builder = from_config(
-                config["league_builder_config"], algo=self, algo_config=config
-            )
-        super().validate_config(config)
+        self.league_builder = from_config(
+            self.config.league_builder_config, algo=self, algo_config=self.config
+        )
 
-    @override(appo.APPO)
-    def setup(self, config: AlgorithmConfig):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
         super().setup(config)
+
         local_worker = self.workers.local_worker()
 
         # - Create n policy learner actors (@ray.remote-converted Policies) on
