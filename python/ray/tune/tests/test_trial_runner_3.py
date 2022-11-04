@@ -584,10 +584,12 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=2)
 
-        trial = Trial(
-            "__fake", checkpoint_config=CheckpointConfig(checkpoint_frequency=1)
-        )
         tmpdir = tempfile.mkdtemp()
+        trial = Trial(
+            "__fake",
+            local_dir=tmpdir,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        )
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for _ in range(5):
@@ -700,7 +702,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=3)
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
-        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
+        runner.add_trial(
+            Trial("__fake", local_dir=self.tmpdir, config={"user_checkpoint_freq": 2})
+        )
         trials = runner.get_trials()
 
         runner.step()  # Start trial
