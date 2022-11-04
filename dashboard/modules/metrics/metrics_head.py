@@ -104,9 +104,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
-        self._grafana_dashboard_output_dir = os.environ.get(
-            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
-        )
         grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
         self._grafana_dashboard_output_dir = os.environ.get(
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
