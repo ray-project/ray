@@ -394,7 +394,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         print("Start trial cleanup")
         start = time.time()
-        self.trial_executor.cleanup([trial])
+        self.trial_executor.cleanup()
         # 4 - 1 + 4.
         self.assertGreaterEqual(time.time() - start, 6)
 
@@ -422,7 +422,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         print("Start trial cleanup")
         start = time.time()
-        self.trial_executor.cleanup([trial])
+        self.trial_executor.cleanup()
         # less than 1 with some margin.
         self.assertLess(time.time() - start, 2.0)
 

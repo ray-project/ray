@@ -598,13 +598,9 @@ class RayTrialExecutor:
                 future = trial.runner.stop.remote()
 
             allocated_resources = self._trial_to_allocated_resources.pop(trial)
-            self._resource_manager.return_resources(
-                allocated_resources=allocated_resources, cancel_request=True
-            )
-
             self._futures[future] = (
                 _ExecutorEventType.STOP_RESULT,
-                None,
+                allocated_resources,
             )
             if self._trial_cleanup:  # force trial cleanup within a deadline
                 self._trial_cleanup.add(future)
@@ -804,7 +800,7 @@ class RayTrialExecutor:
                 if not next_future_to_clean:
                     break
                 if next_future_to_clean in self._futures:
-                    _, pg = self._futures.pop(next_future_to_clean)
+                    self._futures.pop(next_future_to_clean)
                     # Immediately clean this future
                     _post_stop_cleanup(next_future_to_clean, timeout=0.01)
                 else:
@@ -933,7 +929,7 @@ class RayTrialExecutor:
     def has_gpus(self) -> bool:
         return self._resource_updater.get_num_gpus() > 0
 
-    def cleanup(self, trials: List[Trial]) -> None:
+    def cleanup(self) -> None:
         while self._futures:
             if self._trial_cleanup and self._trial_cleanup.is_empty():
                 break
@@ -945,10 +941,14 @@ class RayTrialExecutor:
             ready, _ = ray.wait(list(self._futures.keys()), timeout=0)
             if not ready:
                 continue
-            event_type, _ = self._futures.pop(ready[0])
+
+            event_type, allocated_resources = self._futures.pop(ready[0])
 
             # It could be STOP future after all, if so, deal with it here.
             if event_type == _ExecutorEventType.STOP_RESULT:
+                self._resource_manager.return_resources(
+                    allocated_resources=allocated_resources, cancel_request=True
+                )
                 # Blocking here is ok as the future returned
                 _post_stop_cleanup(ready[0], timeout=None)
 
@@ -1097,12 +1097,16 @@ class RayTrialExecutor:
             ###################################################################
             # non PG_READY event
             ###################################################################
-            result_type, trial_or_pg = self._futures.pop(ready_future)
+            result_type, trial_or_allocated_resources = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 # This will block, which is ok as the stop future returned
+                self._resource_manager.return_resources(
+                    allocated_resources=trial_or_allocated_resources,
+                    cancel_request=True,
+                )
                 _post_stop_cleanup(ready_future, timeout=None)
             else:
-                trial = trial_or_pg
+                trial = trial_or_allocated_resources
                 assert isinstance(trial, Trial)
                 try:
                     future_result = ray.get(ready_future)

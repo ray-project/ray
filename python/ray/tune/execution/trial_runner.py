@@ -1484,7 +1484,7 @@ class TrialRunner:
                 )
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self.get_trials())
+        self.trial_executor.cleanup()
 
     def cleanup(self):
         """Cleanup trials and callbacks."""
