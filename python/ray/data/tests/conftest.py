@@ -267,6 +267,15 @@ def enable_automatic_tensor_extension_cast(request):
     ctx.enable_tensor_extension_casting = original
 
 
+@pytest.fixture(params=[True, False])
+def enable_auto_log_stats(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_auto_log_stats
+    ctx.enable_auto_log_stats = request.param
+    yield request.param
+    ctx.enable_auto_log_stats = original
+
+
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format():
