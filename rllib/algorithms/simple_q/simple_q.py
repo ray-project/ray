@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
     SimpleQTF1Policy,
     SimpleQTF2Policy,
