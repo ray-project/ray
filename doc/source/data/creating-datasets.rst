@@ -211,6 +211,7 @@ Supported File Formats
 
 .. _dataset_reading_remote_storage:
 
+
 Reading from Remote Storage
 ===========================
 
@@ -303,6 +304,30 @@ are supported for each of these storage systems.
     :language: python
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
+
+Reading from Local Storage
+==========================
+
+In Ray Datasets, users often read from remote storage systems as described above. In
+some use cases, users may want to read from local storage. There are three ways to read
+from a local filesystem:
+
+* **Providing a local filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
+  the given path will be resolved as a local filesystem path.
+
+.. note::
+
+  If the file exists only on the local node and you run this read operation in
+  distributed cluster, this will fail as it cannot access the file from remote node.
+
+* **Using ``local://`` custom URI scheme**: Similarly, this will be resolved to local
+  filesystem, e.g. ``ray.data.read_csv("local://my_file.csv")`` will read the
+  same file as the approach above. The difference is that this scheme will ensure
+  all read tasks happen on the local node, so it's safe to run in a distributed
+  cluster.
+* **Using ``example://`` custom URI scheme**: The paths with this scheme will be resolved
+  to ``ray/data/examples/data`` directory in the Ray package. This scheme is used
+  only for testing or demoing examples.
 
 .. _dataset_from_in_memory_data:
 
