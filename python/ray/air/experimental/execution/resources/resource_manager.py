@@ -37,3 +37,7 @@ class ResourceManager(abc.ABC):
     ):
         """Return resources to resource pool."""
         raise NotImplementedError
+
+    def update_state(self):
+        """Reconcile internal state with cluster state."""
+        pass
