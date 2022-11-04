@@ -78,6 +78,15 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
+
+            # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
+            # some replicas crash simultaneously (e.g. if the head node crashes),
+            # requests to the dead replicas hang until the gcs recovers.
+            # This asyncio.wait can kill those hanging requests and retry them
+            # at another replica. Release tests should kill the head node and
+            # check if latency drops significantly. See
+            # https://github.com/ray-project/ray/pull/29534 for more info.
+
             _, request_timed_out = await asyncio.wait(
                 [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
