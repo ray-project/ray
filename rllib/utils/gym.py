@@ -11,12 +11,12 @@ def check_old_gym_env(
     # Check `reset()` results.
     if reset_results is not None:
         if (
-            # Result is a tuple?
+            # Result is NOT a tuple?
             not isinstance(reset_results, tuple)
-            # Result is a tuple of len=2?
+            # Result is a tuple of len!=2?
             or len(reset_results) != 2
-            # Result is a tuple of len=2 and the second item is a dict (infos)?
-            or (len(reset_results) == 2 and not isinstance(reset_results[1], dict))
+            # The second item is a NOT dict (infos)?
+            or not isinstance(reset_results[1], dict)
             # Result is a tuple of len=2 and the second item is a dict (infos) and
             # our env does NOT have obs space 2-Tuple with the second space being a
             # dict?

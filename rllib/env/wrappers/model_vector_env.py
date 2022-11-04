@@ -79,17 +79,19 @@ class _VectorizedModelGymEnv(VectorEnv):
         )[0]
 
     @override(VectorEnv)
-    def vector_reset(self):
+    def vector_reset(self, seed=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        self.cur_obs = [e.reset() for e in self.envs]
-        return self.cur_obs
+        reset_results = [e.reset() for e in self.envs]
+        self.cur_obs = [io[0] for io in reset_results]
+        infos = [io[1] for io in reset_results]
+        return self.cur_obs, infos
 
     @override(VectorEnv)
-    def reset_at(self, index):
+    def reset_at(self, index, seed=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        obs = self.envs[index].reset()
+        obs, infos = self.envs[index].reset()
         self.cur_obs[index] = obs
-        return obs
+        return obs, infos
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -123,12 +125,19 @@ class _VectorizedModelGymEnv(VectorEnv):
         # Otherwise, assume the episode does not end.
         else:
             dones_batch = np.asarray([False for _ in range(self.num_envs)])
+        truncateds_batch = [False for _ in range(self.num_envs)]
 
         info_batch = [{} for _ in range(self.num_envs)]
 
         self.cur_obs = next_obs_batch
 
-        return list(next_obs_batch), list(rew_batch), list(dones_batch), info_batch
+        return (
+            list(next_obs_batch),
+            list(rew_batch),
+            list(dones_batch),
+            truncateds_batch,
+            info_batch,
+        )
 
     @override(VectorEnv)
     def get_sub_environments(self):
