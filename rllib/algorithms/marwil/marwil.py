@@ -40,10 +40,10 @@ class MARWILConfig(AlgorithmConfig):
         >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
         >>> config = config.offline_data(  # doctest: +SKIP
         ...     input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> print(config.to_dict()) # doctest: +ELLIPSIS
+        >>> print(config.to_dict()) # doctest: +SKIP
         ...
         >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
+        >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train() # doctest: +SKIP
 
     Example:
@@ -51,8 +51,7 @@ class MARWILConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = MARWILConfig()
         >>> # Print out some default values.
-        >>> print(config.beta)  # doctest: +ELLIPSIS
-        ...
+        >>> print(config.beta)  # doctest: +SKIP
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search(  # doctest: +SKIP
         ...     [0.001, 0.0001]), beta=0.75)

@@ -13,11 +13,10 @@ class BCConfig(MARWILConfig):
         >>> config = BCConfig().training(lr=0.00001, gamma=0.99)
         >>> config = config.offline_data(  # doctest: +SKIP
         ...     input_="./rllib/tests/data/cartpole/large.json")
-        >>> print(config.to_dict())  # doctest:+ELLIPSIS
-        ...
+        >>> print(config.to_dict())  # doctest:+SKIP
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
@@ -32,7 +31,9 @@ class BCConfig(MARWILConfig):
         ... )
         >>> # Set the config object's data path.
         >>> # Run this from the ray directory root.
-        >>> config.offline_data(input_="./rllib/tests/data/cartpole/large.json")
+        >>> config.offline_data(  # doctest:+SKIP
+        ...     input_="./rllib/tests/data/cartpole/large.json"
+        ... )
         >>> # Set the config object's env, used for evaluation.
         >>> config.environment(env="CartPole-v1")  # doctest:+SKIP
         >>> # Use to_dict() to get the old-style python config dict

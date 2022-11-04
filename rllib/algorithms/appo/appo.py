@@ -43,8 +43,7 @@ class APPOConfig(ImpalaConfig):
         >>> config = config.resources(num_gpus=1)
         >>> config = config.rollouts(num_rollout_workers=16)
         >>> config = config.environment("CartPole-v1")
-        >>> print(config.to_dict())  # doctest: +ELLIPSIS
-        ...
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()
         >>> algo.train()
