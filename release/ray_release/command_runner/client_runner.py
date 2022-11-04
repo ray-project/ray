@@ -23,6 +23,7 @@ from ray_release.exception import (
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.command_runner.command_runner import CommandRunner
+from ray_release.command_runner._prometheus_metrics import get_prometheus_metrics
 from ray_release.wheels import install_matching_ray_locally
 
 
@@ -105,17 +106,40 @@ class ClientRunner(CommandRunner):
 
         logger.info(f"All {num_nodes} nodes are up.")
 
+    def save_metrics(self, start_time: float, timeout: float = 900):
+        import ray
+        from ray.tune.utils.node import _force_on_current_node
+
+        ray_address = self.cluster_manager.get_cluster_address()
+        ray.init(address=ray_address, ignore_reinit_error=True)
+
+        @ray.remote(num_cpus=0)
+        def get_metrics():
+            end_time = time.time()
+            return get_prometheus_metrics(start_time, end_time)
+
+        remote_run = _force_on_current_node(get_metrics)
+        metrics = ray.get(remote_run.remote(), timeout=timeout)
+        with open(self.metrics_output_json, "w") as metrics_output_file:
+            json.dump(metrics, metrics_output_file)
+
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs
 
-    def fetch_results(self) -> Dict[str, Any]:
+    def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
-            with open(self.result_output_json, "rt") as fp:
+            with open(path, "rt") as fp:
                 return json.load(fp)
         except Exception as e:
             raise ResultsError(
-                f"Could not load local results from " f"client command: {e}"
+                f"Could not load local results from client command: {e}"
             ) from e
+
+    def fetch_results(self) -> Dict[str, Any]:
+        return self._fetch_json(self.result_output_json)
+
+    def fetch_metrics(self) -> Dict[str, Any]:
+        return self._fetch_json(self.metrics_output_json)
 
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0

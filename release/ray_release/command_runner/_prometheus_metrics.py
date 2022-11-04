@@ -127,11 +127,10 @@ def save_prometheus_metrics(
         return path
     return None
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "start_time", type=float, help="Start time"
-    )
+    parser.add_argument("start_time", type=float, help="Start time")
     parser.add_argument(
         "--path", default="", type=str, help="Where to save the metrics json"
     )
