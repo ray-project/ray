@@ -410,6 +410,7 @@ def read_images(
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
+    include_paths: bool = False,
 ):
     """Read images from the specified paths.
 
@@ -418,28 +419,15 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
 
-        If your images are arranged like:
+        If you also need the image file paths, set ``include_paths=True``.
 
-        .. code::
-
-            root/dog/xxx.png
-            root/dog/xxy.png
-
-            root/cat/123.png
-            root/cat/nsdf3.png
-
-        Then you can include the labels by specifying a
-        :class:`~ray.data.datasource.partitioning.Partitioning`.
-
-        >>> import ray
-        >>> from ray.data.datasource.partitioning import Partitioning
-        >>> root = "example://tiny-imagenet-200/train"
-        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
-        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
+        >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        >>> ds.take(1)[0]["path"]  # doctest: +SKIP
+        'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -461,6 +449,8 @@ def read_images(
             describing the desired type and depth of pixels. If unspecified, image
             modes are inferred by
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
 
     Returns:
         A :class:`~ray.data.Dataset` containing tensors that represent the images at
@@ -480,6 +470,7 @@ def read_images(
         partitioning=partitioning,
         size=size,
         mode=mode,
+        include_paths=include_paths,
     )
 
 
