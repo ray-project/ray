@@ -76,9 +76,11 @@ if __name__ == "__main__":
     # Single file given.
     if os.path.isfile(abs_path):
         files = [abs_path]
-    # Path given -> Get all yaml files in there via rglob.
+    # Path given -> Get all py/yaml files in there via rglob.
     elif os.path.isdir(abs_path):
-        files = rllib_dir.rglob(args.dir + "/*.yaml")
+        files = []
+        for type_ in ["yaml", "yml", "py"]:
+            files += list(rllib_dir.rglob(args.dir + f"/*.{type_}"))
         files = sorted(map(lambda path: str(path.absolute()), files), reverse=True)
     # Given path/file does not exist.
     else:
