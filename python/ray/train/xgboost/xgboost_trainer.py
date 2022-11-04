@@ -42,8 +42,8 @@ class XGBoostTrainer(GBDTTrainer):
     ...     scaling_config=ScalingConfig(num_workers=3),
     ...     datasets={"train": train_dataset}
     ... )
-    >>> result = trainer.fit() # doctest: +ELLIPSIS
-    == Status ...
+    >>> result = trainer.fit()
+    == Status ==...
 
     Args:
         datasets: Ray Datasets to use for training and validation. Must include a
