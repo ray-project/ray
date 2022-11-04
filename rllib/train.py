@@ -54,8 +54,8 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
+    stop: str,
     checkpoint_config: Optional[dict] = None,
-    stop: str
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
     If you want to use a Python file, it has to have a 'config' variable
@@ -155,7 +155,7 @@ def file(
     file_type = get_file_type(config_file)
 
     experiments = load_experiments_from_file(
-        config_file, file_type, checkpoint_config, stop
+        config_file, file_type, stop, checkpoint_config
     )
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
