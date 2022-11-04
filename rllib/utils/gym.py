@@ -2,7 +2,9 @@ import gym
 from typing import Optional
 
 
-def check_old_gym_env(env: Optional[gym.Env] = None, *, step_results=None, reset_results=None):
+def check_old_gym_env(
+    env: Optional[gym.Env] = None, *, step_results=None, reset_results=None
+):
     # Check `reset()` results.
     if reset_results is not None:
         if (

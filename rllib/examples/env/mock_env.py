@@ -114,7 +114,11 @@ class VectorizedMockEnv(VectorEnv):
     @override(VectorEnv)
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
-            [], [], [], [], []
+            [],
+            [],
+            [],
+            [],
+            [],
         )
         for i in range(len(self.envs)):
             obs, rew, done, truncated, info = self.envs[i].step(actions[i])
@@ -123,7 +127,7 @@ class VectorizedMockEnv(VectorEnv):
             done_batch.append(done)
             truncated_batch.append(done)
             info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, truncted_batch, info_batch
+        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):
@@ -167,7 +171,11 @@ class MockVectorEnv(VectorEnv):
         # Apply all actions sequentially to the same env.
         # Whether this would make a lot of sense is debatable.
         obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
-            [], [], [], [], []
+            [],
+            [],
+            [],
+            [],
+            [],
         )
         for i in range(self.num_envs):
             obs, rew, done, truncated, info = self.env.step(actions[i])

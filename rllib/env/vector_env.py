@@ -272,9 +272,9 @@ class _VectorizedGymEnv(VectorEnv):
         )
 
     @override(VectorEnv)
-    def vector_reset(self, seed: Optional[int] = None) -> Tuple[
-        List[EnvObsType], List[EnvInfoDict]
-    ]:
+    def vector_reset(
+        self, seed: Optional[int] = None
+    ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
         resetted_obs = []

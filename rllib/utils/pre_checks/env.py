@@ -435,8 +435,6 @@ def check_vector_env(env: "VectorEnv") -> None:
     Args:
         env: The env to be checked.
     """
-    from ray.rllib.env import VectorEnv
-
     sampled_obs = env.observation_space.sample()
 
     # Test `vector_reset()`.
@@ -450,19 +448,22 @@ def check_vector_env(env: "VectorEnv") -> None:
 
     if not isinstance(vector_reset, tuple) or len(vector_reset) != 2:
         raise ValueError(
-            "The `vector_reset()` method of your env must return a Tuple[obs, infos] as "
-            f"of gym>=0.26! Your method returned: {vector_reset}.")
+            "The `vector_reset()` method of your env must return a Tuple[obs, infos] as"
+            f" of gym>=0.26! Your method returned: {vector_reset}."
+        )
     reset_obs, reset_infos = vector_reset
     if not isinstance(reset_obs, list) or len(reset_obs) != env.num_envs:
         raise ValueError(
             "The observations returned by your env's `vector_reset()` method is NOT a "
             f"list or do not contain exactly `num_envs` ({env.num_envs}) items! "
-            f"Your observations were: {reset_obs}")
+            f"Your observations were: {reset_obs}"
+        )
     if not isinstance(reset_infos, list) or len(reset_infos) != env.num_envs:
         raise ValueError(
             "The infos returned by your env's `vector_reset()` method is NOT a "
             f"list or do not contain exactly `num_envs` ({env.num_envs}) items! "
-            f"Your infos were: {reset_infos}")
+            f"Your infos were: {reset_infos}"
+        )
     try:
         env.observation_space.contains(reset_obs[0])
     except Exception as e:
@@ -488,7 +489,8 @@ def check_vector_env(env: "VectorEnv") -> None:
     if not isinstance(reset_at, tuple) or len(reset_at) != 2:
         raise ValueError(
             "The `reset_at()` method of your env must return a Tuple[obs, infos] as "
-            f"of gym>=0.26! Your method returned: {reset_at}.")
+            f"of gym>=0.26! Your method returned: {reset_at}."
+        )
     reset_obs, reset_infos = reset_at
     if not isinstance(reset_infos, dict):
         raise ValueError(
@@ -525,7 +527,8 @@ def check_vector_env(env: "VectorEnv") -> None:
         raise ValueError(
             "The `vector_step()` method of your env must return a Tuple["
             "List[obs], List[rewards], List[dones], List[truncateds], List[infos]] as "
-            f"of gym>=0.26! Your method returned: {step_results}.")
+            f"of gym>=0.26! Your method returned: {step_results}."
+        )
 
     obs, rewards, dones, truncateds, infos = step_results
 

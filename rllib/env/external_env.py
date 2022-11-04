@@ -399,7 +399,14 @@ class ExternalEnvWrapper(BaseEnv):
 
     def _poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
         all_obs, all_rewards, all_dones, all_truncateds, all_infos = {}, {}, {}, {}, {}
@@ -436,7 +443,7 @@ class ExternalEnvWrapper(BaseEnv):
 
                     fix(all_rewards, 0.0)
                     fix(all_dones, False)
-                    fix(all_trcunateds, False)
+                    fix(all_truncateds, False)
                     fix(all_infos, {})
             return (
                 all_obs,

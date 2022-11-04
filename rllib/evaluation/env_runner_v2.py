@@ -692,7 +692,13 @@ class EnvRunnerV2:
                 # the agents that are done during this step of rollout in
                 # the case of _multiple_episodes_in_batch=False.
                 self._handle_done_episode(
-                    env_id, env_obs, infos[env_id], is_done, hit_horizon, to_eval, outputs
+                    env_id,
+                    env_obs,
+                    infos[env_id],
+                    is_done,
+                    hit_horizon,
+                    to_eval,
+                    outputs,
                 )
 
             # Try to build something.
@@ -836,7 +842,9 @@ class EnvRunnerV2:
             # types: AgentID, EnvObsType
             for agent_id, raw_obs in resetted_obs[env_id].items():
                 policy_id: PolicyID = new_episode.policy_for(agent_id)
-                per_policy_resetted_obs[policy_id].append((agent_id, raw_obs, env_infos.get(agent_id, {})))
+                per_policy_resetted_obs[policy_id].append(
+                    (agent_id, raw_obs, env_infos.get(agent_id, {}))
+                )
 
             for policy_id, agents_obs_and_infos in per_policy_resetted_obs.items():
                 policy = self._worker.policy_map[policy_id]
