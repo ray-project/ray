@@ -48,3 +48,30 @@ def check_old_gym_env(
             "`check_old_gym_env()`!"
         )
     return False
+
+
+@DeveloperAPI
+def try_import_gymnasium_and_gym():
+    gym, old_gym = None, None
+
+    try:
+        import gymnasium as gym
+    except (ImportError, ModuleNotFoundError) as e:
+        pass
+
+    try:
+        import gym as old_gym
+    except (ImportError, ModuleNotFoundError) as e:
+        pass
+
+    if gym is None:
+        gym = old_gym
+
+    if gym is None and old_gym is None:
+        raise ImportError(
+            "Neither `gymnasium` nor `gym` seem to be installed, but one of them is "
+            "required for RLlib! Try running `pip install gymnasium` from the "
+            "command line."
+        )
+
+    return gym if gym is not None else old_gym, old_gym

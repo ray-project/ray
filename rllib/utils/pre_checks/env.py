@@ -2,7 +2,6 @@
 from copy import copy
 import inspect
 import logging
-import gymnasium as gym
 import numpy as np
 import traceback
 import tree  # pip install dm_tree
@@ -11,7 +10,7 @@ from typing import TYPE_CHECKING, Set
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.gym import check_old_gym_env
+from ray.rllib.utils.gym import check_old_gym_env, try_import_gymnasium_and_gym
 from ray.rllib.utils.spaces.space_utils import (
     convert_element_to_space_type,
     get_base_struct_from_space,
@@ -23,6 +22,8 @@ if TYPE_CHECKING:
     from ray.rllib.env import BaseEnv, MultiAgentEnv, VectorEnv
 
 logger = logging.getLogger(__name__)
+
+gym, old_gym = try_import_gymnasium_and_gym()
 
 
 @DeveloperAPI
@@ -65,10 +66,10 @@ def check_env(env: EnvType) -> None:
                 ExternalEnv,
                 ActorHandle,
             ),
-        ):
+        ) and (not old_gym or not isinstance(env, old_gym.Env)):
             raise ValueError(
                 "Env must be of one of the following supported types: BaseEnv, "
-                "gym.Env, "
+                "gymnasium.Env, gym.Env, "
                 "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
                 f"ExternalEnv, but instead is of type {type(env)}."
             )
