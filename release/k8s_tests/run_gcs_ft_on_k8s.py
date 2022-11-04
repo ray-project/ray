@@ -217,7 +217,7 @@ def start_sending_traffics(duration, users):
         assert len(pods.items) == 1
 
         if pods.items[0].status.phase == "Pending":
-            print("Wait for locust pod is ready...")
+            print("Waiting for the locust pod to be ready...")
             time.sleep(30)
             timeout_wait_for_locust_s -= 30
         else:
