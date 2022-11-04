@@ -1,3 +1,4 @@
+DASHBOARD_PROVISIONING_TEMPLATE = """
 apiVersion: 1
 
 providers:
@@ -5,4 +6,5 @@ providers:
     folder: Ray
     type: file
     options:
-      path:  /tmp/ray/session_latest/metrics/grafana/dashboards
+      path: {dashboard_output_folder}
+"""

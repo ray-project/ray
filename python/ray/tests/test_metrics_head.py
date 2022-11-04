@@ -34,6 +34,7 @@ def test_metrics_folder():
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
+        assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
 
 
@@ -49,10 +50,16 @@ def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
     """
     Tests that the default dashboard files get created.
     """
-    with _ray_start(include_dashboard=True):
+    with _ray_start(include_dashboard=True) as context:
+        session_dir = context["session_dir"]
         assert os.path.exists(
             f"{override_dashboard_dir}/default_grafana_dashboard.json"
         )
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
+        ) as f:
+            contents = f.read()
+            assert override_dashboard_dir in contents
 
 
 def test_metrics_folder_when_dashboard_disabled():

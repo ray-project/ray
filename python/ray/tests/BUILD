@@ -13,7 +13,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -56,6 +55,7 @@ py_test_module_list(
     "test_gcs_utils.py",
     "test_generators.py",
     "test_metrics_agent.py",
+    "test_metrics_head.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",

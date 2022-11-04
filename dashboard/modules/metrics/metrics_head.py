@@ -16,6 +16,9 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
+from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import (
+    DASHBOARD_PROVISIONING_TEMPLATE,
+)
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
@@ -101,9 +104,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
+        grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
         self._grafana_dashboard_output_dir = os.environ.get(
-            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
+            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
+            os.path.join(grafana_config_output_path, "dashboards"),
         )
+
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
         self._pid = os.getpid()
@@ -233,6 +239,28 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             shutil.rmtree(grafana_config_output_path)
         os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
         shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
+
+        # Overwrite grafana's dashboard provisioning directory based on env var
+        dashboard_provisioning_path = os.path.join(
+            grafana_config_output_path, "provisioning", "dashboards"
+        )
+        os.makedirs(
+            dashboard_provisioning_path,
+            exist_ok=True,
+        )
+        with open(
+            os.path.join(
+                dashboard_provisioning_path,
+                "default.yml",
+            ),
+            "w",
+        ) as f:
+            f.write(
+                DASHBOARD_PROVISIONING_TEMPLATE.format(
+                    dashboard_output_folder=self._grafana_dashboard_output_dir
+                )
+            )
+
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -240,13 +268,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         data_sources_path = os.path.join(
             grafana_config_output_path, "provisioning", "datasources"
         )
-        dashboards_path = os.path.join(grafana_config_output_path, "dashboards")
         os.makedirs(
             data_sources_path,
             exist_ok=True,
         )
         os.makedirs(
-            dashboards_path,
+            self._grafana_dashboard_output_dir,
             exist_ok=True,
         )
         with open(
@@ -259,7 +286,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
         with open(
             os.path.join(
-                dashboards_path,
+                self._grafana_dashboard_output_dir,
                 "default_grafana_dashboard.json",
             ),
             "w",
