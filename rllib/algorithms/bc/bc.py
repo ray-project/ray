@@ -10,8 +10,9 @@ class BCConfig(MARWILConfig):
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
         >>> # Run this from the ray directory root.
-        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)\
-        ...     .offline_data(input_="./rllib/tests/data/cartpole/large.json")
+        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)
+        >>> config = config.offline_data(  # doctest: +SKIP
+        ...     input_="./rllib/tests/data/cartpole/large.json")
         >>> print(config.to_dict())  # doctest:+ELLIPSIS
         ...
         >>> # Build a Trainer object from the config and run 1 training iteration.
