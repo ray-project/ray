@@ -92,10 +92,6 @@ def test_profiler_failure_message(ray_start_with_dashboard):
         def getpid(self):
             return os.getpid()
 
-        def do_stuff_infinite(self):
-            while True:
-                pass
-
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
 
