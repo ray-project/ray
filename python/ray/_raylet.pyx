@@ -568,7 +568,8 @@ cdef store_task_errors(
         ray.util.pdb.post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
-        traceback.format_exc(), task_exception=task_exception)
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=task_exception)
 
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
@@ -940,12 +941,10 @@ cdef void execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
-                objects_stored = True
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
                     task_type, title, returns)
-            objects_stored = True
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1059,7 +1058,8 @@ cdef execute_task_with_cancellation_handler(
         PyErr_CheckSignals()
 
     except KeyboardInterrupt as e:
-        # Catch and handle SIGINT.
+        # Catch and handle task cancellation, which will result in an interrupt being
+        # raised.
         e = TaskCancelledError(
             core_worker.get_current_task_id()).with_traceback(e.__traceback__)
 
