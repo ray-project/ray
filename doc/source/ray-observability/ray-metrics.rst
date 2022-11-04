@@ -161,12 +161,12 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `node_type`
      - The number of pending nodes reported by the autoscaler, broken down by node type.
 
-Metrics Consistency
-~~~~~~~~~~~~~~~~~~~
+Metrics Semantics and Consistency
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray guarantees all its internal state metrics are *eventually* consistent even in the presence of failures--- should any worker fail, eventually the right state will be reflected in the Prometheus time-series output. However, any particular metrics query is not guaranteed to reflect an exact snapshot of the cluster state. For example, tasks may be briefly double counted, or you may see negative quantities for certain time-series. It is always safe to ignore negative metric values (clamp to zero), and they should eventually correct themselves.
+Ray guarantees all its internal state metrics are *eventually* consistent even in the presence of failures--- should any worker fail, eventually the right state will be reflected in the Prometheus time-series output. However, any particular metrics query is not guaranteed to reflect an exact snapshot of the cluster state.
 
-For the `ray_tasks` and `ray_actor` metrics, we recommend using sum queries to plot their outputs (e.g., `sum(ray_tasks) by (Name, State)`). The reason for this is that Ray's task metrics are emitted from multiple distributed components, including the submitting worker of the task, the executor worker for the task, and local raylets for these workers. Hence, there may be multiple metric points emitted for a task from different processes that are intended to be summed together (e.g., ``(submitter) SUBMITTED_TO_WORKER: 1, (executor) SUBMITTED_TO_WORKER: -1, (executor) RUNNING: 1``), to produce the correct logical view of task states in the distributed system.
+For the `ray_tasks` and `ray_actor` metrics, you should use sum queries to plot their outputs (e.g., ``sum(ray_tasks) by (Name, State)``). The reason for this is that Ray's task metrics are emitted from multiple distributed components, including the submitting worker of the task, the executor worker for the task, and local raylets for these workers. Hence, there may be multiple metric points, including negative metric points, emitted for a task from different processes that are intended to be summed together (e.g., ``(submitter) SUBMITTED_TO_WORKER: 1, (executor) SUBMITTED_TO_WORKER: -1, (executor) RUNNING: 1`` for a single running task), to produce the correct logical view of task states in the distributed system (e.g., ``SUBMITTED_TO_WORKER: 0, RUNNING: 1`` after summation).
 
 .. _application-level-metrics:
 
