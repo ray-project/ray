@@ -741,6 +741,23 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
+class TestRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
+
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
+
+        serve.run(f.bind())
+
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
@@ -921,23 +938,6 @@ assert ray.get(handle.predict.remote(1)) == 1
     """
 
     run_string_as_driver(script, env={SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
-
-
-class TestRequestProcessingTimeoutS:
-    @pytest.mark.parametrize(
-        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
-    )
-    def test_normal_operation(self, ray_instance):
-        """Checks that a moderate timeout doesn't affect normal operation."""
-
-        @serve.deployment(num_replicas=2)
-        def f(*args):
-            return "Success!"
-
-        serve.run(f.bind())
-
-        for _ in range(20):
-            requests.get("http://localhost:8000").text == "Success!"
 
 
 if __name__ == "__main__":
