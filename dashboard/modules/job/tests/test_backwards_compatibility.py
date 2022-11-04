@@ -7,6 +7,9 @@ import subprocess
 import uuid
 from contextlib import contextmanager
 
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._private.test_utils import wait_for_condition
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,14 +35,14 @@ def _compatibility_script_path(file_name: str) -> str:
 
 
 class TestBackwardsCompatibility:
-    # TODO(aguo): Unskip this test once 2.0.0 is released.
-    @pytest.mark.skip("#25902 breaks backwards compatibility of the REST api.")
     def test_cli(self):
         """
-        1) Create a new conda environment with ray version X installed
+        Test that the current commit's CLI works with old server-side Ray versions.
+
+        1) Create a new conda environment with old ray version X installed;
             inherits same env as current conda envionment except ray version
-        2) Start head node and dashboard with ray version X
-        3) Use current commit's CLI code to do sample job submission flow
+        2) (Server) Start head node and dashboard with old ray version X
+        3) (Client) Use current commit's CLI code to do sample job submission flow
         4) Deactivate the new conda environment and back to original place
         """
         # Shell script creates and cleans up tmp conda environment regardless
@@ -54,6 +57,46 @@ class TestBackwardsCompatibility:
                 logger.error(str(e))
                 logger.error(e.stdout.decode())
                 raise e
+
+
+@pytest.mark.skipif(
+    os.environ.get("JOB_COMPATIBILITY_TEST_TEMP_ENV") is None,
+    reason="This test is only meant to be run from the "
+    "test_backwards_compatibility.sh shell script.",
+)
+def test_error_message():
+    """
+    Check that we get a good error message when running against an old server version.
+    """
+    client = JobSubmissionClient("http://127.0.0.1:8265")
+
+    # Check that a basic job successfully runs.
+    job_id = client.submit_job(
+        entrypoint="echo 'hello world'",
+    )
+    wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
+
+    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources`
+    # are not supported in ray<2.2.0.
+    for unsupported_submit_kwargs in [
+        {"entrypoint_num_cpus": 1},
+        {"entrypoint_num_gpus": 1},
+        {"entrypoint_resources": {"custom": 1}},
+    ]:
+        with pytest.raises(
+            Exception,
+            match="Ray version 2.0.1 is running on the cluster. "
+            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, and "
+            "`entrypoint_resources` kwargs"
+            " are not supported on the Ray cluster. Please ensure the cluster is "
+            "running Ray 2.2 or higher.",
+        ):
+            client.submit_job(
+                entrypoint="echo hello",
+                **unsupported_submit_kwargs,
+            )
+
+    assert True
 
 
 if __name__ == "__main__":
