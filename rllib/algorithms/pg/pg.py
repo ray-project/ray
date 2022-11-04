@@ -49,6 +49,7 @@ class PGConfig(AlgorithmConfig):
         self.lr_schedule = None
         self.lr = 0.0004
         self.rollout_fragment_length = "auto"
+        self.train_batch_size = 200
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
