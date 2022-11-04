@@ -5,6 +5,7 @@ import random
 import re
 import time
 import os
+import gym
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -27,6 +28,7 @@ import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
+from ray.rllib.utils.policy import local_policy_inference
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -466,6 +468,35 @@ def check_compute_single_action(
                                 clip,
                             )
 
+
+def check_inference_w_connectors(policy, env_name: str, max_steps: int = 100):
+    """Checks whether the given policy can infer actions from an env with connectors.
+
+    Args:
+        policy: The policy to check.
+        env_name: The name of the environment to check.
+        max_steps: The maximum number of steps to run the environment for.
+    
+    Raises:
+        ValueError: If the policy cannot infer actions from the environment.
+    """
+    env = gym.make(env_name)
+    obs = env.reset()
+    reward, done, info = 0., False, {}
+    ts = 0
+    while not done and ts < max_steps:
+        action_out = local_policy_inference(
+            policy, 
+            env_id=0, 
+            agent_id=0,
+            obs=obs,
+            reward=reward,
+            done=done,
+            info=info, 
+        )
+        obs, reward, done, info = env.step(action_out[0][0])
+
+        ts += 1
 
 def check_learning_achieved(
     tune_results: "tune.ResultGrid", min_reward, evaluation=False
