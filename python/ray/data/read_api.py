@@ -1347,7 +1347,7 @@ def from_tf(
     Examples:
         >>> import ray
         >>> import tensorflow_datasets as tfds
-        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])
+        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> dataset = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> dataset  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
