@@ -3,8 +3,8 @@ from typing import Dict, List, Union
 from dataclasses import dataclass
 
 import ray
-from ray.air.experimental.execution.resources.fixed import FixedResourceManager
-from ray.air.experimental.execution.resources.request import AllocatedResource
+from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.air.execution.resources.request import AllocatedResource
 
 
 @dataclass

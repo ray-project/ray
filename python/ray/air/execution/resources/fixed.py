@@ -4,11 +4,11 @@ from dataclasses import dataclass
 
 import ray
 from ray import SCRIPT_MODE
-from ray.air.experimental.execution.resources.request import (
+from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )
-from ray.air.experimental.execution.resources.resource_manager import ResourceManager
+from ray.air.execution.resources.resource_manager import ResourceManager
 
 
 # Avoid numerical errors by multiplying and subtracting with this number.

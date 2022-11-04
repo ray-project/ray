@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from ray.air.experimental.execution.resources.request import ResourceRequest
+from ray.air.execution.resources import ResourceRequest
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI, Deprecated
 

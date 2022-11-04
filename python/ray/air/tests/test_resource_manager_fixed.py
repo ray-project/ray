@@ -1,6 +1,6 @@
 import pytest
-from ray.air.experimental.execution.resources.fixed import FixedResourceManager
-from ray.air.experimental.execution.resources.request import ResourceRequest
+from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.air.execution.resources.request import ResourceRequest
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])
 REQUEST_4_CPU = ResourceRequest([{"CPU": 4}])

@@ -5,11 +5,11 @@ from typing import Dict, Optional, List, Set, Union
 from dataclasses import dataclass
 
 import ray
-from ray.air.experimental.execution.resources.request import (
+from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )
-from ray.air.experimental.execution.resources.resource_manager import ResourceManager
+from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 

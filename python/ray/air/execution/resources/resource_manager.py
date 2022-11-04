@@ -3,7 +3,7 @@ import abc
 from typing import List, Optional
 
 import ray
-from ray.air.experimental.execution.resources.request import (
+from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )

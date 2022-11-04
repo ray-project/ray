@@ -15,7 +15,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 import ray
 from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.experimental.execution.resources.placement_group import (
+from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
 )
 from ray.exceptions import GetTimeoutError, RayTaskError

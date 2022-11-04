@@ -3,10 +3,10 @@ from collections import Counter
 import pytest
 
 import ray
-from ray.air.experimental.execution.resources.placement_group import (
+from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
 )
-from ray.air.experimental.execution.resources.request import ResourceRequest
+from ray.air.execution.resources.request import ResourceRequest
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])
 REQUEST_1_2_CPU = ResourceRequest([{"CPU": 1}, {"CPU": 2}])
