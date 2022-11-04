@@ -7,6 +7,7 @@ import grpc
 
 import ray
 import ray._private.profiling as profiling
+import ray._private.metrics as metrics
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 
@@ -44,7 +45,8 @@ class ImportThread:
         self._lock = threading.Lock()
         # Try to load all FunctionsToRun so that these functions will be
         # run before accepting tasks.
-        self._do_importing()
+        with metrics.monitor("worker.import"):
+            self._do_importing()
 
     def start(self):
         """Start the import thread."""

@@ -45,6 +45,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
 import ray._private.memory_monitor as memory_monitor
+import ray._private.metrics as metrics
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -1863,6 +1864,7 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
+@metrics.monitor("worker.connect")
 def connect(
     node,
     session_name: str,
@@ -2024,6 +2026,7 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -2490,7 +2493,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10**6
+        timeout = timeout if timeout is not None else 10 ** 6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,
