@@ -250,7 +250,7 @@ test_cpp() {
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
-  rm -rf ray-template && mkdir ray-template
+  rm -rf ray-template
   ray cpp --generate-bazel-project-template-to ray-template
   pushd ray-template && bash run.sh
 }

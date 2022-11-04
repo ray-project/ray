@@ -10,8 +10,8 @@ import traceback
 import urllib
 import urllib.parse
 import warnings
+import shutil
 from datetime import datetime
-from shutil import copytree
 from typing import Optional, Set
 
 import click
@@ -2507,22 +2507,21 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-        if not os.path.isdir(generate_bazel_project_template_to):
-            cli_logger.abort(
-                "The provided directory "
-                f"{generate_bazel_project_template_to} doesn't exist."
-            )
-        copytree(cpp_templete_dir, generate_bazel_project_template_to)
+        # copytree expects that the dst dir doesn't exist
+        # so we manually delete it if it exists.
+        if os.path.exists(generate_bazel_project_template_to):
+            shutil.rmtree(generate_bazel_project_template_to)
+        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
         out_include_dir = os.path.join(
             generate_bazel_project_template_to, "thirdparty/include"
         )
-        if not os.path.exists(out_include_dir):
-            os.makedirs(out_include_dir)
-        copytree(include_dir, out_include_dir)
+        if os.path.exists(out_include_dir):
+            shutil.rmtree(out_include_dir)
+        shutil.copytree(include_dir, out_include_dir)
         out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if not os.path.exists(out_lib_dir):
-            os.makedirs(out_lib_dir)
-        copytree(lib_dir, out_lib_dir)
+        if os.path.exists(out_lib_dir):
+            shutil.rmtree(out_lib_dir)
+        shutil.copytree(lib_dir, out_lib_dir)
 
         cli_logger.print(
             "Project template generated to {}",
