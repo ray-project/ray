@@ -23,7 +23,9 @@ class monitor(ContextDecorator):
         super().__init__()
         self.total_calls = Counter(f"{name}.total")
         self.success_calls = Counter(f"{name}.success")
-        self.latency_ms = Histogram(f"{name}.latency_ms", boundaries=[1, 10, 100, 1000, 10000])
+        self.latency_ms = Histogram(
+            f"{name}.latency_ms", boundaries=[1, 10, 100, 1000, 10000]
+        )
 
     def __enter__(self):
         self.total_calls.inc()
