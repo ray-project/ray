@@ -54,7 +54,7 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
-    stop: str,
+    stop: Optional[str] = None,
     checkpoint_config: Optional[dict] = None,
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
@@ -90,7 +90,8 @@ def load_experiments_from_file(
         }
 
         # Add a stopping condition if provided
-        experiments["default"]["stop"] = json.loads(stop)
+        if stop:
+            experiments["default"]["stop"] = json.loads(stop)
 
     for key, val in experiments.items():
         experiments[key]["checkpoint_config"] = checkpoint_config or {}
