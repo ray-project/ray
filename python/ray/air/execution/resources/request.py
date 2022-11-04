@@ -232,6 +232,7 @@ class ResourceRequest:
         )
 
 
+@DeveloperAPI
 @dataclass
 class AllocatedResource:
     """Base class for available resources.

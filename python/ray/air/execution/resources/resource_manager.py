@@ -7,8 +7,10 @@ from ray.air.execution.resources.request import (
     ResourceRequest,
     AllocatedResource,
 )
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class ResourceManager(abc.ABC):
     def get_resource_futures(self) -> List[ray.ObjectRef]:
         """Return futures for resources to await."""
