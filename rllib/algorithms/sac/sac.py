@@ -13,7 +13,6 @@ from ray.rllib.utils.deprecation import (
     Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -352,7 +351,7 @@ class SAC(DQN):
     @classmethod
     @override(DQN)
     def get_default_policy_class(
-        cls, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy

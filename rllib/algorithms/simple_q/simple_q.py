@@ -37,7 +37,7 @@ from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_replay_buffer,
     validate_buffer_config,
 )
-from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +286,7 @@ class SimpleQ(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_policy_class(
-        cls, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
