@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -433,6 +433,8 @@ class BatchPredictor:
         """
         # # If the preprocessor is a chain, we need to determine the batch format
         # latest_batch_format = self._preprocessor.batch_format
+        # block_format: BlockFormat = dataset.dataset_format()
+        # preprocessor = self.get_preprocessor()
 
         # # For DL predictors that implemented _predict_numpy, we prefer to use
         # # numpy batch format for better perf and user experience.

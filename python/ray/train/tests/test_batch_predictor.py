@@ -261,7 +261,7 @@ def test_batch_prediction_various_combination():
             12.0,
         ]
 
-        assert ds._dataset_format() == dataset_format
+        assert ds.dataset_format() == dataset_format
 
 
 def test_batch_prediction_fs():
