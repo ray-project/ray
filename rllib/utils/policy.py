@@ -212,7 +212,8 @@ def local_policy_inference(
     for ac in ac_outputs:
         policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
 
-        # Note (Kourosh): policy output is batched, the AgentConnectorDataType should not be batched during inference. This is the assumption made in AgentCollector
+        # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
+        # not be batched during inference. This is the assumption made in AgentCollector
         policy_output = tree.map_structure(lambda x: x[0], policy_output)
 
         action_connector_data = ActionConnectorDataType(

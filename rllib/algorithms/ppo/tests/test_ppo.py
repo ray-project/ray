@@ -21,7 +21,7 @@ from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
     framework_iterator,
-    check_inference_w_connectors
+    check_inference_w_connectors,
 )
 
 
@@ -90,7 +90,6 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-
     def test_ppo_compilation_w_connectors(self):
         """Test whether PPO can be built with all frameworks w/ connectors."""
 
@@ -116,7 +115,7 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=1,
                 # Test with compression.
                 compress_observations=True,
-                enable_connectors=True
+                enable_connectors=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.

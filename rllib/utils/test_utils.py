@@ -476,27 +476,28 @@ def check_inference_w_connectors(policy, env_name: str, max_steps: int = 100):
         policy: The policy to check.
         env_name: The name of the environment to check.
         max_steps: The maximum number of steps to run the environment for.
-    
+
     Raises:
         ValueError: If the policy cannot infer actions from the environment.
     """
     env = gym.make(env_name)
     obs = env.reset()
-    reward, done, info = 0., False, {}
+    reward, done, info = 0.0, False, {}
     ts = 0
     while not done and ts < max_steps:
         action_out = local_policy_inference(
-            policy, 
-            env_id=0, 
+            policy,
+            env_id=0,
             agent_id=0,
             obs=obs,
             reward=reward,
             done=done,
-            info=info, 
+            info=info,
         )
         obs, reward, done, info = env.step(action_out[0][0])
 
         ts += 1
+
 
 def check_learning_achieved(
     tune_results: "tune.ResultGrid", min_reward, evaluation=False
