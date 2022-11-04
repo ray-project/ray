@@ -1,11 +1,14 @@
 import os
 import platform
+from unittest.mock import patch
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 import pytest
 import requests
 
 import ray
+import ray._private.metrics as metrics
+from ray.util.metrics import Histogram, Counter
 from ray._private.test_utils import (
     wait_for_condition,
     wait_until_succeeded_without_exception,
@@ -131,6 +134,52 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             # The dashboard takes more than 2s to startup.
             timeout_ms=10 * 1000,
         )
+
+
+_test_counter = 0
+
+
+def test_metrics_helper():
+    with patch.object(Histogram, "observe") as mock_observe:
+        with patch.object(Counter, "inc") as mock_inc:
+
+            @metrics.monitor("test")
+            def foo():
+                global _test_counter
+                if _test_counter >= 1:
+                    raise Exception()
+                _test_counter += 1
+
+            foo()
+            mock_observe.assert_called_once()
+            assert mock_inc.call_count == 2
+
+            mock_observe.reset_mock()
+            mock_inc.reset_mock()
+
+            try:
+                foo()
+            except Exception:
+                pass
+            mock_observe.assert_called_once()
+            assert mock_inc.call_count == 1
+
+            mock_observe.reset_mock()
+            mock_inc.reset_mock()
+            with metrics.monitor("test1"):
+                pass
+            mock_observe.assert_called_once()
+            assert mock_inc.call_count == 2
+
+            mock_observe.reset_mock()
+            mock_inc.reset_mock()
+            try:
+                with metrics.monitor("test1"):
+                    raise Exception()
+            except Exception:
+                pass
+            mock_observe.assert_called_once()
+            assert mock_inc.call_count == 1
 
 
 if __name__ == "__main__":
