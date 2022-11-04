@@ -509,14 +509,11 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
         def setup(self, config, data_str=None, data_obj=None):
             assert data_str is not None and data_obj is not None
             self.idx = 0
-            self._is_restored = False
-            self.fail_idx = config.get("fail_idx", 1)
+            self.fail_marker = config.get("fail_marker", None)
 
         def step(self):
-            if self.idx == self.fail_idx and not self._is_restored:
-                raise RuntimeError(
-                    f"===== First run fails at idx={self.fail_idx} ====="
-                )
+            if self.fail_marker and self.fail_marker.exists():
+                raise RuntimeError("==== Run is failing ====")
             self.idx += 1
             return {"score": self.idx}
 
@@ -524,7 +521,6 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
             return {"idx": self.idx}
 
         def load_checkpoint(self, checkpoint_dict):
-            self._is_restored = True
             self.idx = checkpoint_dict["idx"]
 
     data = MockData()
@@ -534,31 +530,39 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
     trainable_with_resources = tune.with_resources(
         trainable_with_params, resources={"cpu": 2.0}
     )
+    exp_name = "restore_with_params_class"
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
     tuner = Tuner(
         trainable_with_resources,
         run_config=RunConfig(
-            name="restore_with_params",
+            name=exp_name,
             local_dir=str(tmp_path),
             stop={"training_iteration": 3},
             failure_config=FailureConfig(max_failures=0),
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         ),
+        param_space={"fail_marker": fail_marker}
     )
-    tuner.fit()
+    results = tuner.fit()
+    assert results.errors
 
+    del tuner
     ray.shutdown()
     ray.init(num_cpus=4, configure_logging=False)
+    fail_marker.unlink()
 
     # Restoring should fail if we don't re-specify all the attached objects
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
-            str(tmp_path / "restore_with_params"),
+            str(tmp_path / exp_name),
             with_parameters=dict(data_str="data"),
             resume_errored=True,
         )
 
     tuner = Tuner.restore(
-        str(tmp_path / "restore_with_params"),
+        str(tmp_path / exp_name),
         with_parameters=dict(data_str="data", data_obj=data),
         resume_errored=True,
     )
@@ -581,10 +585,11 @@ def test_restore_with_parameters_fn(ray_start_4_cpus, tmp_path):
     trainable_with_resources = tune.with_resources(
         trainable_with_params, resources={"cpu": 2.0}
     )
+    exp_name = "restore_with_params_fn"
     tuner = Tuner(
         trainable_with_resources,
         param_space={"failing_hanging": (fail_marker, None)},
-        run_config=RunConfig(name="restore_with_params", local_dir=str(tmp_path)),
+        run_config=RunConfig(name=exp_name, local_dir=str(tmp_path)),
     )
     tuner.fit()
 
@@ -595,13 +600,13 @@ def test_restore_with_parameters_fn(ray_start_4_cpus, tmp_path):
     # Restoring should fail if we don't re-specify all the attached objects
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
-            str(tmp_path / "restore_with_params"),
+            str(tmp_path / exp_name),
             with_parameters=dict(data_str="data"),
             resume_errored=True,
         )
 
     tuner = Tuner.restore(
-        str(tmp_path / "restore_with_params"),
+        str(tmp_path / exp_name),
         with_parameters=dict(data_str="data", data_obj=data),
         resume_errored=True,
     )
