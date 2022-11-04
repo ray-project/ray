@@ -274,6 +274,7 @@ class TestActorManager(unittest.TestCase):
 
         def f(id, _):
             return id
+
         func = [functools.partial(f, i + 1) for i in range(4)]
 
         manager.foreach_actor_async(func, healthy_only=True)

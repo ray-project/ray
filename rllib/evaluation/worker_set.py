@@ -305,7 +305,7 @@ class WorkerSet:
         error=False,
     )
     def remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""       
+        """Returns the list of remote rollout workers."""
         return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
@@ -316,7 +316,9 @@ class WorkerSet:
     @DeveloperAPI
     def num_healthy_workers(self) -> int:
         """Returns the number of healthy workers, including local and remote workers."""
-        return int(bool(self._local_worker)) + self.__worker_manager.num_healthy_actors()
+        return (
+            int(bool(self._local_worker)) + self.__worker_manager.num_healthy_actors()
+        )
 
     @DeveloperAPI
     def sync_weights(
@@ -552,7 +554,8 @@ class WorkerSet:
             ):
                 # Simiply raise the error, which will get handled by the try-except
                 # clause around the _setup().
-                if not result.ok: raise result.get()
+                if not result.ok:
+                    raise result.get()
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
@@ -703,7 +706,8 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
-    def foreach_worker_with_id(self,
+    def foreach_worker_with_id(
+        self,
         func: Callable[[int, RolloutWorker], T],
         *,
         local_worker=True,

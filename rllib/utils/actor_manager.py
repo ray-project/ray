@@ -32,8 +32,7 @@ class ResultOrError:
         self._result = result
         # Easier to handle if we show the user the original error.
         self._error = (
-            error.as_instanceof_cause() if isinstance(error, RayTaskError)
-            else error
+            error.as_instanceof_cause() if isinstance(error, RayTaskError) else error
         )
 
     @property
