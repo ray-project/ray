@@ -40,7 +40,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -101,6 +101,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 
 if sys.version_info >= (3, 8):
@@ -539,27 +540,35 @@ class Dataset(Generic[T]):
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
 
+            def validate_batch(batch: Block) -> None:
+                if not isinstance(
+                    batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                ):
+                    raise ValueError(
+                        "The `fn` you passed to `map_batches` returned a value of type "
+                        f"{type(batch)}. This isn't allowed -- `map_batches` expects "
+                        "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
+                        "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+                    )
+
+                if isinstance(batch, dict):
+                    for key, value in batch.items():
+                        if not isinstance(value, np.ndarray):
+                            raise ValueError(
+                                "The `fn` you passed to `map_batches` returned a "
+                                f"`dict`. `map_batches` expects all `dict` values "
+                                f"to be of type `numpy.ndarray`, but the value "
+                                f"corresponding to key {key!r} is of type "
+                                f"{type(value)}. To fix this issue, convert "
+                                f"the {type(value)} to a `numpy.ndarray`."
+                            )
+
             def process_next_batch(batch: Block) -> Iterator[Block]:
                 # Convert to batch format.
                 batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
                 # Apply UDF.
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
-                if not (
-                    isinstance(batch, list)
-                    or isinstance(batch, pa.Table)
-                    or isinstance(batch, np.ndarray)
-                    or (
-                        isinstance(batch, dict)
-                        and all(isinstance(col, np.ndarray) for col in batch.values())
-                    )
-                    or isinstance(batch, pd.core.frame.DataFrame)
-                ):
-                    raise ValueError(
-                        "The map batches UDF returned the value "
-                        f"{batch} of type {type(batch)}, "
-                        "which is not allowed. "
-                        f"The return type must be one of: {BatchType}"
-                    )
+                validate_batch(batch)
                 # Add output batch to output buffer.
                 output_buffer.add_batch(batch)
                 if output_buffer.has_next():
@@ -2458,6 +2467,19 @@ class Dataset(Generic[T]):
         """
 
         ctx = DatasetContext.get_current()
+        if ray_remote_args is None:
+            ray_remote_args = {}
+        path = write_args.get("path", None)
+        if path and _is_local_scheme(path):
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    f"The local scheme paths {path} are not supported in Ray Client."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
         blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.
@@ -2689,10 +2711,12 @@ class Dataset(Generic[T]):
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
-        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
-        casting dtypes) or the batch format, try using `.to_tf`, which has a
-        declarative API for tensor casting and batch formatting, or use `.iter_batches`
-        directly, which is a lower-level API.
+        column-tensors.
+
+        .. tip::
+            If you don't need the additional flexibility provided by this method,
+            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier
+            to use.
 
         Examples:
             >>> import ray
@@ -2945,20 +2969,38 @@ class Dataset(Generic[T]):
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
-        The TF Dataset will be created from the generator returned by the
-        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
-        arguments will be passed to that method.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        It is recommended to call ``.split()`` on this dataset if
-        there are to be multiple TensorFlow workers consuming the data.
-
         .. warning::
-
-            If your dataset contains ragged tensors, this method will error. To prevent
+            If your dataset contains ragged tensors, this method errors. To prevent
             errors, resize tensors or
             :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> ds
+            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+
+            If your model accepts a single tensor as input, specify a single feature column.
+
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your model accepts a dictionary as input, specify a list of feature columns.
+
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your dataset contains multiple features but your model accepts a single
+            tensor as input, combine features with
+            :class:`~ray.data.preprocessors.Concatenator`.
+
+            >>> from ray.data.preprocessors import Concatenator
+            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> ds = preprocessor.transform(ds)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
+            >>> ds.to_tf("features", "target")  # doctest: +SKIP
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
@@ -2986,7 +3028,13 @@ class Dataset(Generic[T]):
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
-        """
+
+        .. seealso::
+
+            :meth:`~ray.data.Dataset.iter_tf_batches`
+                Call this method if you need more flexibility.
+
+        """  # noqa: E501
         from ray.air._internal.tensorflow_utils import get_type_spec
 
         try:
@@ -4066,6 +4114,8 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
+        if count is None:
+            count = "?"
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             self._plan.initial_num_blocks(), count, schema_str
         )
