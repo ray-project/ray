@@ -6,7 +6,7 @@ import os
 import random
 import time
 import traceback
-from collections import deque, defaultdict
+from collections import deque, defaultdict, Counter
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
@@ -231,6 +231,7 @@ class RayTrialExecutor:
         self._reuse_actors = reuse_actors
         self._max_staged_actors = 1
         self._cached_resources_to_actor = defaultdict(list)
+        self._last_cached_actor_cleanup = float("-inf")
 
         # Resource management
         self._resource_manager = PlacementGroupResourceManager()
@@ -354,7 +355,9 @@ class RayTrialExecutor:
 
         trial.set_runner(actor)
         self._trial_to_allocated_resources[trial] = allocated_resources
-        self._staged_trials.remove(trial)
+
+        # Cancel resource request
+        self._resource_manager.cancel_resource_request(resource_request)
 
         if not self.reset_trial(
             trial, trial.config, trial.experiment_tag, logger_creator
@@ -396,7 +399,6 @@ class RayTrialExecutor:
         if not allocated_resources:
             return None
 
-        self._staged_trials.remove(trial)
         self._trial_to_allocated_resources[trial] = allocated_resources
 
         [full_actor_class] = allocated_resources.annotate_remote_objects([_actor_cls])
@@ -511,11 +513,42 @@ class RayTrialExecutor:
         self.restore(trial)
         self.set_status(trial, Trial.RUNNING)
 
-        self._staged_trials.discard(trial)
+        self._unstage_trial_with_resources(trial)
 
         if not trial.is_restoring:
             self._train(trial)
         return True
+
+    def _unstage_trial_with_resources(self, trial: Trial):
+        # Case 1: The trial we started was staged. Just remove it
+        if trial in self._staged_trials:
+            self._staged_trials.remove(trial)
+            return
+
+        # Case 2: We staged a trial "A" with the same resources, but our trial "B"
+        # was selected by the scheduler to run. The resource manager does not care
+        # about "trials", it just cares about resources being available. Thus we
+        # look for a staged trial with the same resource requirements and remove it
+
+        resource_request = trial.placement_group_factory
+        # Remove staged trial with same resource requirements
+        candidate_trial = None
+        for staged_trial in self._staged_trials:
+            staged_resources = staged_trial.placement_group_factory
+            if staged_resources == resource_request:
+                candidate_trial = staged_trial
+                break
+
+        if candidate_trial:
+            self._staged_trials.remove(candidate_trial)
+            return
+
+        raise RuntimeError(
+            "Started a trial with resources requested by a different trial, but "
+            "this trial was lost. This is an error in Ray Tune's execution "
+            "logic. Please raise a GitHub issue at "
+            "https://github.com/ray-project/ray/issues"
+        )
 
     def _maybe_cache_trial_actor(self, trial: Trial) -> bool:
         if not self._reuse_actors:
@@ -525,22 +558,18 @@ class RayTrialExecutor:
             sum(len(cached) for cached in self._cached_resources_to_actor.values())
             > self._max_staged_actors
         ):
+            # Reached of cached actors
             return False
-
-        logger.debug(f"Caching actor of trial {trial} for re-use")
 
         allocated_resources = self._trial_to_allocated_resources[trial]
         cached_resources = allocated_resources.resource_request
 
-        # See if there is a staged trial with the same resource requirements
-        candidate_trial = None
-        for staged_trial in self._staged_trials:
-            resource_request = staged_trial.placement_group_factory
-            if resource_request == cached_resources:
-                candidate_trial = staged_trial
-                break
-
-        if not candidate_trial:
+        staged_resource_count = self._count_staged_resources()
+        if (
+            len(self._cached_resources_to_actor[cached_resources])
+            >= staged_resource_count[cached_resources]
+        ):
+            # We don't need that many cached actors
             logger.debug(
                 f"Could not cache actor of trial {trial} for "
                 "reuse, as there are no pending trials "
@@ -548,10 +577,7 @@ class RayTrialExecutor:
             )
             return False
 
-        # We found a trial with the same resource requirements,
-        # so cancel request for that trial
-        self._resource_manager.cancel_resource_request(cached_resources)
-        self._staged_trials.remove(candidate_trial)
+        logger.debug(f"Caching actor of trial {trial} for re-use")
 
         self._cached_resources_to_actor[cached_resources].append(
             (trial.runner, allocated_resources)
@@ -790,8 +816,29 @@ class RayTrialExecutor:
         """Before step() is called, update the available resources."""
         self._resource_updater.update_avail_resources()
 
-    def on_step_end(self, trials: List[Trial]) -> None:
+    def on_step_end(self) -> None:
         self._do_force_trial_cleanup()
+        self._cleanup_cached_actors()
+
+    def _count_staged_resources(self):
+        counter = Counter()
+        for trial in self._staged_trials:
+            resource_request = trial.placement_group_factory
+            counter[resource_request] += 1
+        return counter
+
+    def _cleanup_cached_actors(self):
+        if time.time() - self._last_cached_actor_cleanup < 0.5:
+            return
+
+        staged_resources = self._count_staged_resources()
+
+        for resource_request, actors in self._cached_resources_to_actor.items():
+            while len(actors) > staged_resources.get(resource_request, 0):
+                actor, allocated_resources = actors.pop()
+                self._resource_manager.return_resources(allocated_resources)
+
+        self._last_cached_actor_cleanup = time.time()
 
     def _do_force_trial_cleanup(self) -> None:
         if self._trial_cleanup:

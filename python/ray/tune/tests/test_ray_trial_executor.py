@@ -262,9 +262,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Stop trial (time it)
         start_time = time.time()
         self.trial_executor.stop_trial(trial)
-        self.trial_executor.on_step_end([trial])
+        self.trial_executor.on_step_end()
         time.sleep(2)
-        self.trial_executor.on_step_end([trial])
+        self.trial_executor.on_step_end()
         ev = self.trial_executor.get_next_executor_event(
             [trial], next_trial_exists=True
         )

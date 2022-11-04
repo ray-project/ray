@@ -903,7 +903,7 @@ class TrialRunner:
         self._reconcile_live_trials()
 
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self.get_trials())
+            self.trial_executor.on_step_end()
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(iteration=self._iteration, trials=self._trials)
 
