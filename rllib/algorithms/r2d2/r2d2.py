@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
@@ -161,11 +161,11 @@ class R2D2Config(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
-        if use_h_function is not None:
+        if use_h_function is not NotProvided:
             self.use_h_function = use_h_function
-        if h_function_epsilon is not None:
+        if h_function_epsilon is not NotProvided:
             self.h_function_epsilon = h_function_epsilon
 
         return self

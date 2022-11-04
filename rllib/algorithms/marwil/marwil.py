@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -140,21 +140,21 @@ class MARWILConfig(AlgorithmConfig):
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
-        if beta is not None:
+        if beta is not NotProvided:
             self.beta = beta
-        if bc_logstd_coeff is not None:
+        if bc_logstd_coeff is not NotProvided:
             self.bc_logstd_coeff = bc_logstd_coeff
-        if moving_average_sqd_adv_norm_update_rate is not None:
+        if moving_average_sqd_adv_norm_update_rate is not NotProvided:
             self.moving_average_sqd_adv_norm_update_rate = (
                 moving_average_sqd_adv_norm_update_rate
             )
-        if moving_average_sqd_adv_norm_start is not None:
+        if moving_average_sqd_adv_norm_start is not NotProvided:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if vf_coeff is not None:
+        if vf_coeff is not NotProvided:
             self.vf_coeff = vf_coeff
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         return self
 

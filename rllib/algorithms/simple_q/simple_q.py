@@ -231,9 +231,9 @@ class SimpleQConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_replay_buffer_config = deep_update(
@@ -244,19 +244,19 @@ class SimpleQConfig(AlgorithmConfig):
                 ["replay_buffer_config"],
             )
             self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
-        if store_buffer_in_checkpoints is not None:
+        if store_buffer_in_checkpoints is not NotProvided:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if adam_epsilon is not None:
+        if adam_epsilon is not NotProvided:
             self.adam_epsilon = adam_epsilon
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
         return self
 

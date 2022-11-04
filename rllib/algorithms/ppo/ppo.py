@@ -14,7 +14,7 @@ from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -130,7 +130,7 @@ class PPOConfig(PGConfig):
         grad_clip: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
         # Deprecated.
-        vf_share_layers=None,
+        vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
     ) -> "PPOConfig":
         """Sets the training related configuration.
@@ -166,51 +166,50 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        # Pass kwargs onto super's `training()` method.
-        super().training(**kwargs)
-
-        if lr_schedule is not None:
-            self.lr_schedule = lr_schedule
-        if use_critic is not None:
-            self.use_critic = use_critic
-        if use_gae is not None:
-            self.use_gae = use_gae
-        if lambda_ is not None:
-            self.lambda_ = lambda_
-        if kl_coeff is not None:
-            self.kl_coeff = kl_coeff
-        if sgd_minibatch_size is not None:
-            self.sgd_minibatch_size = sgd_minibatch_size
-        if num_sgd_iter is not None:
-            self.num_sgd_iter = num_sgd_iter
-        if shuffle_sequences is not None:
-            self.shuffle_sequences = shuffle_sequences
-        if vf_loss_coeff is not None:
-            self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
-            if isinstance(entropy_coeff, int):
-                entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
-            self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not None:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
-        if clip_param is not None:
-            self.clip_param = clip_param
-        if vf_clip_param is not None:
-            self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
-            self.grad_clip = grad_clip
-        if kl_target is not None:
-            self.kl_target = kl_target
-
-        if vf_share_layers is not None:
-            self.model["vf_share_layers"] = vf_share_layers
+        if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ppo.DEFAULT_CONFIG['vf_share_layers']",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
                 error=True,
             )
+
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if use_critic is not NotProvided:
+            self.use_critic = use_critic
+        if use_gae is not NotProvided:
+            self.use_gae = use_gae
+        if lambda_ is not NotProvided:
+            self.lambda_ = lambda_
+        if kl_coeff is not NotProvided:
+            self.kl_coeff = kl_coeff
+        if sgd_minibatch_size is not NotProvided:
+            self.sgd_minibatch_size = sgd_minibatch_size
+        if num_sgd_iter is not NotProvided:
+            self.num_sgd_iter = num_sgd_iter
+        if shuffle_sequences is not NotProvided:
+            self.shuffle_sequences = shuffle_sequences
+        if vf_loss_coeff is not NotProvided:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not NotProvided:
+            if isinstance(entropy_coeff, int):
+                entropy_coeff = float(entropy_coeff)
+            if entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0")
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if clip_param is not NotProvided:
+            self.clip_param = clip_param
+        if vf_clip_param is not NotProvided:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not NotProvided:
+            self.grad_clip = grad_clip
+        if kl_target is not NotProvided:
+            self.kl_target = kl_target
 
         return self
 

@@ -15,7 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
@@ -183,31 +183,31 @@ class SlateQConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config.update(replay_buffer_config)
-        if fcnet_hiddens_per_candidate is not None:
+        if fcnet_hiddens_per_candidate is not NotProvided:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if use_huber is not None:
+        if use_huber is not NotProvided:
             self.use_huber = use_huber
-        if huber_threshold is not None:
+        if huber_threshold is not NotProvided:
             self.huber_threshold = huber_threshold
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if lr_choice_model is not None:
+        if lr_choice_model is not NotProvided:
             self.lr_choice_model = lr_choice_model
-        if rmsprop_epsilon is not None:
+        if rmsprop_epsilon is not NotProvided:
             self.rmsprop_epsilon = rmsprop_epsilon
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )

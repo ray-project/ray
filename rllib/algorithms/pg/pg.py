@@ -1,7 +1,7 @@
 from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -79,7 +79,7 @@ class PGConfig(AlgorithmConfig):
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
 
         return self

@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig, NotProvided
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
@@ -134,37 +134,37 @@ class CRRConfig(AlgorithmConfig):
         """
         super().training(**kwargs)
 
-        if weight_type is not None:
+        if weight_type is not NotProvided:
             self.weight_type = weight_type
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if max_weight is not None:
+        if max_weight is not NotProvided:
             self.max_weight = max_weight
-        if advantage_type is not None:
+        if advantage_type is not NotProvided:
             self.advantage_type = advantage_type
-        if n_action_sample is not None:
+        if n_action_sample is not NotProvided:
             self.n_action_sample = n_action_sample
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if td_error_loss_fn is not None:
+        if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
             assert self.td_error_loss_fn in [
                 "huber",
                 "mse",
             ], "td_error_loss_fn must be 'huber' or 'mse'."
-        if categorical_distribution_temperature is not None:
+        if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )

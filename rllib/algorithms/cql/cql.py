@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -105,17 +105,17 @@ class CQLConfig(SACConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if bc_iters is not None:
+        if bc_iters is not NotProvided:
             self.bc_iters = bc_iters
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if num_actions is not None:
+        if num_actions is not NotProvided:
             self.num_actions = num_actions
-        if lagrangian is not None:
+        if lagrangian is not NotProvided:
             self.lagrangian = lagrangian
-        if lagrangian_thresh is not None:
+        if lagrangian_thresh is not NotProvided:
             self.lagrangian_thresh = lagrangian_thresh
-        if min_q_weight is not None:
+        if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
 
         return self
