@@ -1,7 +1,10 @@
 import gym
 from typing import Optional
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 def check_old_gym_env(
     env: Optional[gym.Env] = None, *, step_results=None, reset_results=None
 ):
