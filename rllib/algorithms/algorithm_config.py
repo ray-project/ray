@@ -827,7 +827,9 @@ class AlgorithmConfig:
         env_config: Optional[EnvConfigDict] = NotProvided,
         observation_space: Optional[gym.spaces.Space] = NotProvided,
         action_space: Optional[gym.spaces.Space] = NotProvided,
-        env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = NotProvided,
+        env_task_fn: Optional[
+            Callable[[ResultDict, EnvType, EnvContext], Any]
+        ] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -1357,16 +1359,21 @@ class AlgorithmConfig:
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not NotProvided:
-            from ray.rllib.algorithms.algorithm import Algorithm
+            # If user really wants to set this to None, we should allow this here,
+            # instead of creating an empty dict.
+            if evaluation_config is None:
+                self.evaluation_config = None
+            else:
+                from ray.rllib.algorithms.algorithm import Algorithm
 
-            self.evaluation_config = deep_update(
-                self.evaluation_config or {},
-                evaluation_config,
-                True,
-                Algorithm._allow_unknown_subkeys,
-                Algorithm._override_all_subkeys_if_type_changes,
-                Algorithm._override_all_key_list,
-            )
+                self.evaluation_config = deep_update(
+                    self.evaluation_config or {},
+                    evaluation_config,
+                    True,
+                    Algorithm._allow_unknown_subkeys,
+                    Algorithm._override_all_subkeys_if_type_changes,
+                    Algorithm._override_all_key_list,
+                )
         if off_policy_estimation_methods is not NotProvided:
             self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not NotProvided:
@@ -1526,8 +1533,8 @@ class AlgorithmConfig:
                 is: (agent_id, episode, worker, **kwargs) -> PolicyID.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
-                - None, for all policies.
-                - An iterable of PolicyIDs that should be updated.
+                - None, for training all policies.
+                - An iterable of PolicyIDs that should be trained.
                 - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
                 and returning a bool (indicating whether the given policy is trainable
                 or not, given the particular batch). This allows you to have a policy
@@ -1610,8 +1617,8 @@ class AlgorithmConfig:
         if policies_to_train is not NotProvided:
             assert isinstance(policies_to_train, (list, set, tuple)) or callable(
                 policies_to_train
-            ), (
-                "ERROR: `policies_to_train`must be a [list|set|tuple] or a "
+            ) or policies_to_train is None, (
+                "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
             )
