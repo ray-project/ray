@@ -1347,16 +1347,13 @@ def from_torch(
     Examples:
         >>> import ray
         >>> from torchvision import datasets
-        >>> dataset = datasets.MNIST("data", download=True)
-        Dataset MNIST
-            Number of datapoints: 60000
-            Root location: data
-            Split: Train
+        >>> dataset = datasets.MNIST("data", download=True)  # doctest: +ELLIPSIS
+        Downloading ... 
         >>> dataset = ray.data.from_torch(dataset)
         >>> dataset
         Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
-        >>> dataset.take(1)  # doctest: +SKIP
-        [(<PIL.Image.Image image mode=L size=28x28 at 0x122CD8340>, 5)]
+        >>> dataset.take(1)  # doctest: +ELLIPSIS
+        [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
 
     Args:
         dataset: A Torch dataset.
