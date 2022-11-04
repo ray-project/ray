@@ -79,7 +79,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>
+          {ip} {raylet.isHeadNode && "(Head)"}
+        </Box>
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -108,7 +110,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
             total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
+            {memoryConverter(objectStoreTotalMemory)}(
+            {(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}
+            %)
           </PercentageBar>
         )}
       </TableCell>
