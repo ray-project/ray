@@ -84,18 +84,8 @@ def _load_trial_from_checkpoint(
         stub=stub,
         _setup_default_resource=False,
     )
-    old_logdir = os.path.join(
-        trial_cp.get("local_dir"), trial_cp.get("relative_logdir")
-    )
     trial_cp.update(overwrite_checkpoint_kwargs)
     new_trial.__setstate__(trial_cp)
-
-    # If the trial logdir has been moved, update the checkpoint paths to match
-    if new_trial.logdir != old_logdir:
-        _update_trial_checkpoint_paths(
-            new_trial.get_trial_checkpoints(), old_logdir, new_trial.logdir
-        )
-
     return new_trial
 
 

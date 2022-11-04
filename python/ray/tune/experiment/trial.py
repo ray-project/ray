@@ -906,6 +906,18 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
+        checkpoint_states = []
+        for checkpoint in self.checkpoint_manager.best_checkpoints():
+            checkpoint_state = checkpoint.__dict__.copy()
+            checkpoint_dir = checkpoint.dir_or_data
+            if isinstance(checkpoint_dir, ray.ObjectRef):
+                checkpoint_dir = ray.get(checkpoint_dir)
+            checkpoint_state["dir_or_data"] = os.path.relpath(
+                checkpoint_dir, self.logdir
+            )
+            checkpoint_states.append(checkpoint_state)
+        state["__checkpoints"] = checkpoint_states
+
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
@@ -916,10 +928,18 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
+        checkpoint_states = state.pop("__checkpoints")
+
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
+
+        for checkpoint, checkpoint_state in zip(
+            self.checkpoint_manager.best_checkpoints(), checkpoint_states
+        ):
+            checkpoint_state["dir_or_data"] = os.path.join(self.logdir, checkpoint_state["dir_or_data"])
+            checkpoint.__dict__.update(checkpoint_state)
 
         if not self.stub:
             validate_trainable(self.trainable_name)
