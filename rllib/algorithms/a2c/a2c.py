@@ -172,10 +172,7 @@ class A2C(A3C):
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if (
-            self.config["_disable_execution_plan_api"] is True
-            and self.config["microbatch_size"]
-        ):
+        if self.config["microbatch_size"]:
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 
@@ -242,6 +239,8 @@ class A2C(A3C):
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
+            # Synch updated weights back to the workers
+            # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=self.workers.local_worker().get_policies_to_train(),

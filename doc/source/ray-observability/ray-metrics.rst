@@ -53,6 +53,9 @@ Next, let's start Prometheus.
 
     ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
 
+.. note::
+    If you are using mac, you may receive an error at this point about trying to launch an application where the developer has not been verified. See :ref:`this link <unverified-developer>` to fix the issue.
+
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
@@ -129,3 +132,22 @@ To do that, you may want to customize the port that metrics gets exposed to a pr
     ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
 
 Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
+
+
+Troubleshooting
+---------------
+
+.. _unverified-developer:
+
+Mac does not trust the developer when installing prometheus or grafana
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may have received an error that looks like this:
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png
+    :align: center
+
+When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
+Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
+
+See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
