@@ -34,7 +34,7 @@ class EventHead(
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
         self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=16, thread_name_prefix="event_monitor"
+            max_workers=1, thread_name_prefix="event_monitor"
         )
         self.total_report_events_count = 0
         self.total_events_received = 0

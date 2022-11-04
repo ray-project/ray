@@ -27,7 +27,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=16, thread_name_prefix="event_monitor"
+            max_workers=1, thread_name_prefix="event_monitor"
         )
         # Total number of event created from this agent.
         self.total_event_reported = 0
