@@ -31,11 +31,15 @@ def alloc_mem(bytes):
 def test_churn_long_running(
     ray_with_memory_monitor,
 ):
-    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction - 0.1
+    )
     allocate_memory.options(max_retries=1).remote(
         long_running_bytes, post_allocate_sleep_s=60
     )
-    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.2)
+    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.2
+    )
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=1).remote(small_bytes))
 
@@ -60,8 +64,15 @@ def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
     with pytest.raises(ray.exceptions.RayTaskError) as _:
-        bytes1 = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
-        bytes2 = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.2) - bytes1
+        bytes1 = get_additional_bytes_to_reach_memory_usage_pct(
+            memory_usage_threshold_fraction - 0.1
+        )
+        bytes2 = (
+            get_additional_bytes_to_reach_memory_usage_pct(
+                memory_usage_threshold_fraction + 0.2
+            )
+            - bytes1
+        )
         ray.get(task_with_nested_task.remote(bytes1, bytes2, None, None))
 
 
@@ -156,7 +167,6 @@ def task_with_nested_task(bytes1, bytes2, barrier, instance_id):
         while not ray.get(barrier.both_done.remote()):
             time.sleep(1)
     ray.get(allocate_memory.options(max_retries=0).remote(bytes2))
-    
 
 
 @pytest.mark.skipif(
