@@ -13,11 +13,11 @@ algo = (
     .build()
 )
 
-for i in range(100):
+for i in range(10):
     result = algo.train()
     print(pretty_print(result))
 
-    if i % 10 == 0:
+    if i % 5 == 0:
         checkpoint_dir = algo.save()
         print(f"Checkpoint saved in directory {checkpoint_dir}")
 # __rllib-first-config-end__
@@ -35,7 +35,7 @@ config = PPOConfig().training(lr=tune.grid_search([0.01, 0.001, 0.0001]))
 tuner = tune.Tuner(
     "PPO",
     run_config=air.RunConfig(
-        stop={"episode_reward_mean": 200},
+        stop={"episode_reward_mean": 150},
     ),
     param_space=config,
 )
@@ -49,7 +49,7 @@ results = ray.tune.Tuner(
     "PPO",
     param_space=config,
     run_config=air.RunConfig(
-        stop={"episode_reward_mean": 200},
+        stop={"episode_reward_mean": 150},
         checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
     ),
 ).fit()
