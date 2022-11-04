@@ -176,14 +176,6 @@ class VectorEnv:
         """
         pass
 
-    @Deprecated(new="vectorize_gym_envs", error=True)
-    def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
-        return self.vectorize_gym_envs(*args, **kwargs)
-
-    @Deprecated(new="get_sub_environments", error=True)
-    def get_unwrapped(self) -> List[EnvType]:
-        return self.get_sub_environments()
-
     @PublicAPI
     def to_base_env(
         self,
@@ -220,6 +212,14 @@ class VectorEnv:
         """
         env = VectorEnvWrapper(self)
         return env
+
+    @Deprecated(new="vectorize_gym_envs", error=True)
+    def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
+        pass
+
+    @Deprecated(new="get_sub_environments", error=True)
+    def get_unwrapped(self) -> List[EnvType]:
+        pass
 
 
 class _VectorizedGymEnv(VectorEnv):
@@ -272,7 +272,9 @@ class _VectorizedGymEnv(VectorEnv):
         )
 
     @override(VectorEnv)
-    def vector_reset(self, seed: Optional[int] = None):
+    def vector_reset(self, seed: Optional[int] = None) -> Tuple[
+        List[EnvObsType], List[EnvInfoDict]
+    ]:
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
         resetted_obs = []
@@ -341,7 +343,9 @@ class _VectorizedGymEnv(VectorEnv):
     @override(VectorEnv)
     def vector_step(
         self, actions
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        List[EnvObsType], List[float], List[bool], List[bool], List[EnvInfoDict]
+    ]:
         obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
             [],
             [],
@@ -378,7 +382,7 @@ class _VectorizedGymEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
-    def get_sub_environments(self):
+    def get_sub_environments(self) -> List[EnvType]:
         return self.envs
 
     @override(VectorEnv)

@@ -103,7 +103,7 @@ class VectorizedMockEnv(VectorEnv):
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
 
     @override(VectorEnv)
-    def vector_reset(self):
+    def vector_reset(self, seed=None):
         obs_and_infos = [e.reset() for e in self.envs]
         return [oi[0] for oi in obs_and_infos], [oi[1] for oi in obs_and_infos]
 
@@ -149,7 +149,7 @@ class MockVectorEnv(VectorEnv):
         self.ts = 0
 
     @override(VectorEnv)
-    def vector_reset(self):
+    def vector_reset(self, seed=None):
         obs, infos = self.env.reset()
         return (
             [obs for _ in range(self.num_envs)],

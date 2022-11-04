@@ -236,11 +236,10 @@ class MultiAgentEnv(gym.Env):
                 if agent_id != "__all__"
             }
         logger.warning(
-            "action_space_sample() of {} has not been implemented. "
-            "You "
-            "can either implement it yourself or bring the observation "
+            f"action_space_sample() of {self} has not been implemented. "
+            "You can either implement it yourself or bring the observation "
             "space into the preferred format of a mapping from agent ids "
-            "to their individual observation spaces. ".format(self)
+            "to their individual observation spaces."
         )
         return {}
 
