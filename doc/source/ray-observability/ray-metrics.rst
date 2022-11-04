@@ -75,7 +75,7 @@ Then go to to the location of the binary and run grafana using the built in conf
     ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
-You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same metric graphs are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same :ref:`metric graphs <system-metrics>` are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
 
 .. tip::
 
@@ -102,16 +102,16 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Description
    * - `ray_tasks`
      - `Name`, `State`
-     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See rpc::TaskState for more information. The function/method name is available as the Name label.
+     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label.
    * - `ray_actors`
      - `Name`, `State`
-     - Current number of actors in a particular state. The State label is described by rpc::ActorTableData proto in gcs.proto. The actor class name is available in the Name label.
+     - Current number of actors in a particular state. The State label is described by `rpc::ActorTableData <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L85>`_ proto in gcs.proto. The actor class name is available in the Name label.
    * - `ray_resources`
      - `Name`, `State`
      - Logical resource usage for each node of the cluster. Each resource has some quantity that is in USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`
-     - Object store memory usage in bytes, broken down by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
+     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/master/src/ray/stats/metric_defs.cc>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
    * - `ray_node_cpu_utilization`
      - N/A
      - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
