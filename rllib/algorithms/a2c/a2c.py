@@ -83,7 +83,7 @@ class A2CConfig(A3CConfig):
     def training(
         self,
         *,
-        microbatch_size: Optional[int] = None,
+        microbatch_size: Optional[int] = NotProvided,
         **kwargs,
     ) -> "A2CConfig":
         """Sets the training related configuration.

@@ -57,7 +57,7 @@ class PGConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
     ) -> "PGConfig":
         """Sets the training related configuration.

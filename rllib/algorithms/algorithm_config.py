@@ -65,7 +65,7 @@ class _NotProvided:
         >>> config.training(preprocessor_pref=None)
         >>> config.preprocessor_pref is None
         ... True
-        >>> # Still the same value (didn't touch it in the vall to `.training()`.
+        >>> # Still the same value (didn't touch it in the call to `.training()`.
         >>> print(config.lr)
         ... 0.001
     """

@@ -92,18 +92,18 @@ class DTConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        embed_dim: Optional[int] = None,
-        num_layers: Optional[int] = None,
-        num_heads: Optional[int] = None,
-        embed_pdrop: Optional[float] = None,
-        resid_pdrop: Optional[float] = None,
-        attn_pdrop: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        loss_coef_actions: Optional[float] = None,
-        loss_coef_obs: Optional[float] = None,
-        loss_coef_returns_to_go: Optional[float] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        embed_dim: Optional[int] = NotProvided,
+        num_layers: Optional[int] = NotProvided,
+        num_heads: Optional[int] = NotProvided,
+        embed_pdrop: Optional[float] = NotProvided,
+        resid_pdrop: Optional[float] = NotProvided,
+        attn_pdrop: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        loss_coef_actions: Optional[float] = NotProvided,
+        loss_coef_obs: Optional[float] = NotProvided,
+        loss_coef_returns_to_go: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -207,7 +207,7 @@ class DTConfig(AlgorithmConfig):
     def evaluation(
         self,
         *,
-        target_return: Optional[float] = None,
+        target_return: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """

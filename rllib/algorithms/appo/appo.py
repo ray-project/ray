@@ -117,14 +117,14 @@ class APPOConfig(ImpalaConfig):
     def training(
         self,
         *,
-        vtrace: Optional[bool] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        use_kl_loss: Optional[bool] = None,
-        kl_coeff: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        vtrace: Optional[bool] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        use_kl_loss: Optional[bool] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.

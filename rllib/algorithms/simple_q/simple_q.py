@@ -159,14 +159,14 @@ class SimpleQConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        target_network_update_freq: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
-        store_buffer_in_checkpoints: Optional[bool] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        adam_epsilon: Optional[float] = None,
-        grad_clip: Optional[int] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
-        tau: Optional[float] = None,
+        target_network_update_freq: Optional[int] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        store_buffer_in_checkpoints: Optional[bool] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        adam_epsilon: Optional[float] = NotProvided,
+        grad_clip: Optional[int] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.

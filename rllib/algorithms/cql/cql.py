@@ -81,12 +81,12 @@ class CQLConfig(SACConfig):
     def training(
         self,
         *,
-        bc_iters: Optional[int] = None,
-        temperature: Optional[float] = None,
-        num_actions: Optional[int] = None,
-        lagrangian: Optional[bool] = None,
-        lagrangian_thresh: Optional[float] = None,
-        min_q_weight: Optional[float] = None,
+        bc_iters: Optional[int] = NotProvided,
+        temperature: Optional[float] = NotProvided,
+        num_actions: Optional[int] = NotProvided,
+        lagrangian: Optional[bool] = NotProvided,
+        lagrangian_thresh: Optional[float] = NotProvided,
+        min_q_weight: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CQLConfig":
         """Sets the training-related configuration.

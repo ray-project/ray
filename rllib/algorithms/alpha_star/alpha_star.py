@@ -150,14 +150,14 @@ class AlphaStarConfig(appo.APPOConfig):
     def training(
         self,
         *,
-        replay_buffer_capacity: Optional[int] = None,
-        replay_buffer_replay_ratio: Optional[float] = None,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_learner_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_learner_manager: Optional[float] = None,
-        league_builder_config: Optional[Dict[str, Any]] = None,
-        max_num_policies_to_train: Optional[int] = None,
+        replay_buffer_capacity: Optional[int] = NotProvided,
+        replay_buffer_replay_ratio: Optional[float] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_learner_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_learner_manager: Optional[float] = NotProvided,
+        league_builder_config: Optional[Dict[str, Any]] = NotProvided,
+        max_num_policies_to_train: Optional[int] = NotProvided,
         **kwargs,
     ) -> "AlphaStarConfig":
         """Sets the training related configuration.

@@ -59,7 +59,7 @@ class RNNSACConfig(SACConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
+        zero_init_states: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "RNNSACConfig":
         """Sets the training related configuration.

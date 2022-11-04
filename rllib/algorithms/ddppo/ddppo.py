@@ -129,8 +129,8 @@ class DDPPOConfig(PPOConfig):
     def training(
         self,
         *,
-        keep_local_weights_in_sync: Optional[bool] = None,
-        torch_distributed_backend: Optional[str] = None,
+        keep_local_weights_in_sync: Optional[bool] = NotProvided,
+        torch_distributed_backend: Optional[str] = NotProvided,
         **kwargs,
     ) -> "DDPPOConfig":
         """Sets the training related configuration.

@@ -135,9 +135,9 @@ class R2D2Config(DQNConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
-        use_h_function: Optional[bool] = None,
-        h_function_epsilon: Optional[float] = None,
+        zero_init_states: Optional[bool] = NotProvided,
+        use_h_function: Optional[bool] = NotProvided,
+        h_function_epsilon: Optional[float] = NotProvided,
         **kwargs,
     ) -> "R2D2Config":
         """Sets the training related configuration.
