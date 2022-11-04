@@ -23,6 +23,11 @@ Next steps
     import ray
     ray\.init\(address='ray://.*'\)
 
+  To see the status of the cluster, use
+    ray status
+  To monitor and debug Ray, view the dashboard at 
+    127.0.0.1:8265
+
   If connection fails, check your firewall settings and network configuration.
 
   To terminate the Ray runtime, run
