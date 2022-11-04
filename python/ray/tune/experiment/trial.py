@@ -151,6 +151,11 @@ class _TrialInfo:
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
         self._trial_resources = trial.placement_group_factory
+        self._experiment_name = trial.experiment_dir_name
+
+    @property
+    def experiment_name(self):
+        return self._experiment_name
 
     @property
     def trial_name(self):

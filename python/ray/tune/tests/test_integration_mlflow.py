@@ -11,7 +11,7 @@ from ray.tune.integration.mlflow import (
     MLflowTrainableMixin,
     mlflow_mixin,
 )
-from ray.air.callbacks.mlflow import (
+from ray.air.integrations.mlflow import (
     MLflowLoggerCallback,
 )
 from ray.air._internal.mlflow import _MLflowLoggerUtil
@@ -138,7 +138,7 @@ class MLflowTest(unittest.TestCase):
         logger.setup()
         self.assertEqual(logger.tags, tags)
 
-    @patch("ray.air.callbacks.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}

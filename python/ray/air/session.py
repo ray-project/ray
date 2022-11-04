@@ -141,6 +141,12 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
 
 @_warn_session_misuse()
+def get_experiment_name() -> str:
+    """Experiment name for the corresponding trial."""
+    return _get_session().experiment_name
+
+
+@_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
     return _get_session().trial_name

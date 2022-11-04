@@ -108,7 +108,7 @@ class TensorflowTrainer(DataParallelTrainer):
                     batch_size=1
                 )
                 model.fit(tf_dataset)
-                # You can also use ray.air.callbacks.keras.Callback
+                # You can also use ray.air.integrations.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
                 session.report(
                     {},

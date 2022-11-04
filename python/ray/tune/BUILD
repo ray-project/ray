@@ -921,7 +921,7 @@ py_test(
 
 py_test(
     name = "wandb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/wandb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],

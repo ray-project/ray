@@ -34,6 +34,10 @@ class _TrainSessionImpl(Session):
         return ckpt
 
     @property
+    def experiment_name(self) -> str:
+        return self._session.trial_info.experiment_name
+
+    @property
     def trial_name(self) -> str:
         return self._session.trial_info.name
 

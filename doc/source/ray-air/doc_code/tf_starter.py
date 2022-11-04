@@ -17,7 +17,7 @@ dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 import tensorflow as tf
 
 from ray.air import session
-from ray.air.callbacks.keras import Callback
+from ray.air.integrations.keras import Callback
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 

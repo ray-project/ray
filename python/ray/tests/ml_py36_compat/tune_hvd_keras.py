@@ -10,7 +10,7 @@ import numpy as np
 # TF/Keras-specific
 import horovod.keras as hvd
 
-from ray.air.callbacks.keras import Callback as KerasCallback
+from ray.air.integrations.keras import Callback as KerasCallback
 import tensorflow as tf
 
 

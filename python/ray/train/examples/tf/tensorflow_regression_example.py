@@ -6,7 +6,7 @@ import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
 from ray.air.result import Result
 from ray.data import Dataset
 from ray.data.preprocessors import Concatenator

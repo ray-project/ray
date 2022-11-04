@@ -50,6 +50,10 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.loaded_checkpoint
 
     @property
+    def experiment_name(self) -> str:
+        return self._status_reporter.experiment_name
+
+    @property
     def trial_name(self) -> str:
         return self._status_reporter.trial_name
 
