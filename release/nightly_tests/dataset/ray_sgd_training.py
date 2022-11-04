@@ -20,7 +20,7 @@ from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.data.aggregate import Mean, Std
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback  # TODO move this to AIR
 
 
