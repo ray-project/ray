@@ -68,7 +68,7 @@ install_ray() {
     pip install wheel
 
     pushd dashboard/client
-      choco install nodejs  -y
+      choco install nodejs --version 18.12.0 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
