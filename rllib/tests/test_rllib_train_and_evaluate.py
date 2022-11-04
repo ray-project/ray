@@ -289,20 +289,15 @@ class TestCLISmokeTests(unittest.TestCase):
             f"cartpole-simpleq-test.yaml"
         ).read()
 
-    def test_json_run(self):
-        assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole-simpleq-test.json --type=json"
-        ).read()
-
     def test_python_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole_simpleq_test.py --type=python"
+            f"cartpole_simpleq_test.py "
+            f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
         ).read()
 
     def test_all_example_files_exist(self):
-        """ "The 'example' command now knows about example files,
+        """The 'example' command now knows about example files,
         so we check that they exist."""
         from ray.rllib.common import EXAMPLES
 
