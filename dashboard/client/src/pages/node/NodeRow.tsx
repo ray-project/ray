@@ -205,10 +205,10 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link><br/>
-        <a href={`/worker/traceback?pid=${pid}&ip=${ip}`} target="_blank">
+        <a href={`/worker/traceback?pid=${pid}&ip=${ip}`} target="_blank" rel="noreferrer">
             Stack&nbsp;Trace
         </a><br/>
-        <a href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`} target="_blank">
+        <a href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`} target="_blank" rel="noreferrer">
             Flame&nbsp;Graph
         </a><br/>
       </TableCell>
