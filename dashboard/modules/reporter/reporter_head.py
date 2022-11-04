@@ -162,11 +162,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
+        logger.info(
+            "Sending stack trace request to {}:{}".format(req.query.get("ip"), pid)
+        )
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid)
         )
-        logger.info(reply)
         if reply.success:
+            logger.info("Returning stack trace, size {}".format(len(reply.output)))
             return aiohttp.web.Response(text=reply.output)
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
@@ -182,11 +185,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if duration > 60:
             raise ValueError(f"The max duration allowed is 60: {duration}.")
         format = req.query.get("format", "flamegraph")
+        logger.info(
+            "Sending CPU profiling request to {}:{}".format(req.query.get("ip"), pid)
+        )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
         )
-        logger.info(reply)
         if reply.success:
+            logger.info(
+                "Returning profiling response, size {}".format(len(reply.output))
+            )
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
