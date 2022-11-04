@@ -22,6 +22,7 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.utils.policy import local_policy_inference
 
 
 # Fake CartPole episode of n time steps.
@@ -83,7 +84,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -114,6 +115,7 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=1,
                 # Test with compression.
                 compress_observations=True,
+                enable_connectors=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
@@ -123,7 +125,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -135,24 +137,14 @@ class TestPPO(unittest.TestCase):
 
                     algo = config.build(env=env)
                     policy = algo.get_policy()
-                    entropy_coeff = algo.get_policy().entropy_coeff
-                    lr = policy.cur_lr
-                    if fw == "tf":
-                        entropy_coeff, lr = policy.get_session().run(
-                            [entropy_coeff, lr]
-                        )
-                    check(entropy_coeff, 0.1)
-                    check(lr, config.lr)
-
-                    for i in range(num_iterations):
-                        results = algo.train()
-                        check_train_results(results)
-                        print(results)
-
-                    check_compute_single_action(
-                        algo, include_prev_action_reward=True, include_state=lstm
+                    obs_space = policy.observation_space
+                    obs_space = (
+                        obs_space.original_space
+                        if hasattr(obs_space, "original_space")
+                        else obs_space
                     )
-                    algo.stop()
+                    for i in range(num_iterations):
+                        local_policy_inference(policy, 0, 0, obs_space.sample())
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
