@@ -1561,24 +1561,21 @@ def _prepare_progress_reporter_for_ray_client(
     return progress_reporter, string_queue
 
 
-def _get_remote_with_string_queue(
+def _stream_client_output(
     remote_future: ray.ObjectRef,
     progress_reporter: ProgressReporter,
     string_queue: Queue,
 ) -> Any:
-    """Get result of remote future while checking the string queue."""
-    if string_queue is not None:
+    """
+    Stream items from string queue to progress_reporter until remote_future resolves
+    """
+    if string_queue is None:
+        return
 
-        def get_next_queue_item():
-            try:
-                return string_queue.get(block=False)
-            except Empty:
-                return None
-
-    else:
-        # If we don't need a queue, use this dummy get fn instead of
-        # scheduling an unneeded actor
-        def get_next_queue_item():
+    def get_next_queue_item():
+        try:
+            return string_queue.get(block=False)
+        except Empty:
             return None
 
     def _handle_string_queue():
@@ -1586,7 +1583,6 @@ def _get_remote_with_string_queue(
         while string_item is not None:
             # This happens on the driver side
             progress_reporter.display(string_item)
-
             string_item = get_next_queue_item()
 
     # ray.wait(...)[1] returns futures that are not ready, yet
@@ -1596,5 +1592,3 @@ def _get_remote_with_string_queue(
 
     # Handle queue one last time
     _handle_string_queue()
-
-    return ray.get(remote_future)

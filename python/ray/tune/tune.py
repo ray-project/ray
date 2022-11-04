@@ -19,7 +19,7 @@ from ray.tune.progress_reporter import (
     _detect_reporter,
     _detect_progress_metrics,
     _prepare_progress_reporter_for_ray_client,
-    _get_remote_with_string_queue,
+    _stream_client_output,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -400,9 +400,12 @@ def run(
 
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
-        return _get_remote_with_string_queue(
-            remote_future, progress_reporter, string_queue
+        _stream_client_output(
+            remote_future,
+            progress_reporter,
+            string_queue,
         )
+        return ray.get(remote_future)
 
     del remote_run_kwargs
 

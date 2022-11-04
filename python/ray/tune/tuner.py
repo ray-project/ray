@@ -11,7 +11,7 @@ from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
-    _get_remote_with_string_queue,
+    _stream_client_output,
 )
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
@@ -275,11 +275,13 @@ class Tuner:
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
             try:
-                return _get_remote_with_string_queue(
-                    self._remote_tuner.fit.remote(),
+                fit_future = self._remote_tuner.fit.remote()
+                _stream_client_output(
+                    fit_future,
                     progress_reporter,
                     string_queue,
                 )
+                return ray.get(fit_future)
             except Exception as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
@@ -312,8 +314,10 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            return _get_remote_with_string_queue(
-                self._remote_tuner.fit.remote(),
+            fit_future = self._remote_tuner.fit.remote()
+            _stream_client_output(
+                fit_future,
                 progress_reporter,
                 string_queue,
             )
+            return ray.get(fit_future)
