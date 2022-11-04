@@ -906,13 +906,16 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
+        # Save persistent trial checkpoint data (with relative paths)
+        # Upon load, the path should be constructed again relative to the the
+        # `logdir`, which might be updated.
         checkpoint_states = []
-        for checkpoint in self.checkpoint_manager.best_checkpoints():
+        for checkpoint in self.get_trial_checkpoints():
             checkpoint_state = checkpoint.__dict__.copy()
             checkpoint_dir = checkpoint.dir_or_data
             if isinstance(checkpoint_dir, ray.ObjectRef):
                 checkpoint_dir = ray.get(checkpoint_dir)
-            checkpoint_state["dir_or_data"] = os.path.relpath(
+            checkpoint_state["__relative_dir"] = os.path.relpath(
                 checkpoint_dir, self.logdir
             )
             checkpoint_states.append(checkpoint_state)
@@ -928,6 +931,7 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
+        # Load the checkpoint states
         checkpoint_states = state.pop("__checkpoints")
 
         # Ensure that stub doesn't get overriden
@@ -936,9 +940,13 @@ class Trial:
         self.stub = stub or getattr(self, "stub", False)
 
         for checkpoint, checkpoint_state in zip(
-            self.checkpoint_manager.best_checkpoints(), checkpoint_states
+            self.get_trial_checkpoints(), checkpoint_states
         ):
-            checkpoint_state["dir_or_data"] = os.path.join(self.logdir, checkpoint_state["dir_or_data"])
+            # Reconstruct the checkpoint dir using the (possibly updated)
+            # trial logdir and the relative checkpoint directory.
+            checkpoint_state["dir_or_data"] = os.path.join(
+                self.logdir, checkpoint_state.pop("__relative_dir")
+            )
             checkpoint.__dict__.update(checkpoint_state)
 
         if not self.stub:
