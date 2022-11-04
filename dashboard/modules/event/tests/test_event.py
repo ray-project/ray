@@ -448,10 +448,6 @@ def test_jobs_cluster_events(shutdown_only):
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
     pprint(list_cluster_events())
-    print("Done")
-    import time
-
-    time.sleep(300)
 
 
 if __name__ == "__main__":
