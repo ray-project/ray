@@ -41,6 +41,7 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     def get_actor_stack():
         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
         response.raise_for_status()
+        assert "text/plain" in response.headers["Content-Type"], response.headers
         content = response.content.decode("utf-8")
         print(content)
         # Sanity check we got the stack trace text.
@@ -115,7 +116,7 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert response.status_code == 500, response
     content = response.content.decode("utf-8")
     print(content)
-    assert response.headers["Content-Type"] == "text/plain", response.headers
+    assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
@@ -123,7 +124,7 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert response.status_code == 500, response
     content = response.content.decode("utf-8")
     print(content)
-    assert response.headers["Content-Type"] == "text/plain", response.headers
+    assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
 
