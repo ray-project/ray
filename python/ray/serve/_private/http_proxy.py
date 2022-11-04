@@ -98,6 +98,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                     'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 retries += 1
+                client_disconnection_task.cancel()
             else:
                 result = await object_ref
                 client_disconnection_task.cancel()
