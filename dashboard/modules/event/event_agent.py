@@ -1,5 +1,7 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
+from multiprocessing.pool import ThreadPool
 import os
 from typing import Union
 
@@ -24,6 +26,9 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self.monitor_thread_pool_executor = ThreadPoolExecutor(
+            max_workers=16, thread_name_prefix="event_monitor"
+        )
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
@@ -85,7 +90,9 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._stub = await self._connect_to_dashboard()
         # Start monitor task.
         self._monitor = monitor_events(
-            self._event_dir, lambda data: create_task(self._cached_events.put(data))
+            self._event_dir,
+            lambda data: create_task(self._cached_events.put(data)),
+            self.monitor_thread_pool_executor
         )
         # Start reporting events.
         await self.report_events()
