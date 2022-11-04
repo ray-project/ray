@@ -3161,8 +3161,8 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
-    type: sdk_command
-    file_manager: sdk
+    type: job
+    file_manager: job
 
 - name: shuffle_50gb
   group: core-multi-test
