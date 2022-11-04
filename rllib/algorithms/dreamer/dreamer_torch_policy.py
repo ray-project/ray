@@ -246,7 +246,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             action = td.Normal(action, policy.config["explore_noise"]).sample()
             action = torch.clamp(action, min=-1.0, max=1.0)
 
-        policy.global_timestep += policy.config["action_repeat"]
+        policy.global_timestep += policy.config["env_config"]["frame_skip"]
 
         return action, logp, state_batches
 

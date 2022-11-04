@@ -20,7 +20,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -151,6 +150,16 @@ class A3CConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
+        if self.num_rollout_workers <= 0 and self.sample_async:
+            raise ValueError("`num_workers` for A3C must be >= 1!")
+
 
 class A3C(Algorithm):
     @classmethod
@@ -165,18 +174,11 @@ class A3C(Algorithm):
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
-        if config["num_workers"] <= 0 and config["sample_async"]:
-            raise ValueError("`num_workers` for A3C must be >= 1!")
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
@@ -245,9 +247,12 @@ class A3C(Algorithm):
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
 
-            # Synch updated weights back to the particular worker.
+            # Synch updated weights back to the particular worker
+            # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                weights = local_worker.get_weights(local_worker.get_policies_to_train())
+                weights = local_worker.get_weights(
+                    policies=local_worker.get_policies_to_train()
+                )
                 worker.set_weights.remote(weights, global_vars)
 
         # Update global vars of the local worker.
