@@ -78,10 +78,9 @@ class PlacementGroupResourceManager(ResourceManager):
     def _maybe_update_state(self):
         now = time.monotonic()
         if now > self._last_update + self._update_interval:
-            self._update_state()
-            self._last_update = now
+            self.update_state()
 
-    def _update_state(self):
+    def update_state(self):
         ready, not_ready = ray.wait(
             list(self._staging_future_to_pg.keys()),
             num_returns=len(self._staging_future_to_pg),
@@ -96,6 +95,7 @@ class PlacementGroupResourceManager(ResourceManager):
             # Remove from staging, add to ready
             self._request_to_staged_pgs[request].remove(pg)
             self._request_to_ready_pgs[request].add(pg)
+        self._last_update = time.monotonic()
 
     def request_resources(self, resource_request: ResourceRequest):
         pg = placement_group(resource_request.bundles)
