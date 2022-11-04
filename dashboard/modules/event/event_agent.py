@@ -1,7 +1,7 @@
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 import logging
-from multiprocessing.pool import ThreadPool
 import os
 from typing import Union
 
@@ -29,6 +29,11 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self.monitor_thread_pool_executor = ThreadPoolExecutor(
             max_workers=16, thread_name_prefix="event_monitor"
         )
+        # Total number of event created from this agent.
+        self.total_event_reported = 0
+        # Total number of event report request sent.
+        self.total_request_sent = 0
+        self.module_started = time.monotonic()
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
@@ -68,11 +73,13 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         This method will never returns.
         """
         data = await self._cached_events.get()
+        self.total_event_reported += len(data)
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):
             try:
-                logger.info("Report %s events.", len(data))
+                logger.debug("Report %s events.", len(data))
                 request = event_pb2.ReportEventsRequest(event_strings=data)
                 await self._stub.ReportEvents(request)
+                self.total_request_sent += 1
                 break
             except Exception:
                 logger.exception("Report event failed, reconnect to the " "dashboard.")
@@ -85,6 +92,22 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 data_str[:limit] + (data_str[limit:] and "..."),
             )
 
+    @dashboard_utils.async_loop_forever(10)
+    async def _periodic_state_print(self):
+        if self.total_event_reported <= 0 or self.total_request_sent <= 0:
+            return
+
+        elapsed = time.monotonic() - self.module_started
+        logger.info(
+            f"Event module report:\n"
+            f"Total events reported: {self.total_event_reported}\n"
+            f"Total report request: {self.total_request_sent}\n"
+            f"Average report size: {self.total_event_reported / self.total_request_sent}\n"  # noqa
+            f"Average num request per second: {self.total_event_reported / elapsed}\n"
+            f"Average num events per second: {self.total_request_sent / elapsed}\n"
+            f"Queue size: {self._cached_events.qsize()}"
+        )
+
     async def run(self, server):
         # Connect to dashboard.
         self._stub = await self._connect_to_dashboard()
@@ -92,10 +115,13 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
-            self.monitor_thread_pool_executor
+            self.monitor_thread_pool_executor,
         )
-        # Start reporting events.
-        await self.report_events()
+
+        await asyncio.gather(
+            self.report_events(),
+            self._periodic_state_print(),
+        )
 
     @staticmethod
     def is_minimal_module():

@@ -181,7 +181,11 @@ def monitor_events(
     async def _scan_event_log_files():
         # Scan event files.
         source_files = await loop.run_in_executor(
-            monitor_thread_pool_executor, _get_source_files, event_dir, source_types, _source_file_filter
+            monitor_thread_pool_executor,
+            _get_source_files,
+            event_dir,
+            source_types,
+            _source_file_filter,
         )
 
         # Limit concurrent read to avoid fd exhaustion.
@@ -190,7 +194,8 @@ def monitor_events(
         async def _concurrent_coro(filename):
             async with semaphore:
                 return await loop.run_in_executor(
-                    monitor_thread_pool_executor, _read_monitor_file, filename, 0)
+                    monitor_thread_pool_executor, _read_monitor_file, filename, 0
+                )
 
         # Read files.
         await asyncio.gather(
