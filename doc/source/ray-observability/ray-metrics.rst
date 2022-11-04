@@ -108,10 +108,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Current number of actors in a particular state. The State label is described by `rpc::ActorTableData <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L85>`_ proto in gcs.proto. The actor class name is available in the Name label.
    * - `ray_resources`
      - `Name`, `State`
-     - Logical resource usage for each node of the cluster. Each resource has some quantity that is in USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
+     - Logical resource usage for each node of the cluster. Each resource has some quantity that is `in either <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_ USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`
-     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/master/src/ray/stats/metric_defs.cc>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
+     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
    * - `ray_node_cpu_utilization`
      - N/A
      - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
