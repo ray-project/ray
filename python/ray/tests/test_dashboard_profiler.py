@@ -41,7 +41,6 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     def get_actor_stack():
         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
         response.raise_for_status()
-        assert response.headers["Content-Type"] == "text/plain", response.headers
         content = response.content.decode("utf-8")
         print(content)
         # Sanity check we got the stack trace text.
