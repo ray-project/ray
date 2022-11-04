@@ -110,7 +110,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
             total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
+            {memoryConverter(objectStoreTotalMemory)}(
+            {(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}
+            %)
           </PercentageBar>
         )}
       </TableCell>
