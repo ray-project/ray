@@ -5,7 +5,6 @@ import time
 import grpc
 
 import aiohttp.web
-from numpy import isin
 
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
@@ -338,7 +337,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     )
                 elif reply.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.exception(
-                        f"Cannot reacah to the node, {node_id}. The node may have been terminated."
+                        f"Cannot reacah to the node, {node_id}. "
+                        "The node may have been terminated."
                     )
                 else:
                     logger.exception(f"Error updating node stats of {node_id}.")
