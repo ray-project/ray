@@ -1,5 +1,5 @@
 # Run with:
-# rllib train -f cartpole_simpleq_test.py --type python \
+# rllib train -f cartpole_simpleq_test.py\
 #     --stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
 from ray.rllib.algorithms.simple_q import SimpleQConfig
 

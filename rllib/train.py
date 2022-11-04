@@ -12,7 +12,8 @@ from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import FrameworkEnum, SupportedFileType, download_example_file
+from ray.rllib.common import FrameworkEnum, SupportedFileType
+from ray.rllib.common import download_example_file, get_file_type
 
 
 def import_backends():
@@ -53,16 +54,13 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str, file_type: SupportedFileType, checkpoint_config: dict, stop: str
 ) -> dict:
-    """Load experiments from a file. Supports YAML, JSON and Python files.
+    """Load experiments from a file. Supports YAML and Python files.
     If you want to use a Python file, it has to have a 'config' variable
     that is an AlgorithmConfig object."""
 
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-    elif file_type == SupportedFileType.json:
-        with open(config_file) as f:
-            experiments = json.load(f)
     else:  # Python file case (ensured by file type enum)
         import importlib
 
@@ -101,7 +99,6 @@ def load_experiments_from_file(
 def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
-    file_type: SupportedFileType = cli.FileType,
     # stopping conditions
     stop: str = cli.Stop,
     # Checkpointing
@@ -151,6 +148,8 @@ def file(
         "num_to_keep": keep_checkpoints_num,
         "checkpoint_score_attribute": checkpoint_score_attr,
     }
+
+    file_type = get_file_type(config_file)
 
     experiments = load_experiments_from_file(
         config_file, file_type, checkpoint_config, stop
