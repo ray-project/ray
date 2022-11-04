@@ -37,7 +37,7 @@ from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_replay_buffer,
     validate_buffer_config,
 )
-from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +260,22 @@ class SimpleQConfig(AlgorithmConfig):
             self.tau = tau
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try setting `config.rollouts("
+                    "batch_mode='complete_episodes')`."
+                )
+
+        if not self.in_evaluation:
+            validate_buffer_config(self)
+
 
 class SimpleQ(Algorithm):
     @classmethod
@@ -267,47 +283,10 @@ class SimpleQ(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return SimpleQConfig()
 
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Trainer's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting batch_mode="
-                    "complete_episodes."
-                )
-                config["batch_mode"] = "complete_episodes"
-            if config.get("noisy", False):
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!"
-                )
-
-        if not config.get("in_evaluation"):
-            validate_buffer_config(config)
-
-        # Multi-agent mode and multi-GPU optimizer.
-        if config["multiagent"]["policies"] and not config["simple_optimizer"]:
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially"
-                " by the multi-GPU optimizer. Consider setting "
-                "`simple_optimizer=True` if this doesn't work for you."
-            )
-
+    @classmethod
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
@@ -351,7 +330,9 @@ class SimpleQ(Algorithm):
         }
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -385,9 +366,12 @@ class SimpleQ(Algorithm):
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
             # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
+            # on all remote workers (only those policies that were actually trained).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
         else:
             train_results = {}
 

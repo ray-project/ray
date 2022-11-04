@@ -1,17 +1,17 @@
 import logging
 import numpy as np
 import random
-from typing import Optional
+from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
@@ -23,7 +23,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
-    AlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -204,6 +203,29 @@ class DreamerConfig(AlgorithmConfig):
 
         return self
 
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
+        if self.framework_str != "torch":
+            raise ValueError("Dreamer not supported in Tensorflow yet!")
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("truncate_episodes not supported")
+        if self.num_rollout_workers != 0:
+            raise ValueError("Distributed Dreamer not supported yet!")
+        if self.clip_actions:
+            raise ValueError("Clipping is done inherently via policy tanh!")
+        if self.dreamer_train_iters <= 0:
+            raise ValueError(
+                "`dreamer_train_iters` must be a positive integer. "
+                f"Received {self.dreamer_train_iters} instead."
+            )
+        if self.env_config.get("frame_skip", 0) > 1:
+            self.horizon /= self.env_config["frame_skip"]
+
 
 def _postprocess_gif(gif: np.ndarray):
     """Process provided gif to a format that can be logged to Tensorboard."""
@@ -260,7 +282,9 @@ class DreamerIteration:
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -301,86 +325,29 @@ class Dreamer(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return DreamerConfig()
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        config["action_repeat"] = config["env_config"]["frame_skip"]
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
-        if config["framework"] != "torch":
-            raise ValueError("Dreamer not supported in Tensorflow yet!")
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("truncate_episodes not supported")
-        if config["num_workers"] != 0:
-            raise ValueError("Distributed Dreamer not supported yet!")
-        if config["clip_actions"]:
-            raise ValueError("Clipping is done inherently via policy tanh!")
-        if config["dreamer_train_iters"] <= 0:
-            raise ValueError(
-                "`dreamer_train_iters` must be a positive integer. "
-                f"Received {config['dreamer_train_iters']} instead."
-            )
-        if config["action_repeat"] > 1:
-            config["horizon"] = config["horizon"] / config["action_repeat"]
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict):
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return DreamerTorchPolicy
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        # `training_iteration` implementation: Setup buffer in `setup`, not
-        # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = EpisodeSequenceBuffer(
-                replay_sequence_length=config["batch_length"]
-            )
 
-            # Prefill episode buffer with initial exploration (uniform sampling)
-            while (
-                total_sampled_timesteps(self.workers.local_worker())
-                < self.config["prefill_timesteps"]
-            ):
-                samples = self.workers.local_worker().sample()
-                self.local_replay_buffer.add(samples)
-
-    @staticmethod
-    @override(Algorithm)
-    def execution_plan(workers, config, **kwargs):
-        assert (
-            len(kwargs) == 0
-        ), "Dreamer execution_plan does NOT take any additional parameters"
-
-        # Special replay buffer for Dreamer agent.
-        episode_buffer = EpisodeSequenceBuffer(
+        # Setup buffer.
+        self.local_replay_buffer = EpisodeSequenceBuffer(
             replay_sequence_length=config["batch_length"]
         )
 
-        local_worker = workers.local_worker()
-
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
-            samples = local_worker.sample()
-            episode_buffer.add(samples)
-
-        batch_size = config["batch_size"]
-        dreamer_train_iters = config["dreamer_train_iters"]
-        act_repeat = config["action_repeat"]
-
-        rollouts = ParallelRollouts(workers)
-        rollouts = rollouts.for_each(
-            DreamerIteration(
-                local_worker,
-                episode_buffer,
-                dreamer_train_iters,
-                batch_size,
-                act_repeat,
-            )
-        )
-        return rollouts
+        while (
+            total_sampled_timesteps(self.workers.local_worker())
+            < self.config["prefill_timesteps"]
+        ):
+            samples = self.workers.local_worker().sample()
+            self.local_replay_buffer.add(samples)
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
@@ -399,7 +366,9 @@ class Dreamer(Algorithm):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
