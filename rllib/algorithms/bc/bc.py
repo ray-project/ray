@@ -11,8 +11,9 @@ class BCConfig(MARWILConfig):
         >>> from ray.rllib.algorithms.bc import BCConfig
         >>> # Run this from the ray directory root.
         >>> config = BCConfig().training(lr=0.00001, gamma=0.99)\
-        ...             .offline_data(input_="./rllib/tests/data/cartpole/large.json")
-        >>> print(config.to_dict())
+        ...     .offline_data(input_="./rllib/tests/data/cartpole/large.json")
+        >>> print(config.to_dict())  # doctest:+ELLIPSIS
+        ...
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> algo = config.build()
         >>> algo.train()
@@ -23,16 +24,19 @@ class BCConfig(MARWILConfig):
         >>> config = BCConfig()
         >>> # Print out some default values.
         >>> print(config.beta)
+        0.0
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), beta=0.75)
+        >>> config.training(  # doctest:+SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75
+        ... )
         >>> # Set the config object's data path.
         >>> # Run this from the ray directory root.
         >>> config.offline_data(input_="./rllib/tests/data/cartpole/large.json")
         >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")  # doctest:+SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(   # doctest:+SKIP
         ...     "BC",
         ...     param_space=config.to_dict(),
         ... ).fit()
@@ -51,7 +55,7 @@ class BCConfig(MARWILConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # TODO: Remove this when the off_polciy_estimation_methods
+        # TODO: Remove this when the off_policy_estimation_methods
         # default config is removed from MARWIL
         # No off-policy estimation.
         self.off_policy_estimation_methods = {}
