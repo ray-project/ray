@@ -207,6 +207,8 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))
