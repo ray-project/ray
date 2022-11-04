@@ -434,7 +434,9 @@ def _sample_piece(
 
     # Only sample the first row group.
     piece = piece.subset(row_group_ids=[0])
-    batch_size = min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS)
+    batch_size = max(
+        min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+    )
     batches = piece.to_batches(
         columns=columns,
         schema=schema,
