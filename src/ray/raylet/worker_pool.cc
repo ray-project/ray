@@ -1658,6 +1658,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(
     const GetOrCreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv " << serialized_runtime_env;
+
+  auto start = std::chrono::high_resolution_clock::now();
   agent_manager_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
@@ -1666,10 +1668,16 @@ void WorkerPool::GetOrCreateRuntimeEnv(
       [job_id,
        serialized_runtime_env = std::move(serialized_runtime_env),
        runtime_env_config = std::move(runtime_env_config),
+       start,
        callback](bool successful,
                  const std::string &serialized_runtime_env_context,
                  const std::string &setup_error_message) {
         if (successful) {
+          auto end = std::chrono::high_resolution_clock::now();
+          auto duration =
+              std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+          stats::RuntimeEnvCreationTimeMs.Record(duration.count());
+
           callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
