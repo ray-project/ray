@@ -29,7 +29,7 @@ class CpuProfilingManager:
         self.profile_dir_path = Path(profile_dir_path)
         self.profile_dir_path.mkdir(exist_ok=True)
 
-    async def trace_dump(self, pid: int):
+    async def trace_dump(self, pid: int) -> (bool, str):
         cmd = f"$(which py-spy) dump --native -p {pid}"
         process = await asyncio.create_subprocess_shell(
             cmd,
@@ -39,11 +39,13 @@ class CpuProfilingManager:
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            return _format_failed_pyspy_command(cmd, stdout, stderr)
+            return False, _format_failed_pyspy_command(cmd, stdout, stderr)
         else:
-            return stdout.decode("utf-8")
+            return True, stdout.decode("utf-8")
 
-    async def cpu_profile(self, pid: int, format="flamegraph", duration: float = 5):
+    async def cpu_profile(
+        self, pid: int, format="flamegraph", duration: float = 5
+    ) -> (bool, str):
         if format == "flamegraph":
             extension = "svg"
         else:
@@ -63,6 +65,6 @@ class CpuProfilingManager:
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            return _format_failed_pyspy_command(cmd, stdout, stderr)
+            return False, _format_failed_pyspy_command(cmd, stdout, stderr)
         else:
-            return open(profile_file_path).read()
+            return True, open(profile_file_path, "rb").read()

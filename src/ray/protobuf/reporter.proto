@@ -43,7 +43,8 @@ message GetTracebackRequest {
 }
 
 message GetTracebackReply {
-  string output = 1;
+  bool success = 1;
+  string output = 2;
 }
 
 message CpuProfilingRequest {
@@ -53,7 +54,8 @@ message CpuProfilingRequest {
 }
 
 message CpuProfilingReply {
-  string output = 1;
+  bool success = 1;
+  string output = 2;
 }
 
 message ReportMetricsRequest {

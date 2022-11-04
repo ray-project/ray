@@ -157,34 +157,44 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
-        # ip = req.query["ip"]
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
-        reporter_stub = list(self._stubs.values())[0]
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid)
         )
         logger.info(reply)
-        return aiohttp.web.Response(text=reply.output)
+        if reply.success:
+            return aiohttp.web.Response(text=reply.output)
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     @routes.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:
-        # ip = req.query["ip"]
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
         duration = int(req.get("duration", 5))
         format = req.query.get("format", "flamegraph")
-        reporter_stub = list(self._stubs.values())[0]
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
         )
         logger.info(reply)
-        return aiohttp.web.Response(
-            reply.output,
-            headers={
-                "Content-Type": "image/svg+xml"
-                if format == "flamegraph"
-                else "text/plain"
-            },
-        )
+        if reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+        else:
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "image/svg+xml"
+                    if format == "flamegraph"
+                    else "text/plain"
+                },
+            )
 
     async def run(self, server):
         # Need daemon True to avoid dashboard hangs at exit.
