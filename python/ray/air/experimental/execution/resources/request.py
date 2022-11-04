@@ -26,21 +26,23 @@ def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
 
 @PublicAPI(stability="beta")
 class ResourceRequest:
-    """Wrapper class that creates placement groups for trials.
+    """Request for resources.
 
-    This function should be used to define resource requests for Ray Tune
-    trials. It holds the parameters to create placement groups.
+    This class is used internally to define a resource request.
+
+    The resource request must be compatible with the placement group API.
+
     At a minimum, this will hold at least one bundle specifying the
     resource requirements for each trial:
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import air, tune
 
         tuner = tune.Tuner(
             tune.with_resources(
                 train,
-                resources=tune.PlacementGroupFactory([
+                resources=air.ResourceRequest([
                     {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
                 ])
             )
@@ -54,12 +56,12 @@ class ResourceRequest:
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import tune, air
 
         tuner = tune.Tuner(
             tune.with_resources(
                 train,
-                resources=tune.PlacementGroupFactory([
+                resources=air.ResourceRequest([
                     {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
                     {"CPU": 2},
                     {"CPU": 2},
@@ -79,12 +81,12 @@ class ResourceRequest:
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import air, tune
 
         tuner = tune.Tuner(
             tune.with_resources(
                 train,
-                resources=tune.PlacementGroupFactory([
+                resources=tune.ResourceRequest([
                     {},
                     {"CPU": 2},
                     {"CPU": 2},
@@ -96,7 +98,8 @@ class ResourceRequest:
     Args:
         bundles: A list of bundles which
             represent the resources requirements.
-        strategy: The strategy to create the placement group.
+        strategy: The scheduling strategy to acquire the bundles. This is only
+            relevant if the resources are requested as placement groups.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -116,9 +119,7 @@ class ResourceRequest:
         **kwargs,
     ):
         if not bundles:
-            raise ValueError(
-                "Cannot initialize a PlacementGroupFactory with zero bundles."
-            )
+            raise ValueError("Cannot initialize a ResourceRequest with zero bundles.")
 
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
@@ -131,7 +132,7 @@ class ResourceRequest:
 
             if not self._bundles:
                 raise ValueError(
-                    "Cannot initialize a PlacementGroupFactory with an empty head "
+                    "Cannot initialize a ResourceRequest with an empty head "
                     "and zero worker bundles."
                 )
         else:
@@ -185,15 +186,13 @@ class ResourceRequest:
             )
         except Exception as exc:
             raise RuntimeError(
-                "Invalid definition for placement group factory. Please check "
-                "that you passed valid arguments to the PlacementGroupFactory "
+                "Invalid definition for resource request. Please check "
+                "that you passed valid arguments to the ResourceRequest "
                 "object."
             ) from exc
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(self._bound.kwargs)
-        # Call with bounded *args and **kwargs
-        return placement_group(*self._bound.args, **kwargs)
+    def to_placement_group(self):
+        return placement_group(*self._bound.args, **self._bound.kwargs)
 
     def __eq__(self, other: "ResourceRequest"):
         return (
@@ -228,7 +227,7 @@ class ResourceRequest:
 
     def __repr__(self) -> str:
         return (
-            f"<PlacementGroupFactory (_bound={self._bound}, "
+            f"<ResourceRequest (_bound={self._bound}, "
             f"head_bundle_is_empty={self.head_bundle_is_empty})>"
         )
 

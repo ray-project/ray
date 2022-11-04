@@ -10,7 +10,7 @@ from ray.air.experimental.execution.resources.request import (
     AllocatedResource,
 )
 from ray.air.experimental.execution.resources.resource_manager import ResourceManager
-from ray.util.placement_group import placement_group, PlacementGroup
+from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -99,7 +99,7 @@ class PlacementGroupResourceManager(ResourceManager):
         self._last_update = time.monotonic()
 
     def request_resources(self, resource_request: ResourceRequest):
-        pg = placement_group(resource_request.bundles)
+        pg = resource_request.to_placement_group()
         self._pg_to_request[pg] = resource_request
         self._request_to_staged_pgs[resource_request].add(pg)
 
