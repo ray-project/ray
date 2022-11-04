@@ -61,6 +61,14 @@ class _TrainSessionImpl(Session):
     def local_rank(self) -> int:
         return self._session.local_rank
 
+    @property
+    def local_world_size(self) -> int:
+        return self._session.local_world_size
+
+    @property
+    def node_rank(self) -> int:
+        return self._session.node_rank
+
     def get_dataset_shard(
         self,
         dataset_name: Optional[str] = None,
