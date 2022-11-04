@@ -2,6 +2,7 @@ import pytest
 import subprocess
 import os
 import requests
+import sys
 
 import ray
 from ray._private.test_utils import (
@@ -47,10 +48,11 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         assert "ray::core::CoreWorker" in content, content
 
     assert wait_until_succeeded_without_exception(
-        get_actor_stack, (requests.RequestException, AssertionError),
-        timeout_ms=20000, retry_interval_ms=1000,
+        get_actor_stack,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
     )
-
 
     def get_actor_flamegraph():
         response = requests.get(f"{webui_url}/worker/cpu_profile?pid={pid}")
@@ -64,8 +66,10 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         assert "ray::core" in content, content
 
     assert wait_until_succeeded_without_exception(
-        get_actor_flamegraph, (requests.RequestException, AssertionError),
-        timeout_ms=20000, retry_interval_ms=1000,
+        get_actor_flamegraph,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
     )
 
 
