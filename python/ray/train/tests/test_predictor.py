@@ -190,9 +190,7 @@ def test_predict_pandas_with_numpy_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
-    pd.testing.assert_frame_equal(
-        actual_output, pd.DataFrame({TENSOR_COLUMN_NAME: [4.0, 8.0, 12.0]})
-    )
+    np.testing.assert_equal(actual_output, np.array([4.0, 8.0, 12.0]))
     # Preprocessor should still go through the Numpy path
     np.testing.assert_equal(predictor.get_preprocessor().inputs[0], np.array([1, 2, 3]))
     np.testing.assert_equal(
