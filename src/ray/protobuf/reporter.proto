@@ -40,7 +40,6 @@ message GetProfilingStatsReply {
 message GetTracebackRequest {
   // PID of the worker process.
   uint32 pid = 1;
-  string password = 2;
 }
 
 message GetTracebackReply {
@@ -49,9 +48,8 @@ message GetTracebackReply {
 
 message CpuProfilingRequest {
   uint32 pid = 1;
-  optional string password = 2;
-  optional string format = 3;
-  optional uint32 duration = 4;
+  optional string format = 2;
+  optional uint32 duration = 3;
 }
 
 message CpuProfilingReply {

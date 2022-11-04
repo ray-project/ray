@@ -348,21 +348,16 @@ class ReporterAgent(
 
     async def GetTraceback(self, request, context):
         pid = request.pid
-        password = request.password
         p = CpuProfilingManager(self._log_dir)
-        output = await p.trace_dump(pid, password)
+        output = await p.trace_dump(pid)
         return reporter_pb2.GetTracebackReply(output=output)
 
     async def CpuProfiling(self, request, context):
         pid = request.pid
-        password = request.password
         duration = request.duration
         format = request.format
         p = CpuProfilingManager(self._log_dir)
-        # output = await p.trace_dump(pid, password)
-        output = await p.cpu_profile(
-            pid, format=format, duration=duration, password=password
-        )
+        output = await p.cpu_profile(pid, format=format, duration=duration)
         return reporter_pb2.GetTracebackReply(output=output)
 
     async def ReportOCMetrics(self, request, context):
