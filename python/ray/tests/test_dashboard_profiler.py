@@ -39,11 +39,15 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     a.do_stuff_infinite.remote()
 
     def get_actor_stack():
-        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
+        url = f"{webui_url}/worker/traceback?pid={pid}"
+        print("GET URL", url)
+        response = requests.get(url)
+        print("STATUS CODE", response.status_code)
         response.raise_for_status()
+        print("HEADERS", response.headers)
         assert "text/plain" in response.headers["Content-Type"], response.headers
         content = response.content.decode("utf-8")
-        print(content)
+        print("CONTENT", content)
         # Sanity check we got the stack trace text.
         assert "do_stuff_infinite" in content, content
         assert "ray::core::CoreWorker" in content, content
@@ -125,4 +129,4 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))
