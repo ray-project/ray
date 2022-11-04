@@ -63,7 +63,7 @@ def test_deadlock_single_task_excessive_memory(
 def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
-    with pytest.raises(ray.exceptions.RayTaskError) as _:
+    with pytest.raises((ray.exceptions.RayTaskError, ray.exceptions.OutOfMemoryError)) as _:
         bytes1 = get_additional_bytes_to_reach_memory_usage_pct(
             memory_usage_threshold_fraction - 0.1
         )
