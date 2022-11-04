@@ -10,7 +10,8 @@ import time
 from typing import Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig, NotProvided
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout

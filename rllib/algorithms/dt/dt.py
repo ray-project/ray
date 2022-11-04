@@ -3,7 +3,8 @@ import math
 from typing import List, Optional, Type, Tuple, Dict, Any, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step

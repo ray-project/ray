@@ -9,7 +9,8 @@ import time
 from typing import Dict, List, Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig, NotProvided
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
