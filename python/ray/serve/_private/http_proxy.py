@@ -36,8 +36,8 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
 )
 
 
@@ -78,15 +78,15 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
-            _, timed_out = await asyncio.wait(
-                [object_ref], timeout=REQUEST_PROCESSING_TIMEOUT_S
+            _, request_timed_out = await asyncio.wait(
+                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
-            if timed_out:
-                logger.debug(
-                    f"Request didn't finish within {REQUEST_PROCESSING_TIMEOUT_S} "
-                    "seconds. Retrying with another replica. You can modify "
-                    'this timeout by setting the "REQUEST_PROCESSING_TIMEOUT_S" '
-                    "env var."
+            if request_timed_out:
+                logger.info(
+                    "Request didn't finish within "
+                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    "with another replica. You can modify this timeout by "
+                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 retries += 1
             else:
