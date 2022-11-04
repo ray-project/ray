@@ -25,7 +25,7 @@ How do I configure the memory monitor?
 
 The memory monitor is controlled by the following environment variables:
 
-- ``RAY_memory_monitor_interval_ms (int, defaults to 9)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
+- ``RAY_memory_monitor_interval_ms (int, defaults to 0)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
 - ``RAY_memory_usage_threshold_fraction (float, defaults to 0.9)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this value and the free space is
