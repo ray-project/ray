@@ -34,7 +34,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.typing import ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -77,6 +77,7 @@ class CQLConfig(SACConfig):
 
         self.timesteps_per_iteration = DEPRECATED_VALUE
 
+    @override(SACConfig)
     def training(
         self,
         *,
@@ -119,6 +120,37 @@ class CQLConfig(SACConfig):
 
         return self
 
+    @override(SACConfig)
+    def validate(self) -> None:
+        # First check, whether old `timesteps_per_iteration` is used.
+        if self.timesteps_per_iteration != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="min_train_timesteps_per_iteration",
+                error=True,
+            )
+
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
+
+        # CQL-torch performs the optimizer steps inside the loss function.
+        # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+        # check above) and we must use the simple optimizer for now.
+        if self.simple_optimizer is not True and self.framework_str == "torch":
+            self.simple_optimizer = True
+
+        if self.framework_str in ["tf", "tf2"] and tfp is None:
+            logger.warning(
+                "You need `tensorflow_probability` in order to run CQL! "
+                "Install it via `pip install tensorflow_probability`. Your "
+                f"tf.__version__={tf.__version__ if tf else None}."
+                "Trying to import tfp results in the following error:"
+            )
+            try_import_tfp(error=True)
+
 
 class CQL(SAC):
     """CQL (derived from SAC)."""
@@ -128,41 +160,11 @@ class CQL(SAC):
     def get_default_config(cls) -> AlgorithmConfig:
         return CQLConfig()
 
+    @classmethod
     @override(SAC)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # First check, whether old `timesteps_per_iteration` is used. If so
-        # convert right away as for CQL, we must measure in training timesteps,
-        # never sampling timesteps (CQL does not sample).
-        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="timesteps_per_iteration",
-                new="min_train_timesteps_per_iteration",
-                error=True,
-            )
-
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-
-        # CQL-torch performs the optimizer steps inside the loss function.
-        # Using the multi-GPU optimizer will therefore not work (see multi-GPU
-        # check above) and we must use the simple optimizer for now.
-        if config["simple_optimizer"] is not True and config["framework"] == "torch":
-            config["simple_optimizer"] = True
-
-        if config["framework"] in ["tf", "tf2"] and tfp is None:
-            logger.warning(
-                "You need `tensorflow_probability` in order to run CQL! "
-                "Install it via `pip install tensorflow_probability`. Your "
-                f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:"
-            )
-            try_import_tfp(error=True)
-
-    @override(SAC)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
@@ -191,7 +193,9 @@ class CQL(SAC):
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:

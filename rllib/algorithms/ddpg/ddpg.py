@@ -5,7 +5,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -122,7 +121,7 @@ class DDPGConfig(SimpleQConfig):
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
-        self.rollout_fragment_length = 1
+        self.rollout_fragment_length = "auto"
         self.compress_observations = False
 
         # __sphinx_doc_end__
@@ -254,6 +253,46 @@ class DDPGConfig(SimpleQConfig):
 
         return self
 
+    @override(SimpleQConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            not self.in_evaluation
+            and self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
+        if self.model["custom_model"]:
+            raise ValueError(
+                "Try setting config.training(use_state_preprocessor=True) "
+                "since a custom model was specified."
+            )
+
+        if self.grad_clip is not None and self.grad_clip <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try seting "
+                    "config.training(batch_mode='complete_episodes')."
+                )
+
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
+
 
 class DDPG(SimpleQ):
     @classmethod
@@ -262,8 +301,11 @@ class DDPG(SimpleQ):
     def get_default_config(cls) -> AlgorithmConfig:
         return DDPGConfig()
 
+    @classmethod
     @override(SimpleQ)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
@@ -276,31 +318,6 @@ class DDPG(SimpleQ):
             from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
 
             return DDPGTF2Policy
-
-    @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["model"]["custom_model"]:
-            logger.warning(
-                "Setting use_state_preprocessor=True since a custom model "
-                "was specified."
-            )
-            config["use_state_preprocessor"] = True
-
-        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-            raise ValueError("`grad_clip` value must be > 0.0!")
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting "
-                    "batch_mode=complete_episodes."
-                )
-                config["batch_mode"] = "complete_episodes"
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg.DDPGConfig instead!
