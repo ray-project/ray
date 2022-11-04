@@ -10,6 +10,7 @@ from ray.tests.test_memory_pressure import (
     allocate_memory,
     Leaker,
     get_additional_bytes_to_reach_memory_usage_pct,
+    memory_usage_threshold_fraction,
 )
 
 
@@ -30,12 +31,11 @@ def alloc_mem(bytes):
 def test_churn_long_running(
     ray_with_memory_monitor,
 ):
-    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.7)
+    long_running_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
     allocate_memory.options(max_retries=1).remote(
-        long_running_bytes, post_allocate_sleep_s=300
+        long_running_bytes, post_allocate_sleep_s=60
     )
-    time.sleep(0.5)
-    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.9)
+    small_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.2)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=1).remote(small_bytes))
 
@@ -49,16 +49,7 @@ def test_deadlock_single_task_excessive_memory(
 ):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.9)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=2).remote(bytes_to_alloc))
-
-
-@ray.remote
-def nested_tasks_parent():
-    first_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.7)
-    alloc_mem(first_bytes)
-
-    second_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.9)
-    ray.get(allocate_memory.options(max_retries=1).remote(second_bytes))
+        ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
 
 
 @pytest.mark.skipif(
@@ -68,17 +59,19 @@ def nested_tasks_parent():
 def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(nested_tasks_parent.remote())
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
+        bytes1 = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+        bytes2 = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.2) - bytes1
+        ray.get(task_with_nested_task.remote(bytes1, bytes2, None, None))
 
 
 @ray.remote
-def nested_actor_and_task_parent():
+def task_with_nested_actor(fraction1, fraction2):
     leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
-    actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.7)
+    actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(fraction1)
     ray.get(leaker.allocate.remote(actor_bytes))
 
-    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.9)
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(fraction2)
     dummy = alloc_mem(parent_bytes)
 
 
@@ -86,17 +79,17 @@ def nested_actor_and_task_parent():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_deadlock_actor_with_nested_task(
+def test_deadlock_task_with_nested_actor(
     ray_with_memory_monitor,
 ):
     with pytest.raises(
         (ray.exceptions.OutOfMemoryError, ray.exceptions.RayTaskError)
     ) as _:
-        ray.get(nested_actor_and_task_parent.remote())
+        ray.get(task_with_nested_actor.remote(0.7, 0.9))
 
 
 @ray.remote
-class LeakerWithTask:
+class ActorWithNestedTask:
     def __init__(self):
         self.mem = []
 
@@ -111,10 +104,10 @@ class LeakerWithTask:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_deadlock_singular_actor_with_nested_task(
+def test_deadlock_actor_with_nested_task(
     ray_with_memory_monitor,
 ):
-    leaker = LeakerWithTask.options(max_restarts=1, max_task_retries=1).remote()
+    leaker = ActorWithNestedTask.options(max_restarts=1, max_task_retries=1).remote()
     bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.45)
     ray.get(leaker.alloc_local.remote(bytes_first))
 
@@ -127,11 +120,11 @@ def test_deadlock_singular_actor_with_nested_task(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_deadlock_multiple_actors_with_nested_task(
+def test_deadlock_actor_with_nested_task_two(
     ray_with_memory_monitor,
 ):
-    leaker1 = LeakerWithTask.options(max_restarts=1, max_task_retries=1).remote()
-    leaker2 = LeakerWithTask.options(max_restarts=1, max_task_retries=1).remote()
+    leaker1 = ActorWithNestedTask.options(max_restarts=1, max_task_retries=1).remote()
+    leaker2 = ActorWithNestedTask.options(max_restarts=1, max_task_retries=1).remote()
     bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.3)
     ray.get(leaker1.alloc_local.remote(bytes_first))
     bytes_second = get_additional_bytes_to_reach_memory_usage_pct(0.6)
@@ -156,12 +149,14 @@ class GlobalActor:
 
 
 @ray.remote
-def nested_tasks_allocator(bytes1, bytes2, lock, instance_id):
+def task_with_nested_task(bytes1, bytes2, barrier, instance_id):
     dummy = alloc_mem(bytes1)
-    ray.get(lock.set_done.remote(instance_id))
-    while not ray.get(lock.both_done.remote()):
-        time.sleep(1)
+    if barrier:
+        ray.get(barrier.set_done.remote(instance_id))
+        while not ray.get(barrier.both_done.remote()):
+            time.sleep(1)
     ray.get(allocate_memory.options(max_retries=0).remote(bytes2))
+    
 
 
 @pytest.mark.skipif(
@@ -174,10 +169,10 @@ def test_deadlock_multiple_tasks_with_nested_task(
     bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.3)
     thirty_percent = get_additional_bytes_to_reach_memory_usage_pct(0.6) - bytes_first
 
-    lock = GlobalActor.options(max_restarts=1, max_task_retries=1).remote()
+    barrier = GlobalActor.options(max_restarts=1, max_task_retries=1).remote()
 
-    first = nested_tasks_allocator.remote(bytes_first, thirty_percent, lock, 0)
-    second = nested_tasks_allocator.remote(thirty_percent, thirty_percent, lock, 1)
+    first = task_with_nested_task.remote(bytes_first, thirty_percent, barrier, 0)
+    second = task_with_nested_task.remote(thirty_percent, thirty_percent, barrier, 1)
     ray.get(first)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(second)
