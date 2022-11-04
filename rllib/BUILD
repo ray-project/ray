@@ -77,7 +77,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/a2c/cartpole-a2c.yaml"],
-#    args = ["--yaml-dir=tuned_examples/a2c"]
+#    args = ["--dir=tuned_examples/a2c"]
 # )
 
 py_test(
@@ -87,7 +87,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
-    args = ["--yaml-dir=tuned_examples/a2c"]
+    args = ["--dir=tuned_examples/a2c"]
 )
 
 py_test(
@@ -97,7 +97,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/a2c"]
+    args = ["--dir=tuned_examples/a2c"]
 )
 
 # A3C
@@ -109,7 +109,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
-#    args = ["--yaml-dir=tuned_examples/a3c"]
+#    args = ["--dir=tuned_examples/a3c"]
 # )
 
 # AlphaStar
@@ -120,7 +120,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
+    args = ["--dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
 # AlphaZero
@@ -131,7 +131,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_zero", "--num-cpus=8"]
+    args = ["--dir=tuned_examples/alpha_zero", "--num-cpus=8"]
 )
 
 # APEX-DQN
@@ -144,7 +144,7 @@ py_test(
 #    data = [
 #        "tuned_examples/apex_dqn/cartpole-apex.yaml",
 #    ],
-#    args = ["--yaml-dir=tuned_examples/apex_dqn", "--num-cpus=6"]
+#    args = ["--dir=tuned_examples/apex_dqn", "--num-cpus=6"]
 # )
 
 # Once APEX supports multi-GPU.
@@ -155,7 +155,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/apex_dqn/cartpole-apex-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/apex_dqn"]
+#    args = ["--dir=tuned_examples/apex_dqn"]
 # )
 
 # APPO
@@ -166,7 +166,7 @@ py_test(
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo.yaml"],
-    args = ["--yaml-dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 # py_test(
@@ -176,7 +176,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/appo/cartpole-appo-vtrace.yaml"],
-#    args = ["--yaml-dir=tuned_examples/appo"]
+#    args = ["--dir=tuned_examples/appo"]
 # )
 
 py_test(
@@ -188,7 +188,7 @@ py_test(
     data = [
         "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.yaml"
     ],
-    args = ["--yaml-dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 py_test(
@@ -198,7 +198,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
-    args = ["--yaml-dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 # py_test(
@@ -208,7 +208,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/appo/frozenlake-appo-vtrace.yaml"],
-#    args = ["--yaml-dir=tuned_examples/appo"]
+#    args = ["--dir=tuned_examples/appo"]
 # )
 
 py_test(
@@ -218,7 +218,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 # ARS
@@ -229,7 +229,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ars/cartpole-ars.yaml"],
-    args = ["--yaml-dir=tuned_examples/ars"]
+    args = ["--dir=tuned_examples/ars"]
 )
 
 # CQL
@@ -244,7 +244,7 @@ py_test(
         "tuned_examples/cql/pendulum-cql.yaml",
         "tests/data/pendulum/enormous.zip",
     ],
-    args = ["--yaml-dir=tuned_examples/cql"]
+    args = ["--dir=tuned_examples/cql"]
 )
 
 
@@ -260,7 +260,7 @@ py_test(
        "tuned_examples/crr/pendulum-v1-crr.yaml",
        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
    ],
-   args = ["--yaml-dir=tuned_examples/crr"]
+   args = ["--dir=tuned_examples/crr"]
 )
 
 py_test(
@@ -274,7 +274,7 @@ py_test(
         "tuned_examples/crr/cartpole-v0-crr.yaml",
         "tests/data/cartpole/large.json",
     ],
-    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+    args = ["--dir=tuned_examples/crr", '--framework=torch']
 )
 
 py_test(
@@ -288,7 +288,7 @@ py_test(
         "tuned_examples/crr/cartpole-v0-crr_expectation.yaml",
         "tests/data/cartpole/large.json",
     ],
-    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+    args = ["--dir=tuned_examples/crr", '--framework=torch']
 )
 
 # DDPG
@@ -299,7 +299,7 @@ py_test(
 #   size = "large",
 #   srcs = ["tests/run_regression_tests.py"],
 #   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-#   args = ["--yaml-dir=tuned_examples/ddpg"]
+#   args = ["--dir=tuned_examples/ddpg"]
 # )
 
 py_test(
@@ -309,7 +309,7 @@ py_test(
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
-   args = ["--yaml-dir=tuned_examples/ddpg"]
+   args = ["--dir=tuned_examples/ddpg"]
 )
 
 # DDPPO
@@ -320,7 +320,7 @@ py_test(
     size = "small",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddppo/cartpole-ddppo.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddppo"]
+    args = ["--dir=tuned_examples/ddppo"]
 )
 
 py_test(
@@ -330,7 +330,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddppo/pendulum-ddppo.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddppo"]
+    args = ["--dir=tuned_examples/ddppo"]
 )
 
 # DQN
@@ -341,7 +341,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
-#    args = ["--yaml-dir=tuned_examples/dqn"]
+#    args = ["--dir=tuned_examples/dqn"]
 # )
 
 py_test(
@@ -351,7 +351,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--dir=tuned_examples/dqn"]
 )
 
 # Does not work with tf-eager tracing due to Exploration's postprocessing
@@ -364,7 +364,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-param-noise.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--dir=tuned_examples/dqn"]
 )
 
 py_test(
@@ -374,7 +374,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--dir=tuned_examples/dqn"]
 )
 
 # DT
@@ -389,7 +389,7 @@ py_test(
        "tuned_examples/dt/pendulum-v1-dt.yaml",
        "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
    ],
-   args = ["--yaml-dir=tuned_examples/dt"]
+   args = ["--dir=tuned_examples/dt"]
 )
 
 py_test(
@@ -403,7 +403,7 @@ py_test(
         "tuned_examples/dt/cartpole-v0-dt.yaml",
         "tests/data/cartpole/large.json",
     ],
-    args = ["--yaml-dir=tuned_examples/dt"]
+    args = ["--dir=tuned_examples/dt"]
 )
 
 # Simple-Q
@@ -416,7 +416,7 @@ py_test(
     data = [
         "tuned_examples/simple_q/cartpole-simpleq.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/simple_q"]
+    args = ["--dir=tuned_examples/simple_q"]
 )
 
 py_test(
@@ -426,7 +426,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/simple_q"]
+    args = ["--dir=tuned_examples/simple_q"]
 )
 
 # ES
@@ -437,7 +437,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/es/cartpole-es.yaml"],
-#    args = ["--yaml-dir=tuned_examples/es"]
+#    args = ["--dir=tuned_examples/es"]
 # )
 
 # IMPALA
@@ -448,7 +448,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-#    args = ["--yaml-dir=tuned_examples/impala"]
+#    args = ["--dir=tuned_examples/impala"]
 # )
 
 py_test(
@@ -458,7 +458,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
-    args = ["--yaml-dir=tuned_examples/impala"]
+    args = ["--dir=tuned_examples/impala"]
 )
 
 py_test(
@@ -468,7 +468,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/impala"]
+    args = ["--dir=tuned_examples/impala"]
 )
 
 # MADDPG
@@ -479,7 +479,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
-    args = ["--yaml-dir=tuned_examples/maddpg", "--framework=tf"]
+    args = ["--dir=tuned_examples/maddpg", "--framework=tf"]
 )
 
 # Working, but takes a long time to learn (>15min).
@@ -492,7 +492,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/mbmpo/pendulum-mbmpo.yaml"],
-#    args = ["--yaml-dir=tuned_examples/mbmpo"]
+#    args = ["--dir=tuned_examples/mbmpo"]
 #)
 
 # PG
@@ -503,7 +503,7 @@ py_test(
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--dir=tuned_examples/pg"]
 )
 
 py_test(
@@ -513,7 +513,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--dir=tuned_examples/pg"]
 )
 
 py_test(
@@ -523,7 +523,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--dir=tuned_examples/pg"]
 )
 
 py_test(
@@ -533,7 +533,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--dir=tuned_examples/pg"]
 )
 
 py_test(
@@ -543,7 +543,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg", "--num-cpus=14"]
+    args = ["--dir=tuned_examples/pg", "--num-cpus=14"]
 )
 
 py_test(
@@ -553,7 +553,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg"]
+    args = ["--dir=tuned_examples/pg"]
 )
 
 # PPO
@@ -564,7 +564,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ppo"]
+#    args = ["--dir=tuned_examples/ppo"]
 # )
 
 py_test(
@@ -574,7 +574,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -584,7 +584,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -594,7 +594,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -604,7 +604,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 # QMIX
@@ -615,7 +615,7 @@ py_test(
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix.yaml"],
-    args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
+    args = ["--dir=tuned_examples/qmix", "--framework=torch"]
 )
 
 py_test(
@@ -625,7 +625,7 @@ py_test(
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-vdn-mixer.yaml"],
-    args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
+    args = ["--dir=tuned_examples/qmix", "--framework=torch"]
 )
 
 py_test(
@@ -635,7 +635,7 @@ py_test(
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-no-mixer.yaml"],
-    args = ["--yaml-dir=tuned_examples/qmix", "--framework=torch"]
+    args = ["--dir=tuned_examples/qmix", "--framework=torch"]
 )
 
 # R2D2
@@ -646,7 +646,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
-    args = ["--yaml-dir=tuned_examples/r2d2"]
+    args = ["--dir=tuned_examples/r2d2"]
 )
 
 py_test(
@@ -656,7 +656,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/r2d2"]
+    args = ["--dir=tuned_examples/r2d2"]
 )
 
 # SAC
@@ -667,7 +667,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
+    args = ["--dir=tuned_examples/sac"]
 )
 
 # py_test(
@@ -677,7 +677,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac"]
+#    args = ["--dir=tuned_examples/sac"]
 # )
 
 # py_test(
@@ -687,7 +687,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac"]
+#    args = ["--dir=tuned_examples/sac"]
 # )
 
 # py_test(
@@ -697,7 +697,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac"]
+#    args = ["--dir=tuned_examples/sac"]
 # )
 
 # py_test(
@@ -707,7 +707,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac"]
+#    args = ["--dir=tuned_examples/sac"]
 # )
 
 # SlateQ
@@ -718,7 +718,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
-#    args = ["--yaml-dir=tuned_examples/slateq"]
+#    args = ["--dir=tuned_examples/slateq"]
 # )
 
 py_test(
@@ -728,7 +728,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
-    args = ["--yaml-dir=tuned_examples/slateq"]
+    args = ["--dir=tuned_examples/slateq"]
 )
 
 # TD3
@@ -739,7 +739,7 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ddpg"]
+#    args = ["--dir=tuned_examples/ddpg"]
 # )
 
 
@@ -1156,7 +1156,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/a3c/memory-leak-test-a3c.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
+    args = ["--dir=tuned_examples/a3c"]
 )
 
 py_test(
@@ -1166,7 +1166,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/appo/memory-leak-test-appo.yaml"],
-    args = ["--yaml-dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 py_test(
@@ -1176,7 +1176,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg"]
+    args = ["--dir=tuned_examples/ddpg"]
 )
 
 py_test(
@@ -1186,7 +1186,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--dir=tuned_examples/dqn"]
 )
 
 py_test(
@@ -1196,7 +1196,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
-    args = ["--yaml-dir=tuned_examples/impala"]
+    args = ["--dir=tuned_examples/impala"]
 )
 
 py_test(
@@ -1206,7 +1206,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -1216,7 +1216,7 @@ py_test(
     size = "large",
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
+    args = ["--dir=tuned_examples/sac"]
 )
 
 # --------------------------------------------------------------------
