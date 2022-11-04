@@ -13,6 +13,7 @@ from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import FrameworkEnum, SupportedFileType
+from ray.rllib.common import download_example_file, get_file_type
 
 
 def import_backends():
@@ -53,18 +54,16 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
+    stop: Optional[str] = None,
     checkpoint_config: Optional[dict] = None,
 ) -> dict:
-    """Load experiments from a file. Supports YAML, JSON and Python files.
+    """Load experiments from a file. Supports YAML and Python files.
     If you want to use a Python file, it has to have a 'config' variable
     that is an AlgorithmConfig object."""
 
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-    elif file_type == SupportedFileType.json:
-        with open(config_file) as f:
-            experiments = json.load(f)
     else:  # Python file case (ensured by file type enum)
         import importlib
 
@@ -90,10 +89,9 @@ def load_experiments_from_file(
             }
         }
 
-        # If there's a "stop" dict, add it to the experiment.
-        if hasattr(module, "stop"):
-            stop = getattr(module, "stop")
-            experiments["default"]["stop"] = stop
+        # Add a stopping condition if provided
+        if stop:
+            experiments["default"]["stop"] = json.loads(stop)
 
     for key, val in experiments.items():
         experiments[key]["checkpoint_config"] = checkpoint_config or {}
@@ -105,7 +103,8 @@ def load_experiments_from_file(
 def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
-    file_type: SupportedFileType = cli.FileType,
+    # stopping conditions
+    stop: str = cli.Stop,
     # Checkpointing
     checkpoint_freq: int = cli.CheckpointFreq,
     checkpoint_at_end: bool = cli.CheckpointAtEnd,
@@ -139,8 +138,6 @@ def file(
       rllib train file https://raw.githubusercontent.com/ray-project/ray/\
       master/rllib/tuned_examples/ppo/cartpole-ppo.yaml
     """
-    from ray.rllib.common import download_example_file
-
     # Attempt to download the file if it's not found locally.
     config_file, temp_file = download_example_file(
         example_file=config_file, base_url=None
@@ -156,7 +153,11 @@ def file(
         "checkpoint_score_attribute": checkpoint_score_attr,
     }
 
-    experiments = load_experiments_from_file(config_file, file_type, checkpoint_config)
+    file_type = get_file_type(config_file)
+
+    experiments = load_experiments_from_file(
+        config_file, file_type, stop, checkpoint_config
+    )
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
 
