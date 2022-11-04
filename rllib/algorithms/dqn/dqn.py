@@ -332,6 +332,7 @@ class DQNConfig(SimpleQConfig):
                     " used at the same time!"
                 )
 
+    @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return self.n_step
@@ -339,7 +340,7 @@ class DQNConfig(SimpleQConfig):
             return self.rollout_fragment_length
 
 
-def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
+def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -350,7 +351,7 @@ def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
     # the data we pull from the replay buffer (which also contains old
     # samples).
     native_ratio = config["train_batch_size"] / (
-        config["rollout_fragment_length"]
+        config.get_rollout_fragment_length()
         * config["num_envs_per_worker"]
         # Add one to workers because the local
         # worker usually collects experiences as well, and we avoid division by zero.
