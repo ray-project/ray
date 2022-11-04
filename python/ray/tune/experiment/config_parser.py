@@ -11,7 +11,7 @@ from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -199,7 +199,7 @@ def _create_trial_from_spec(
         raise TuneError("Error parsing args, see above message", spec)
 
     if resources:
-        if isinstance(resources, PlacementGroupFactory):
+        if isinstance(resources, ResourceRequest):
             trial_kwargs["placement_group_factory"] = resources
         else:
             # This will be converted to a placement group factory in the

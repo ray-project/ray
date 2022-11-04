@@ -7,7 +7,7 @@ from ray import tune
 from ray.tune import Callback
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 trial_executor = None
 
@@ -41,14 +41,14 @@ class TestPlacementGroups(unittest.TestCase):
         config["framework"] = "tf"
 
         # Create an Algorithm with an overridden default_resource_request
-        # method that returns a PlacementGroupFactory.
+        # method that returns a ResourceRequest.
 
         class MyAlgo(PG):
             @classmethod
             def default_resource_request(cls, config):
                 head_bundle = {"CPU": 1, "GPU": 0}
                 child_bundle = {"CPU": 1}
-                return PlacementGroupFactory(
+                return ResourceRequest(
                     [head_bundle, child_bundle, child_bundle],
                     strategy=config["placement_strategy"],
                 )
@@ -96,7 +96,7 @@ class TestPlacementGroups(unittest.TestCase):
 
         try:
             tune.Tuner(
-                tune.with_resources(PG, PlacementGroupFactory([{"CPU": 1}])),
+                tune.with_resources(PG, ResourceRequest([{"CPU": 1}])),
                 param_space=config,
                 run_config=air.RunConfig(stop={"training_iteration": 2}, verbose=2),
             ).fit()

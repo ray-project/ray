@@ -30,7 +30,7 @@ from ray.air.callbacks.wandb import (
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from wandb.util import json_dumps_safer
 
 
@@ -118,7 +118,7 @@ def trial():
         0,
         "trial_0",
         "trainable",
-        PlacementGroupFactory([{"CPU": 1}]),
+        ResourceRequest([{"CPU": 1}]),
         "/tmp",
     )
     yield trial

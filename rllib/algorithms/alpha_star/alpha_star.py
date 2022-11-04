@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     PolicyState,
     ResultDict,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.util.timer import _Timer
 
 
@@ -278,9 +278,9 @@ class AlphaStar(appo.APPO):
 
         eval_config = cf["evaluation_config"]
 
-        # Return PlacementGroupFactory containing all needed resources
+        # Return ResourceRequest containing all needed resources
         # (already properly defined as device bundles).
-        return PlacementGroupFactory(
+        return ResourceRequest(
             bundles=[
                 {
                     # Driver (no GPUs).

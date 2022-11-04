@@ -11,7 +11,7 @@ from ray.air._internal.checkpointing import (
 )
 from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
-from ray.tune import Trainable, PlacementGroupFactory
+from ray.tune import Trainable, ResourceRequest
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
@@ -235,7 +235,7 @@ class RLTrainer(BaseTrainer):
             @classmethod
             def default_resource_request(
                 cls, config: PartialAlgorithmConfigDict
-            ) -> Union[Resources, PlacementGroupFactory]:
+            ) -> Union[Resources, ResourceRequest]:
                 resolved_config = merge_dicts(base_config, config)
                 param_dict["config"] = resolved_config
 

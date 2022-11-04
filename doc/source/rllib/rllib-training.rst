@@ -1467,7 +1467,7 @@ customizations to your training loop.
 .. code-block:: python
 
     import ray
-    from ray import tune
+    from ray import air, tune
     from ray.rllib.algorithms.ppo import PPO
 
     def train(config, reporter):
@@ -1490,7 +1490,7 @@ customizations to your training loop.
 
     ray.init()
     tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+        tune.with_resources(train, resources=air.ResourceRequest(
             [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
         ),)
         param_space={

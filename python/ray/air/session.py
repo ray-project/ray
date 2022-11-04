@@ -10,7 +10,7 @@ from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.air import ResourceRequest
 
 
 def _warn_session_misuse(default_value: Any = None):
@@ -153,7 +153,7 @@ def get_trial_id() -> str:
 
 
 @_warn_session_misuse()
-def get_trial_resources() -> "PlacementGroupFactory":
+def get_trial_resources() -> "ResourceRequest":
     """Trial resources for the corresponding trial."""
     return _get_session().trial_resources
 

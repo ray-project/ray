@@ -20,7 +20,7 @@ from ray.util.scheduling_strategies import (
 )
 
 if TYPE_CHECKING:
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.air import ResourceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.trial_id
 
     @property
-    def trial_resources(self) -> "PlacementGroupFactory":
+    def trial_resources(self) -> "ResourceRequest":
         return self._status_reporter.trial_resources
 
     @property
@@ -191,7 +191,7 @@ def _tune_task_and_actor_launch_hook(
     raise TuneError(
         f"No trial resources are available for launching the {submitted} `{name}`. "
         "To resolve this, specify the Tune option:\n\n"
-        ">  resources_per_trial=tune.PlacementGroupFactory(\n"
+        ">  resources_per_trial=air.ResourceRequest(\n"
         f">    [{main_resources}] + [{resources}] * N\n"
         ">  )\n\n"
         f"Where `N` is the number of slots to reserve for trial {submitted}s. "
@@ -369,7 +369,7 @@ def get_trial_id():
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 
-    Will be a PlacementGroupFactory if trial uses those,
+    Will be a ResourceRequest if trial uses those,
     otherwise a Resources instance.
 
     For function API use only.

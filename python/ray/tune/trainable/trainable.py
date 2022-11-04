@@ -44,7 +44,7 @@ from ray.tune.result import (
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
@@ -195,7 +195,7 @@ class Trainable:
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
-    ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    ) -> Optional[Union[Resources, ResourceRequest]]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -205,15 +205,15 @@ class Trainable:
 
             @classmethod
             def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+                return ResourceRequest([{"CPU": 1}, {"CPU": 1}]])
 
 
         Args:
             config[Dict[str, Any]]: The Trainable's config dict.
 
         Returns:
-            Union[Resources, PlacementGroupFactory]: A Resources object or
-                PlacementGroupFactory consumed by Tune for queueing.
+            Union[Resources, ResourceRequest]: A Resources object or
+                ResourceRequest consumed by Tune for queueing.
         """
         return None
 
@@ -1041,7 +1041,7 @@ class Trainable:
             return "default"
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> Union[Resources, ResourceRequest]:
         """Resources currently assigned to the trial of this Trainable.
 
         This is not set if not using Tune.

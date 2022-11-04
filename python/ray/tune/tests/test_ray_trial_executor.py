@@ -22,7 +22,7 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 from unittest.mock import patch
 
@@ -482,7 +482,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
         child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
 
-        placement_group_factory = PlacementGroupFactory(
+        placement_group_factory = ResourceRequest(
             [head_bundle, child_bundle, child_bundle]
         )
 
@@ -510,21 +510,21 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             },
         )
 
-    def testPlacementGroupFactoryEquality(self):
+    def testResourceRequestEquality(self):
         """
         Test that two different placement group factory objects are considered
         equal and evaluate to the same hash.
         """
         from collections import Counter
 
-        pgf_1 = PlacementGroupFactory(
+        pgf_1 = ResourceRequest(
             [{"CPU": 2, "GPU": 4, "custom": 7}, {"GPU": 2, "custom": 1, "CPU": 3}],
             "PACK",
             "no_name",
             None,
         )
 
-        pgf_2 = PlacementGroupFactory(
+        pgf_2 = ResourceRequest(
             [
                 {
                     "custom": 7,
@@ -538,7 +538,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             lifetime=None,
         )
 
-        pgf_3 = PlacementGroupFactory(
+        pgf_3 = ResourceRequest(
             [
                 {"custom": 7, "GPU": 4, "CPU": 2.0, "custom2": 0},
                 {"custom": 1.0, "GPU": 2, "CPU": 3, "custom2": 0},
@@ -562,8 +562,8 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         self.assertEqual(counter[pgf_3], 3)
 
     def testHasResourcesForTrialWithCaching(self):
-        pgf1 = PlacementGroupFactory([{"CPU": self.head_cpus}])
-        pgf2 = PlacementGroupFactory([{"CPU": self.head_cpus - 1}])
+        pgf1 = ResourceRequest([{"CPU": self.head_cpus}])
+        pgf2 = ResourceRequest([{"CPU": self.head_cpus - 1}])
 
         executor = RayTrialExecutor(reuse_actors=True)
         executor.setup(max_pending_trials=1)
@@ -616,14 +616,14 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
 
-    def testEmptyPlacementGroupFactory(self):
+    def testEmptyResourceRequest(self):
         # Empty bundles
         with self.assertRaises(ValueError):
-            PlacementGroupFactory([])
+            ResourceRequest([])
 
         # Empty head, empty workers
         with self.assertRaises(ValueError):
-            PlacementGroupFactory([{}])
+            ResourceRequest([{}])
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

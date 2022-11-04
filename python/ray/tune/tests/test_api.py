@@ -66,7 +66,7 @@ from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -801,7 +801,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(
             TestTrainable,
             stop={TRAINING_ITERATION: 1},
-            resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
+            resources_per_trial=ResourceRequest([{"CPU": 1}]),
         )
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
@@ -821,7 +821,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 1},
-            resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
+            resources_per_trial=ResourceRequest([{"CPU": 1}]),
         )
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
@@ -840,7 +840,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(
             track_train,
             stop={TRAINING_ITERATION: 1},
-            resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
+            resources_per_trial=ResourceRequest([{"CPU": 1}]),
         )
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
@@ -1453,9 +1453,7 @@ def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
         return len(ray.get_gpu_ids())
 
     [trial] = tune.run(
-        tune.with_resources(
-            train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
-        )
+        tune.with_resources(train_fn, resources=ResourceRequest([{"GPU": num_gpus}]))
     ).trials
 
     assert trial.last_result["_metric"] == num_gpus
@@ -1469,9 +1467,7 @@ def test_with_resources_fn(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             train_fn,
-            resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
-            ),
+            resources=lambda config: ResourceRequest([{"GPU": config["use_gpus"]}]),
         ),
         config={"use_gpus": num_gpus},
     ).trials
@@ -1494,14 +1490,12 @@ def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
         @classmethod
         def default_resource_request(cls, config):
             # This will be overwritten by tune.with_trainables()
-            return PlacementGroupFactory([{"CPU": 2, "GPU": 0}])
+            return ResourceRequest([{"CPU": 2, "GPU": 0}])
 
     [trial] = tune.run(
         tune.with_resources(
             MyTrainable,
-            resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
-            ),
+            resources=lambda config: ResourceRequest([{"GPU": config["use_gpus"]}]),
         ),
         config={"use_gpus": num_gpus},
     ).trials
@@ -1520,9 +1514,7 @@ def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             worker.train_fn,
-            resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
-            ),
+            resources=lambda config: ResourceRequest([{"GPU": config["use_gpus"]}]),
         ),
         config={"use_gpus": num_gpus},
     ).trials

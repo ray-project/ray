@@ -20,7 +20,7 @@ of CPUs (cores) on your machine.
 
 You can override this per trial resources with ``tune.with_resources``. Here you can
 specify your resource requests using either a dictionary or a
-:class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
+:class:`ResourceRequest <ray.air.execution.resources.request.ResourceRequest>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
@@ -71,7 +71,7 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 
 If your trainable function starts more remote workers, you will need to pass so-called placement group
 factory objects to request these resources.
-See the :class:`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>`
+See the :class:`ResourceRequest documentation <ray.air.execution.resources.request.ResourceRequest>`
 for further information.
 This also applies if you are using other libraries making use of Ray, such as Modin.
 Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
@@ -122,10 +122,11 @@ See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
 
+    from ray import air
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
-    # We choose to use a `PlacementGroupFactory` here to specify trial resources
-    resource_group = tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}])
+    # We choose to use a `ResourceRequest` here to specify trial resources
+    resource_group = air.ResourceRequest([{"CPU": 2, "GPU": 1}])
     trainable_with_resources = tune.with_resources(trainable, resource_group)
     tuner = tune.Tuner(
         trainable_with_resources,

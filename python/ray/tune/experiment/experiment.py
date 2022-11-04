@@ -34,7 +34,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
-    from ray.tune import PlacementGroupFactory
+    from ray.air import ResourceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class Experiment:
         time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
         config: Optional[Dict[str, Any]] = None,
         resources_per_trial: Union[
-            None, Mapping[str, Union[float, int, Mapping]], "PlacementGroupFactory"
+            None, Mapping[str, Union[float, int, Mapping]], "ResourceRequest"
         ] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,

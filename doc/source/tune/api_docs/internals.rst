@@ -34,10 +34,10 @@ Callbacks
 
 .. _resources-docstring:
 
-PlacementGroupFactory
+ResourceRequest
 ---------------------
 
-.. autoclass:: ray.tune.execution.placement_groups.PlacementGroupFactory
+.. autoclass:: ray.air.execution.resources.request.ResourceRequest
 
 
 

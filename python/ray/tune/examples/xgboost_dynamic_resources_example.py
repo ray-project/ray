@@ -12,7 +12,7 @@ from ray import air, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.experiment import Trial
 from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
@@ -103,7 +103,7 @@ class BreastCancerTrainable(Trainable):
     def step(self):
         # you can also obtain current trial resources:
         current_resources = self.trial_resources
-        if isinstance(current_resources, PlacementGroupFactory):
+        if isinstance(current_resources, ResourceRequest):
             self.nthread = current_resources.head_cpus
         else:
             self.nthread = current_resources.cpu
@@ -167,14 +167,14 @@ def tune_xgboost(use_class_trainable=True):
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Optional[Union[PlacementGroupFactory, Resources]]:
+    ) -> Optional[Union[ResourceRequest, Resources]]:
         """This is a basic example of a resource allocating function.
 
         The function naively balances available CPUs over live trials.
 
-        This function returns a new ``PlacementGroupFactory`` with updated
+        This function returns a new ``ResourceRequest`` with updated
         resource requirements, or None. If the returned
-        ``PlacementGroupFactory`` is equal by value to the one the
+        ``ResourceRequest`` is equal by value to the one the
         trial has currently, the scheduler will skip the update process
         internally (same with None).
 
@@ -199,7 +199,7 @@ def tune_xgboost(use_class_trainable=True):
 
         # default values if resources_per_trial is unspecified
         if base_trial_resource is None:
-            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+            base_trial_resource = ResourceRequest([{"CPU": 1, "GPU": 0}])
 
         # Assume that the number of CPUs cannot go below what was
         # specified in ``Tuner.fit()``.
@@ -215,8 +215,8 @@ def tune_xgboost(use_class_trainable=True):
             min_cpu, total_available_cpus // len(trial_runner.get_live_trials())
         )
 
-        # Assign new CPUs to the trial in a PlacementGroupFactory
-        return PlacementGroupFactory([{"CPU": cpu_to_use, "GPU": 0}])
+        # Assign new CPUs to the trial in a ResourceRequest
+        return ResourceRequest([{"CPU": cpu_to_use, "GPU": 0}])
 
     # You can either define your own resources_allocation_function, or
     # use the default one - DistributeResources
@@ -236,9 +236,7 @@ def tune_xgboost(use_class_trainable=True):
         fn = train_breast_cancer
 
     tuner = tune.Tuner(
-        tune.with_resources(
-            fn, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
-        ),
+        tune.with_resources(fn, resources=ResourceRequest([{"CPU": 1, "GPU": 0}])),
         tune_config=tune.TuneConfig(
             metric="eval-logloss",
             mode="min",

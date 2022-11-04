@@ -4,7 +4,9 @@ from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI, Deprecated
 
 
-@Deprecated
+@Deprecated(
+    message="`tune.PlacementGroupFactory` has been renamed to `air.ResourceRequest`"
+)
 class PlacementGroupFactory(ResourceRequest):
     """Request for bundles of resources.
 
@@ -15,8 +17,8 @@ class PlacementGroupFactory(ResourceRequest):
 
 
 @DeveloperAPI
-def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
-    """Translates resource dict into PlacementGroupFactory."""
+def resource_dict_to_request(spec: Optional[Dict[str, float]]) -> ResourceRequest:
+    """Translates resource dict into ResourceRequest."""
     spec = spec or {"cpu": 1}
 
     if isinstance(spec, Resources):
@@ -38,4 +40,4 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
         }
     )
 
-    return PlacementGroupFactory([bundle])
+    return ResourceRequest([bundle])

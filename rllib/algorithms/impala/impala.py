@@ -44,7 +44,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -594,9 +594,9 @@ class Impala(Algorithm):
 
         eval_config = cf["evaluation_config"]
 
-        # Return PlacementGroupFactory containing all needed resources
+        # Return ResourceRequest containing all needed resources
         # (already properly defined as device bundles).
-        return PlacementGroupFactory(
+        return ResourceRequest(
             bundles=[
                 {
                     # Driver + Aggregation Workers:

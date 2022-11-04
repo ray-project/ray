@@ -10,7 +10,7 @@ from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Trial
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.util import placement_group_table
 from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
@@ -79,7 +79,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         # Manually calculated number of parallel trials
         max_num_parallel = 2
 
-        placement_group_factory = PlacementGroupFactory(
+        placement_group_factory = ResourceRequest(
             [head_bundle, child_bundle, child_bundle]
         )
 
@@ -176,7 +176,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
         child_bundle = {"CPU": 1}
 
-        placement_group_factory = PlacementGroupFactory(
+        placement_group_factory = ResourceRequest(
             [head_bundle, child_bundle, child_bundle, child_bundle]
         )
 
@@ -262,8 +262,8 @@ class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
         tune.register_trainable("het", train)
-        pgf1 = PlacementGroupFactory([{"CPU": 1}])
-        pgf2 = PlacementGroupFactory([{"CPU": 2}])
+        pgf1 = ResourceRequest([{"CPU": 1}])
+        pgf2 = ResourceRequest([{"CPU": 2}])
 
         trial1 = Trial("het", config={"sleep": 0}, placement_group_factory=pgf1)
         trial2 = Trial("het", config={"sleep": 2}, placement_group_factory=pgf1)
@@ -289,7 +289,7 @@ class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
 def test_placement_group_no_cpu_trainer():
     """Bundles with only GPU:1 but no CPU should work"""
     ray.init(num_gpus=1, num_cpus=1)
-    pgf = PlacementGroupFactory([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
+    pgf = ResourceRequest([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
 
     def train(config):
         time.sleep(1)

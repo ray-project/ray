@@ -12,7 +12,7 @@ from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,9 @@ class DistributeResources:
     It will also ensure that trial as at least as many resources as
     it started with (``base_trial_resource``).
 
-    The function returns a new ``PlacementGroupFactory`` with updated
+    The function returns a new ``ResourceRequest`` with updated
     resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
+    ``ResourceRequest`` is equal by value to the one the
     trial has currently, the scheduler will skip the update process
     internally (same with None).
 
@@ -71,10 +71,10 @@ class DistributeResources:
         self.reserve_resources = reserve_resources or {}
 
     def _validate(
-        self, base_trial_resource: PlacementGroupFactory, result: Dict[str, Any]
+        self, base_trial_resource: ResourceRequest, result: Dict[str, Any]
     ) -> bool:
         """Return False if we should keep the current resources outright."""
-        if not isinstance(base_trial_resource, PlacementGroupFactory):
+        if not isinstance(base_trial_resource, ResourceRequest):
             raise ValueError(
                 f"{self.__class__.__name__} only supports PlacementGroupFactories."
             )
@@ -384,12 +384,12 @@ class DistributeResources:
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Optional[PlacementGroupFactory]:
+    ) -> Optional[ResourceRequest]:
         """Run resource allocation logic.
 
-        Returns a new ``PlacementGroupFactory`` with updated
+        Returns a new ``ResourceRequest`` with updated
         resource requirements, or None. If the returned
-        ``PlacementGroupFactory`` is equal by value to the one the
+        ``ResourceRequest`` is equal by value to the one the
         trial has currently, the scheduler will skip the update process
         internally (same with None).
 
@@ -410,7 +410,7 @@ class DistributeResources:
 
         # default values if resources_per_trial is unspecified
         if base_trial_resource is None:
-            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+            base_trial_resource = ResourceRequest([{"CPU": 1, "GPU": 0}])
 
         if self.increase_by:
             increase_by = self.increase_by
@@ -452,7 +452,7 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = ResourceRequest(new_bundles)
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 
@@ -471,9 +471,9 @@ class DistributeResourcesToTopJob(DistributeResources):
     It will also ensure that trial as at least as many resources as
     it started with (``base_trial_resource``).
 
-    The function returns a new ``PlacementGroupFactory`` with updated
+    The function returns a new ``ResourceRequest`` with updated
     resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
+    ``ResourceRequest`` is equal by value to the one the
     trial has currently, the scheduler will skip the update process
     internally (same with None).
 
@@ -620,7 +620,7 @@ class ResourceChangingScheduler(TrialScheduler):
             The callable must take four arguments: ``TrialRunner``, current
             ``Trial``, current result :class:`dict` and the
             ``ResourceChangingScheduler`` calling it. The callable must
-            return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
+            return a ``ResourceRequest``, ``Resources``, :class:`dict`
             or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
@@ -644,10 +644,10 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial: Trial,
                 result: Dict[str, Any],
                 scheduler: "ResourceChangingScheduler"
-            ) -> Optional[Union[PlacementGroupFactory, Resource]]:
+            ) -> Optional[Union[ResourceRequest, Resource]]:
                 # logic here
-                # usage of PlacementGroupFactory is strongly preferred
-                return PlacementGroupFactory(...)
+                # usage of ResourceRequest is strongly preferred
+                return ResourceRequest(...)
             scheduler = ResourceChangingScheduler(
                             base_scheduler,
                             my_resources_allocation_function
@@ -668,7 +668,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Optional[Union[PlacementGroupFactory, Resources]],
+                Optional[Union[ResourceRequest, Resources]],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -681,11 +681,9 @@ class ResourceChangingScheduler(TrialScheduler):
             )
         self._resources_allocation_function = resources_allocation_function
         self._base_scheduler = base_scheduler or FIFOScheduler()
-        self._base_trial_resources: Optional[
-            Union[Resources, PlacementGroupFactory]
-        ] = None
+        self._base_trial_resources: Optional[Union[Resources, ResourceRequest]] = None
         self._trials_to_reallocate: Dict[
-            Trial, Optional[Union[dict, PlacementGroupFactory]]
+            Trial, Optional[Union[dict, ResourceRequest]]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
         self._metric = None
@@ -696,7 +694,7 @@ class ResourceChangingScheduler(TrialScheduler):
         return self._base_scheduler._metric
 
     @property
-    def base_trial_resources(self) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    def base_trial_resources(self) -> Optional[Union[Resources, ResourceRequest]]:
         return self._base_trial_resources
 
     def set_search_properties(
@@ -809,7 +807,7 @@ class ResourceChangingScheduler(TrialScheduler):
         self.__dict__.update(save_object)
 
     def set_trial_resources(
-        self, trial: Trial, new_resources: Union[Dict, PlacementGroupFactory]
+        self, trial: Trial, new_resources: Union[Dict, ResourceRequest]
     ) -> bool:
         """Returns True if new_resources were set."""
         if new_resources:
@@ -834,7 +832,7 @@ class ResourceChangingScheduler(TrialScheduler):
         Only checks for PlacementGroupFactories at this moment.
         """
         if (
-            isinstance(new_resources, PlacementGroupFactory)
+            isinstance(new_resources, ResourceRequest)
             and trial.placement_group_factory == new_resources
         ):
             logger.debug(
@@ -849,7 +847,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def reallocate_trial_resources_if_needed(
         self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
-    ) -> Optional[Union[dict, PlacementGroupFactory]]:
+    ) -> Optional[Union[dict, ResourceRequest]]:
         """Calls user defined resources_allocation_function. If the returned
         resources are not none and not the same as currently present, returns
         them. Otherwise, returns None."""

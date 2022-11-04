@@ -110,7 +110,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -1985,7 +1985,7 @@ class Algorithm(Trainable):
     @override(Trainable)
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
-    ) -> Union[Resources, PlacementGroupFactory]:
+    ) -> Union[Resources, ResourceRequest]:
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
@@ -2039,9 +2039,9 @@ class Algorithm(Trainable):
         # In case our I/O reader/writer requires conmpute resources.
         bundles += get_offline_io_resource_bundles(cf)
 
-        # Return PlacementGroupFactory containing all needed resources
+        # Return ResourceRequest containing all needed resources
         # (already properly defined as device bundles).
-        return PlacementGroupFactory(
+        return ResourceRequest(
             bundles=bundles,
             strategy=config.get("placement_strategy", "PACK"),
         )

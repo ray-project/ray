@@ -10,7 +10,7 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
@@ -491,7 +491,7 @@ class FunctionApiTest(unittest.TestCase):
     def testNewResources(self):
         sched = ResourceChangingScheduler(
             resources_allocation_function=(
-                lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
+                lambda a, b, c, d: ResourceRequest([{"CPU": 2}])
             )
         )
 
@@ -502,7 +502,7 @@ class FunctionApiTest(unittest.TestCase):
             train,
             scheduler=sched,
             stop={"training_iteration": 2},
-            resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
+            resources_per_trial=ResourceRequest([{"CPU": 1}]),
             num_samples=1,
         )
 

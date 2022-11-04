@@ -54,7 +54,7 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.utils.node import _force_on_current_node
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Empty, Queue
 
@@ -96,13 +96,11 @@ def _check_default_resources_override(
     )
 
 
-def _check_gpus_in_resources(
-    resources: Optional[Union[Dict, PlacementGroupFactory]]
-) -> bool:
+def _check_gpus_in_resources(resources: Optional[Union[Dict, ResourceRequest]]) -> bool:
     if not resources:
         return False
 
-    if isinstance(resources, PlacementGroupFactory):
+    if isinstance(resources, ResourceRequest):
         return bool(resources.required_resources.get("GPU", None))
 
     if isinstance(resources, dict):
@@ -136,7 +134,7 @@ def run(
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
-        None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
+        None, Mapping[str, Union[float, int, Mapping]], ResourceRequest
     ] = None,
     num_samples: int = 1,
     local_dir: Optional[str] = None,
@@ -242,7 +240,7 @@ def run(
             Note that GPUs will not be assigned unless you specify them here.
             Defaults to 1 CPU and 0 GPUs in
             ``Trainable.default_resource_request()``. This can also
-            be a PlacementGroupFactory object wrapping arguments to create a
+            be a ResourceRequest object wrapping arguments to create a
             per-trial placement group.
         num_samples: Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is

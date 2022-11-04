@@ -3,7 +3,7 @@
 # fmt: off
 # __resource_allocation_1_begin__
 import ray
-from ray import tune
+from ray import air, tune
 
 # This Dataset workload will use spare cluster resources for execution.
 def objective(*args):
@@ -41,7 +41,7 @@ ray.init(num_cpus=4)
 # This runs smoothly since _max_cpu_fraction_per_node is set to 0.8, effectively
 # reserving 1 CPU for Datasets task execution.
 tuner = tune.Tuner(
-    tune.with_resources(objective, tune.PlacementGroupFactory(
+    tune.with_resources(objective, air.ResourceRequest(
         [{"CPU": 1}],
         _max_cpu_fraction_per_node=0.8,
     )),

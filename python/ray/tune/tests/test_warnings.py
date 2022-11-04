@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.data.context import DatasetContext
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.tune.error import TuneError
@@ -37,9 +37,7 @@ def test_warn_cpu():
         tune.run(f, verbose=0)
 
     with pytest.raises(TuneError):
-        tune.run(
-            f, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}]), verbose=0
-        )
+        tune.run(f, resources_per_trial=air.ResourceRequest([{"CPU": 1}]), verbose=0)
 
     def g(*a):
         @ray.remote(num_cpus=1)
@@ -54,9 +52,7 @@ def test_warn_cpu():
         tune.run(g, verbose=0)
 
     with pytest.raises(TuneError):
-        tune.run(
-            g, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}]), verbose=0
-        )
+        tune.run(g, resources_per_trial=air.ResourceRequest([{"CPU": 1}]), verbose=0)
 
 
 def test_pg_slots_ok():
@@ -74,9 +70,7 @@ def test_pg_slots_ok():
         a = Actor.remote()
         ray.get(a.f.remote())
 
-    tune.run(
-        f, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}] * 2), verbose=0
-    )
+    tune.run(f, resources_per_trial=air.ResourceRequest([{"CPU": 1}] * 2), verbose=0)
 
 
 def test_bad_pg_slots():
@@ -90,7 +84,7 @@ def test_bad_pg_slots():
     with pytest.raises(TuneError):
         tune.run(
             f,
-            resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}] * 2),
+            resources_per_trial=air.ResourceRequest([{"CPU": 1}] * 2),
             verbose=0,
         )
 
@@ -111,9 +105,7 @@ def test_dataset_ok():
     with pytest.raises(TuneError):
         tune.run(g, verbose=0)
 
-    tune.run(
-        g, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}] * 2), verbose=0
-    )
+    tune.run(g, resources_per_trial=air.ResourceRequest([{"CPU": 1}] * 2), verbose=0)
 
 
 def test_scheduling_strategy_override():

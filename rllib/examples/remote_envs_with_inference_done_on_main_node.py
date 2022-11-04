@@ -18,7 +18,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import air, tune
-from ray.tune import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.logger import pretty_print
 
 
@@ -85,9 +85,9 @@ class PPORemoteInference(PPO):
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
-        # Return PlacementGroupFactory containing all needed resources
+        # Return ResourceRequest containing all needed resources
         # (already properly defined as device bundles).
-        return PlacementGroupFactory(
+        return ResourceRequest(
             bundles=[
                 {
                     # Single CPU for the local worker. This CPU will host the

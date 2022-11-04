@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 from ray.air.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.air import ResourceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class Session(abc.ABC):
         raise NotImplementedError
 
     @property
-    def trial_resources(self) -> "PlacementGroupFactory":
+    def trial_resources(self) -> "ResourceRequest":
         """Trial resources for the corresponding trial."""
         raise NotImplementedError
 

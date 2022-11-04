@@ -14,7 +14,7 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.mock import TrialStatusSnapshotTaker, TrialStatusSnapshot
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -60,7 +60,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "placement_group_factory": PlacementGroupFactory(
+            "placement_group_factory": ResourceRequest(
                 [{"CPU": 1}, {"CPU": 3, "GPU": 1}]
             ),
         }
@@ -82,7 +82,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "a": 2}]),
+            "placement_group_factory": ResourceRequest([{"CPU": 1, "a": 2}]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -102,7 +102,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "placement_group_factory": PlacementGroupFactory([{"CPU": 1}, {"a": 2}]),
+            "placement_group_factory": ResourceRequest([{"CPU": 1}, {"a": 2}]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:

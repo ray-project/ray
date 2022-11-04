@@ -369,7 +369,7 @@ class BaseTrainer(abc.ABC):
             A Trainable class to use for training.
         """
 
-        from ray.tune.execution.placement_groups import PlacementGroupFactory
+        from ray.air import ResourceRequest
         from ray.tune.trainable import wrap_function
 
         trainer_cls = self.__class__
@@ -455,7 +455,7 @@ class BaseTrainer(abc.ABC):
 
                 trial_resources = self.trial_resources
                 # This will be false if the resources are default
-                if not isinstance(trial_resources, PlacementGroupFactory):
+                if not isinstance(trial_resources, ResourceRequest):
                     return scaling_config
 
                 if scaling_config:

@@ -46,7 +46,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.trainable import Trainable
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 
 
 class ApexDQNConfig(DQNConfig):
@@ -676,9 +676,9 @@ class ApexDQN(DQN):
 
         eval_config = cf["evaluation_config"]
 
-        # Return PlacementGroupFactory containing all needed resources
+        # Return ResourceRequest containing all needed resources
         # (already properly defined as device bundles).
-        return PlacementGroupFactory(
+        return ResourceRequest(
             bundles=[
                 {
                     # Local worker + replay buffer actors.

@@ -11,8 +11,8 @@ import pandas as pd
 import ray
 import ray.cloudpickle as pickle
 from ray.tune.execution.placement_groups import (
-    PlacementGroupFactory,
-    resource_dict_to_pg_factory,
+    ResourceRequest,
+    resource_dict_to_request,
 )
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
@@ -393,7 +393,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 def with_resources(
     trainable: Union[Type["Trainable"], Callable],
     resources: Union[
-        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+        Dict[str, float], ResourceRequest, Callable[[dict], ResourceRequest]
     ],
 ):
     """Wrapper for trainables to specify resource requests.
@@ -441,10 +441,10 @@ def with_resources(
             f"{type(trainable)}."
         )
 
-    if isinstance(resources, PlacementGroupFactory):
+    if isinstance(resources, ResourceRequest):
         pgf = resources
     elif isinstance(resources, dict):
-        pgf = resource_dict_to_pg_factory(resources)
+        pgf = resource_dict_to_request(resources)
     elif callable(resources):
         pgf = resources
     else:
@@ -484,8 +484,8 @@ def with_resources(
             @classmethod
             def default_resource_request(
                 cls, config: Dict[str, Any]
-            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
-                if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
+            ) -> Optional[Union[Resources, ResourceRequest]]:
+                if not isinstance(pgf, ResourceRequest) and callable(pgf):
                     return pgf(config)
                 return pgf
 

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
     from ray.tune.utils.log import Verbosity
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.air import ResourceRequest
 
 
 # Dict[str, List] is to support `tune.grid_search`:
@@ -209,9 +209,9 @@ class ScalingConfig:
             if k not in ["CPU", "GPU"]
         }
 
-    def as_placement_group_factory(self) -> "PlacementGroupFactory":
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
-        from ray.tune.execution.placement_groups import PlacementGroupFactory
+    def as_placement_group_factory(self) -> "ResourceRequest":
+        """Returns a ResourceRequest to specify resources for Tune."""
+        from ray.air import ResourceRequest
 
         trainer_resources = self._trainer_resources_not_none
         trainer_bundle = [trainer_resources]
@@ -233,15 +233,11 @@ class ScalingConfig:
             }
         else:
             kwargs = {}
-        return PlacementGroupFactory(
-            bundles, strategy=self.placement_strategy, **kwargs
-        )
+        return ResourceRequest(bundles, strategy=self.placement_strategy, **kwargs)
 
     @classmethod
-    def from_placement_group_factory(
-        cls, pgf: "PlacementGroupFactory"
-    ) -> "ScalingConfig":
-        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
+    def from_placement_group_factory(cls, pgf: "ResourceRequest") -> "ScalingConfig":
+        """Create a ScalingConfig from a Tune's ResourceRequest"""
         if pgf.head_bundle_is_empty:
             trainer_resources = {}
             worker_bundles = pgf.bundles

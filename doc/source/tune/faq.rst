@@ -234,7 +234,7 @@ How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
 ``tune.with_resources`` and wrap it around you trainable together with
-a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
+a dict or a :class:`ResourceRequest <ray.air.execution.resources.request.ResourceRequest>` object:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:

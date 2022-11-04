@@ -37,8 +37,8 @@ from ray.tune.result import (
 from ray.tune.resources import Resources
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.execution.placement_groups import (
-    PlacementGroupFactory,
-    resource_dict_to_pg_factory,
+    ResourceRequest,
+    resource_dict_to_request,
 )
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
@@ -161,11 +161,11 @@ class _TrialInfo:
         return self._trial_id
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> Union[Resources, ResourceRequest]:
         return self._trial_resources
 
     @trial_resources.setter
-    def trial_resources(self, new_resources: Union[Resources, PlacementGroupFactory]):
+    def trial_resources(self, new_resources: Union[Resources, ResourceRequest]):
         self._trial_resources = new_resources
 
 
@@ -183,8 +183,8 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
 
 def _to_pg_factory(
     resources: Optional[Resources],
-    placement_group_factory: Optional[PlacementGroupFactory],
-) -> PlacementGroupFactory:
+    placement_group_factory: Optional[ResourceRequest],
+) -> ResourceRequest:
     """Outputs resources requirement in the form of PGF.
 
     In case that `placement_group_factory` is None, `resources` will be
@@ -194,7 +194,7 @@ def _to_pg_factory(
     if not placement_group_factory:
         if not resources:
             resources = Resources(cpu=1, gpu=0)
-        placement_group_factory = resource_dict_to_pg_factory(resources)
+        placement_group_factory = resource_dict_to_request(resources)
     return placement_group_factory
 
 
@@ -209,7 +209,7 @@ class Trial:
     On error it transitions to ERROR, otherwise TERMINATED on success.
 
     There are resources allocated to each trial. These should be specified
-    using ``PlacementGroupFactory``.
+    using ``ResourceRequest``.
 
     Attributes:
         trainable_name: Name of the trainable object to be executed.
@@ -252,7 +252,7 @@ class Trial:
         evaluated_params: Optional[Dict] = None,
         experiment_tag: str = "",
         resources: Optional[Resources] = None,
-        placement_group_factory: Optional[PlacementGroupFactory] = None,
+        placement_group_factory: Optional[ResourceRequest] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         experiment_dir_name: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -310,7 +310,7 @@ class Trial:
                         )
                     )
 
-                if isinstance(default_resources, PlacementGroupFactory):
+                if isinstance(default_resources, ResourceRequest):
                     placement_group_factory = default_resources
                     resources = None
                 else:
@@ -593,7 +593,7 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
+    def update_resources(self, resources: Union[Dict, ResourceRequest]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -605,7 +605,7 @@ class Trial:
             raise ValueError("Cannot update resources while Trial is running.")
 
         placement_group_factory = None
-        if isinstance(resources, PlacementGroupFactory):
+        if isinstance(resources, ResourceRequest):
             placement_group_factory = resources
         else:
             resources = Resources(**resources)

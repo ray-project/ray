@@ -2,7 +2,7 @@
 
 # __reproducible_start__
 import numpy as np
-from ray import tune
+from ray import air, tune
 from ray.air import session
 
 
@@ -80,7 +80,7 @@ if not MOCK:
     tuner = tune.Tuner(
         tune.with_resources(
             train_fn,
-            resources=tune.PlacementGroupFactory(
+            resources=air.ResourceRequest(
                 [
                     {"CPU": 2, "GPU": 0.5, "hdd": 80},
                     {"CPU": 1},
@@ -128,7 +128,7 @@ if not MOCK:
     tuner = tune.Tuner(
         tune.with_resources(
             train_fn,
-            resources=tune.PlacementGroupFactory(
+            resources=air.ResourceRequest(
                 [
                     {"CPU": 1},  # this bundle will be used by the trainable itself
                     {"CPU": 1},  # this bundle will be used by Modin

@@ -231,7 +231,7 @@ Advanced Resource Allocation
 ----------------------------
 
 Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks
-that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
+that also consume CPU / GPU resources, you will want to add more bundles to the :class:`ResourceRequest`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
 then you should use this:
@@ -240,7 +240,7 @@ then you should use this:
    :emphasize-lines: 4-10
 
     tuner = tune.Tuner(
-        tune.with_resources(my_trainable, tune.PlacementGroupFactory([
+        tune.with_resources(my_trainable, air.ResourceRequest([
             {"CPU": 1, "GPU": 1},
             {"GPU": 1},
             {"GPU": 1},

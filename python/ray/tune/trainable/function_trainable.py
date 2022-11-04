@@ -18,7 +18,7 @@ from six.moves import queue
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
 from ray.tune import TuneError
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -651,8 +651,8 @@ def wrap_function(
         @classmethod
         def default_resource_request(
             cls, config: Dict[str, Any]
-        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
-            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+        ) -> Optional[Union[Resources, ResourceRequest]]:
+            if not isinstance(resources, ResourceRequest) and callable(resources):
                 return resources(config)
             return resources
 

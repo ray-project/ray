@@ -42,7 +42,7 @@ from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer, Syncer
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.air import ResourceRequest
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
@@ -772,9 +772,7 @@ class TrialRunner:
                 trial_to_add.status = Trial.TERMINATED
             self.add_trial(trial_to_add)
 
-    def update_pending_trial_resources(
-        self, resources: Union[dict, PlacementGroupFactory]
-    ):
+    def update_pending_trial_resources(self, resources: Union[dict, ResourceRequest]):
         """Update trial resources when resuming from checkpoint.
 
         Only updating the pending ones.
