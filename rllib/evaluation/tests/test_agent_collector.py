@@ -334,10 +334,9 @@ class TestAgentCollector(unittest.TestCase):
 
     def test_begin_with_inference(self):
         # Test if AC is able to build for inference immediately
-        obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
         view_reqs = {
             SampleBatch.T: ViewRequirement(SampleBatch.T),
-            SampleBatch.REWARDS: ViewRequirement("reward", space=obs_space),
+            SampleBatch.REWARDS: ViewRequirement("reward"),
             "prev_reward": ViewRequirement("reward", shift=-1),
         }
 
