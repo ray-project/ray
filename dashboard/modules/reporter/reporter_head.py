@@ -178,7 +178,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         logger.info(reply)
         return aiohttp.web.Response(
-            reply.output, headers={"Content-Type": "image/svg+xml"}
+            reply.output,
+            headers={
+                "Content-Type": "image/svg+xml"
+                if format == "flamegraph"
+                else "text/plain"
+            },
         )
 
     async def run(self, server):
