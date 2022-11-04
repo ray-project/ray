@@ -18,7 +18,7 @@ from ray._private.test_utils import (
 )
 def test_profiler_endpoints(ray_start_with_dashboard):
     # Sanity check py-spy is installed.
-    subprocess.check_call(["py-spy", "help"])
+    subprocess.check_call(["py-spy", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
@@ -41,6 +41,7 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     def get_actor_stack():
         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
         response.raise_for_status()
+        assert response.headers["Content-Type"] == "text/plain", response.headers
         content = response.content.decode("utf-8")
         print(content)
         # Sanity check we got the stack trace text.
@@ -71,6 +72,60 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         timeout_ms=20000,
         retry_interval_ms=1000,
     )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_profiler_failure_message(ray_start_with_dashboard):
+    # Sanity check py-spy is installed.
+    subprocess.check_call(["py-spy", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+
+    def get_actor_stack():
+        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
+        response.raise_for_status()
+
+    # First ensure dashboard is up, before we test for failure cases.
+    assert wait_until_succeeded_without_exception(
+        get_actor_stack,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+    )
+
+    # Check we return the right status code and error message on failure.
+    response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
+    assert response.status_code == 500, response
+    content = response.content.decode("utf-8")
+    print(content)
+    assert response.headers["Content-Type"] == "text/plain", response.headers
+    assert "Failed to execute" in content, content
+
+    # Check we return the right status code and error message on failure.
+    response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
+    assert response.status_code == 500, response
+    content = response.content.decode("utf-8")
+    print(content)
+    assert response.headers["Content-Type"] == "text/plain", response.headers
+    assert "Failed to execute" in content, content
 
 
 if __name__ == "__main__":
