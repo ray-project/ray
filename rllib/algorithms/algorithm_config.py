@@ -1615,9 +1615,11 @@ class AlgorithmConfig:
             self.count_steps_by = count_steps_by
 
         if policies_to_train is not NotProvided:
-            assert isinstance(policies_to_train, (list, set, tuple)) or callable(
-                policies_to_train
-            ) or policies_to_train is None, (
+            assert (
+                isinstance(policies_to_train, (list, set, tuple))
+                or callable(policies_to_train)
+                or policies_to_train is None
+            ), (
                 "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
