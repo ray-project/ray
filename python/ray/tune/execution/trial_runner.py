@@ -65,26 +65,28 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
-def _update_trial_checkpoint_paths(trial_checkpoints, old_logdir, new_logdir):
-    for tracked_checkpoint in trial_checkpoints:
-        if tracked_checkpoint.storage_mode == CheckpointStorage.PERSISTENT:
-            checkpoint_relative_path = os.path.relpath(
-                tracked_checkpoint.dir_or_data, old_logdir
-            )
-            tracked_checkpoint.dir_or_data = os.path.join(
-                new_logdir, checkpoint_relative_path
-            )
-
-
 def _load_trial_from_checkpoint(
-    trial_cp: dict, stub: bool = False, **overwrite_checkpoint_kwargs
-):
+    trial_cp: dict, stub: bool = False, local_dir: str = None
+) -> Trial:
+    """_summary_
+
+    Args:
+        trial_cp: Trial state from the experiment checkpoint, which is saved via
+            `Trial.get_json_state`
+        stub: Whether or not to validate the trainable name when creating the Trial.
+            Used for testing purposes for creating mocks.
+        local_dir: if set, the Trial `local_dir` will be updated in the `trial_cp` state
+
+    Returns:
+        new_trial: New trial with state loaded from experiment checkpoint
+    """
     new_trial = Trial(
         trial_cp["trainable_name"],
         stub=stub,
         _setup_default_resource=False,
     )
-    trial_cp.update(overwrite_checkpoint_kwargs)
+    if local_dir:
+        trial_cp["local_dir"] = local_dir
     new_trial.__setstate__(trial_cp)
     return new_trial
 
