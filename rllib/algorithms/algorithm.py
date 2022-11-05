@@ -365,9 +365,6 @@ class Algorithm(Trainable):
         config.validate()
         config.freeze()
 
-        from pprint import pprint
-        pprint(config.to_dict())
-
         # Convert `env` provided in config into a concrete env creator callable, which
         # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
         # type (e.g. a gym.Env).
