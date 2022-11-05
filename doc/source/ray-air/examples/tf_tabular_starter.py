@@ -29,18 +29,13 @@ preprocessor = Chain(
 
 # __air_tf_train_start__
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from ray import train
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.air.callbacks.keras import Callback as KerasCallback
-from ray.train.tensorflow import (
-    TensorflowTrainer,
-    TensorflowCheckpoint,
-)
+from ray.air.integrations.keras import Callback as KerasCallback
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def create_keras_model(input_features):
