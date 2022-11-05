@@ -60,7 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -93,7 +93,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentID,
@@ -324,7 +324,7 @@ class Algorithm(Trainable):
         """
         config = config or self.get_default_config()
 
-        # Resolve possible dict into an AlgorithmConfig object as well as
+        # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
         # which normally would expect a PPOConfig object).
@@ -336,12 +336,22 @@ class Algorithm(Trainable):
                 config = AlgorithmConfig.from_dict(
                     config_dict=self.merge_trainer_configs(default_config, config, True)
                 )
+            # Default config is an AlgorithmConfig -> update its properties
+            # from the given config dict.
             else:
                 config = default_config.update_from_dict(config)
         else:
             default_config = self.get_default_config()
+            # Given AlgorithmConfig is not of the same type as the default config:
+            # This could be the case e.g. if the user is building an algo from a
+            # generic AlgorithmConfig() object.
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
+
+        # In case this algo is using a generic config (with no algo_class set), set it
+        # here.
+        if config.algo_class is None:
+            config.algo_class = type(self)
 
         if env is not None:
             deprecation_warning(
@@ -351,7 +361,8 @@ class Algorithm(Trainable):
             )
             config.environment(env)
 
-        # Freeze our AlgorithmConfig object (no more changes possible).
+        # Validate and freeze our AlgorithmConfig object (no more changes possible).
+        config.validate()
         config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
@@ -474,7 +485,6 @@ class Algorithm(Trainable):
         # tf eager-execution.
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
 
-        self.validate_config(self.config)
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
@@ -599,9 +609,10 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
-        # Validate evaluation config.
+        # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
-        self.validate_config(self.evaluation_config)
+        self.evaluation_config.validate()
+        self.evaluation_config.freeze()
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -682,22 +693,18 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
+    @classmethod
     def get_default_policy_class(
-        self,
-        config: Union[AlgorithmConfig, AlgorithmConfigDict],
-    ) -> Type[Policy]:
+        cls,
+        config: AlgorithmConfig,
+    ) -> Optional[Type[Policy]]:
         """Returns a default Policy class to use, given a config.
 
-        This class will be used inside RolloutWorkers' PolicyMaps in case
+        This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
-
-        This method is experimental and currently only used, iff the Trainer
-        class was not created using the `build_trainer` utility and if
-        the Trainer sub-class does not override `_init()` and create it's
-        own WorkerSet in `_init()`.
         """
-        return getattr(self, "_policy_class", None)
+        return None
 
     @override(Trainable)
     def step(self) -> ResultDict:
@@ -979,7 +986,9 @@ class Algorithm(Trainable):
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            _agent_steps if self._by_agent_steps else _env_steps
+                            _agent_steps
+                            if self.config.count_steps_by == "agent_steps"
+                            else _env_steps
                         )
                     if self.reward_estimators:
                         # TODO: (kourosh) This approach will cause an OOM issue when
@@ -1188,7 +1197,11 @@ class Algorithm(Trainable):
                         assert np.sum(batch[SampleBatch.DONES])
             # n timesteps per returned batch.
             else:
-                num_units_done += _agent_steps if self._by_agent_steps else _env_steps
+                num_units_done += (
+                    _agent_steps
+                    if self.config.count_steps_by == "agent_steps"
+                    else _env_steps
+                )
 
             if self.reward_estimators:
                 all_batches.extend(batches)
@@ -1262,7 +1275,7 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )
@@ -2299,126 +2312,6 @@ class Algorithm(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @DeveloperAPI
-    def validate_config(
-        self,
-        config: Union[AlgorithmConfig, AlgorithmConfigDict],
-    ) -> None:
-        """Validates a given config object (or dictionary) for this Algorithm.
-
-        Users should override this method to implement custom validation
-        behavior. It is recommended to call `super().validate_config()` in
-        this override.
-
-        Args:
-            config: The given config object (or dictionary) to check.
-
-        Raises:
-            ValueError: If there is something wrong with the config.
-        """
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
-
-        model_config = config.get("model", MODEL_DEFAULTS)
-
-        # Multi-GPU settings.
-        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-
-        framework = config.get("framework", "tf")
-
-        if simple_optim_setting is True:
-            pass
-        # Multi-GPU setting: Must use multi_gpu_train_one_step.
-        elif config.get("num_gpus", 0) > 1:
-            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
-            #  ok for tf2 here.
-            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
-            if framework == "tf2" and type(self).__name__ != "AlphaStar":
-                raise ValueError(
-                    "`num_gpus` > 1 not supported yet for "
-                    "framework={}!".format(framework)
-                )
-            elif simple_optim_setting is True:
-                raise ValueError(
-                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider not setting `simple_optimizer` in your config."
-                )
-            config["simple_optimizer"] = False
-        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: multi_gpu_train_one_step (if supported by the algo's
-        # `training_step()` method).
-        elif simple_optim_setting == DEPRECATED_VALUE:
-            # tf-eager: Must use simple optimizer.
-            if framework not in ["tf", "torch"]:
-                config["simple_optimizer"] = True
-            # Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif (
-                (isinstance(config, AlgorithmConfig) and config.is_multi_agent())
-                or isinstance(config, dict)
-                and AlgorithmConfig.from_dict(config).is_multi_agent()
-            ):
-                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-                from ray.rllib.policy.torch_policy import TorchPolicy
-
-                default_policy_cls = self.get_default_policy_class(config)
-                policies = config["multiagent"]["policies"]
-                policy_specs = (
-                    [
-                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
-                        for spec in policies.values()
-                    ]
-                    if isinstance(policies, dict)
-                    else [PolicySpec() for _ in policies]
-                )
-
-                if any(
-                    (spec.policy_class or default_policy_cls) is None
-                    or not issubclass(
-                        spec.policy_class or default_policy_cls,
-                        (DynamicTFPolicy, TorchPolicy),
-                    )
-                    for spec in policy_specs
-                ):
-                    config["simple_optimizer"] = True
-                else:
-                    config["simple_optimizer"] = False
-            else:
-                config["simple_optimizer"] = False
-
-        # User manually set simple-optimizer to False -> Error if tf-eager.
-        elif simple_optim_setting is False:
-            if framework == "tf2":
-                raise ValueError(
-                    "`simple_optimizer=False` not supported for "
-                    "config.framework({})!".format(framework)
-                )
-
-        # Check model config.
-        # If no preprocessing, propagate into model's config as well
-        # (so model will know, whether inputs are preprocessed or not).
-        if config["_disable_preprocessor_api"] is True:
-            model_config["_disable_preprocessor_api"] = True
-        # If no action flattening, propagate into model's config as well
-        # (so model will know, whether action inputs are already flattened or
-        # not).
-        if config["_disable_action_flattening"] is True:
-            model_config["_disable_action_flattening"] = True
-
-        # Prev_a/r settings.
-        prev_a_r = model_config.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
-        if prev_a_r != DEPRECATED_VALUE:
-            deprecation_warning(
-                "model.lstm_use_prev_action_reward",
-                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=True,
-            )
-
-        # Store multi-agent batch count mode.
-        self._by_agent_steps = (
-            self.config["multiagent"].get("count_steps_by") == "agent_steps"
-        )
-
     @staticmethod
     @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
@@ -2776,8 +2669,7 @@ class Algorithm(Trainable):
         ):
             return
 
-        buffer_type = config["replay_buffer_config"]["type"]
-        return from_config(buffer_type, config["replay_buffer_config"])
+        return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     @DeveloperAPI
     def _kwargs_for_execution_plan(self):
@@ -3009,7 +2901,7 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
@@ -3087,11 +2979,14 @@ class Algorithm(Trainable):
             logdir=self.logdir,
         )
 
+    def validate_config(self, config) -> None:
+        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+        pass
+
     @staticmethod
-    @Deprecated(new="Algorithm.validate_config()", error=True)
+    @Deprecated(new="AlgorithmConfig.validate()", error=True)
     def _validate_config(config, trainer_or_none):
-        assert trainer_or_none is not None
-        return trainer_or_none.validate_config(config)
+        pass
 
 
 # TODO: Create a dict that throw a deprecation warning once we have fully moved
@@ -3141,8 +3036,8 @@ class TrainIterCtx:
             return False
 
         # Stopping criteria.
-        elif self.algo.config["_disable_execution_plan_api"]:
-            if self.algo._by_agent_steps:
+        elif self.algo.config._disable_execution_plan_api:
+            if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (
                     self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
                     - self.init_agent_steps_sampled
