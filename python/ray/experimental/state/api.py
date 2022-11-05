@@ -202,7 +202,8 @@ class StateApiClient(SubmissionClient):
                 # instead let the caller parse it to raise a more precise exception.
                 if (
                     response.status_code == 500
-                    and "application/json" not in response.headers.get("Content-Type")
+                    and "application/json"
+                    not in response.headers.get("Content-Type", "")
                 ):
                     response.raise_for_status()
             except requests.exceptions.RequestException as e:
