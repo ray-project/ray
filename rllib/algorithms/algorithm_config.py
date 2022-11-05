@@ -25,6 +25,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
@@ -510,6 +511,20 @@ class AlgorithmConfig:
         Those simgular, independent checks should instead go directly into their
         respective methods.
         """
+        # Check correct framework settings, and whether configured framework is
+        # installed.
+        _tf1, _tf, _tfv = None, None, None
+        _torch = None
+        if self.framework_str not in {"tf", "tf2"} and self.framework_str != "torch":
+            return
+        elif self.framework_str in {"tf", "tf2"}:
+            _tf1, _tf, _tfv = try_import_tf()
+        else:
+            _torch, _ = try_import_torch()
+
+        self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
+        self._resolve_tf_settings(_tf1, _tfv)
+
         # Check `policies_to_train` for invalid entries.
         if isinstance(self.policies_to_train, (list, set, tuple)):
             for pid in self.policies_to_train:
@@ -2315,6 +2330,58 @@ class AlgorithmConfig:
                 )
 
         return key
+
+    def _check_if_correct_nn_framework_installed(self, _tf1, _tf, _torch):
+        """Check if tf/torch experiment is running and tf/torch installed."""
+        if self.framework_str in {"tf", "tf2"}:
+            if not (_tf1 or _tf):
+                raise ImportError(
+                    (
+                        "TensorFlow was specified as the framework to use (via `config."
+                        "framework([tf|tf2])`)! However, no installation was "
+                        "found. You can install TensorFlow via `pip install tensorflow`"
+                    )
+                )
+        elif self.framework_str == "torch":
+            if not _torch:
+                raise ImportError(
+                    (
+                        "PyTorch was specified as the framework to use (via `config."
+                        "framework('torch')`)! However, no installation was found. You "
+                        "can install PyTorch via `pip install torch`."
+                    )
+                )
+
+    def _resolve_tf_settings(self, _tf1, _tfv):
+        """Check and resolve tf settings."""
+        if _tf1 and self.framework_str == "tf2":
+            if self.framework_str == "tf2" and _tfv < 2:
+                raise ValueError(
+                    "You configured `framework`=tf2, but your installed "
+                    "pip tf-version is < 2.0! Make sure your TensorFlow "
+                    "version is >= 2.x."
+                )
+            if not _tf1.executing_eagerly():
+                _tf1.enable_eager_execution()
+            # Recommend setting tracing to True for speedups.
+            logger.info(
+                f"Executing eagerly (framework='{self.framework_str}'),"
+                f" with eager_tracing={self.framework_str}. For "
+                "production workloads, make sure to set eager_tracing=True"
+                "  in order to match the speed of tf-static-graph "
+                "(framework='tf'). For debugging purposes, "
+                "`eager_tracing=False` is the best choice."
+            )
+        # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
+        # enabling eager tracing for similar speed.
+        elif _tf1 and self.framework_str == "tf":
+            logger.info(
+                "Your framework setting is 'tf', meaning you are using "
+                "static-graph mode. Set framework='tf2' to enable eager "
+                "execution with tf2.x. You may also then want to set "
+                "eager_tracing=True in order to reach similar execution "
+                "speed as with static-graph mode."
+            )
 
     @property
     def multiagent(self):
