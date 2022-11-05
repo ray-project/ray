@@ -27,8 +27,8 @@ from gym.spaces import Box
 import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.policy import local_policy_inference
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -469,18 +469,30 @@ def check_compute_single_action(
                             )
 
 
-def check_inference_w_connectors(policy, env_name: str, max_steps: int = 100):
+def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     """Checks whether the given policy can infer actions from an env with connectors.
 
     Args:
         policy: The policy to check.
-        env_name: The name of the environment to check.
+        env_name: Name of the environment to check
         max_steps: The maximum number of steps to run the environment for.
 
     Raises:
         ValueError: If the policy cannot infer actions from the environment.
     """
+    # Avoids circular import
+    from ray.rllib.utils.policy import local_policy_inference
+
     env = gym.make(env_name)
+
+    # Potentially wrap the env similar to how we would this in RolloutWorker
+    if is_atari(env):
+        env = wrap_deepmind(
+            env,
+            dim=policy.config["model"]["dim"],
+            framestack=policy.config["model"].get("framestack"),
+        )
+
     obs = env.reset()
     reward, done, info = 0.0, False, {}
     ts = 0
