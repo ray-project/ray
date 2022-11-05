@@ -60,12 +60,12 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
 
-        def on_step_begin(self, trialrunner):
+        def on_step_begin(self):
             self._resource_updater.update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self, trialrunner):
+        def on_step_end(self):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 

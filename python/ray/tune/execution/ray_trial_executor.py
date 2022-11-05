@@ -10,7 +10,7 @@ from collections import deque, defaultdict, Counter
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
-from typing import Callable, Dict, Iterable, List, Optional, Set, Union
+from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
 from ray.air import Checkpoint
@@ -800,19 +800,22 @@ class RayTrialExecutor:
             or self._resource_manager.has_resources_ready(resource_request)
         )
 
-    def debug_string(self) -> str:
-        """Returns a human readable message for printing to the console."""
-
+    def _occupied_resources(self) -> dict:
         total_resources = {"CPU": 0, "GPU": 0}
         for allocated_resource in self._trial_to_allocated_resources.values():
             resource_request = allocated_resource.resource_request
             for bundle_resources in resource_request.bundles:
                 for key, val in bundle_resources.items():
                     total_resources[key] = total_resources.get(key, 0) + val
+        return total_resources
 
-        return self._resource_updater.debug_string(total_resources)
+    def debug_string(self) -> str:
+        """Returns a human readable message for printing to the console."""
+        occupied_resources = self._occupied_resources()
 
-    def on_step_begin(self, trials: List[Trial]) -> None:
+        return self._resource_updater.debug_string(occupied_resources)
+
+    def on_step_begin(self) -> None:
         """Before step() is called, update the available resources."""
         self._resource_updater.update_avail_resources()
 
@@ -827,14 +830,16 @@ class RayTrialExecutor:
             counter[resource_request] += 1
         return counter
 
-    def _cleanup_cached_actors(self):
-        if time.time() - self._last_cached_actor_cleanup < 0.5:
+    def _cleanup_cached_actors(self, force_all: bool = False):
+        if not force_all and time.time() - self._last_cached_actor_cleanup < 0.5:
             return
 
         staged_resources = self._count_staged_resources()
 
         for resource_request, actors in self._cached_resources_to_actor.items():
-            while len(actors) > staged_resources.get(resource_request, 0):
+            while len(actors) > staged_resources.get(resource_request, 0) or (
+                force_all and len(actors)
+            ):
                 actor, allocated_resources = actors.pop()
                 self._resource_manager.return_resources(allocated_resources)
 
@@ -998,6 +1003,8 @@ class RayTrialExecutor:
                 )
                 # Blocking here is ok as the future returned
                 _post_stop_cleanup(ready[0], timeout=None)
+
+        self._cleanup_cached_actors(force_all=True)
 
     @contextmanager
     def _change_working_directory(self, trial):

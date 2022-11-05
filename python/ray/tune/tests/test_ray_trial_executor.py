@@ -601,20 +601,25 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         executor._start_trial(trial1)
         executor._stage_and_update_status([trial1, trial2, trial3])
-        executor.pause_trial(trial1)  # Caches the PG and removes a PG from staging
+        executor.pause_trial(trial1)  # Caches the PG
 
-        assert len(executor._staged_trials) == 0
+        assert (
+            len(executor._cached_resources_to_actor[trial1.placement_group_factory])
+            == 1
+        )
 
-        # This will re-schedule a placement group
-        executor._stage_and_update_status([trial1, trial2, trial3])
-        executor._resource_manager.update_state()
-
+        # Second trial remains staged, it will only be removed from staging when it
+        # is started
         assert len(executor._staged_trials) == 1
 
         # We should still have resources for this trial as it has a cached PG
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
+
+        executor._start_trial(trial2)
+        # We used the cached placement group, now we shouldn't have anything staged
+        assert len(executor._staged_trials) == 0
 
     def testEmptyPlacementGroupFactory(self):
         # Empty bundles
