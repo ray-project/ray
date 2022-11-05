@@ -523,8 +523,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
+        # Resolve possible auto-fragment length.
+        configured_rollout_fragment_length = self.config.get_rollout_fragment_length(
+            worker_index=self.worker_index
+        )
         self.total_rollout_fragment_length: int = (
-            self.config.rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -746,7 +750,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
         # long.
-        rollout_fragment_length_for_sampler = self.config.rollout_fragment_length
+        rollout_fragment_length_for_sampler = configured_rollout_fragment_length
         if self.config.batch_mode == "truncate_episodes":
             pack = True
         # `complete_episodes`: Never cut episodes and sampler will return

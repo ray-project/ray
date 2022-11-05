@@ -28,16 +28,16 @@ def do_test_log_likelihood(
     layer_key=("fc", (0, 4), ("_hidden_layers.0.", "_logits.")),
     logp_func=None,
 ):
-    config = config.copy()
+    config = config.copy(copy_frozen=False)
     # Run locally.
-    config["num_workers"] = 0
+    config.num_rollout_workers = 0
     # Env setup.
     if continuous:
-        env = "Pendulum-v1"
+        config.env = "Pendulum-v1"
         obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
-        env = "FrozenLake-v1"
-        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        config.env = "FrozenLake-v1"
+        config.env_config = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
         # PG does not preprocess anymore by default.
         preprocessed_obs_batch = (
@@ -48,7 +48,7 @@ def do_test_log_likelihood(
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        algo = run(config=config, env=env)
+        algo = config.build()
 
         policy = algo.get_policy()
         vars = policy.get_weights()
@@ -135,18 +135,22 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
-        config = dqn.DEFAULT_CONFIG.copy()
+        config = dqn.DQNConfig()
         # Soft-Q for DQN.
-        config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
-        config["seed"] = 42
+        config.exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
+        config.debugging(seed=42)
         do_test_log_likelihood(dqn.DQN, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
+        config = pg.PGConfig()
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(
             pg.PG,
@@ -158,33 +162,41 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
+        config = pg.PGConfig()
+        config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(pg.PG, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
+        config = ppo.PPOConfig()
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
+        config = ppo.PPOConfig()
+        config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(ppo.PPO, config, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["policy_model_config"]["fcnet_hiddens"] = [10]
-        config["policy_model_config"]["fcnet_activation"] = "linear"
+        config = sac.SACConfig()
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -214,10 +226,14 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["policy_model_config"]["fcnet_hiddens"] = [10]
-        config["policy_model_config"]["fcnet_activation"] = "linear"
+        config = sac.SACConfig()
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array(0)
 
         do_test_log_likelihood(sac.SAC, config, prev_a)
