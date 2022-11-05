@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class EagerTFPolicyV2(Policy):
-    """A TF-eageer / TF2 based tensorflow policy.
+    """A TF-eager / TF2 based tensorflow policy.
 
     This class is intended to be used and extended by sub-classing.
     """

@@ -130,6 +130,11 @@ class GroupedDataset(Generic[T]):
         self._dataset = dataset
         self._key = key
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
+        )
+
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 

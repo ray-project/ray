@@ -9,7 +9,7 @@ import mlflow
 
 from ray import air, tune
 from ray.air import session
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 from ray.tune.integration.mlflow import mlflow_mixin
 
 
