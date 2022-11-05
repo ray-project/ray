@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-import tempfile
 import shutil
 import time
 
@@ -38,8 +37,10 @@ def _train_fn_sometimes_failing(config, checkpoint_dir=None):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    if checkpoint_dir:
-        state = Checkpoint.from_directory(checkpoint_dir).to_dict()
+    if session.get_checkpoint():
+        state = session.get_checkpoint().to_dict()
+    # if checkpoint_dir:
+    #     state = Checkpoint.from_directory(checkpoint_dir).to_dict()
     else:
         state = {"it": 0}
 
@@ -448,7 +449,7 @@ def test_tuner_restore_latest_available_checkpoint(
 
 
 @pytest.mark.parametrize("retry_num", [0, 1])
-def test_retore_retry(ray_start_4_cpus, retry_num):
+def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
     """Test retrying restore on a trial level."""
 
     class MockTrainable(Trainable):
@@ -483,25 +484,30 @@ def test_retore_retry(ray_start_4_cpus, retry_num):
             with open(checkpoint_path) as f:
                 self.idx = json.loads(f.read())["idx"]
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = str(retry_num)
-        tag_file = os.path.join(temp_dir, "tag")
-        tuner = Tuner(
-            MockTrainable,
-            run_config=RunConfig(
-                name="tryout_restore",
-                stop={"training_iteration": 5},
-                failure_config=FailureConfig(max_failures=1),
-                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            ),
-            param_space={"tag_file_path": tag_file},
-        )
-        results = tuner.fit()
-        [result] = list(results)
-        if retry_num == 1:
-            assert result.metrics["score"] == 5
-        else:
-            assert result.metrics["score"] == 2
+    # Set environment variable just for this test
+    old_retry_num = os.environ.get("TUNE_RESTORE_RETRY_NUM", "0")
+    os.environ["TUNE_RESTORE_RETRY_NUM"] = str(retry_num)
+
+    tag_file = os.path.join(tmpdir, "tag")
+    tuner = Tuner(
+        MockTrainable,
+        run_config=RunConfig(
+            name="tryout_restore",
+            stop={"training_iteration": 5},
+            local_dir=str(tmpdir),
+            failure_config=FailureConfig(max_failures=1),
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        ),
+        param_space={"tag_file_path": tag_file},
+    )
+    results = tuner.fit()
+    [result] = list(results)
+    if retry_num == 1:
+        assert result.metrics["score"] == 5
+    else:
+        assert result.metrics["score"] == 2
+
+    os.environ["TUNE_RESTORE_RETRY_NUM"] = old_retry_num
 
 
 def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
