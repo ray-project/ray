@@ -113,7 +113,6 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
     # Check we return the right status code and error message on failure.
     response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
-    assert response.status_code == 500, response
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
@@ -121,7 +120,6 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
     # Check we return the right status code and error message on failure.
     response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
-    assert response.status_code == 500, response
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
