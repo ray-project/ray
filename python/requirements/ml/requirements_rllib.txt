@@ -4,8 +4,10 @@
 # ---------------------
 # Atari
 autorom[accept-rom-license]
-gym>=0.21.0; python_version >= '3.7'
-gym==0.19.0; python_version < '3.7'
+gymnasium[atari]
+gym==0.26.2
+#gym>=0.21.0; python_version >= '3.7'
+#gym==0.19.0; python_version < '3.7'
 ale-py==0.7.5; python_version >= '3.7'
 ale-py==0.7.1; python_version < '3.7'
 # Kaggle envs.
