@@ -907,7 +907,7 @@ class Trial:
         state["_default_result_or_future"] = None
 
         # Save persistent trial checkpoint data (with relative paths)
-        # Upon load, the path should be constructed again relative to the the
+        # Upon load, the path should be constructed again relative to the
         # `logdir`, which might be updated.
         checkpoint_states = []
         for checkpoint in self.get_trial_checkpoints():
@@ -932,22 +932,23 @@ class Trial:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         # Load the checkpoint states
-        checkpoint_states = state.pop("__checkpoints")
+        checkpoint_states = state.pop("__checkpoints", None)
 
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
 
-        for checkpoint, checkpoint_state in zip(
-            self.get_trial_checkpoints(), checkpoint_states
-        ):
-            # Reconstruct the checkpoint dir using the (possibly updated)
-            # trial logdir and the relative checkpoint directory.
-            checkpoint_state["dir_or_data"] = os.path.join(
-                self.logdir, checkpoint_state.pop("__relative_dir")
-            )
-            checkpoint.__dict__.update(checkpoint_state)
+        if checkpoint_states:
+            for checkpoint, checkpoint_state in zip(
+                self.get_trial_checkpoints(), checkpoint_states
+            ):
+                # Reconstruct the checkpoint dir using the (possibly updated)
+                # trial logdir and the relative checkpoint directory.
+                checkpoint_state["dir_or_data"] = os.path.join(
+                    self.logdir, checkpoint_state.pop("__relative_dir")
+                )
+                checkpoint.__dict__.update(checkpoint_state)
 
         if not self.stub:
             validate_trainable(self.trainable_name)
