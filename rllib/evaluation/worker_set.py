@@ -236,12 +236,15 @@ class WorkerSet:
         Returns:
             A dict mapping from policy ids to spaces.
         """
+        # Get ID of the first remote worker.
+        worker_id = next(iter(self.__worker_manager.actors().keys()))
+
         # Try to figure out spaces from the first remote worker.
         remote_spaces = self.foreach_worker(
             lambda worker: worker.foreach_policy(
                 lambda p, pid: (pid, p.observation_space, p.action_space)
             ),
-            remote_worker_indices=[0],
+            remote_worker_indices=[worker_id],
             local_worker=False,
         )
         if not remote_spaces:
@@ -259,7 +262,7 @@ class WorkerSet:
             lambda worker: worker.foreach_env(
                 lambda env: (env.observation_space, env.action_space)
             ),
-            remote_worker_indices=[0],
+            remote_worker_indices=[worker_id],
             local_worker=False,
         )
         if env_spaces:
