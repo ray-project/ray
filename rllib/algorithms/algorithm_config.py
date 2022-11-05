@@ -502,7 +502,7 @@ class AlgorithmConfig:
         #  directly anymore.
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def validate(self, algo_class=None) -> None:
+    def validate(self) -> None:
         """Validates all values in this config.
 
         Note: This should NOT include immediate checks on single value
@@ -1791,10 +1791,10 @@ class AlgorithmConfig:
     def experimental(
         self,
         *,
-        _tf_policy_handles_more_than_one_loss=None,
-        _disable_preprocessor_api=None,
-        _disable_action_flattening=None,
-        _disable_execution_plan_api=None,
+        _tf_policy_handles_more_than_one_loss=NotProvided,
+        _disable_preprocessor_api=NotProvided,
+        _disable_action_flattening=NotProvided,
+        _disable_execution_plan_api=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 

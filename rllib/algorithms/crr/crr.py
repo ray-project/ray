@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
