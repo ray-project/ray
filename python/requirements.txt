@@ -39,8 +39,8 @@ kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
-gymnasium
-gym<0.24.1,>=0.21.0
+gymnasium==0.26.3
+gym==0.26.2
 opencensus
 fsspec
 dm_tree

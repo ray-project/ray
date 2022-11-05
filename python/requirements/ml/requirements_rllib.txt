@@ -4,7 +4,7 @@
 # ---------------------
 # Atari
 autorom[accept-rom-license]
-gymnasium[atari]
+gymnasium[atari]==0.26.3
 # TODO(sven): Remove gym at some point (replaced by gymnasium). Only kept for backward compat tests.
 gym>=0.21.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
