@@ -108,13 +108,13 @@ class MARWILConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        beta: Optional[float] = None,
-        bc_logstd_coeff: Optional[float] = None,
-        moving_average_sqd_adv_norm_update_rate: Optional[float] = None,
-        moving_average_sqd_adv_norm_start: Optional[float] = None,
-        use_gae: Optional[bool] = True,
-        vf_coeff: Optional[float] = None,
-        grad_clip: Optional[float] = None,
+        beta: Optional[float] = NotProvided,
+        bc_logstd_coeff: Optional[float] = NotProvided,
+        moving_average_sqd_adv_norm_update_rate: Optional[float] = NotProvided,
+        moving_average_sqd_adv_norm_start: Optional[float] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        vf_coeff: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the training related configuration.
@@ -127,7 +127,7 @@ class MARWILConfig(AlgorithmConfig):
                 entropy for exploration.
             moving_average_sqd_adv_norm_start: Starting value for the
                 squared moving average advantage norm (c^2).
-            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+            use_gae: If True, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
                 case an input line ends with a non-terminal timestep.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
