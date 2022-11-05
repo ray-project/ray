@@ -39,6 +39,7 @@ kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
+gymnasium[atari]
 gym<0.24.1,>=0.21.0
 opencensus
 fsspec
