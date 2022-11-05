@@ -73,11 +73,12 @@ def check_env(env: EnvType) -> None:
                 "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
                 f"ExternalEnv, but instead is of type {type(env)}."
             )
+
         if isinstance(env, MultiAgentEnv):
             check_multiagent_environments(env)
         elif isinstance(env, VectorEnv):
             check_vector_env(env)
-        elif isinstance(env, gym.Env):
+        elif isinstance(env, gym.Env) or old_gym and isinstance(env, old_gym.Env):
             check_gym_environments(env)
         elif isinstance(env, BaseEnv):
             check_base_env(env)
