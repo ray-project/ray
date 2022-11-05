@@ -9,7 +9,8 @@ import time
 from typing import Dict, List, Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
@@ -114,15 +115,15 @@ class ESConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        action_noise_std: Optional[float] = None,
-        l2_coeff: Optional[float] = None,
-        noise_stdev: Optional[int] = None,
-        episodes_per_batch: Optional[int] = None,
-        eval_prob: Optional[float] = None,
-        # return_proc_mode: Optional[int] = None,
-        stepsize: Optional[float] = None,
-        noise_size: Optional[int] = None,
-        report_length: Optional[int] = None,
+        action_noise_std: Optional[float] = NotProvided,
+        l2_coeff: Optional[float] = NotProvided,
+        noise_stdev: Optional[int] = NotProvided,
+        episodes_per_batch: Optional[int] = NotProvided,
+        eval_prob: Optional[float] = NotProvided,
+        # return_proc_mode: Optional[int] = NotProvided,
+        stepsize: Optional[float] = NotProvided,
+        noise_size: Optional[int] = NotProvided,
+        report_length: Optional[int] = NotProvided,
         **kwargs,
     ) -> "ESConfig":
         """Sets the training related configuration.
@@ -147,25 +148,25 @@ class ESConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if action_noise_std is not None:
+        if action_noise_std is not NotProvided:
             self.action_noise_std = action_noise_std
-        if l2_coeff is not None:
+        if l2_coeff is not NotProvided:
             self.l2_coeff = l2_coeff
-        if noise_stdev is not None:
+        if noise_stdev is not NotProvided:
             self.noise_stdev = noise_stdev
-        if episodes_per_batch is not None:
+        if episodes_per_batch is not NotProvided:
             self.episodes_per_batch = episodes_per_batch
-        if eval_prob is not None:
+        if eval_prob is not NotProvided:
             self.eval_prob = eval_prob
         # Only supported return_proc mode is "centered_rank" right now. No need to
         # configure this.
-        # if return_proc_mode is not None:
+        # if return_proc_mode is not NotProvided:
         #    self.return_proc_mode = return_proc_mode
-        if stepsize is not None:
+        if stepsize is not NotProvided:
             self.stepsize = stepsize
-        if noise_size is not None:
+        if noise_size is not NotProvided:
             self.noise_size = noise_size
-        if report_length is not None:
+        if report_length is not NotProvided:
             self.report_length = report_length
 
         return self

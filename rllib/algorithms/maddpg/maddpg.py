@@ -12,7 +12,7 @@ and the README for how to run with the multi-agent particle envs.
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -108,25 +108,25 @@ class MADDPGConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        agent_id: Optional[str] = None,
-        use_local_critic: Optional[bool] = None,
-        use_state_preprocessor: Optional[bool] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        n_step: Optional[int] = None,
-        good_policy: Optional[str] = None,
-        adv_policy: Optional[str] = None,
-        replay_buffer_config: Optional[dict] = None,
-        training_intensity: Optional[float] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
-        critic_lr: Optional[float] = None,
-        actor_lr: Optional[float] = None,
-        target_network_update_freq: Optional[int] = None,
-        tau: Optional[float] = None,
-        actor_feature_reg: Optional[float] = None,
-        grad_norm_clipping: Optional[float] = None,
+        agent_id: Optional[str] = NotProvided,
+        use_local_critic: Optional[bool] = NotProvided,
+        use_state_preprocessor: Optional[bool] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        good_policy: Optional[str] = NotProvided,
+        adv_policy: Optional[str] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        actor_feature_reg: Optional[float] = NotProvided,
+        grad_norm_clipping: Optional[float] = NotProvided,
         **kwargs,
     ) -> "MADDPGConfig":
         """Sets the training related configuration.
@@ -210,45 +210,45 @@ class MADDPGConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if agent_id is not None:
+        if agent_id is not NotProvided:
             self.agent_id = agent_id
-        if use_local_critic is not None:
+        if use_local_critic is not NotProvided:
             self.use_local_critic = use_local_critic
-        if use_state_preprocessor is not None:
+        if use_state_preprocessor is not NotProvided:
             self.use_state_preprocessor = use_state_preprocessor
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if good_policy is not None:
+        if good_policy is not NotProvided:
             self.good_policy = good_policy
-        if adv_policy is not None:
+        if adv_policy is not NotProvided:
             self.adv_policy = adv_policy
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
-        if critic_lr is not None:
+        if critic_lr is not NotProvided:
             self.critic_lr = critic_lr
-        if actor_lr is not None:
+        if actor_lr is not NotProvided:
             self.actor_lr = actor_lr
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if actor_feature_reg is not None:
+        if actor_feature_reg is not NotProvided:
             self.actor_feature_reg = actor_feature_reg
-        if grad_norm_clipping is not None:
+        if grad_norm_clipping is not NotProvided:
             self.grad_norm_clipping = grad_norm_clipping
 
         return self

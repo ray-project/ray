@@ -12,7 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
@@ -117,14 +117,14 @@ class APPOConfig(ImpalaConfig):
     def training(
         self,
         *,
-        vtrace: Optional[bool] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        use_kl_loss: Optional[bool] = None,
-        kl_coeff: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        vtrace: Optional[bool] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        use_kl_loss: Optional[bool] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -150,21 +150,21 @@ class APPOConfig(ImpalaConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if vtrace is not None:
+        if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if use_critic is not None:
+        if use_critic is not NotProvided:
             self.use_critic = use_critic
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if use_kl_loss is not None:
+        if use_kl_loss is not NotProvided:
             self.use_kl_loss = use_kl_loss
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
 
         return self
