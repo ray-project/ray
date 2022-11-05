@@ -1,6 +1,6 @@
 from typing import Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
@@ -145,15 +145,16 @@ class QMixConfig(SimpleQConfig):
     def training(
         self,
         *,
-        mixer: Optional[str] = None,
-        mixing_embed_dim: Optional[int] = None,
-        double_q: Optional[bool] = None,
-        target_network_update_freq: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
-        optim_alpha: Optional[float] = None,
-        optim_eps: Optional[float] = None,
-        grad_norm_clipping: Optional[float] = None,
-        grad_clip: Optional[float] = None,
+        mixer: Optional[str] = NotProvided,
+        mixing_embed_dim: Optional[int] = NotProvided,
+        double_q: Optional[bool] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        optim_alpha: Optional[float] = NotProvided,
+        optim_eps: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        # Deprecated args.
+        grad_norm_clipping=DEPRECATED_VALUE,
         **kwargs,
     ) -> "QMixConfig":
         """Sets the training related configuration.
@@ -177,7 +178,7 @@ class QMixConfig(SimpleQConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if grad_norm_clipping is not None:
+        if grad_norm_clipping != DEPRECATED_VALUE:
             deprecation_warning(
                 old="grad_norm_clipping",
                 new="grad_clip",
@@ -190,21 +191,21 @@ class QMixConfig(SimpleQConfig):
             )
             grad_clip = grad_norm_clipping
 
-        if mixer is not None:
+        if mixer is not NotProvided:
             self.mixer = mixer
-        if mixing_embed_dim is not None:
+        if mixing_embed_dim is not NotProvided:
             self.mixing_embed_dim = mixing_embed_dim
-        if double_q is not None:
+        if double_q is not NotProvided:
             self.double_q = double_q
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
-        if optim_alpha is not None:
+        if optim_alpha is not NotProvided:
             self.optim_alpha = optim_alpha
-        if optim_eps is not None:
+        if optim_eps is not NotProvided:
             self.optim_eps = optim_eps
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
 
         return self
