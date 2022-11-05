@@ -1,7 +1,7 @@
 import logging
 from typing import Type, Dict, Any, Optional, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -109,23 +109,23 @@ class SACConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        twin_q: Optional[bool] = None,
-        q_model_config: Optional[Dict[str, Any]] = None,
-        policy_model_config: Optional[Dict[str, Any]] = None,
-        tau: Optional[float] = None,
-        initial_alpha: Optional[float] = None,
-        target_entropy: Optional[Union[str, float]] = None,
-        n_step: Optional[int] = None,
-        store_buffer_in_checkpoints: Optional[bool] = None,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        training_intensity: Optional[float] = None,
-        clip_actions: Optional[bool] = None,
-        grad_clip: Optional[float] = None,
-        optimization_config: Optional[Dict[str, Any]] = None,
-        target_network_update_freq: Optional[int] = None,
-        _deterministic_loss: Optional[bool] = None,
-        _use_beta_distribution: Optional[bool] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        twin_q: Optional[bool] = NotProvided,
+        q_model_config: Optional[Dict[str, Any]] = NotProvided,
+        policy_model_config: Optional[Dict[str, Any]] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        initial_alpha: Optional[float] = NotProvided,
+        target_entropy: Optional[Union[str, float]] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        store_buffer_in_checkpoints: Optional[bool] = NotProvided,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        clip_actions: Optional[bool] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        optimization_config: Optional[Dict[str, Any]] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        _deterministic_loss: Optional[bool] = NotProvided,
+        _use_beta_distribution: Optional[bool] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "SACConfig":
         """Sets the training related configuration.
@@ -237,23 +237,23 @@ class SACConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if q_model_config is not None:
+        if q_model_config is not NotProvided:
             self.q_model_config.update(q_model_config)
-        if policy_model_config is not None:
+        if policy_model_config is not NotProvided:
             self.policy_model_config.update(policy_model_config)
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if initial_alpha is not None:
+        if initial_alpha is not NotProvided:
             self.initial_alpha = initial_alpha
-        if target_entropy is not None:
+        if target_entropy is not NotProvided:
             self.target_entropy = target_entropy
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if store_buffer_in_checkpoints is not None:
+        if store_buffer_in_checkpoints is not NotProvided:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_replay_buffer_config = deep_update(
@@ -264,21 +264,21 @@ class SACConfig(AlgorithmConfig):
                 ["replay_buffer_config"],
             )
             self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if clip_actions is not None:
+        if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if optimization_config is not None:
+        if optimization_config is not NotProvided:
             self.optimization = optimization_config
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if _deterministic_loss is not None:
+        if _deterministic_loss is not NotProvided:
             self._deterministic_loss = _deterministic_loss
-        if _use_beta_distribution is not None:
+        if _use_beta_distribution is not NotProvided:
             self._use_beta_distribution = _use_beta_distribution
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )

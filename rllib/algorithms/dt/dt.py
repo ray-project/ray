@@ -3,7 +3,8 @@ import math
 from typing import List, Optional, Type, Tuple, Dict, Any, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
@@ -92,18 +93,18 @@ class DTConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        replay_buffer_config: Optional[Dict[str, Any]] = None,
-        embed_dim: Optional[int] = None,
-        num_layers: Optional[int] = None,
-        num_heads: Optional[int] = None,
-        embed_pdrop: Optional[float] = None,
-        resid_pdrop: Optional[float] = None,
-        attn_pdrop: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        loss_coef_actions: Optional[float] = None,
-        loss_coef_obs: Optional[float] = None,
-        loss_coef_returns_to_go: Optional[float] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
+        embed_dim: Optional[int] = NotProvided,
+        num_layers: Optional[int] = NotProvided,
+        num_heads: Optional[int] = NotProvided,
+        embed_pdrop: Optional[float] = NotProvided,
+        resid_pdrop: Optional[float] = NotProvided,
+        attn_pdrop: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        loss_coef_actions: Optional[float] = NotProvided,
+        loss_coef_obs: Optional[float] = NotProvided,
+        loss_coef_returns_to_go: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -168,7 +169,7 @@ class DTConfig(AlgorithmConfig):
             This updated DTConfig object.
         """
         super().training(**kwargs)
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_replay_buffer_config = deep_update(
@@ -179,27 +180,27 @@ class DTConfig(AlgorithmConfig):
                 ["replay_buffer_config"],
             )
             self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
-        if embed_dim is not None:
+        if embed_dim is not NotProvided:
             self.embed_dim = embed_dim
-        if num_layers is not None:
+        if num_layers is not NotProvided:
             self.num_layers = num_layers
-        if num_heads is not None:
+        if num_heads is not NotProvided:
             self.num_heads = num_heads
-        if embed_pdrop is not None:
+        if embed_pdrop is not NotProvided:
             self.embed_pdrop = embed_pdrop
-        if resid_pdrop is not None:
+        if resid_pdrop is not NotProvided:
             self.resid_pdrop = resid_pdrop
-        if attn_pdrop is not None:
+        if attn_pdrop is not NotProvided:
             self.attn_pdrop = attn_pdrop
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if loss_coef_actions is not None:
+        if loss_coef_actions is not NotProvided:
             self.loss_coef_actions = loss_coef_actions
-        if loss_coef_obs is not None:
+        if loss_coef_obs is not NotProvided:
             self.loss_coef_obs = loss_coef_obs
-        if loss_coef_returns_to_go is not None:
+        if loss_coef_returns_to_go is not NotProvided:
             self.loss_coef_returns_to_go = loss_coef_returns_to_go
 
         return self
@@ -207,7 +208,7 @@ class DTConfig(AlgorithmConfig):
     def evaluation(
         self,
         *,
-        target_return: Optional[float] = None,
+        target_return: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -221,7 +222,7 @@ class DTConfig(AlgorithmConfig):
             This updated DTConfig object.
         """
         super().evaluation(**kwargs)
-        if target_return is not None:
+        if target_return is not NotProvided:
             self.target_return = target_return
 
         return self

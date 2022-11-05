@@ -38,9 +38,8 @@ class TestDDPG(unittest.TestCase):
             ddpg.DDPGConfig()
             .training(num_steps_sampled_before_learning_starts=0)
             .rollouts(num_rollout_workers=0, num_envs_per_worker=2)
+            .exploration(exploration_config={"random_timesteps": 100})
         )
-        explore = config.exploration_config.update({"random_timesteps": 100})
-        config.exploration(exploration_config=explore)
 
         num_iterations = 1
 
@@ -94,8 +93,8 @@ class TestDDPG(unittest.TestCase):
             algo.stop()
 
             # Check randomness at beginning.
-            config.exploration_config.update(
-                {
+            config.exploration(
+                exploration_config={
                     # Act randomly at beginning ...
                     "random_timesteps": 50,
                     # Then act very closely to deterministic actions thereafter.
@@ -104,7 +103,6 @@ class TestDDPG(unittest.TestCase):
                     "final_scale": 0.001,
                 }
             )
-
             algo = config.build()
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = algo.compute_single_action(obs, explore=False)

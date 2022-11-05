@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
@@ -66,20 +67,20 @@ class CRRConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        weight_type: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_weight: Optional[float] = None,
-        advantage_type: Optional[str] = None,
-        n_action_sample: Optional[int] = None,
-        twin_q: Optional[bool] = None,
-        target_network_update_freq: Optional[int] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        tau: Optional[float] = None,
-        td_error_loss_fn: Optional[str] = None,
-        categorical_distribution_temperature: Optional[float] = None,
+        weight_type: Optional[str] = NotProvided,
+        temperature: Optional[float] = NotProvided,
+        max_weight: Optional[float] = NotProvided,
+        advantage_type: Optional[str] = NotProvided,
+        n_action_sample: Optional[int] = NotProvided,
+        twin_q: Optional[bool] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        td_error_loss_fn: Optional[str] = NotProvided,
+        categorical_distribution_temperature: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CRRConfig":
 
@@ -134,37 +135,37 @@ class CRRConfig(AlgorithmConfig):
         """
         super().training(**kwargs)
 
-        if weight_type is not None:
+        if weight_type is not NotProvided:
             self.weight_type = weight_type
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if max_weight is not None:
+        if max_weight is not NotProvided:
             self.max_weight = max_weight
-        if advantage_type is not None:
+        if advantage_type is not NotProvided:
             self.advantage_type = advantage_type
-        if n_action_sample is not None:
+        if n_action_sample is not NotProvided:
             self.n_action_sample = n_action_sample
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if td_error_loss_fn is not None:
+        if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
             assert self.td_error_loss_fn in [
                 "huber",
                 "mse",
             ], "td_error_loss_fn must be 'huber' or 'mse'."
-        if categorical_distribution_temperature is not None:
+        if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )

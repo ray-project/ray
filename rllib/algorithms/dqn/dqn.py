@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional, Type, Callable
 import numpy as np
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
@@ -164,22 +164,22 @@ class DQNConfig(SimpleQConfig):
     def training(
         self,
         *,
-        num_atoms: Optional[int] = None,
-        v_min: Optional[float] = None,
-        v_max: Optional[float] = None,
-        noisy: Optional[bool] = None,
-        sigma0: Optional[float] = None,
-        dueling: Optional[bool] = None,
-        hiddens: Optional[int] = None,
-        double_q: Optional[bool] = None,
-        n_step: Optional[int] = None,
+        num_atoms: Optional[int] = NotProvided,
+        v_min: Optional[float] = NotProvided,
+        v_max: Optional[float] = NotProvided,
+        noisy: Optional[bool] = NotProvided,
+        sigma0: Optional[float] = NotProvided,
+        dueling: Optional[bool] = NotProvided,
+        hiddens: Optional[int] = NotProvided,
+        double_q: Optional[bool] = NotProvided,
+        n_step: Optional[int] = NotProvided,
         before_learn_on_batch: Callable[
             [Type[MultiAgentBatch], List[Type[Policy]], Type[int]],
             Type[MultiAgentBatch],
-        ] = None,
-        training_intensity: Optional[float] = None,
-        td_error_loss_fn: Optional[str] = None,
-        categorical_distribution_temperature: Optional[float] = None,
+        ] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        td_error_loss_fn: Optional[str] = NotProvided,
+        categorical_distribution_temperature: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
@@ -264,35 +264,35 @@ class DQNConfig(SimpleQConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if num_atoms is not None:
+        if num_atoms is not NotProvided:
             self.num_atoms = num_atoms
-        if v_min is not None:
+        if v_min is not NotProvided:
             self.v_min = v_min
-        if v_max is not None:
+        if v_max is not NotProvided:
             self.v_max = v_max
-        if noisy is not None:
+        if noisy is not NotProvided:
             self.noisy = noisy
-        if sigma0 is not None:
+        if sigma0 is not NotProvided:
             self.sigma0 = sigma0
-        if dueling is not None:
+        if dueling is not NotProvided:
             self.dueling = dueling
-        if hiddens is not None:
+        if hiddens is not NotProvided:
             self.hiddens = hiddens
-        if double_q is not None:
+        if double_q is not NotProvided:
             self.double_q = double_q
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if before_learn_on_batch is not None:
+        if before_learn_on_batch is not NotProvided:
             self.before_learn_on_batch = before_learn_on_batch
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if td_error_loss_fn is not None:
+        if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
             assert self.td_error_loss_fn in [
                 "huber",
                 "mse",
             ], "td_error_loss_fn must be 'huber' or 'mse'."
-        if categorical_distribution_temperature is not None:
+        if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )

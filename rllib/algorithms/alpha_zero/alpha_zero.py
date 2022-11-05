@@ -3,7 +3,7 @@ from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -151,15 +151,15 @@ class AlphaZeroConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        sgd_minibatch_size: Optional[int] = None,
-        shuffle_sequences: Optional[bool] = None,
-        num_sgd_iter: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        vf_share_layers: Optional[bool] = None,
-        mcts_config: Optional[dict] = None,
-        ranked_rewards: Optional[dict] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        sgd_minibatch_size: Optional[int] = NotProvided,
+        shuffle_sequences: Optional[bool] = NotProvided,
+        num_sgd_iter: Optional[int] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        vf_share_layers: Optional[bool] = NotProvided,
+        mcts_config: Optional[dict] = NotProvided,
+        ranked_rewards: Optional[dict] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "AlphaZeroConfig":
         """Sets the training related configuration.
@@ -223,23 +223,23 @@ class AlphaZeroConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if sgd_minibatch_size is not None:
+        if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
-        if shuffle_sequences is not None:
+        if shuffle_sequences is not NotProvided:
             self.shuffle_sequences = shuffle_sequences
-        if num_sgd_iter is not None:
+        if num_sgd_iter is not NotProvided:
             self.num_sgd_iter = num_sgd_iter
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if vf_share_layers is not None:
+        if vf_share_layers is not NotProvided:
             self.vf_share_layers = vf_share_layers
-        if mcts_config is not None:
+        if mcts_config is not NotProvided:
             self.mcts_config = mcts_config
-        if ranked_rewards is not None:
+        if ranked_rewards is not NotProvided:
             self.ranked_rewards.update(ranked_rewards)
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )

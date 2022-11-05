@@ -21,7 +21,7 @@ import ray
 from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
 from ray.rllib.algorithms import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -199,10 +199,10 @@ class ApexDQNConfig(DQNConfig):
     def training(
         self,
         *,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_replay_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_replay_manager: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
     ) -> "ApexDQNConfig":
         """Sets the training related configuration.
@@ -305,17 +305,17 @@ class ApexDQNConfig(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_replay_worker is not None:
+        if max_requests_in_flight_per_replay_worker is not NotProvided:
             self.max_requests_in_flight_per_replay_worker = (
                 max_requests_in_flight_per_replay_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_replay_manager is not None:
+        if timeout_s_replay_manager is not NotProvided:
             self.timeout_s_replay_manager = timeout_s_replay_manager
 
         return self

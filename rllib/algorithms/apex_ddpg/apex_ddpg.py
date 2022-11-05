@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
@@ -109,10 +109,10 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_replay_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_replay_manager: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
     ) -> "ApexDDPGConfig":
         """Sets the training related configuration.
@@ -152,17 +152,17 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_replay_worker is not None:
+        if max_requests_in_flight_per_replay_worker is not NotProvided:
             self.max_requests_in_flight_per_replay_worker = (
                 max_requests_in_flight_per_replay_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_replay_manager is not None:
+        if timeout_s_replay_manager is not NotProvided:
             self.timeout_s_replay_manager = timeout_s_replay_manager
 
         return self

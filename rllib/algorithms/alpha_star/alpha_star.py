@@ -11,7 +11,7 @@ import ray
 import ray.rllib.algorithms.appo.appo as appo
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -150,14 +150,14 @@ class AlphaStarConfig(appo.APPOConfig):
     def training(
         self,
         *,
-        replay_buffer_capacity: Optional[int] = None,
-        replay_buffer_replay_ratio: Optional[float] = None,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_learner_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_learner_manager: Optional[float] = None,
-        league_builder_config: Optional[Dict[str, Any]] = None,
-        max_num_policies_to_train: Optional[int] = None,
+        replay_buffer_capacity: Optional[int] = NotProvided,
+        replay_buffer_replay_ratio: Optional[float] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_learner_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_learner_manager: Optional[float] = NotProvided,
+        league_builder_config: Optional[Dict[str, Any]] = NotProvided,
+        max_num_policies_to_train: Optional[int] = NotProvided,
         **kwargs,
     ) -> "AlphaStarConfig":
         """Sets the training related configuration.
@@ -209,15 +209,15 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
-        if replay_buffer_capacity is not None:
+        if replay_buffer_capacity is not NotProvided:
             self.replay_buffer_capacity = replay_buffer_capacity
-        if replay_buffer_replay_ratio is not None:
+        if replay_buffer_replay_ratio is not NotProvided:
             self.replay_buffer_replay_ratio = replay_buffer_replay_ratio
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_learner_manager is not None:
+        if timeout_s_learner_manager is not NotProvided:
             self.timeout_s_learner_manager = timeout_s_learner_manager
-        if league_builder_config is not None:
+        if league_builder_config is not NotProvided:
             # Override entire `league_builder_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_league_builder_config = deep_update(
@@ -230,13 +230,13 @@ class AlphaStarConfig(appo.APPOConfig):
             self.league_builder_config = new_league_builder_config[
                 "league_builder_config"
             ]
-        if max_num_policies_to_train is not None:
+        if max_num_policies_to_train is not NotProvided:
             self.max_num_policies_to_train = max_num_policies_to_train
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_learner_worker is not None:
+        if max_requests_in_flight_per_learner_worker is not NotProvided:
             self.max_requests_in_flight_per_learner_worker = (
                 max_requests_in_flight_per_learner_worker
             )

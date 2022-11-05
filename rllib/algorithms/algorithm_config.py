@@ -25,6 +25,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
@@ -43,6 +44,47 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
+
+
+class _NotProvided:
+    """Singleton class to provide a "not provided" value for AlgorithmConfig signatures.
+
+    Using the only instance of this class indicates that the user does NOT wish to
+    change the value of some property.
+
+    Examples:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        >>> config = AlgorithmConfig()
+        >>> # Print out the default learning rate.
+        >>> print(config.lr)
+        ... 0.001
+        >>> # Print out the default `preprocessor_pref`.
+        >>> print(config.preprocessor_pref)
+        ... "deepmind"
+        >>> # Will only set the `preprocessor_pref` property (to None) and leave
+        >>> # all other properties at their default values.
+        >>> config.training(preprocessor_pref=None)
+        >>> config.preprocessor_pref is None
+        ... True
+        >>> # Still the same value (didn't touch it in the call to `.training()`.
+        >>> print(config.lr)
+        ... 0.001
+    """
+
+    class __NotProvided:
+        pass
+
+    instance = None
+
+    def __init__(self):
+        if _NotProvided.instance is None:
+            _NotProvided.instance = _NotProvided.__NotProvided()
+
+
+# Use this object as default values in all method signatures of
+# AlgorithmConfig, indicating that the respective property should NOT be touched
+# in the call.
+NotProvided = _NotProvided()
 
 
 class AlgorithmConfig:
@@ -461,7 +503,7 @@ class AlgorithmConfig:
         #  directly anymore.
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def validate(self, algo_class=None) -> None:
+    def validate(self) -> None:
         """Validates all values in this config.
 
         Note: This should NOT include immediate checks on single value
@@ -469,6 +511,20 @@ class AlgorithmConfig:
         Those simgular, independent checks should instead go directly into their
         respective methods.
         """
+        # Check correct framework settings, and whether configured framework is
+        # installed.
+        _tf1, _tf, _tfv = None, None, None
+        _torch = None
+        if self.framework_str not in {"tf", "tf2"} and self.framework_str != "torch":
+            return
+        elif self.framework_str in {"tf", "tf2"}:
+            _tf1, _tf, _tfv = try_import_tf()
+        else:
+            _torch, _ = try_import_torch()
+
+        self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
+        self._resolve_tf_settings(_tf1, _tfv)
+
         # Check `policies_to_train` for invalid entries.
         if isinstance(self.policies_to_train, (list, set, tuple)):
             for pid in self.policies_to_train:
@@ -639,8 +695,8 @@ class AlgorithmConfig:
     def python_environment(
         self,
         *,
-        extra_python_environs_for_driver: Optional[dict] = None,
-        extra_python_environs_for_worker: Optional[dict] = None,
+        extra_python_environs_for_driver: Optional[dict] = NotProvided,
+        extra_python_environs_for_worker: Optional[dict] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's python environment settings.
 
@@ -653,22 +709,22 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if extra_python_environs_for_driver is not None:
+        if extra_python_environs_for_driver is not NotProvided:
             self.extra_python_environs_for_driver = extra_python_environs_for_driver
-        if extra_python_environs_for_worker is not None:
+        if extra_python_environs_for_worker is not NotProvided:
             self.extra_python_environs_for_worker = extra_python_environs_for_worker
         return self
 
     def resources(
         self,
         *,
-        num_gpus: Optional[Union[float, int]] = None,
-        _fake_gpus: Optional[bool] = None,
-        num_cpus_per_worker: Optional[Union[float, int]] = None,
-        num_gpus_per_worker: Optional[Union[float, int]] = None,
-        num_cpus_for_local_worker: Optional[int] = None,
-        custom_resources_per_worker: Optional[dict] = None,
-        placement_strategy: Optional[str] = None,
+        num_gpus: Optional[Union[float, int]] = NotProvided,
+        _fake_gpus: Optional[bool] = NotProvided,
+        num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
+        num_cpus_for_local_worker: Optional[int] = NotProvided,
+        custom_resources_per_worker: Optional[dict] = NotProvided,
+        placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
@@ -711,31 +767,31 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if num_gpus is not None:
+        if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
-        if _fake_gpus is not None:
+        if _fake_gpus is not NotProvided:
             self._fake_gpus = _fake_gpus
-        if num_cpus_per_worker is not None:
+        if num_cpus_per_worker is not NotProvided:
             self.num_cpus_per_worker = num_cpus_per_worker
-        if num_gpus_per_worker is not None:
+        if num_gpus_per_worker is not NotProvided:
             self.num_gpus_per_worker = num_gpus_per_worker
-        if num_cpus_for_local_worker is not None:
+        if num_cpus_for_local_worker is not NotProvided:
             self.num_cpus_for_local_worker = num_cpus_for_local_worker
-        if custom_resources_per_worker is not None:
+        if custom_resources_per_worker is not NotProvided:
             self.custom_resources_per_worker = custom_resources_per_worker
-        if placement_strategy is not None:
+        if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
 
         return self
 
     def framework(
         self,
-        framework: Optional[str] = None,
+        framework: Optional[str] = NotProvided,
         *,
-        eager_tracing: Optional[bool] = None,
-        eager_max_retraces: Optional[int] = None,
-        tf_session_args: Optional[Dict[str, Any]] = None,
-        local_tf_session_args: Optional[Dict[str, Any]] = None,
+        eager_tracing: Optional[bool] = NotProvided,
+        eager_max_retraces: Optional[int] = NotProvided,
+        tf_session_args: Optional[Dict[str, Any]] = NotProvided,
+        local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -760,7 +816,7 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if framework is not None:
+        if framework is not NotProvided:
             if framework == "tfe":
                 deprecation_warning(
                     old="AlgorithmConfig.framework('tfe')",
@@ -768,30 +824,32 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.framework_str = framework
-        if eager_tracing is not None:
+        if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
-        if eager_max_retraces is not None:
+        if eager_max_retraces is not NotProvided:
             self.eager_max_retraces = eager_max_retraces
-        if tf_session_args is not None:
+        if tf_session_args is not NotProvided:
             self.tf_session_args = tf_session_args
-        if local_tf_session_args is not None:
+        if local_tf_session_args is not NotProvided:
             self.local_tf_session_args = local_tf_session_args
 
         return self
 
     def environment(
         self,
-        env: Optional[Union[str, EnvType]] = None,
+        env: Optional[Union[str, EnvType]] = NotProvided,
         *,
-        env_config: Optional[EnvConfigDict] = None,
-        observation_space: Optional[gym.spaces.Space] = None,
-        action_space: Optional[gym.spaces.Space] = None,
-        env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = None,
-        render_env: Optional[bool] = None,
-        clip_rewards: Optional[Union[bool, float]] = None,
-        normalize_actions: Optional[bool] = None,
-        clip_actions: Optional[bool] = None,
-        disable_env_checking: Optional[bool] = None,
+        env_config: Optional[EnvConfigDict] = NotProvided,
+        observation_space: Optional[gym.spaces.Space] = NotProvided,
+        action_space: Optional[gym.spaces.Space] = NotProvided,
+        env_task_fn: Optional[
+            Callable[[ResultDict, EnvType, EnvContext], Any]
+        ] = NotProvided,
+        render_env: Optional[bool] = NotProvided,
+        clip_rewards: Optional[Union[bool, float]] = NotProvided,
+        normalize_actions: Optional[bool] = NotProvided,
+        clip_actions: Optional[bool] = NotProvided,
+        disable_env_checking: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -836,29 +894,29 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if env is not None:
+        if env is not NotProvided:
             self.env = env
-        if env_config is not None:
+        if env_config is not NotProvided:
             deep_update(
                 self.env_config,
                 env_config,
                 True,
             )
-        if observation_space is not None:
+        if observation_space is not NotProvided:
             self.observation_space = observation_space
-        if action_space is not None:
+        if action_space is not NotProvided:
             self.action_space = action_space
-        if env_task_fn is not None:
+        if env_task_fn is not NotProvided:
             self.env_task_fn = env_task_fn
-        if render_env is not None:
+        if render_env is not NotProvided:
             self.render_env = render_env
-        if clip_rewards is not None:
+        if clip_rewards is not NotProvided:
             self.clip_rewards = clip_rewards
-        if normalize_actions is not None:
+        if normalize_actions is not NotProvided:
             self.normalize_actions = normalize_actions
-        if clip_actions is not None:
+        if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
-        if disable_env_checking is not None:
+        if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
 
         return self
@@ -866,30 +924,30 @@ class AlgorithmConfig:
     def rollouts(
         self,
         *,
-        num_rollout_workers: Optional[int] = None,
-        num_envs_per_worker: Optional[int] = None,
-        create_env_on_local_worker: Optional[bool] = None,
-        sample_collector: Optional[Type[SampleCollector]] = None,
-        sample_async: Optional[bool] = None,
-        enable_connectors: Optional[bool] = None,
-        rollout_fragment_length: Optional[Union[int, str]] = None,
-        batch_mode: Optional[str] = None,
-        remote_worker_envs: Optional[bool] = None,
-        remote_env_batch_wait_ms: Optional[float] = None,
-        validate_workers_after_construction: Optional[bool] = None,
-        ignore_worker_failures: Optional[bool] = None,
-        recreate_failed_workers: Optional[bool] = None,
-        restart_failed_sub_environments: Optional[bool] = None,
-        num_consecutive_worker_failures_tolerance: Optional[int] = None,
-        horizon: Optional[int] = None,
-        soft_horizon: Optional[bool] = None,
-        no_done_at_end: Optional[bool] = None,
-        preprocessor_pref: Optional[str] = None,
-        observation_filter: Optional[str] = None,
-        synchronize_filter: Optional[bool] = None,
-        compress_observations: Optional[bool] = None,
-        enable_tf1_exec_eagerly: Optional[bool] = None,
-        sampler_perf_stats_ema_coef: Optional[float] = None,
+        num_rollout_workers: Optional[int] = NotProvided,
+        num_envs_per_worker: Optional[int] = NotProvided,
+        create_env_on_local_worker: Optional[bool] = NotProvided,
+        sample_collector: Optional[Type[SampleCollector]] = NotProvided,
+        sample_async: Optional[bool] = NotProvided,
+        enable_connectors: Optional[bool] = NotProvided,
+        rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
+        batch_mode: Optional[str] = NotProvided,
+        remote_worker_envs: Optional[bool] = NotProvided,
+        remote_env_batch_wait_ms: Optional[float] = NotProvided,
+        validate_workers_after_construction: Optional[bool] = NotProvided,
+        ignore_worker_failures: Optional[bool] = NotProvided,
+        recreate_failed_workers: Optional[bool] = NotProvided,
+        restart_failed_sub_environments: Optional[bool] = NotProvided,
+        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
+        horizon: Optional[int] = NotProvided,
+        soft_horizon: Optional[bool] = NotProvided,
+        no_done_at_end: Optional[bool] = NotProvided,
+        preprocessor_pref: Optional[str] = NotProvided,
+        observation_filter: Optional[str] = NotProvided,
+        synchronize_filter: Optional[bool] = NotProvided,
+        compress_observations: Optional[bool] = NotProvided,
+        enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
+        sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1022,24 +1080,24 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if num_rollout_workers is not None:
+        if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
-        if num_envs_per_worker is not None:
+        if num_envs_per_worker is not NotProvided:
             if num_envs_per_worker <= 0:
                 raise ValueError(
                     f"`num_envs_per_worker` ({num_envs_per_worker}) must be "
                     f"larger than 0!"
                 )
             self.num_envs_per_worker = num_envs_per_worker
-        if sample_collector is not None:
+        if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
-        if create_env_on_local_worker is not None:
+        if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
-        if sample_async is not None:
+        if sample_async is not NotProvided:
             self.sample_async = sample_async
-        if enable_connectors is not None:
+        if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
-        if rollout_fragment_length is not None:
+        if rollout_fragment_length is not NotProvided:
             if not (
                 (
                     isinstance(rollout_fragment_length, int)
@@ -1051,7 +1109,7 @@ class AlgorithmConfig:
             self.rollout_fragment_length = rollout_fragment_length
 
         # Check batching/sample collection settings.
-        if batch_mode is not None:
+        if batch_mode is not NotProvided:
             if batch_mode not in ["truncate_episodes", "complete_episodes"]:
                 raise ValueError(
                     "`config.batch_mode` must be one of [truncate_episodes|"
@@ -1059,53 +1117,53 @@ class AlgorithmConfig:
                 )
             self.batch_mode = batch_mode
 
-        if remote_worker_envs is not None:
+        if remote_worker_envs is not NotProvided:
             self.remote_worker_envs = remote_worker_envs
-        if remote_env_batch_wait_ms is not None:
+        if remote_env_batch_wait_ms is not NotProvided:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
-        if validate_workers_after_construction is not None:
+        if validate_workers_after_construction is not NotProvided:
             self.validate_workers_after_construction = (
                 validate_workers_after_construction
             )
-        if ignore_worker_failures is not None:
+        if ignore_worker_failures is not NotProvided:
             self.ignore_worker_failures = ignore_worker_failures
-        if recreate_failed_workers is not None:
+        if recreate_failed_workers is not NotProvided:
             self.recreate_failed_workers = recreate_failed_workers
-        if restart_failed_sub_environments is not None:
+        if restart_failed_sub_environments is not NotProvided:
             self.restart_failed_sub_environments = restart_failed_sub_environments
-        if num_consecutive_worker_failures_tolerance is not None:
+        if num_consecutive_worker_failures_tolerance is not NotProvided:
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
-        if horizon is not None:
+        if horizon is not NotProvided:
             self.horizon = horizon
-        if soft_horizon is not None:
+        if soft_horizon is not NotProvided:
             self.soft_horizon = soft_horizon
-        if no_done_at_end is not None:
+        if no_done_at_end is not NotProvided:
             self.no_done_at_end = no_done_at_end
-        if preprocessor_pref is not None:
+        if preprocessor_pref is not NotProvided:
             assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
-        if observation_filter is not None:
+        if observation_filter is not NotProvided:
             self.observation_filter = observation_filter
-        if synchronize_filter is not None:
+        if synchronize_filter is not NotProvided:
             self.synchronize_filters = synchronize_filter
-        if compress_observations is not None:
+        if compress_observations is not NotProvided:
             self.compress_observations = compress_observations
-        if enable_tf1_exec_eagerly is not None:
+        if enable_tf1_exec_eagerly is not NotProvided:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
-        if sampler_perf_stats_ema_coef is not None:
+        if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         return self
 
     def training(
         self,
-        gamma: Optional[float] = None,
-        lr: Optional[float] = None,
-        train_batch_size: Optional[int] = None,
-        model: Optional[dict] = None,
-        optimizer: Optional[dict] = None,
+        gamma: Optional[float] = NotProvided,
+        lr: Optional[float] = NotProvided,
+        train_batch_size: Optional[int] = NotProvided,
+        model: Optional[dict] = NotProvided,
+        optimizer: Optional[dict] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1121,13 +1179,13 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if gamma is not None:
+        if gamma is not NotProvided:
             self.gamma = gamma
-        if lr is not None:
+        if lr is not NotProvided:
             self.lr = lr
-        if train_batch_size is not None:
+        if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
-        if model is not None:
+        if model is not NotProvided:
             # Validate prev_a/r settings.
             prev_a_r = model.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
             if prev_a_r != DEPRECATED_VALUE:
@@ -1137,7 +1195,7 @@ class AlgorithmConfig:
                     error=True,
                 )
             self.model.update(model)
-        if optimizer is not None:
+        if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
 
         return self
@@ -1170,8 +1228,8 @@ class AlgorithmConfig:
     def exploration(
         self,
         *,
-        explore: Optional[bool] = None,
-        exploration_config: Optional[dict] = None,
+        explore: Optional[bool] = NotProvided,
+        exploration_config: Optional[dict] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's exploration settings.
 
@@ -1184,9 +1242,9 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if explore is not None:
+        if explore is not NotProvided:
             self.explore = explore
-        if exploration_config is not None:
+        if exploration_config is not NotProvided:
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_exploration_config = deep_update(
@@ -1203,20 +1261,20 @@ class AlgorithmConfig:
     def evaluation(
         self,
         *,
-        evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[Union[int, str]] = None,
-        evaluation_duration_unit: Optional[str] = None,
-        evaluation_sample_timeout_s: Optional[float] = None,
-        evaluation_parallel_to_training: Optional[bool] = None,
+        evaluation_interval: Optional[int] = NotProvided,
+        evaluation_duration: Optional[Union[int, str]] = NotProvided,
+        evaluation_duration_unit: Optional[str] = NotProvided,
+        evaluation_sample_timeout_s: Optional[float] = NotProvided,
+        evaluation_parallel_to_training: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
-        ] = None,
-        off_policy_estimation_methods: Optional[Dict] = None,
-        ope_split_batch_by_episode: Optional[bool] = None,
-        evaluation_num_workers: Optional[int] = None,
-        custom_evaluation_function: Optional[Callable] = None,
-        always_attach_evaluation_results: Optional[bool] = None,
-        enable_async_evaluation: Optional[bool] = None,
+        ] = NotProvided,
+        off_policy_estimation_methods: Optional[Dict] = NotProvided,
+        ope_split_batch_by_episode: Optional[bool] = NotProvided,
+        evaluation_num_workers: Optional[int] = NotProvided,
+        custom_evaluation_function: Optional[Callable] = NotProvided,
+        always_attach_evaluation_results: Optional[bool] = NotProvided,
+        enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
         evaluation_num_episodes=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -1305,38 +1363,43 @@ class AlgorithmConfig:
             )
             evaluation_duration = evaluation_num_episodes
 
-        if evaluation_interval is not None:
+        if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
-        if evaluation_duration is not None:
+        if evaluation_duration is not NotProvided:
             self.evaluation_duration = evaluation_duration
-        if evaluation_duration_unit is not None:
+        if evaluation_duration_unit is not NotProvided:
             self.evaluation_duration_unit = evaluation_duration_unit
-        if evaluation_sample_timeout_s is not None:
+        if evaluation_sample_timeout_s is not NotProvided:
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
-        if evaluation_parallel_to_training is not None:
+        if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
-        if evaluation_config is not None:
-            from ray.rllib.algorithms.algorithm import Algorithm
+        if evaluation_config is not NotProvided:
+            # If user really wants to set this to None, we should allow this here,
+            # instead of creating an empty dict.
+            if evaluation_config is None:
+                self.evaluation_config = None
+            else:
+                from ray.rllib.algorithms.algorithm import Algorithm
 
-            self.evaluation_config = deep_update(
-                self.evaluation_config or {},
-                evaluation_config,
-                True,
-                Algorithm._allow_unknown_subkeys,
-                Algorithm._override_all_subkeys_if_type_changes,
-                Algorithm._override_all_key_list,
-            )
-        if off_policy_estimation_methods is not None:
+                self.evaluation_config = deep_update(
+                    self.evaluation_config or {},
+                    evaluation_config,
+                    True,
+                    Algorithm._allow_unknown_subkeys,
+                    Algorithm._override_all_subkeys_if_type_changes,
+                    Algorithm._override_all_key_list,
+                )
+        if off_policy_estimation_methods is not NotProvided:
             self.off_policy_estimation_methods = off_policy_estimation_methods
-        if evaluation_num_workers is not None:
+        if evaluation_num_workers is not NotProvided:
             self.evaluation_num_workers = evaluation_num_workers
-        if custom_evaluation_function is not None:
+        if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results is not None:
+        if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
-        if enable_async_evaluation is not None:
+        if enable_async_evaluation is not NotProvided:
             self.enable_async_evaluation = enable_async_evaluation
-        if ope_split_batch_by_episode is not None:
+        if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
         return self
@@ -1344,17 +1407,17 @@ class AlgorithmConfig:
     def offline_data(
         self,
         *,
-        input_=None,
-        input_config=None,
-        actions_in_input_normalized=None,
-        input_evaluation=None,
-        postprocess_inputs=None,
-        shuffle_buffer_size=None,
-        output=None,
-        output_config=None,
-        output_compress_columns=None,
-        output_max_file_size=None,
-        offline_sampling=None,
+        input_=NotProvided,
+        input_config=NotProvided,
+        actions_in_input_normalized=NotProvided,
+        input_evaluation=NotProvided,
+        postprocess_inputs=NotProvided,
+        shuffle_buffer_size=NotProvided,
+        output=NotProvided,
+        output_config=NotProvided,
+        output_compress_columns=NotProvided,
+        output_max_file_size=NotProvided,
+        offline_sampling=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
@@ -1421,13 +1484,13 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if input_ is not None:
+        if input_ is not NotProvided:
             self.input_ = input_
-        if input_config is not None:
+        if input_config is not NotProvided:
             self.input_config = input_config
-        if actions_in_input_normalized is not None:
+        if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not None:
+        if input_evaluation is not NotProvided:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
                 new="evaluation(off_policy_estimation_methods={})".format(
@@ -1436,19 +1499,19 @@ class AlgorithmConfig:
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
-        if postprocess_inputs is not None:
+        if postprocess_inputs is not NotProvided:
             self.postprocess_inputs = postprocess_inputs
-        if shuffle_buffer_size is not None:
+        if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
-        if output is not None:
+        if output is not NotProvided:
             self.output = output
-        if output_config is not None:
+        if output_config is not NotProvided:
             self.output_config = output_config
-        if output_compress_columns is not None:
+        if output_compress_columns is not NotProvided:
             self.output_compress_columns = output_compress_columns
-        if output_max_file_size is not None:
+        if output_max_file_size is not NotProvided:
             self.output_max_file_size = output_max_file_size
-        if offline_sampling is not None:
+        if offline_sampling is not NotProvided:
             self.offline_sampling = offline_sampling
 
         return self
@@ -1456,13 +1519,13 @@ class AlgorithmConfig:
     def multi_agent(
         self,
         *,
-        policies=None,
-        policy_map_capacity=None,
-        policy_map_cache=None,
-        policy_mapping_fn=None,
-        policies_to_train=None,
-        observation_fn=None,
-        count_steps_by=None,
+        policies=NotProvided,
+        policy_map_capacity=NotProvided,
+        policy_map_cache=NotProvided,
+        policy_mapping_fn=NotProvided,
+        policies_to_train=NotProvided,
+        observation_fn=NotProvided,
+        count_steps_by=NotProvided,
         replay_mode=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
@@ -1485,8 +1548,8 @@ class AlgorithmConfig:
                 is: (agent_id, episode, worker, **kwargs) -> PolicyID.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
-                - None, for all policies.
-                - An iterable of PolicyIDs that should be updated.
+                - None, for training all policies.
+                - An iterable of PolicyIDs that should be trained.
                 - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
                 and returning a bool (indicating whether the given policy is trainable
                 or not, given the particular batch). This allows you to have a policy
@@ -1505,7 +1568,7 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if policies is not None:
+        if policies is not NotProvided:
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
@@ -1534,20 +1597,20 @@ class AlgorithmConfig:
                         )
             self.policies = policies
 
-        if policy_map_capacity is not None:
+        if policy_map_capacity is not NotProvided:
             self.policy_map_capacity = policy_map_capacity
 
-        if policy_map_cache is not None:
+        if policy_map_cache is not NotProvided:
             self.policy_map_cache = policy_map_cache
 
-        if policy_mapping_fn is not None:
+        if policy_mapping_fn is not NotProvided:
             # Attempt to create a `policy_mapping_fn` from config dict. Helpful
             # is users would like to specify custom callable classes in yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
             self.policy_mapping_fn = policy_mapping_fn
 
-        if observation_fn is not None:
+        if observation_fn is not NotProvided:
             self.observation_fn = observation_fn
 
         if replay_mode != DEPRECATED_VALUE:
@@ -1558,7 +1621,7 @@ class AlgorithmConfig:
                 error=True,
             )
 
-        if count_steps_by is not None:
+        if count_steps_by is not NotProvided:
             if count_steps_by not in ["env_steps", "agent_steps"]:
                 raise ValueError(
                     "config.multi_agent(count_steps_by=..) must be one of "
@@ -1566,11 +1629,13 @@ class AlgorithmConfig:
                 )
             self.count_steps_by = count_steps_by
 
-        if policies_to_train is not None:
-            assert isinstance(policies_to_train, (list, set, tuple)) or callable(
-                policies_to_train
+        if policies_to_train is not NotProvided:
+            assert (
+                isinstance(policies_to_train, (list, set, tuple))
+                or callable(policies_to_train)
+                or policies_to_train is None
             ), (
-                "ERROR: `policies_to_train`must be a [list|set|tuple] or a "
+                "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
                 "True|False (trainable or not?)."
             )
@@ -1604,12 +1669,12 @@ class AlgorithmConfig:
     def reporting(
         self,
         *,
-        keep_per_episode_custom_metrics: Optional[bool] = None,
-        metrics_episode_collection_timeout_s: Optional[float] = None,
-        metrics_num_episodes_for_smoothing: Optional[int] = None,
-        min_time_s_per_iteration: Optional[int] = None,
-        min_train_timesteps_per_iteration: Optional[int] = None,
-        min_sample_timesteps_per_iteration: Optional[int] = None,
+        keep_per_episode_custom_metrics: Optional[bool] = NotProvided,
+        metrics_episode_collection_timeout_s: Optional[float] = NotProvided,
+        metrics_num_episodes_for_smoothing: Optional[int] = NotProvided,
+        min_time_s_per_iteration: Optional[int] = NotProvided,
+        min_train_timesteps_per_iteration: Optional[int] = NotProvided,
+        min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
@@ -1652,26 +1717,26 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if keep_per_episode_custom_metrics is not None:
+        if keep_per_episode_custom_metrics is not NotProvided:
             self.keep_per_episode_custom_metrics = keep_per_episode_custom_metrics
-        if metrics_episode_collection_timeout_s is not None:
+        if metrics_episode_collection_timeout_s is not NotProvided:
             self.metrics_episode_collection_timeout_s = (
                 metrics_episode_collection_timeout_s
             )
-        if metrics_num_episodes_for_smoothing is not None:
+        if metrics_num_episodes_for_smoothing is not NotProvided:
             self.metrics_num_episodes_for_smoothing = metrics_num_episodes_for_smoothing
-        if min_time_s_per_iteration is not None:
+        if min_time_s_per_iteration is not NotProvided:
             self.min_time_s_per_iteration = min_time_s_per_iteration
-        if min_train_timesteps_per_iteration is not None:
+        if min_train_timesteps_per_iteration is not NotProvided:
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
-        if min_sample_timesteps_per_iteration is not None:
+        if min_sample_timesteps_per_iteration is not NotProvided:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
 
         return self
 
     def checkpointing(
         self,
-        export_native_model_files: Optional[bool] = None,
+        export_native_model_files: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's checkpointing settings.
 
@@ -1687,7 +1752,7 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
 
-        if export_native_model_files is not None:
+        if export_native_model_files is not NotProvided:
             self.export_native_model_files = export_native_model_files
 
         return self
@@ -1695,12 +1760,12 @@ class AlgorithmConfig:
     def debugging(
         self,
         *,
-        logger_creator: Optional[Callable[[], Logger]] = None,
-        logger_config: Optional[dict] = None,
-        log_level: Optional[str] = None,
-        log_sys_usage: Optional[bool] = None,
-        fake_sampler: Optional[bool] = None,
-        seed: Optional[int] = None,
+        logger_creator: Optional[Callable[[], Logger]] = NotProvided,
+        logger_config: Optional[dict] = NotProvided,
+        log_level: Optional[str] = NotProvided,
+        log_sys_usage: Optional[bool] = NotProvided,
+        fake_sampler: Optional[bool] = NotProvided,
+        seed: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -1725,17 +1790,17 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if logger_creator is not None:
+        if logger_creator is not NotProvided:
             self.logger_creator = logger_creator
-        if logger_config is not None:
+        if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level is not None:
+        if log_level is not NotProvided:
             self.log_level = log_level
-        if log_sys_usage is not None:
+        if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
-        if fake_sampler is not None:
+        if fake_sampler is not NotProvided:
             self.fake_sampler = fake_sampler
-        if seed is not None:
+        if seed is not NotProvided:
             self.seed = seed
 
         return self
@@ -1743,10 +1808,10 @@ class AlgorithmConfig:
     def experimental(
         self,
         *,
-        _tf_policy_handles_more_than_one_loss=None,
-        _disable_preprocessor_api=None,
-        _disable_action_flattening=None,
-        _disable_execution_plan_api=None,
+        _tf_policy_handles_more_than_one_loss=NotProvided,
+        _disable_preprocessor_api=NotProvided,
+        _disable_action_flattening=NotProvided,
+        _disable_execution_plan_api=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -1776,15 +1841,15 @@ class AlgorithmConfig:
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _tf_policy_handles_more_than_one_loss is not None:
+        if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
             )
-        if _disable_preprocessor_api is not None:
+        if _disable_preprocessor_api is not NotProvided:
             self._disable_preprocessor_api = _disable_preprocessor_api
-        if _disable_action_flattening is not None:
+        if _disable_action_flattening is not NotProvided:
             self._disable_action_flattening = _disable_action_flattening
-        if _disable_execution_plan_api is not None:
+        if _disable_execution_plan_api is not NotProvided:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
@@ -2265,6 +2330,58 @@ class AlgorithmConfig:
                 )
 
         return key
+
+    def _check_if_correct_nn_framework_installed(self, _tf1, _tf, _torch):
+        """Check if tf/torch experiment is running and tf/torch installed."""
+        if self.framework_str in {"tf", "tf2"}:
+            if not (_tf1 or _tf):
+                raise ImportError(
+                    (
+                        "TensorFlow was specified as the framework to use (via `config."
+                        "framework([tf|tf2])`)! However, no installation was "
+                        "found. You can install TensorFlow via `pip install tensorflow`"
+                    )
+                )
+        elif self.framework_str == "torch":
+            if not _torch:
+                raise ImportError(
+                    (
+                        "PyTorch was specified as the framework to use (via `config."
+                        "framework('torch')`)! However, no installation was found. You "
+                        "can install PyTorch via `pip install torch`."
+                    )
+                )
+
+    def _resolve_tf_settings(self, _tf1, _tfv):
+        """Check and resolve tf settings."""
+        if _tf1 and self.framework_str == "tf2":
+            if self.framework_str == "tf2" and _tfv < 2:
+                raise ValueError(
+                    "You configured `framework`=tf2, but your installed "
+                    "pip tf-version is < 2.0! Make sure your TensorFlow "
+                    "version is >= 2.x."
+                )
+            if not _tf1.executing_eagerly():
+                _tf1.enable_eager_execution()
+            # Recommend setting tracing to True for speedups.
+            logger.info(
+                f"Executing eagerly (framework='{self.framework_str}'),"
+                f" with eager_tracing={self.framework_str}. For "
+                "production workloads, make sure to set eager_tracing=True"
+                "  in order to match the speed of tf-static-graph "
+                "(framework='tf'). For debugging purposes, "
+                "`eager_tracing=False` is the best choice."
+            )
+        # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
+        # enabling eager tracing for similar speed.
+        elif _tf1 and self.framework_str == "tf":
+            logger.info(
+                "Your framework setting is 'tf', meaning you are using "
+                "static-graph mode. Set framework='tf2' to enable eager "
+                "execution with tf2.x. You may also then want to set "
+                "eager_tracing=True in order to reach similar execution "
+                "speed as with static-graph mode."
+            )
 
     @property
     def multiagent(self):

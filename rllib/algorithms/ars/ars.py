@@ -10,7 +10,8 @@ import time
 from typing import Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
@@ -115,15 +116,15 @@ class ARSConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        action_noise_std: Optional[float] = None,
-        noise_stdev: Optional[float] = None,
-        num_rollouts: Optional[int] = None,
-        rollouts_used: Optional[int] = None,
-        sgd_stepsize: Optional[float] = None,
-        noise_size: Optional[int] = None,
-        eval_prob: Optional[float] = None,
-        report_length: Optional[int] = None,
-        offset: Optional[int] = None,
+        action_noise_std: Optional[float] = NotProvided,
+        noise_stdev: Optional[float] = NotProvided,
+        num_rollouts: Optional[int] = NotProvided,
+        rollouts_used: Optional[int] = NotProvided,
+        sgd_stepsize: Optional[float] = NotProvided,
+        noise_size: Optional[int] = NotProvided,
+        eval_prob: Optional[float] = NotProvided,
+        report_length: Optional[int] = NotProvided,
+        offset: Optional[int] = NotProvided,
         **kwargs,
     ) -> "ARSConfig":
         """Sets the training related configuration.
@@ -149,23 +150,23 @@ class ARSConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if action_noise_std is not None:
+        if action_noise_std is not NotProvided:
             self.action_noise_std = action_noise_std
-        if noise_stdev is not None:
+        if noise_stdev is not NotProvided:
             self.noise_stdev = noise_stdev
-        if num_rollouts is not None:
+        if num_rollouts is not NotProvided:
             self.num_rollouts = num_rollouts
-        if rollouts_used is not None:
+        if rollouts_used is not NotProvided:
             self.rollouts_used = rollouts_used
-        if sgd_stepsize is not None:
+        if sgd_stepsize is not NotProvided:
             self.sgd_stepsize = sgd_stepsize
-        if noise_size is not None:
+        if noise_size is not NotProvided:
             self.noise_size = noise_size
-        if eval_prob is not None:
+        if eval_prob is not NotProvided:
             self.eval_prob = eval_prob
-        if report_length is not None:
+        if report_length is not NotProvided:
             self.report_length = report_length
-        if offset is not None:
+        if offset is not NotProvided:
             self.offset = offset
 
         return self
