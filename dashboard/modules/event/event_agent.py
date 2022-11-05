@@ -92,21 +92,17 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 data_str[:limit] + (data_str[limit:] and "..."),
             )
 
-    @dashboard_utils.async_loop_forever(10)
-    async def _periodic_state_print(self):
+    async def get_internal_states(self):
         if self.total_event_reported <= 0 or self.total_request_sent <= 0:
             return
 
         elapsed = time.monotonic() - self.module_started
-        logger.info(
-            f"Event module report:\n"
-            f"Total events reported: {self.total_event_reported}\n"
-            f"Total report request: {self.total_request_sent}\n"
-            f"Average report size: {self.total_event_reported / self.total_request_sent}\n"  # noqa
-            f"Average num request per second: {self.total_event_reported / elapsed}\n"
-            f"Average num events per second: {self.total_request_sent / elapsed}\n"
-            f"Queue size: {self._cached_events.qsize()}"
-        )
+        return {
+            "total_events_reported": self.total_event_reported,
+            "Total_report_request": self.total_request_sent,
+            "queue_size": self._cached_events.qsize(),
+            "total_uptime": elapsed,
+        }
 
     async def run(self, server):
         # Connect to dashboard.
@@ -120,7 +116,6 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
 
         await asyncio.gather(
             self.report_events(),
-            self._periodic_state_print(),
         )
 
     @staticmethod

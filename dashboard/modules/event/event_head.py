@@ -70,20 +70,16 @@ class EventHead(
         self.total_events_received += len(received_events)
         return event_pb2.ReportEventsReply(send_success=True)
 
-    @dashboard_utils.async_loop_forever(10)
     async def _periodic_state_print(self):
         if self.total_events_received <= 0 or self.total_report_events_count <= 0:
             return
 
         elapsed = time.monotonic() - self.module_started
-        logger.info(
-            f"Event module report:\n"
-            f"Total events received: {self.total_events_received}\n"
-            f"Total report request: {self.total_report_events_count}\n"
-            f"Average report size: {self.total_events_received / self.total_report_events_count}\n"  # noqa
-            f"Average num request per second: {self.total_report_events_count / elapsed}\n"  # noqa
-            f"Average num events per second: {self.total_events_received / elapsed}"
-        )
+        return {
+            "total_events_received": self.total_events_received,
+            "Total_requests_received": self.total_report_events_count,
+            "total_uptime": elapsed,
+        }
 
     @routes.get("/events")
     @dashboard_optional_utils.aiohttp_cache(2)
@@ -112,9 +108,6 @@ class EventHead(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self.monitor_thread_pool_executor,
-        )
-        await asyncio.gather(
-            self._periodic_state_print(),
         )
 
     @staticmethod
