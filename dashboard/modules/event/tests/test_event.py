@@ -223,7 +223,7 @@ async def test_monitor_events():
         )
         test_events1 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events1.extend(x), scan_interval_seconds=0.01
+            temp_dir, lambda x: test_events1.extend(x), None, scan_interval_seconds=0.01
         )
         assert not monitor_task.done()
         count = 10
@@ -258,7 +258,7 @@ async def test_monitor_events():
         monitor_task.cancel()
         test_events2 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events2.extend(x), scan_interval_seconds=0.1
+            temp_dir, lambda x: test_events2.extend(x), None, scan_interval_seconds=0.1
         )
 
         await _check_events([str(i) for i in range(count)], read_events=test_events2)
