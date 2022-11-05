@@ -36,8 +36,9 @@ TEST_NAMESPACE = "jobs_test_namespace"
     ["""ray start --head"""],
     indirect=True,
 )
+@pytest.mark.parametrize("resources_specified", [True, False])
 async def test_get_scheduling_strategy(
-    call_ray_start, monkeypatch, tmp_path  # noqa: F811
+    call_ray_start, monkeypatch, resources_specified, tmp_path  # noqa: F811
 ):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
@@ -51,21 +52,24 @@ async def test_get_scheduling_strategy(
     await gcs_aio_client.internal_kv_del(
         "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy()
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_aio_client.internal_kv_put(
         "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
     )
-    strategy = await job_manager._get_scheduling_strategy()
-    expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
-    assert expected_strategy.node_id == strategy.node_id
-    assert expected_strategy.soft == strategy.soft
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    if resources_specified:
+        assert strategy == "DEFAULT"
+    else:
+        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        assert expected_strategy.node_id == strategy.node_id
+        assert expected_strategy.soft == strategy.soft
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy()
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
 
@@ -114,7 +118,13 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+    yield ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        namespace=TEST_NAMESPACE,
+        log_to_driver=True,
+    )
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -506,18 +516,35 @@ class TestRuntimeEnv:
         "env_vars",
         [None, {}, {"hello": "world"}],
     )
-    async def test_cuda_visible_devices(self, job_manager, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior.
+    @pytest.mark.parametrize(
+        "resource_kwarg",
+        [
+            {},
+            {"entrypoint_num_cpus": 1},
+            {"entrypoint_num_gpus": 1},
+            {"entrypoint_resources": {"Custom": 1}},
+        ],
+    )
+    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
-
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
+
+        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
+        logic. Instead, the behavior should match that of the user specifying
+        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
+        driver and tasks.
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
+        if resource_kwarg:
+            run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
-            entrypoint=run_cmd, runtime_env=runtime_env
+            entrypoint=run_cmd,
+            runtime_env=runtime_env,
+            **resource_kwarg,
         )
 
         await async_wait_for_condition_async_predicate(

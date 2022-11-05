@@ -31,10 +31,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import (
-    ResultDict,
-    AlgorithmConfigDict,
-)
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
@@ -158,6 +155,8 @@ class DQNConfig(SimpleQConfig):
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length = "auto"
         # fmt: on
         # __sphinx_doc_end__
 
@@ -300,8 +299,45 @@ class DQNConfig(SimpleQConfig):
 
         return self
 
+    @override(SimpleQConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
 
-def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
+        # Check rollout_fragment_length to be compatible with n_step.
+        if (
+            not self.in_evaluation
+            and self.rollout_fragment_length != "auto"
+            and self.rollout_fragment_length < self.n_step
+        ):
+            raise ValueError(
+                f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
+                f"smaller than `n_step` ({self.n_step})! "
+                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+            )
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try setting `config.rollouts("
+                    "batch_mode='complete_episodes')`."
+                )
+            if self.noisy:
+                raise ValueError(
+                    "ParameterNoise Exploration and `noisy` network cannot be"
+                    " used at the same time!"
+                )
+
+    @override(AlgorithmConfig)
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            return self.n_step
+        else:
+            return self.rollout_fragment_length
+
+
+def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -312,7 +348,7 @@ def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
     # the data we pull from the replay buffer (which also contains old
     # samples).
     native_ratio = config["train_batch_size"] / (
-        config["rollout_fragment_length"]
+        config.get_rollout_fragment_length()
         * config["num_envs_per_worker"]
         # Add one to workers because the local
         # worker usually collects experiences as well, and we avoid division by zero.
@@ -334,18 +370,10 @@ class DQN(SimpleQ):
     def get_default_config(cls) -> AlgorithmConfig:
         return DQNConfig()
 
-    @override(SimpleQ)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        # Update effective batch size to include n-step
-        adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
-        config["rollout_fragment_length"] = adjusted_rollout_len
-
+    @classmethod
     @override(SimpleQ)
     def get_default_policy_class(
-        self, config: AlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy
@@ -392,7 +420,9 @@ class DQN(SimpleQ):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -401,7 +431,7 @@ class DQN(SimpleQ):
                 train_batch = sample_min_n_steps_from_buffer(
                     self.local_replay_buffer,
                     self.config["train_batch_size"],
-                    count_by_agent_steps=self._by_agent_steps,
+                    count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 
                 # Postprocess batch before we learn on it

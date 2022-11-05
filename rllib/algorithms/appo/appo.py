@@ -207,16 +207,9 @@ class APPO(Impala):
 
     @override(Impala)
     def setup(self, config: PartialAlgorithmConfigDict):
-        # Before init: Add the update target and kl hook.
-        # This hook is called explicitly after each learner step in the
-        # execution setup for IMPALA.
-        if config.get("_disable_execution_plan_api", True) is False:
-            config["after_train_step"] = UpdateTargetAndKL
-
         super().setup(config)
 
-        if self.config["_disable_execution_plan_api"] is True:
-            self.update_kl = UpdateKL(self.workers)
+        self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
@@ -232,7 +225,9 @@ class APPO(Impala):
                 training step.
         """
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (
@@ -283,9 +278,10 @@ class APPO(Impala):
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
+    @classmethod
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

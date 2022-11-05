@@ -1,4 +1,4 @@
-from ray.air.callbacks.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
 
 import logging
 from typing import Callable, Dict, Optional
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 callback_deprecation_message = (
     "`ray.tune.integration.mlflow.MLflowLoggerCallback` "
     "is deprecated and will be removed in "
-    "the future. Please use `ray.air.callbacks.mlflow.MLflowLoggerCallback` "
+    "the future. Please use `ray.air.integrations.mlflow.MLflowLoggerCallback` "
     "instead."
 )
 
