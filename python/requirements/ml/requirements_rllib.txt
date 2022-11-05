@@ -5,15 +5,15 @@
 # Atari
 autorom[accept-rom-license]
 gymnasium[atari]
-gym==0.26.2
-#gym>=0.21.0; python_version >= '3.7'
-#gym==0.19.0; python_version < '3.7'
+# TODO(sven): Remove gym at some point (replaced by gymnasium). Only kept for backward compat tests.
+gym>=0.21.0; python_version >= '3.7'
+gym==0.19.0; python_version < '3.7'
 ale-py==0.7.5; python_version >= '3.7'
 ale-py==0.7.1; python_version < '3.7'
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-#TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+# TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
 #mlagents==0.28.0
 mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
