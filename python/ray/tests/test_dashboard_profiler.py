@@ -43,11 +43,11 @@ def test_profiler_endpoints(ray_start_with_dashboard):
         print("GET URL", url)
         response = requests.get(url)
         print("STATUS CODE", response.status_code)
-        response.raise_for_status()
         print("HEADERS", response.headers)
-        assert "text/plain" in response.headers["Content-Type"], response.headers
         content = response.content.decode("utf-8")
         print("CONTENT", content)
+        response.raise_for_status()
+        assert "text/plain" in response.headers["Content-Type"], response.headers
         # Sanity check we got the stack trace text.
         assert "do_stuff_infinite" in content, content
         assert "ray::core::CoreWorker" in content, content
