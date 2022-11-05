@@ -1004,7 +1004,14 @@ class RayTrialExecutor:
                 # Blocking here is ok as the future returned
                 _post_stop_cleanup(ready[0], timeout=None)
 
+        for staged_trial in self._staged_trials:
+            resource_request = staged_trial.placement_group_factory
+            self._resource_manager.cancel_resource_request(
+                resource_request=resource_request
+            )
+
         self._cleanup_cached_actors(force_all=True)
+        self._resource_manager.clear()
 
     @contextmanager
     def _change_working_directory(self, trial):

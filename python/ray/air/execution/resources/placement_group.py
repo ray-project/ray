@@ -10,7 +10,7 @@ from ray.air.execution.resources.request import (
     AllocatedResource,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
-from ray.util.placement_group import PlacementGroup
+from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -159,3 +159,15 @@ class PlacementGroupResourceManager(ResourceManager):
             self.cancel_resource_request(
                 resource_request=allocated_resources.resource_request
             )
+
+    def clear(self):
+        for staged_pgs in self._request_to_staged_pgs.values():
+            for staged_pg in staged_pgs:
+                remove_placement_group(staged_pg)
+
+        for ready_pgs in self._request_to_ready_pgs.values():
+            for ready_pg in ready_pgs:
+                remove_placement_group(ready_pg)
+
+        for acquired_pg in self._acquired_pgs:
+            remove_placement_group(acquired_pg)

@@ -43,3 +43,7 @@ class ResourceManager(abc.ABC):
     def update_state(self):
         """Reconcile internal state with cluster state."""
         pass
+
+    def clear(self):
+        """Reset and clear all used resources."""
+        raise NotImplementedError
