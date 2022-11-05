@@ -43,14 +43,14 @@ def test_reconstruction_stress_spill(config, ray_start_cluster):
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote
     def large_object():
-        return np.zeros(10 ** 6, dtype=np.uint8)
+        return np.zeros(10**6, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
@@ -70,7 +70,7 @@ def test_reconstruction_stress_spill(config, ray_start_cluster):
 
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(
-            num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
         )
 
         i = 0

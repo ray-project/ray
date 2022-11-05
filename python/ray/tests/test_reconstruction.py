@@ -43,14 +43,14 @@ def test_cached_object(config, ray_start_cluster):
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
@@ -60,7 +60,7 @@ def test_cached_object(config, ray_start_cluster):
     ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
     wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10
     )
@@ -89,14 +89,14 @@ def test_reconstruction_cached_dependency(
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=0)
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def chain(x):
@@ -111,7 +111,7 @@ def test_reconstruction_cached_dependency(
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
     wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10
     )
@@ -147,13 +147,13 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
@@ -164,7 +164,7 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
 
     if reconstruction_enabled:
@@ -178,7 +178,7 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
     # Losing the object a second time will cause reconstruction to fail because
     # we have reached the max task retries.
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
         with pytest.raises(
@@ -209,29 +209,29 @@ def test_basic_reconstruction_put(config, ray_start_cluster, reconstruction_enab
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
         return x
 
-    obj = ray.put(np.zeros(10 ** 7, dtype=np.uint8))
+    obj = ray.put(np.zeros(10**7, dtype=np.uint8))
     result = dependent_task.options(resources={"node1": 1}).remote(obj)
     ray.get(result)
     del obj
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     for _ in range(20):
-        ray.put(np.zeros(10 ** 7, dtype=np.uint8))
+        ray.put(np.zeros(10**7, dtype=np.uint8))
 
     if reconstruction_enabled:
         ray.get(result)
@@ -263,9 +263,9 @@ def test_basic_reconstruction_actor_task(
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 2}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     # Always set max retries to -1 because Ray fails actor tasks if the actor
@@ -282,7 +282,7 @@ def test_basic_reconstruction_actor_task(
             pass
 
         def large_object(self):
-            return np.zeros(10 ** 7, dtype=np.uint8)
+            return np.zeros(10**7, dtype=np.uint8)
 
         def pid(self):
             return os.getpid()
@@ -303,7 +303,7 @@ def test_basic_reconstruction_actor_task(
 
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(
-            num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8
+            num_cpus=1, resources={"node1": 2}, object_store_memory=10**8
         )
 
         wait_for_pid_to_exit(pid)
@@ -341,9 +341,9 @@ def test_basic_reconstruction_actor_lineage_disabled(
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 2}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     # Actor can be restarted but its outputs cannot be reconstructed.
@@ -353,7 +353,7 @@ def test_basic_reconstruction_actor_lineage_disabled(
             pass
 
         def large_object(self):
-            return np.zeros(10 ** 7, dtype=np.uint8)
+            return np.zeros(10**7, dtype=np.uint8)
 
         def pid(self):
             return os.getpid()
@@ -372,7 +372,7 @@ def test_basic_reconstruction_actor_lineage_disabled(
     os.kill(pid, SIGKILL)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 2}, object_store_memory=10**8)
 
     wait_for_pid_to_exit(pid)
 
@@ -410,14 +410,14 @@ def test_basic_reconstruction_actor_constructor(
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     # Both the constructor and a method depend on the large object.
     @ray.remote(max_restarts=-1)
@@ -441,7 +441,7 @@ def test_basic_reconstruction_actor_constructor(
     os.kill(pid, SIGKILL)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     wait_for_pid_to_exit(pid)
 
@@ -485,14 +485,14 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
-    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def chain(x):
@@ -509,7 +509,7 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
 
     if reconstruction_enabled:
@@ -523,7 +523,7 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
             ray.get(obj)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
         for obj in downstream:
@@ -545,16 +545,16 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        object_store_memory=10 ** 8,
+        object_store_memory=10**8,
         enable_object_reconstruction=reconstruction_enabled,
     )
     ray.init(address=cluster.address)
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
-        return np.zeros(10 ** 7, dtype=np.uint8)
+        return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
     def chain(x):
@@ -570,7 +570,7 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
     ray.get(dependent_task.remote(obj))
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
