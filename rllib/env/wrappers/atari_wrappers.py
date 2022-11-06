@@ -1,6 +1,6 @@
 from collections import deque
 import gymnasium as gym
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
@@ -255,16 +255,16 @@ class FrameStack(gym.Wrapper):
             dtype=env.observation_space.dtype,
         )
 
-    def reset(self):
-        ob = self.env.reset()
+    def reset(self, *, seed=None, options=None):
+        ob = self.env.reset(seed=seed, options=options)
         for _ in range(self.k):
             self.frames.append(ob)
         return self._get_ob()
 
     def step(self, action):
-        ob, reward, done, info = self.env.step(action)
+        ob, reward, done, truncated, info = self.env.step(action)
         self.frames.append(ob)
-        return self._get_ob(), reward, done, info
+        return self._get_ob(), reward, done, truncated, info
 
     def _get_ob(self):
         assert len(self.frames) == self.k

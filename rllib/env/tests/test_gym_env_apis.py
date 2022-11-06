@@ -1,9 +1,10 @@
-import gym as gym_old
-import gymnasium as gym
 import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.utils.gym import try_import_gymnasium_and_gym
+
+gym, old_gym = try_import_gymnasium_and_gym()
 
 
 class GymnasiumOldAPI(gym.Env):
@@ -36,7 +37,7 @@ class GymnasiumNewAPI(gym.Env):
         return self.observation_space.sample(), 1.0, done, truncated, {}
 
 
-class GymOldAPI(gym_old.Env):
+class GymOldAPI(old_gym.Env):
     def __init__(self, config=None):
         self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
         self.action_space = gym.spaces.Discrete(2)
@@ -52,7 +53,7 @@ class GymOldAPI(gym_old.Env):
         pass
 
 
-class GymNewAPI(gym_old.Env):
+class GymNewAPI(old_gym.Env):
     def __init__(self, config=None):
         self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
         self.action_space = gym.spaces.Discrete(2)

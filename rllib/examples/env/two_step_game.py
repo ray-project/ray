@@ -36,13 +36,11 @@ class TwoStepGame(MultiAgentEnv):
             else:
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
 
-    def seed(self, seed=None):
-        if seed:
+    def reset(self, *, seed=None, options=None):
+        if seed is not None:
             np.random.seed(seed)
-
-    def reset(self):
         self.state = np.array([1, 0, 0])
-        return self._obs()
+        return self._obs(), {}
 
     def step(self, action_dict):
         if self.actions_are_logits:
@@ -75,8 +73,9 @@ class TwoStepGame(MultiAgentEnv):
         rewards = {self.agent_1: global_rew / 2.0, self.agent_2: global_rew / 2.0}
         obs = self._obs()
         dones = {"__all__": done}
+        truncateds = {"__all__": False}
         infos = {}
-        return obs, rewards, dones, infos
+        return obs, rewards, dones, truncateds, infos
 
     def _obs(self):
         if self.with_state:
@@ -117,8 +116,8 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
         self._agent_ids = {"agents"}
         self._skip_env_checking = True
 
-    def reset(self):
-        return self.env.reset()
+    def reset(self, *, seed=None, options=None):
+        return self.env.reset(seed=seed, options=options)
 
     def step(self, actions):
         return self.env.step(actions)

@@ -1,5 +1,5 @@
-from gym import spaces
-from gym.envs.registration import EnvSpec
+from gymnasium import spaces
+from gymnasium.envs.registration import EnvSpec
 import gymnasium as gym
 import numpy as np
 import pickle
@@ -96,13 +96,14 @@ class NestedDictEnv(gym.Env):
         self._spec = EnvSpec("NestedDictEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return DICT_SAMPLES[0]
+        return DICT_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return DICT_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        done = truncated = self.steps >= 5
+        return DICT_SAMPLES[self.steps], 1, done, truncated, {}
 
 
 class NestedTupleEnv(gym.Env):
@@ -112,13 +113,14 @@ class NestedTupleEnv(gym.Env):
         self._spec = EnvSpec("NestedTupleEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return TUPLE_SAMPLES[0]
+        return TUPLE_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return TUPLE_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        done = truncated = self.steps >= 5
+        return TUPLE_SAMPLES[self.steps], 1, done, truncated, {}
 
 
 class RepeatedSpaceEnv(gym.Env):
@@ -128,13 +130,14 @@ class RepeatedSpaceEnv(gym.Env):
         self._spec = EnvSpec("RepeatedSpaceEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return REPEATED_SAMPLES[0]
+        return REPEATED_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return REPEATED_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        done = truncated = self.steps >= 5
+        return REPEATED_SAMPLES[self.steps], 1, done, truncated, {}
 
 
 class NestedMultiAgentEnv(MultiAgentEnv):
@@ -149,11 +152,11 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         return {
             "dict_agent": DICT_SAMPLES[0],
             "tuple_agent": TUPLE_SAMPLES[0],
-        }
+        }, {}
 
     def step(self, actions):
         self.steps += 1
@@ -166,11 +169,12 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             "tuple_agent": 0,
         }
         dones = {"__all__": self.steps >= 5}
+        truncateds = {"__all__": self.steps >= 5}
         infos = {
             "dict_agent": {},
             "tuple_agent": {},
         }
-        return obs, rew, dones, infos
+        return obs, rew, dones, truncateds, infos
 
 
 class InvalidModel(TorchModelV2):

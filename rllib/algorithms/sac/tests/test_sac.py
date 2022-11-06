@@ -1,6 +1,6 @@
-from gym import Env
+from gymnasium import Env
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
-from gym.envs.registration import EnvSpec
+from gymnasium.envs.registration import EnvSpec
 import numpy as np
 import re
 import unittest

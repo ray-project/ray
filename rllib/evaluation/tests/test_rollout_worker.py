@@ -81,7 +81,7 @@ class FailOnStepEnv(gym.Env):
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         raise ValueError("kaboom")
 
     def step(self, action):

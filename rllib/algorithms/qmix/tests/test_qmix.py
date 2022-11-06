@@ -31,7 +31,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
         for a in self.avail:
             self.action_mask[a] = 1
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = 0
         return {
             "agent_1": {
@@ -42,7 +42,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "obs": self.observation_space["obs"].sample(),
                 "action_mask": self.action_mask,
             },
-        }
+        }, {}
 
     def step(self, action_dict):
         if self.state > 0:
@@ -62,8 +62,8 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "action_mask": self.action_mask,
             },
         }
-        dones = {"__all__": self.state >= 20}
-        return obs, rewards, dones, {}
+        dones = truncateds = {"__all__": self.state >= 20}
+        return obs, rewards, dones, truncateds, {}
 
 
 class TestQMix(unittest.TestCase):

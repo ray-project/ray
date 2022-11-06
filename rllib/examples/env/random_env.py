@@ -46,7 +46,7 @@ class RandomEnv(gym.Env):
         # Steps taken so far (after last reset).
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
         if not self.static_samples:
             return self.observation_space.sample()
@@ -67,9 +67,11 @@ class RandomEnv(gym.Env):
 
         self.steps += 1
         done = False
+        truncated = False
         # We are `done` as per our max-episode-len.
         if self.max_episode_len and self.steps >= self.max_episode_len:
             done = True
+            truncated = True
         # Max episode length not reached yet -> Sample `done` via `p_done`.
         elif self.p_done > 0.0:
             done = bool(
@@ -81,6 +83,7 @@ class RandomEnv(gym.Env):
                 self.observation_space.sample(),
                 self.reward_space.sample(),
                 done,
+                truncated,
                 {},
             )
         else:
@@ -88,6 +91,7 @@ class RandomEnv(gym.Env):
                 copy.deepcopy(self.observation_sample),
                 copy.deepcopy(self.reward_sample),
                 done,
+                truncated,
                 {},
             )
 

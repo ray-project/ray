@@ -335,7 +335,7 @@ def rollout(
 
     # Agent has neither evaluation- nor rollout workers.
     else:
-        from gym import envs
+        from gymnasium import envs
 
         if envs.registry.env_specs.get(agent.config["env"]):
             # if environment is gym environment, load from gym

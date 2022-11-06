@@ -151,7 +151,7 @@ Quick First Experiment
             self.cur_obs = None
             self.episode_len = 0
 
-        def reset(self):
+        def reset(self, seed=None):
             """Resets the episode and returns the initial observation of the new one.
             """
             # Reset the episode len.
@@ -159,7 +159,7 @@ Quick First Experiment
             # Sample a random number from our observation space.
             self.cur_obs = self.observation_space.sample()
             # Return initial observation.
-            return self.cur_obs
+            return self.cur_obs, {}
 
         def step(self, action):
             """Takes a single step in the episode given `action`
@@ -169,12 +169,12 @@ Quick First Experiment
             """
             # Set `done` flag after 10 steps.
             self.episode_len += 1
-            done = self.episode_len >= 10
+            done = truncated = self.episode_len >= 10
             # r = -abs(obs - action)
             reward = -sum(abs(self.cur_obs - action))
             # Set a new observation (random sample).
             self.cur_obs = self.observation_space.sample()
-            return self.cur_obs, reward, done, {}
+            return self.cur_obs, reward, done, truncated, {}
 
 
     # Create an RLlib Algorithm instance from a PPOConfig to learn how to

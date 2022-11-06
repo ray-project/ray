@@ -19,13 +19,14 @@ class DebugCounterEnv(gym.Env):
         self.start_at_t = int(config.get("start_at_t", 0))
         self.i = self.start_at_t
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.i = self.start_at_t
-        return self._get_obs()
+        return self._get_obs(), {}
 
     def step(self, action):
         self.i += 1
-        return self._get_obs(), float(self.i % 3), self.i >= 15 + self.start_at_t, {}
+        done = truncated = self.i >= 15 + self.start_at_t
+        return self._get_obs(), float(self.i % 3), done, truncated, {}
 
     def _get_obs(self):
         return np.array([self.i], dtype=np.float32)
@@ -48,23 +49,28 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         self.observation_space = gym.spaces.Box(float("-inf"), float("inf"), (4,))
         self.timesteps = [0] * self.num_agents
         self.dones = set()
+        self.truncateds = set()
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.timesteps = [0] * self.num_agents
         self.dones = set()
+        self.truncateds = set()
         return {
             i: np.array([i, 0.0, 0.0, 0.0], dtype=np.float32)
             for i in range(self.num_agents)
-        }
+        }, {}
 
     def step(self, action_dict):
-        obs, rew, done = {}, {}, {}
+        obs, rew, done, truncated = {}, {}, {}, {}
         for i, action in action_dict.items():
             self.timesteps[i] += 1
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
             done[i] = True if self.timesteps[i] > self.base_episode_len + i else False
+            truncated[i] = done[i]
             if done[i]:
                 self.dones.add(i)
+                self.truncateds.add(i)
         done["__all__"] = len(self.dones) == self.num_agents
-        return obs, rew, done, {}
+        truncated["__all__"] = len(self.truncateds) == self.num_agents
+        return obs, rew, done, truncated, {}

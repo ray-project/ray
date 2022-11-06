@@ -29,23 +29,27 @@ class BasicMultiAgent(MultiAgentEnv):
         self.agents = [MockEnv(25) for _ in range(num)]
         self._agent_ids = set(range(num))
         self.dones = set()
+        self.truncateds = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
         self.resetted = False
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.resetted = True
         self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
+        return {i: a.reset() for i, a in enumerate(self.agents)}, {}
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
+        obs, rew, done, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], done[i], truncated[i], info[i] = self.agents[i].step(action)
             if done[i]:
                 self.dones.add(i)
+            if truncated[i]:
+                self.truncateds.add(i)
         done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        return obs, rew, done, truncated, info
 
     def render(self, mode="rgb_array"):
         # Just generate a random image here for demonstration purposes.
@@ -65,26 +69,30 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.last_obs = {}
         self.last_rew = {}
         self.last_done = {}
+        self.last_truncated = {}
         self.last_info = {}
         self.i = 0
         self.observation_space = gym.spaces.Discrete(10)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
         self.last_done = {}
+        self.last_truncated = {}
         self.last_info = {}
         self.i = 0
         for i, a in enumerate(self.agents):
             self.last_obs[i] = a.reset()
             self.last_rew[i] = 0
             self.last_done[i] = False
+            self.last_truncated[i] = False
             self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
+        info_dict = {self.i: self.last_info[self.i]}
         self.i = (self.i + 1) % len(self.agents)
-        return obs_dict
+        return obs_dict, info_dict
 
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
@@ -93,18 +101,21 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
                 self.last_obs[i],
                 self.last_rew[i],
                 self.last_done[i],
+                self.last_truncated[i],
                 self.last_info[i],
             ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
+        truncated = {self.i: self.last_done[self.i]}
         info = {self.i: self.last_info[self.i]}
         if done[self.i]:
             rew[self.i] = 0
             self.dones.add(self.i)
         self.i = (self.i + 1) % len(self.agents)
         done["__all__"] = len(self.dones) == len(self.agents) - 1
-        return obs, rew, done, info
+        truncated["__all__"] = done["__all__"]
+        return obs, rew, done, truncated, info
 
 
 class FlexAgentsMultiAgent(MultiAgentEnv):
@@ -116,6 +127,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         self._agent_ids = set()
         self.agentID = 0
         self.dones = set()
+        self.truncateds = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
         self.resetted = False
@@ -128,32 +140,38 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         self.agentID += 1
         return agentID
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.agents = {}
         self._agent_ids = set()
         self.spawn()
         self.resetted = True
         self.dones = set()
+        self.truncateds = set()
         obs = {}
+        infos = {}
         for i, a in self.agents.items():
-            obs[i] = a.reset()
+            obs[i], infos[i] = a.reset()
 
-        return obs
+        return obs, infos
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
+        obs, rew, done, truncated, info = {}, {}, {}, {}, {}
         # Apply the actions.
         for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], done[i], truncated[i], info[i] = self.agents[i].step(action)
             if done[i]:
                 self.dones.add(i)
+            if truncated[i]:
+                self.truncateds.add(i)
 
         # Sometimes, add a new agent to the episode.
         if random.random() > 0.75 and len(action_dict) > 0:
             i = self.spawn()
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], done[i], truncated[i], info[i] = self.agents[i].step(action)
             if done[i]:
                 self.dones.add(i)
+            if truncated[i]:
+                self.truncateds.add(i)
 
         # Sometimes, kill an existing agent.
         if len(self.agents) > 1 and random.random() > 0.25:
@@ -163,7 +181,8 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
             del self.agents[key]
 
         done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        return obs, rew, done, truncated, info
 
 
 class RoundRobinMultiAgent(MultiAgentEnv):
@@ -181,27 +200,33 @@ class RoundRobinMultiAgent(MultiAgentEnv):
             self.agents = [MockEnv(5) for _ in range(num)]
         self._agent_ids = set(range(num))
         self.dones = set()
+        self.truncateds = set()
+
         self.last_obs = {}
         self.last_rew = {}
         self.last_done = {}
+        self.last_truncated = {}
         self.last_info = {}
         self.i = 0
         self.num = num
         self.observation_space = gym.spaces.Discrete(10)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.dones = set()
+        self.truncateds = set()
+
         self.last_obs = {}
         self.last_rew = {}
         self.last_done = {}
+        self.last_truncated = {}
         self.last_info = {}
         self.i = 0
         for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
+            self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_done[i] = False
-            self.last_info[i] = {}
+            self.last_truncated[i] = False
         obs_dict = {self.i: self.last_obs[self.i]}
         self.i = (self.i + 1) % self.num
         return obs_dict
@@ -213,18 +238,23 @@ class RoundRobinMultiAgent(MultiAgentEnv):
                 self.last_obs[i],
                 self.last_rew[i],
                 self.last_done[i],
+                self.last_truncated[i],
                 self.last_info[i],
             ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
+        truncated = {self.i: self.last_truncated[self.i]}
         info = {self.i: self.last_info[self.i]}
         if done[self.i]:
             rew[self.i] = 0
             self.dones.add(self.i)
+        if truncated[self.i]:
+            self.truncateds.add(self.i)
         self.i = (self.i + 1) % self.num
         done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        return obs, rew, done, truncated, info
 
 
 MultiAgentCartPole = make_multi_agent("CartPole-v1")

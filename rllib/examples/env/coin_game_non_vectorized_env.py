@@ -10,7 +10,7 @@ import gymnasium as gym
 import logging
 import numpy as np
 from gymnasium.spaces import Discrete
-from gym.utils import seeding
+from gymnasium.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override
 from typing import Dict, Optional
@@ -71,13 +71,9 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         )
 
     @override(gym.Env)
-    def seed(self, seed=None):
-        """Seed the PRNG of this space."""
+    def reset(self, *, seed=None, options=None):
         self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
-    @override(gym.Env)
-    def reset(self):
         self.step_count_in_current_episode = 0
 
         if self.output_additional_info:
@@ -87,7 +83,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self._generate_coin()
         obs = self._generate_observation()
 
-        return {self.player_red_id: obs[0], self.player_blue_id: obs[1]}
+        return {self.player_red_id: obs[0], self.player_blue_id: obs[1]}, {}
 
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
@@ -277,7 +273,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         else:
             info = {}
 
-        return state, rewards, done, info
+        return state, rewards, done, done, info
 
     @override(InfoAccumulationInterface)
     def _get_episode_info(self):

@@ -19,13 +19,14 @@ class MockEnv(gym.Env):
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.i = 0
-        return 0
+        return 0, {}
 
     def step(self, action):
         self.i += 1
-        return 0, 1.0, self.i >= self.episode_length, {}
+        done = self.i >= self.episode_length
+        return 0, 1.0, done, done, {}
 
 
 class MockEnv2(gym.Env):
@@ -46,17 +47,15 @@ class MockEnv2(gym.Env):
         self.action_space = gym.spaces.Discrete(2)
         self.rng_seed = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.i = 0
+        self.rng_seed = seed
         return self.i, {}
 
     def step(self, action):
         self.i += 1
-        done = self.i >= self.episode_length
-        return self.i, 100.0, done, done, {}
-
-    def seed(self, rng_seed):
-        self.rng_seed = rng_seed
+        done = truncated = self.i >= self.episode_length
+        return self.i, 100.0, done, truncated, {}
 
     def render(self, mode="rgb_array"):
         # Just generate a random image here for demonstration purposes.
@@ -78,13 +77,14 @@ class MockEnv3(gym.Env):
         self.observation_space = gym.spaces.Discrete(100)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.i = 0
-        return self.i
+        return self.i, {}
 
     def step(self, action):
         self.i += 1
-        return self.i, self.i, self.i >= self.episode_length, {"timestep": self.i}
+        done = truncated = self.i >= self.episode_length
+        return self.i, self.i, done, truncated, {"timestep": self.i}
 
 
 class VectorizedMockEnv(VectorEnv):
