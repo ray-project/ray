@@ -35,7 +35,7 @@ class EncoderConfig:
 
 
 @dataclass(frozen=True)
-class VectorEncoderConfig:
+class VectorEncoderConfig(EncoderConfig):
     """A basic MLP encoder.
 
     Attributes:
@@ -70,7 +70,7 @@ class VectorEncoderConfig:
         )
         for k in input_spec.shallow_keys():
             assert isinstance(
-                input_spec[k].shape[-1], int
+                input_spec[k].shape()[-1], int
             ), "All input specs must define the size of the feature (last) dimension"
         if self.framework == "torch":
             return TorchVectorEncoder(input_spec, output_spec, self)
