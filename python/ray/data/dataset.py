@@ -103,6 +103,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
+from ray.widgets.util import ensure_notebook_deps
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -4022,31 +4023,26 @@ class Dataset(Generic[T]):
         else:
             return result
 
+    @ensure_notebook_deps(
+        ["ipywidgets", "8"],
+    )
     def _ipython_display_(self):
-        try:
-            from ipywidgets import HTML, VBox, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
-
+        from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
-        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+        tab = self._tab_repr_()
 
+        if tab:
+            display(VBox([title, tab], layout=Layout(width="100%")))
+
+    @ensure_notebook_deps(
+        ["tabulate", None],
+        ["ipywidgets", "8"],
+    )
     def _tab_repr_(self):
-        try:
-            from tabulate import tabulate
-            from ipywidgets import Tab, HTML
-        except ImportError:
-            logger.info(
-                "For rich Dataset reprs in notebooks, run "
-                "`pip install tabulate ipywidgets`."
-            )
-            return ""
+        from tabulate import tabulate
+        from ipywidgets import Tab, HTML
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -4077,27 +4073,22 @@ class Dataset(Generic[T]):
                 max_height="300px",
             )
 
-        tab = Tab()
         children = []
-
-        tab.set_title(0, "Metadata")
         children.append(
-            Template("scrollableTable.html.j2").render(
-                table=tabulate(
-                    tabular_data=metadata.items(),
-                    tablefmt="html",
-                    showindex=False,
-                    headers=["Field", "Value"],
-                ),
-                max_height="300px",
+            HTML(
+                Template("scrollableTable.html.j2").render(
+                    table=tabulate(
+                        tabular_data=metadata.items(),
+                        tablefmt="html",
+                        showindex=False,
+                        headers=["Field", "Value"],
+                    ),
+                    max_height="300px",
+                )
             )
         )
-
-        tab.set_title(1, "Schema")
-        children.append(schema_repr)
-
-        tab.children = [HTML(child) for child in children]
-        return tab
+        children.append(HTML(schema_repr))
+        return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
         schema = self.schema()
