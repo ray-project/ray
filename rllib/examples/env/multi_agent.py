@@ -38,6 +38,7 @@ class BasicMultiAgent(MultiAgentEnv):
     def reset(self, *, seed=None, options=None):
         self.resetted = True
         self.dones = set()
+        self.truncateds = set()
         reset_results = [a.reset() for a in self.agents]
         return (
             {i: oi[0] for i, oi in enumerate(reset_results)},
@@ -89,11 +90,10 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.last_info = {}
         self.i = 0
         for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
+            self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_done[i] = False
             self.last_truncated[i] = False
-            self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
         info_dict = {self.i: self.last_info[self.i]}
         self.i = (self.i + 1) % len(self.agents)

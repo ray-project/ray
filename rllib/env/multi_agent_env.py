@@ -647,7 +647,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                     obs = e
                     rewards = {}
                     dones = {"__all__": True}
-                    truncateds = {"__all__": False}
+                    truncateds = {"__all__": True}
                     infos = {}
                 else:
                     raise e
@@ -672,6 +672,8 @@ class MultiAgentEnvWrapper(BaseEnv):
 
             if dones["__all__"]:
                 self.dones.add(env_id)
+            if truncateds["__all__"]:
+                self.truncateds.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, truncateds, infos)
 
     @override(BaseEnv)
@@ -698,8 +700,11 @@ class MultiAgentEnvWrapper(BaseEnv):
                     raise obs
             else:
                 assert isinstance(obs, dict), "Not a multi-agent obs dict!"
-            if obs is not None and idx in self.dones:
-                self.dones.remove(idx)
+            if obs is not None:
+                if idx in self.dones:
+                    self.dones.remove(idx)
+                if idx in self.truncateds:
+                    self.truncateds.remove(idx)
             ret_obs[idx] = obs
             ret_infos[idx] = infos
         return ret_obs, ret_infos
@@ -793,7 +798,7 @@ class _MultiAgentEnvState:
         self.last_obs = {}
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
-        self.last_truncateds = {}
+        self.last_truncateds = {"__all__": False}
         self.last_infos = {}
 
     def poll(
@@ -813,7 +818,7 @@ class _MultiAgentEnvState:
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
-        truncateds = {}
+        truncateds = {"__all__": self.last_truncateds["__all__"]}
         infos = self.last_infos
 
         # If episode is done or we have an error, release everything we have.
@@ -823,6 +828,7 @@ class _MultiAgentEnvState:
             dones = self.last_dones
             if isinstance(observations, Exception):
                 dones["__all__"] = True
+                truncateds["__all__"] = True
             self.last_dones = {}
             truncateds = self.last_truncateds
             self.last_truncateds = {}
@@ -847,6 +853,7 @@ class _MultiAgentEnvState:
                     del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
+        self.last_truncateds["__all__"] = False
         return observations, rewards, dones, truncateds, infos
 
     def observe(
@@ -893,6 +900,6 @@ class _MultiAgentEnvState:
         self.last_obs, self.last_infos = obs_and_infos
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
-        self.last_truncateds = {}
+        self.last_truncateds = {"__all__": False}
 
         return self.last_obs, self.last_infos
