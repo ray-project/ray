@@ -401,7 +401,9 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 

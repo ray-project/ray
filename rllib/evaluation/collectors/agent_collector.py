@@ -178,6 +178,11 @@ class AgentCollector:
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
+
+        # TODO (Kourosh): Error out when one of the keys are missing.
+        # TODO (Kourosh): Error out when the the new input_values shapes do not match
+        # the existing ones in the buffer.
+
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
@@ -548,9 +553,11 @@ class AgentCollector:
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
+                    #  state_out_x assumes the values do not have a batch dimension
+                    #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space
