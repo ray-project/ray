@@ -1,7 +1,9 @@
+import gymnasium as gym
 from typing import Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 
 
 @PublicAPI
@@ -79,33 +81,42 @@ class PettingZooEnv(MultiAgentEnv):
         super().__init__()
         self.env = env
         env.reset()
-        # TODO (avnishn): Remove this after making petting zoo env compatible with
-        #  check_env.
-        self._skip_env_checking = True
 
-        # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.env.observation_space(self.env.agents[0])
+        # Provide full (preferred format) observation- and action-spaces as Dicts
+        # mapping agent IDs to the individual agents' spaces.
+        self._spaces_in_preferred_format = True
 
-        # Get first action space, assuming all agents have equal space
-        self.action_space = self.env.action_space(self.env.agents[0])
+        # Collect the individual agents' spaces (they should all be the same):
+        observation_space = {}
+        action_space = {}
+        first_obs_space = self.env.observation_space(self.env.agents[0])
+        first_action_space = self.env.action_space(self.env.agents[0])
 
-        assert all(
-            self.env.observation_space(agent) == self.observation_space
-            for agent in self.env.agents
-        ), (
-            "Observation spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_observations wrapper can help (useage: "
-            "`supersuit.aec_wrappers.pad_observations(env)`"
-        )
+        for agent in self.env.agents:
+            if self.env.observation_space(agent) != first_obs_space:
+                raise ValueError(
+                    "Observation spaces for all agents must be identical. Perhaps "
+                    "SuperSuit's pad_observations wrapper can help (useage: "
+                    "`supersuit.aec_wrappers.pad_observations(env)`"
+                )
+            # Convert from gym to gymnasium, if necessary.
+            observation_space[agent] = gym_space_from_dict(
+                gym_space_to_dict(self.env.observation_space(agent))
+            )
+            if self.env.action_space(agent) != first_action_space:
+                raise ValueError(
+                    "Action spaces for all agents must be identical. Perhaps "
+                    "SuperSuit's pad_action_space wrapper can help (usage: "
+                    "`supersuit.aec_wrappers.pad_action_space(env)`"
+                )
+            # Convert from gym to gymnasium, if necessary.
+            action_space[agent] = gym_space_from_dict(
+                gym_space_to_dict(self.env.action_space(agent))
+            )
 
-        assert all(
-            self.env.action_space(agent) == self.action_space
-            for agent in self.env.agents
-        ), (
-            "Action spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_action_space wrapper can help (usage: "
-            "`supersuit.aec_wrappers.pad_action_space(env)`"
-        )
+        self.observation_space = gym.spaces.Dict(observation_space)
+        self.action_space = gym.spaces.Dict(action_space)
+
         self._agent_ids = set(self.env.agents)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -127,12 +138,12 @@ class PettingZooEnv(MultiAgentEnv):
         info_d = {}
         while self.env.agents:
             obs, rew, done, info = self.env.last()
-            a = self.env.agent_selection
-            obs_d[a] = obs
-            rew_d[a] = rew
-            done_d[a] = done
-            truncated_d[a] = False
-            info_d[a] = info
+            agent_id = self.env.agent_selection
+            obs_d[agent_id] = obs
+            rew_d[agent_id] = rew
+            done_d[agent_id] = done
+            truncated_d[agent_id] = False
+            info_d[agent_id] = info
             if self.env.dones[self.env.agent_selection]:
                 self.env.step(None)
             else:
@@ -189,23 +200,23 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        return self.par_env.reset()
+        if seed is not None:
+            self.par_env.seed(seed)
+
+        return self.par_env.reset(), {}
 
     def step(self, action_dict):
-        obss, rews, dones, truncateds, infos = self.par_env.step(action_dict)
+        obss, rews, dones, infos = self.par_env.step(action_dict)
         dones["__all__"] = all(dones.values())
-        truncateds["__all__"] = all(truncateds.values())
+        truncateds = {k: False for k in dones.keys()}
         return obss, rews, dones, truncateds, infos
 
     def close(self):
         self.par_env.close()
 
-    def seed(self, seed=None):
-        self.par_env.seed(seed)
-
-    def render(self, mode="human"):
-        return self.par_env.render(mode)
+    def render(self):
+        return self.par_env.render(self.render_mode)
 
     @property
-    def unwrapped(self):
+    def get_sub_environments(self):
         return self.par_env.unwrapped
