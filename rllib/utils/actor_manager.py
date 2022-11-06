@@ -303,8 +303,11 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def clear(self):
         """Clean up managed actors."""
-        for actor in self.__actors.values():
-            del actor
+        # TODO(jungong) : is there a better way to kill remote actors?
+        self.foreach_actor(
+            lambda actor: actor.__ray_terminate__(),
+            healthy_only=False,
+        )
         self.__actors.clear()
         self.__remote_actor_states.clear()
         self.__in_flight_req_to_actor_id.clear()
