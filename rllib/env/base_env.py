@@ -119,9 +119,14 @@ class BaseEnv:
         return self
 
     @PublicAPI
-    def poll(
-        self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    def poll(self) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
         """Returns observations from ready agents.
 
         All return values are two-level dicts mapping from EnvID to dicts
@@ -129,14 +134,16 @@ class BaseEnv:
         The number of agents and sub-environments may vary over time.
 
         Returns:
-            Tuple consisting of
+            Tuple consisting of:
             1) New observations for each ready agent.
             2) Reward values for each ready agent. If the episode is
             just started, the value will be None.
             3) Done values for each ready agent. The special key "__all__"
-            is used to indicate env termination.
-            4) Info values for each ready agent.
-            5) Agents may take off-policy actions. When that
+            is used to indicate episode termination.
+            4) Truncated values for each ready agent. The special key "__all__"
+            is used to indicate episode truncation.
+            5) Info values for each ready agent.
+            6) Agents may take off-policy actions. When that
             happens, there will be an entry in this dict that contains the
             taken action. There is no need to send_actions() for agents that
             have already chosen off-policy actions.
@@ -304,11 +311,13 @@ class BaseEnv:
     def last(
         self,
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
-        """Returns the last observations, rewards, and done flags that were
-            returned by the environment.
+        """Returns the last observations, rewards, done- truncated flags and infos ...
+
+        that were returned by the environment.
 
         Returns:
-            The last observations, rewards, and done flags for each environment
+            The last observations, rewards, done- and truncated flags, and infos
+            for each sub-environment.
         """
         logger.warning("last has not been implemented for this environment.")
         return {}, {}, {}, {}, {}

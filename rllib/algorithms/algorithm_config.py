@@ -2083,7 +2083,7 @@ class AlgorithmConfig:
                         if mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
-                                if mapping_fn(aid, None, None) == pid:
+                                if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
                                     if (
@@ -2131,7 +2131,7 @@ class AlgorithmConfig:
                         if mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
-                                if mapping_fn(aid, None, None) == pid:
+                                if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
                                     # policy don't have different spaces.
                                     if (
