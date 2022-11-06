@@ -365,7 +365,7 @@ def rollout(
     while keep_going(steps, num_steps, episodes, num_episodes):
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         saver.begin_rollout()
-        obs = env.reset()
+        obs, info = env.reset()
         agent_states = DefaultMapping(
             lambda agent_id: state_init[mapping_cache[agent_id]]
         )
@@ -406,7 +406,7 @@ def rollout(
             action = action_dict
 
             action = action if multiagent else action[_DUMMY_AGENT_ID]
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, done, truncated, info = env.step(action)
             if multiagent:
                 for agent_id, r in reward.items():
                     prev_rewards[agent_id] = r

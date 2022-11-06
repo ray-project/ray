@@ -90,7 +90,7 @@ if __name__ == "__main__":
     # on this client side), and send back observations and rewards.
 
     # Start a new episode.
-    obs = env.reset()
+    obs, info = env.reset()
     eid = client.start_episode(training_enabled=not args.no_train)
 
     rewards = 0.0
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             action = client.get_action(eid, obs)
 
         # Perform a step in the external simulator (env).
-        obs, reward, done, info = env.step(action)
+        obs, reward, done, truncated, info = env.step(action)
         rewards += reward
 
         # Log next-obs, rewards, and infos.
@@ -124,5 +124,5 @@ if __name__ == "__main__":
             client.end_episode(eid, obs)
 
             # Start a new episode.
-            obs = env.reset()
+            obs, info = env.reset()
             eid = client.start_episode(training_enabled=not args.no_train)

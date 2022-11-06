@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Create the environment that we would like to receive
     # served actions for.
     env = FrameStack(WarpFrame(gym.make("MsPacman-v0"), 84), 4)
-    obs = env.reset()
+    obs, info = env.reset()
 
     while True:
         print("-> Requesting action for obs ...")
@@ -110,11 +110,11 @@ if __name__ == "__main__":
 
         # Apply the action in the env.
         action = response["action"]
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, _, _ = env.step(action)
 
         # If episode done -> reset to get initial observation of new episode.
         if done:
-            obs = env.reset()
+            obs, info = env.reset()
 
         # Render if necessary.
         if not args.no_render:

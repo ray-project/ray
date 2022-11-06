@@ -116,12 +116,12 @@ class TestDT(unittest.TestCase):
             # do example inference rollout
             env = gym.make("Pendulum-v1")
 
-            obs = env.reset()
+            obs, _ = env.reset()
             input_dict = algo.get_initial_input_dict(obs)
 
             for _ in range(200):
                 action, _, extra = algo.compute_single_action(input_dict=input_dict)
-                obs, reward, done, _ = env.step(action)
+                obs, reward, done, _, _ = env.step(action)
                 if done:
                     break
                 else:

@@ -156,7 +156,7 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
     def test_check_env_step_incorrect_error(self):
         step = MagicMock(return_value=(5, 5, True, {}))
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
-        sampled_obs = env.reset()
+        sampled_obs, info = env.reset()
         env.step = step
         with pytest.raises(ValueError, match="The element returned by step"):
             check_env(env)

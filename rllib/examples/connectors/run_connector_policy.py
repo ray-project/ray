@@ -37,7 +37,7 @@ def run(checkpoint_path):
 
     # Run CartPole.
     env = gym.make("CartPole-v1")
-    obs = env.reset()
+    obs, info = env.reset()
     done = False
     step = 0
     while not done:
@@ -52,7 +52,7 @@ def run(checkpoint_path):
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
-        obs, _, done, _ = env.step(action[0])
+        obs, _, done, _, _ = env.step(action[0])
     # __sphinx_doc_end__
 
 

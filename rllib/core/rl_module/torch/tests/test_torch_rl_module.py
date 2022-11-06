@@ -98,7 +98,7 @@ class TestRLModule(unittest.TestCase):
                         config = get_separate_encoder_config(env)
                     module = SimplePPOModule(config)
 
-                    obs = env.reset()
+                    obs, info = env.reset()
                     tstep = 0
                     while tstep < 10:
 
@@ -122,10 +122,10 @@ class TestRLModule(unittest.TestCase):
                             )
                             check(action, action2)
 
-                        obs, reward, done, info = env.step(action)
+                        obs, reward, done, truncated, info = env.step(action)
                         print(
                             f"obs: {obs}, action: {action}, reward: {reward}, "
-                            f"done: {done}, info: {info}"
+                            f"done: {done}, truncated: {truncated}, info: {info}"
                         )
                         tstep += 1
 
@@ -145,18 +145,19 @@ class TestRLModule(unittest.TestCase):
 
                 # collect a batch of data
                 batch = []
-                obs = env.reset()
+                obs, info = env.reset()
                 tstep = 0
                 while tstep < 10:
                     fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
                     action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-                    obs, reward, done, _ = env.step(action)
+                    obs, reward, done, truncated, _ = env.step(action)
                     batch.append(
                         {
                             "obs": obs,
                             "action": action[None] if action.ndim == 0 else action,
                             "reward": np.array(reward),
                             "done": np.array(done),
+                            "truncated": np.array(truncated),
                         }
                     )
                     tstep += 1

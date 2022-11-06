@@ -28,14 +28,14 @@ if __name__ == "__main__":
     print("The preprocessor is", prep)
 
     for eps_id in range(100):
-        obs = env.reset()
+        obs, info = env.reset()
         prev_action = np.zeros_like(env.action_space.sample())
         prev_reward = 0
         done = False
         t = 0
         while not done:
             action = env.action_space.sample()
-            new_obs, rew, done, info = env.step(action)
+            new_obs, rew, done, truncated, info = env.step(action)
             batch_builder.add_values(
                 t=t,
                 eps_id=eps_id,

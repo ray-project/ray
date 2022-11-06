@@ -115,7 +115,7 @@ if __name__ == "__main__":
         reward = 0.0
         action = 0
         done = False
-        obs = env.reset()
+        obs, info = env.reset()
         while not done:
             # Create a dummy action using the same observation n times,
             # as well as dummy prev-n-actions and prev-n-rewards.
@@ -128,7 +128,7 @@ if __name__ == "__main__":
                 },
                 full_fetch=True,
             )
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, truncated, info = env.step(action)
             episode_reward += reward
 
         print(f"Episode reward={episode_reward}")

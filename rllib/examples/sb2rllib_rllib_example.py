@@ -40,10 +40,10 @@ print(f"Agent loaded from saved model at {checkpoint_path}")
 
 # inference
 env = gym.make(env_name)
-obs = env.reset()
+obs, info = env.reset()
 for i in range(1000):
     action = agent.compute_single_action(obs)
-    obs, reward, done, info = env.step(action)
+    obs, reward, done, truncated, info = env.step(action)
     env.render()
     if done:
         print(f"Cart pole dropped after {i} steps.")

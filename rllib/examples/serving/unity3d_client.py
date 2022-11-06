@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # Start and reset the actual Unity3DEnv (either already running Unity3D
     # editor or a binary (game) to be started automatically).
     env = Unity3DEnv(file_name=args.game, episode_horizon=args.horizon)
-    obs = env.reset()
+    obs, info = env.reset()
     eid = client.start_episode(training_enabled=not args.no_train)
 
     # Keep track of the total reward per episode.
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         # Get actions from the Policy server given our current obs.
         actions = client.get_action(eid, obs)
         # Apply actions to our env.
-        obs, rewards, dones, infos = env.step(actions)
+        obs, rewards, dones, truncated, infos = env.step(actions)
         total_rewards_this_episode += sum(rewards.values())
         # Log rewards and single-agent dones.
         client.log_returns(eid, rewards, infos, multiagent_done_dict=dones)
@@ -125,6 +125,6 @@ if __name__ == "__main__":
             # End the episode and reset Unity Env.
             total_rewards_this_episode = 0.0
             client.end_episode(eid, obs)
-            obs = env.reset()
+            obs, info = env.reset()
             # Start a new episode.
             eid = client.start_episode(training_enabled=not args.no_train)

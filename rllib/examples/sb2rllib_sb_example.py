@@ -30,10 +30,10 @@ model = PPO2.load(save_path)
 print(f"Agent loaded from saved model at {save_path}")
 
 # inference
-obs = env.reset()
+obs, info = env.reset()
 for i in range(1000):
     action, _states = model.predict(obs)
-    obs, reward, done, info = env.step(action)
+    obs, reward, done, truncated, info = env.step(action)
     env.render()
     if done:
         print(f"Cart pole dropped after {i} steps.")

@@ -151,14 +151,14 @@ class TestFQE(unittest.TestCase):
         action_prob = []
         rewards = []
         dones = []
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
         while not done:
             obs_batch.append(obs)
             act, _, extra = cls.policy.compute_single_action(obs)
             actions.append(act)
             action_prob.append(extra["action_prob"])
-            obs, rew, done, _ = env.step(act)
+            obs, rew, done, _, _ = env.step(act)
             new_obs.append(obs)
             rewards.append(rew)
             dones.append(done)

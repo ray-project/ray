@@ -100,7 +100,7 @@ done = False
 batch = SampleBatch({})
 t = 0
 while not done:
-    obs, reward, done, info = env.step([0, 0])
+    obs, reward, done, truncated, info = env.step([0, 0])
     # Note that in order for RLlib to find out about start and end of an episode,
     # "t" and "dones" have to properly mark an episode's trajectory
     one_step_batch = SampleBatch(

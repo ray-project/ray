@@ -112,7 +112,7 @@ def run(checkpoint_path):
 
     # Run CartPole.
     env = MyCartPole()
-    obs = env.reset()
+    obs, info = env.reset()
     done = False
     step = 0
     while not done:
@@ -124,7 +124,7 @@ def run(checkpoint_path):
         actions, _, _ = policy_outputs[0]
         print(f"step {step}", obs, actions)
 
-        obs, _, done, _ = env.step(actions)
+        obs, _, done, _, _ = env.step(actions)
 
 
 # __sphinx_doc_end__

@@ -183,7 +183,7 @@ class TestMARLModule(unittest.TestCase):
                 def policy_map(agent_id):
                     return DEFAULT_POLICY_ID
 
-                obs = env.reset()
+                obs, info = env.reset()
 
                 tstep = 0
                 while tstep < 10:
@@ -216,10 +216,10 @@ class TestMARLModule(unittest.TestCase):
 
                         check(action, action2)
 
-                    obs, reward, done, info = env.step(action)
+                    obs, reward, done, truncated, info = env.step(action)
                     print(
                         f"obs: {obs}, action: {action}, reward: {reward}, "
-                        "done: {done}, info: {info}"
+                        f"done: {done}, truncated: {truncated}, info: {info}"
                     )
                     tstep += 1
 
@@ -233,7 +233,7 @@ class TestMARLModule(unittest.TestCase):
         def policy_map(agent_id):
             return DEFAULT_POLICY_ID
 
-        obs = env.reset()
+        obs, info = env.reset()
 
         batch = []
         tstep = 0
@@ -247,7 +247,7 @@ class TestMARLModule(unittest.TestCase):
             )
             fwd_out = module.forward_exploration(fwd_in)
             action = get_action_from_ma_fwd_pass(agent_obs, fwd_out, fwd_in, policy_map)
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, done, truncated, info = env.step(action)
             tstep += 1
 
             # construct the data from this iteration
@@ -260,6 +260,7 @@ class TestMARLModule(unittest.TestCase):
                     else action[aid],
                     "reward": np.array(reward[aid])[None],
                     "done": np.array(done[aid])[None],
+                    "truncated": np.array(truncated[aid])[None],
                     "next_obs": next_obs[aid],
                 }
             batch.append(iteration_data)

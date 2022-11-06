@@ -55,13 +55,13 @@ def rollout(
     )
     rewards = []
     t = 0
-    observation = env.reset()
+    observation, _ = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
-        observation, r, done, _ = env.step(ac)
+        observation, r, done, _, _ = env.step(ac)
         if offset != 0.0:
             r -= np.abs(offset)
         rewards.append(r)

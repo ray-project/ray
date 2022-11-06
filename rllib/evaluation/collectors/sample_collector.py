@@ -134,11 +134,12 @@ class SampleCollector(metaclass=ABCMeta):
                 REWARD, NEW_OBS, and DONE.
 
         Examples:
-            >>> obs = env.reset()
+            >>> obs, info = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
-            >>> obs, r, done, info = env.step(action)
+            >>> obs, r, done, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "done": done
+            ...     "action": action, "obs": obs, "reward": r, "done": done,
+            ...     "truncated": truncated
             ... })
         """
         raise NotImplementedError
@@ -208,7 +209,7 @@ class SampleCollector(metaclass=ABCMeta):
                 for inference/training.
 
         Examples:
-            >>> obs, r, done, info = env.step(action)
+            >>> obs, r, done, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })

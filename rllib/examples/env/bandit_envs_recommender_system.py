@@ -207,7 +207,7 @@ if __name__ == "__main__":
         num_docs_in_db=100,
         num_users_in_db=1,
     )
-    obs = env.reset()
+    obs, info = env.reset()
     num_episodes = 0
     episode_rewards = []
     episode_reward = 0.0

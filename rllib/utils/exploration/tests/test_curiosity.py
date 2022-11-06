@@ -254,11 +254,13 @@ class TestCuriosity(unittest.TestCase):
             # algo = ppo.PPO(config=config)
             # algo.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
-            # s = env.reset()
+            # obs, info = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(algo.compute_single_action(s))
-            #     if d:
-            #         s = env.reset()
+            #     obs, reward, done, truncated, info = env.step(
+            #         algo.compute_single_action(s)
+            #     )
+            #     if done:
+            #         obs, info = env.reset()
             #     env.render()
 
             results = tune.Tuner(

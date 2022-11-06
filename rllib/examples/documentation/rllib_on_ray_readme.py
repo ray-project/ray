@@ -77,7 +77,7 @@ for i in range(5):
 # to "just always walk right!"
 env = SimpleCorridor({"corridor_length": 10})
 # Get the initial observation (should be: [0.0] for the starting position).
-obs = env.reset()
+obs, info = env.reset()
 done = False
 total_reward = 0.0
 # Play one episode.
