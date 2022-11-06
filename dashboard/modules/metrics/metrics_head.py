@@ -10,6 +10,9 @@ import psutil
 
 from pydantic import BaseModel
 from urllib.parse import quote
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+    generate_grafana_dashboard,
+)
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
@@ -237,8 +240,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         data_sources_path = os.path.join(
             grafana_config_output_path, "provisioning", "datasources"
         )
+        dashboards_path = os.path.join(grafana_config_output_path, "dashboards")
         os.makedirs(
             data_sources_path,
+            exist_ok=True,
+        )
+        os.makedirs(
+            dashboards_path,
             exist_ok=True,
         )
         with open(
@@ -249,19 +257,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
-
-        # Output the dashboards in a special directory
-        if self._grafana_dashboard_output_dir:
-            grafana_dashboards_dir = os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards"
-            )
-            # Copy all dashboard jsons from directory
-            for root, _, files in os.walk(grafana_dashboards_dir):
-                for file in files:
-                    shutil.copy2(
-                        os.path.join(root, file),
-                        os.path.join(self._grafana_dashboard_output_dir, file),
-                    )
+        with open(
+            os.path.join(
+                dashboards_path,
+                "default_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            f.write(generate_grafana_dashboard())
 
     def _create_default_prometheus_configs(self):
         """

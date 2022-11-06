@@ -1,7 +1,9 @@
 import gym
 import logging
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Mapping
+import tree
+
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec
@@ -168,6 +170,9 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
+    reward: float = None,
+    done: bool = None,
+    info: Mapping = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -199,6 +204,13 @@ def local_policy_inference(
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
+    if reward is not None:
+        input_dict[SampleBatch.REWARDS] = reward
+    if done is not None:
+        input_dict[SampleBatch.DONES] = done
+    if info is not None:
+        input_dict[SampleBatch.INFOS] = info
+
     acd_list: List[AgentConnectorDataType] = [
         AgentConnectorDataType(env_id, agent_id, input_dict)
     ]
@@ -206,6 +218,10 @@ def local_policy_inference(
     outputs = []
     for ac in ac_outputs:
         policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
+        # not be batched during inference. This is the assumption made in AgentCollector
+        policy_output = tree.map_structure(lambda x: x[0], policy_output)
 
         action_connector_data = ActionConnectorDataType(
             env_id, agent_id, ac.data.raw_dict, policy_output
