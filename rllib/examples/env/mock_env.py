@@ -105,13 +105,13 @@ class VectorizedMockEnv(VectorEnv):
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
 
     @override(VectorEnv)
-    def vector_reset(self, seed=None):
+    def vector_reset(self, *, seed=None, options={}):
         obs_and_infos = [e.reset() for e in self.envs]
         return [oi[0] for oi in obs_and_infos], [oi[1] for oi in obs_and_infos]
 
     @override(VectorEnv)
-    def reset_at(self, index, seed=None):
-        return self.envs[index].reset()
+    def reset_at(self, index, *, seed=None, options=None):
+        return self.envs[index].reset(seed=seed, options=options)
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -155,17 +155,17 @@ class MockVectorEnv(VectorEnv):
         self.ts = 0
 
     @override(VectorEnv)
-    def vector_reset(self, seed=None):
-        obs, infos = self.env.reset()
+    def vector_reset(self, *, seed=None, options=None):
+        obs, infos = self.env.reset(seed=seed, options=options)
         return (
             [obs for _ in range(self.num_envs)],
             [infos for _ in range(self.num_envs)],
         )
 
     @override(VectorEnv)
-    def reset_at(self, index, seed=None):
+    def reset_at(self, index, *, seed=None, options=None):
         self.ts = 0
-        return self.env.reset()
+        return self.env.reset(seed=seed, options=options)
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -188,7 +188,7 @@ class MockVectorEnv(VectorEnv):
             obs_batch.append(obs)
             rew_batch.append(rew)
             done_batch.append(done)
-            truncated_batch.append(done)
+            truncated_batch.append(truncated)
             info_batch.append(info)
             if done:
                 remaining = self.num_envs - (i + 1)

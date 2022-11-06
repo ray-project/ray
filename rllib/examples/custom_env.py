@@ -98,7 +98,7 @@ class SimpleCorridor(gym.Env):
             self.cur_pos -= 1
         elif action == 1:
             self.cur_pos += 1
-        done, truncated = self.cur_pos >= self.end_pos
+        done = truncated = self.cur_pos >= self.end_pos
         # Produce a random reward when we reach the goal.
         return (
             [self.cur_pos],

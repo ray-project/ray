@@ -491,11 +491,16 @@ def check_vector_env(env: "VectorEnv") -> None:
 
     # Test `vector_reset()`.
     try:
-        vector_reset = env.vector_reset(seed=42, options={})
+        vector_reset = env.vector_reset(
+            seeds=[42] * env.num_envs,
+            options=[{}] * env.num_envs,
+        )
     except Exception as e:
         raise ValueError(
             "Your Env's `vector_reset()` method has some error! Make sure it expects a "
-            "seed (int) as well as an options dict as optional, named args."
+            "list of `seeds` (int) as well as a list of `options` dicts as optional, "
+            "named args, e.g. def vector_reset(self, index: int, *, seeds: "
+            "Optional[List[int]] = None, options: Optional[List[dict]] = None)"
         ) from e
 
     if not isinstance(vector_reset, tuple) or len(vector_reset) != 2:

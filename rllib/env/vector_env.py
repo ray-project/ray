@@ -84,15 +84,18 @@ class VectorEnv:
     @PublicAPI
     def vector_reset(
         self,
-        seed: Optional[int] = None,
+        *,
+        seeds: Optional[List[int]] = None,
+        options: Optional[List[dict]] = None
     ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         """Resets all sub-environments.
 
         Args:
-            seed: The seed that is used to initialize the environment's PRNG.
-                If None, will not reset any existing PRNG. If you pass an
-                integer, the PRNG will be reset even if it already
-                exists.
+            seed: The list of seeds to be passed to the sub-environments' when resetting
+                them. If None, will not reset any existing PRNGs. If you pass
+                integers, the PRNGs will be reset even if they already exists.
+            options: The list of options dicts to be passed to the sub-environments'
+                when resetting them.
 
         Returns:
             Tuple consitsing of a list of observations from each environment and
@@ -104,16 +107,19 @@ class VectorEnv:
     def reset_at(
         self,
         index: Optional[int] = None,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Union[Tuple[EnvObsType, EnvInfoDict], Exception]:
         """Resets a single sub-environment.
 
         Args:
             index: An optional sub-env index to reset.
-            seed: The seed that is used to initialize the environment's PRNG.
-                If None, will not reset any existing PRNG. If you pass an
-                integer, the PRNG will be reset even if it already
-                exists.
+            seed: The seed to be passed to the sub-environment at index `index` when
+                resetting it. If None, will not reset any existing PRNG. If you pass an
+                integer, the PRNG will be reset even if it already exists.
+            options: An options dict to be passed to the sub-environment at index
+                `index` when resetting it.
 
         Returns:
             Tuple consisting of observations from the reset sub environment and

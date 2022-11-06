@@ -42,7 +42,7 @@ class SimpleCorridor(gym.Env):
         elif action == 1:
             self.cur_pos += 1
         # Set `done` and `truncated` flags when end of corridor (goal) reached.
-        done, truncated = self.cur_pos >= self.end_pos
+        done = truncated = self.cur_pos >= self.end_pos
         # +1 when goal reached, otherwise -1.
         reward = 1.0 if done else -0.1
         return [self.cur_pos], reward, done, truncated, {}

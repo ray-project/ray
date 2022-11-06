@@ -119,7 +119,9 @@ class BaseEnv:
         return self
 
     @PublicAPI
-    def poll(self) -> Tuple[
+    def poll(
+        self,
+    ) -> Tuple[
         MultiEnvDict,
         MultiEnvDict,
         MultiEnvDict,
