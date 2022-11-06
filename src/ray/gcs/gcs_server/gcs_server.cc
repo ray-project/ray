@@ -167,6 +167,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init GCS task manager.
+  InitGcsTaskManager();
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -621,6 +624,14 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitGcsTaskManager() {
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>(gcs_table_storage_);
+  // Register service.
+  task_info_service_.reset(
+      new rpc::TaskInfoGrpcService(main_service_, *gcs_task_manager_));
+  rpc_server_.RegisterService(*task_info_service_);
 }
 
 void GcsServer::InstallEventListeners() {

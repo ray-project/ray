@@ -34,6 +34,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/task_state_buffer.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -1466,6 +1467,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  /// A shared pointer between various components that emitting task state events.
+  /// e.g. CoreWorker, TaskManager.
+  std::shared_ptr<worker::TaskStateBuffer> task_state_buffer_;
 };
 
 }  // namespace core

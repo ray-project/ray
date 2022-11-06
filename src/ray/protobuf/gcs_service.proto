@@ -633,4 +633,19 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskStateEventDataRequest {
+  TaskStateEventData data = 1;
+}
+
+message AddTaskStateEventDataReply {
+  GcsStatus status = 1;
+}
+
+// Service for task info access
+service TaskInfoGcsService {
+  // TODO
+  rpc AddTaskStateEventData(AddTaskStateEventDataRequest)
+      returns (AddTaskStateEventDataReply);
+}
 ///////////////////////////////////////////////////////////////////////////////

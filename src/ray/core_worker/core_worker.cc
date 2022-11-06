@@ -224,6 +224,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  // Initialize the task state event buffer.
+  task_state_buffer_ =
+      std::make_shared<worker::TaskStateBuffer>(io_service_, gcs_client_);
+
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
@@ -340,7 +344,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       push_error_callback,
-      RayConfig::instance().max_lineage_bytes()));
+      RayConfig::instance().max_lineage_bytes(),
+      task_state_buffer_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -1142,6 +1147,14 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  if (worker_context_.GetCurrentTask() == nullptr) {
+    task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
+                                     rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  } else {
+    task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
+                                     *worker_context_.GetCurrentTask(),
+                                     rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  }
 
   results->resize(ids.size(), nullptr);
 
@@ -2254,9 +2267,8 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
-  }
-
-  if (!options_.is_local_mode) {
+    task_state_buffer_->AddTaskEvent(
+        task_spec.TaskId(), task_spec, rpc::TaskStatus::RUNNING);
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }

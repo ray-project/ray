@@ -377,8 +377,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (is_application_error) {
       it->second.SetStatus(rpc::TaskStatus::FAILED);
+      task_state_buffer_->AddTaskEvent(task_id, it->second.spec, rpc::TaskStatus::FAILED);
     } else {
       it->second.SetStatus(rpc::TaskStatus::FINISHED);
+      task_state_buffer_->AddTaskEvent(
+          task_id, it->second.spec, rpc::TaskStatus::FINISHED);
     }
     num_pending_tasks_--;
 
@@ -773,6 +776,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  task_state_buffer_->AddTaskEvent(
+      task_id, it->second.spec, rpc::TaskStatus::SUBMITTED_TO_WORKER);
   it->second.SetNodeId(node_id);
 }
 

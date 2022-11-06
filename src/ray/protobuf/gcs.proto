@@ -200,6 +200,41 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
+// Represents state envents for a single task.
+message TaskStateEvents {
+  // Represents a single task event entry
+  message TaskStateEventEntry {
+    // The task status name.
+    // TODO(rickyx): This for now overrides the scheduling_state  in TaskInfoEntry
+    // We should deprecate that field after the refactoring of task backend.
+    TaskStatus task_status = 1;
+    // The event time.
+    int64 event_time = 2;
+    // Fine-grained event name.
+    string event_name = 3;
+  }
+  // Mirror info in task_info
+  bytes task_id = 1;
+  // Task metadata info
+  TaskInfoEntry task_info = 2;
+  // List of task events.
+  repeated TaskStateEventEntry events = 3;
+}
+
+// Represents a compact list of task state events by different tasks,
+// where each task has a list of state change events.
+message TaskStateEventData {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  string component_type = 1;
+  // An identifier for the component that generated the event.
+  bytes component_id = 2;
+  // An identifier for the node that generated the event.
+  bytes node_id = 3;
+  // A batch of task state change events.
+  repeated TaskStateEvents events_by_task = 4;
+}
+
 message ResourceTableData {
   // The total capacity of this resource type.
   double resource_capacity = 1;
