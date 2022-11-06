@@ -485,7 +485,7 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
 
     env = gym.make(env_name)
 
-    # Potentially wrap the env similar to how we would this in RolloutWorker
+    # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
         env = wrap_deepmind(
             env,
