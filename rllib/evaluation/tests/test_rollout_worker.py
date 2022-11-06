@@ -967,15 +967,15 @@ class TestRolloutWorker(unittest.TestCase):
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 
-            def reset(self):
+            def reset(self, *, seed=None, options=None):
                 pass
 
             def step(self, action_dict):
                 obs = {1: [0, 0], 2: [1, 1]}
                 rewards = {1: 0, 2: 0}
-                dones = {1: False, 2: False, "__all__": False}
+                dones = truncated = {1: False, 2: False, "__all__": False}
                 infos = {1: {}, 2: {}}
-                return obs, rewards, dones, infos
+                return obs, rewards, dones, truncated, infos
 
         ev = RolloutWorker(
             env_creator=lambda _: MockMultiAgentEnv(),
@@ -1014,11 +1014,12 @@ class TestRolloutWorker(unittest.TestCase):
                 self.training_enabled = training_enabled
 
             def step(self, action):
-                obs, rew, done, info = super(NoTrainingEnv, self).step(action)
+                obs, rew, done, truncated, info = super(NoTrainingEnv, self).step(action)
                 return (
                     obs,
                     rew,
                     done,
+                    truncated,
                     {**info, "training_enabled": self.training_enabled},
                 )
 

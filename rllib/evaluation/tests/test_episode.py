@@ -78,25 +78,30 @@ class EpisodeEnv(MultiAgentEnv):
         self._skip_env_checking = True
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
         self.dones = set()
+        self.truncateds = set()
         self.observation_space = self.agents[0].observation_space
         self.action_space = self.agents[0].action_space
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
+        self.truncateds = set()
+        return {i: a.reset() for i, a in enumerate(self.agents)}, {}
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
+        obs, rew, done, truncated, info = {}, {}, {}, {}, {}
         print("ACTIONDICT IN ENV\n", action_dict)
         for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+            obs[i], rew[i], done[i], truncated[i], info[i] = self.agents[i].step(action)
             obs[i] = obs[i] + i
             rew[i] = rew[i] + i
             info[i]["timestep"] = info[i]["timestep"] + i
             if done[i]:
                 self.dones.add(i)
+            if truncated[i]:
+                self.truncateds.add(i)
         done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        return obs, rew, done, truncated, info
 
 
 class TestEpisodeLastValues(unittest.TestCase):

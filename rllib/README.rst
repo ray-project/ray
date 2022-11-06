@@ -151,7 +151,7 @@ Quick First Experiment
             self.cur_obs = None
             self.episode_len = 0
 
-        def reset(self, seed=None):
+        def reset(self, *, seed=None, options=None):
             """Resets the episode and returns the initial observation of the new one.
             """
             # Reset the episode len.

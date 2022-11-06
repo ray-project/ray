@@ -117,7 +117,7 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
         )
         self._skip_env_checking = True
 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
         return {
             "valid_avail_actions_mask": self.valid_avail_actions_mask,
             "cart": self.wrapped.reset(),

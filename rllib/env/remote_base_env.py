@@ -392,11 +392,8 @@ class _RemoteMultiAgentEnv:
         self.env = make_env(i)
         self.agent_ids = set()
 
-    def reset(self, seed: Optional[int] = None):
-        if seed is None:
-            obs_and_info = self.env.reset()
-        else:
-            obs_and_info = self.env.reset(seed)
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs_and_info = self.env.reset(seed, options)
 
         if check_old_gym_env(self.env, reset_results=obs_and_info):
             obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
@@ -442,11 +439,8 @@ class _RemoteSingleAgentEnv:
     def __init__(self, make_env, i):
         self.env = make_env(i)
 
-    def reset(self, seed: Optional[int] = None):
-        if seed is None:
-            obs_and_info = self.env.reset()
-        else:
-            obs_and_info = self.env.reset(seed)
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs_and_info = self.env.reset(seed=seed, options=options)
 
         if check_old_gym_env(self.env, reset_results=obs_and_info):
             obs_and_info = obs_and_info, {}

@@ -40,18 +40,23 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         )
         self.last_cumulative_reward = None
 
-    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         kaggle_state = self.kaggle_env.reset()
         self.last_cumulative_reward = None
         return {
             f"agent{idx}": self._convert_obs(agent_state["observation"])
             for idx, agent_state in enumerate(kaggle_state)
             if agent_state["status"] == "ACTIVE"
-        }
+        }, {}
 
     def step(
         self, action_dict: Dict[AgentID, int]
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         # Convert action_dict (used by RLlib) to a list of actions (used by
         # kaggle_environments)
         action_list = [None] * len(self.kaggle_env.state)
@@ -65,6 +70,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         obs = {}
         cumulative_reward = {}
         done = {"__all__": self.kaggle_env.done}
+        truncated = {"__all__": False}
         info = {}
         for idx in range(len(self.kaggle_env.state)):
             agent_state = self.kaggle_env.state[idx]
@@ -73,6 +79,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
                 obs[agent_name] = self._convert_obs(agent_state["observation"])
             cumulative_reward[agent_name] = agent_state["reward"]
             done[agent_name] = agent_state["status"] != "ACTIVE"
+            truncated[agent_name] = False
             info[agent_name] = agent_state["info"]
         # Compute the step rewards from the cumulative rewards
         if self.last_cumulative_reward is not None:
@@ -83,7 +90,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         else:
             reward = cumulative_reward
         self.last_cumulative_reward = cumulative_reward
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
 
     def _convert_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """Convert raw observations

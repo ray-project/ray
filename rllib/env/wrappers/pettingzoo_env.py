@@ -104,15 +104,19 @@ class PettingZooEnv(MultiAgentEnv):
         )
         self._agent_ids = set(self.env.agents)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         self.env.reset()
-        return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
+        return (
+            {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
+            {},
+        )
 
     def step(self, action):
         self.env.step(action[self.env.agent_selection])
         obs_d = {}
         rew_d = {}
         done_d = {}
+        truncated_d = {}
         info_d = {}
         while self.env.agents:
             obs, rew, done, info = self.env.last()
@@ -179,13 +183,14 @@ class ParallelPettingZooEnv(MultiAgentEnv):
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         return self.par_env.reset()
 
     def step(self, action_dict):
-        obss, rews, dones, infos = self.par_env.step(action_dict)
+        obss, rews, dones, truncateds, infos = self.par_env.step(action_dict)
         dones["__all__"] = all(dones.values())
-        return obss, rews, dones, infos
+        truncateds["__all__"] = all(truncateds.values())
+        return obss, rews, dones, truncateds, infos
 
     def close(self):
         self.par_env.close()

@@ -24,9 +24,9 @@ class OpenSpielEnv(MultiAgentEnv):
         )
         self.action_space = Discrete(self.env.num_distinct_actions())
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optionsl[dict] = None):
         self.state = self.env.new_initial_state()
-        return self._get_obs()
+        return self._get_obs(), {}
 
     def step(self, action):
         # Before applying action(s), there could be chance nodes.
@@ -69,8 +69,11 @@ class OpenSpielEnv(MultiAgentEnv):
         dones = dict(
             {ag: is_done for ag in range(self.num_agents)}, **{"__all__": is_done}
         )
+        truncateds = dict(
+            {ag: False for ag in range(self.num_agents)}, **{"__all__": False}
+        )
 
-        return obs, rewards, dones, {}
+        return obs, rewards, dones, truncateds, {}
 
     def render(self, mode=None) -> None:
         if mode == "human":

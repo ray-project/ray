@@ -117,11 +117,11 @@ class RecSimResetWrapper(gym.Wrapper):
         super().__init__(env)
         self._sampled_obs = self.env.observation_space.sample()
 
-    def reset(self):
-        obs = super().reset()
+    def reset(self, *, seed=None, options=None):
+        obs, info = super().reset()
         obs["response"] = self.env.observation_space["response"].sample()
         obs = convert_element_to_space_type(obs, self._sampled_obs)
-        return obs
+        return obs, info
 
     def close(self):
         pass

@@ -86,11 +86,8 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
         self.env.seed(seed)
 
-    def reset(self, seed: Optional[int] = None):
-        if seed is None:
-            obs_and_info = self.env.reset()
-        else:
-            obs_and_info = self.env.seed(seed)
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs_and_info = self.env.seed(seed=seed, options=options)
 
         if check_old_gym_env(self.env, reset_results=obs_and_info):
             obs_and_info = obs_and_info, {}
@@ -136,7 +133,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     infos[agent_id] = {}
                 infos[agent_id][GROUP_REWARDS] = rew
 
-        return obs, rewards, dones, infos
+        return obs, rewards, dones, truncateds, infos
 
     def _ungroup_items(self, items):
         out = {}

@@ -19,21 +19,22 @@ class CartPoleSparseRewards(gym.Env):
         )
         self.running_reward = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.running_reward = 0
         return {
             "obs": self.env.reset(),
             "action_mask": np.array([1, 1], dtype=np.float32),
-        }
+        }, {}
 
     def step(self, action):
-        obs, rew, done, info = self.env.step(action)
+        obs, rew, done, truncated, info = self.env.step(action)
         self.running_reward += rew
         score = self.running_reward if done else 0
         return (
             {"obs": obs, "action_mask": np.array([1, 1], dtype=np.float32)},
             score,
             done,
+            truncated,
             info,
         )
 

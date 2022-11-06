@@ -1,4 +1,4 @@
-from gymnasium import Env
+import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
 from gymnasium.envs.registration import EnvSpec
 import numpy as np
@@ -35,7 +35,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-class SimpleEnv(Env):
+class SimpleEnv(gym.Env):
     def __init__(self, config):
         self._skip_env_checking = True
         if config.get("simplex_actions", False):
@@ -47,18 +47,18 @@ class SimpleEnv(Env):
         self.state = None
         self.steps = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = self.observation_space.sample()
         self.steps = 0
-        return self.state
+        return self.state, {}
 
     def step(self, action):
         self.steps += 1
         # Reward is 1.0 - (max(actions) - state).
-        [r] = 1.0 - np.abs(np.max(action) - self.state)
-        d = self.steps >= self.max_steps
+        [rew] = 1.0 - np.abs(np.max(action) - self.state)
+        done = truncated = self.steps >= self.max_steps
         self.state = self.observation_space.sample()
-        return self.state, r, d, {}
+        return self.state, rew, done, truncated, {}
 
 
 class TestSAC(unittest.TestCase):
@@ -517,20 +517,21 @@ class TestSAC(unittest.TestCase):
             {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
         ]
 
-        class NestedDictEnv(Env):
+        class NestedDictEnv(gym.Env):
             def __init__(self):
                 self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
                 self.observation_space = dict_space
                 self._spec = EnvSpec("NestedDictEnv-v0")
                 self.steps = 0
 
-            def reset(self):
+            def reset(self, *, seed=None, options=None):
                 self.steps = 0
-                return dict_samples[0]
+                return dict_samples[0], {}
 
             def step(self, action):
                 self.steps += 1
-                return dict_samples[self.steps], 1, self.steps >= 5, {}
+                done = truncated = self.steps >= 5
+                return dict_samples[self.steps], 1, done, truncated, {}
 
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (

@@ -28,8 +28,9 @@ class GymnasiumNewAPI(gym.Env):
         self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self, seed=None):
+    def reset(self, *, seed=None, options=None):
         assert seed is None or isinstance(seed, int)
+        assert options is None or isinstance(options, dict)
         return self.observation_space.sample()
 
     def step(self, action):
@@ -47,7 +48,7 @@ class GymOldAPI(old_gym.Env):
 
     def step(self, action):
         done = True
-        return self.observation_space.sample(), 1.0, done, {}
+        return self.observation_space.sample(), 1.0, done, truncated
 
     def seed(self, seed=None):
         pass
@@ -58,8 +59,9 @@ class GymNewAPI(old_gym.Env):
         self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self, seed=None):
+    def reset(self, *, seed=None, options=None):
         assert seed is None or isinstance(seed, int)
+        assert options is None or isinstance(options, dict)
         return self.observation_space.sample()
 
     def step(self, action):

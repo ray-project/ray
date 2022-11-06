@@ -193,22 +193,23 @@ class DMCEnv(core.Env):
         reward = 0
         extra = {"internal_state": self._env.physics.get_state().copy()}
 
+        done = truncated = False
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
             reward += time_step.reward or 0
-            done = time_step.last()
+            done = truncated = time_step.last()
             if done:
                 break
         obs = self._get_obs(time_step)
         self.current_state = _flatten_obs(time_step.observation)
         extra["discount"] = time_step.discount
-        return obs, reward, done, extra
+        return obs, reward, done, truncated, extra
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         time_step = self._env.reset()
         self.current_state = _flatten_obs(time_step.observation)
         obs = self._get_obs(time_step)
-        return obs
+        return obs, {}
 
     def render(self, mode="rgb_array", height=None, width=None, camera_id=0):
         assert mode == "rgb_array", "only support for rgb_array mode"

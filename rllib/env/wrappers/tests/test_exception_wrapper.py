@@ -17,10 +17,10 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
             def step(self, action):
                 if random.choice([True, False]):
                     raise ValueError("An error from a unstable environment.")
-                return self.observation_space.sample(), 0.0, False, {}
+                return self.observation_space.sample(), 0.0, False, False, {}
 
-            def reset(self, seed=None):
-                return self.observation_space.sample()
+            def reset(self, *, seed=None, options=None):
+                return self.observation_space.sample(), {}
 
         env = UnstableEnv()
         env = ResetOnExceptionWrapper(env)
@@ -36,9 +36,9 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
             action_space = gym.spaces.Discrete(2)
 
             def step(self, action):
-                return self.observation_space.sample(), 0.0, False, {}
+                return self.observation_space.sample(), 0.0, False, False, {}
 
-            def reset(self, seed=None):
+            def reset(self, *, seed=None, options=None):
                 raise ValueError("An error from a very unstable environment.")
 
         env = VeryUnstableEnv()

@@ -53,13 +53,13 @@ class MyCartPole(gym.Env):
     def step(self, actions):
         # Take the first action.
         action = actions[0]
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, truncated, info = self._env.step(action)
         # Fake additional data points to the obs.
         obs = np.hstack((obs, [8.0, 6.0]))
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
 
-    def reset(self):
-        return np.hstack((self._env.reset(), [8.0, 6.0]))
+    def reset(self, *, seed=None, options=None):
+        return np.hstack((self._env.reset(), [8.0, 6.0])), {}
 
 
 # Custom agent connector to drop the last 2 feature values.

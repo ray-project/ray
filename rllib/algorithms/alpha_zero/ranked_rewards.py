@@ -55,10 +55,10 @@ def get_r2_env_wrapper(env_creator, r2_config):
                 self.r2_buffer.add_reward(reward)
 
         def step(self, action):
-            obs, reward, done, info = self.env.step(action)
+            obs, reward, done, truncated, info = self.env.step(action)
             if done:
                 reward = self.r2_buffer.normalize(reward)
-            return obs, reward, done, info
+            return obs, reward, done, truncated, info
 
         def get_state(self):
             state = {
@@ -67,7 +67,7 @@ def get_r2_env_wrapper(env_creator, r2_config):
             }
             return deepcopy(state)
 
-        def reset(self):
+        def reset(self, *, seed=None, options=Non):
             return self.env.reset()
 
         def set_state(self, state):

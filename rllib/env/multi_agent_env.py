@@ -500,6 +500,7 @@ def make_multi_agent(
             else:
                 self.envs = [env_name_or_creator(config) for _ in range(num)]
             self.dones = set()
+            self.truncateds = set()
             self.observation_space = self.envs[0].observation_space
             self.action_space = self.envs[0].action_space
             self._agent_ids = set(range(num))
@@ -533,8 +534,9 @@ def make_multi_agent(
             return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def reset(self, seed: Optional[int] = None):
+        def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
             self.dones = set()
+            self.truncateds = set()
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
                 results = env.reset()
@@ -559,7 +561,10 @@ def make_multi_agent(
 
                 if done[i]:
                     self.dones.add(i)
+                if truncated[i]:
+                    self.truncateds.add(i)
             done["__all__"] = len(self.dones) == len(self.envs)
+            truncated["__all__"] = len(self.truncateds) == len(self.envs)
             return obs, rew, done, truncated, info
 
         @override(MultiAgentEnv)
