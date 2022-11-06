@@ -1206,6 +1206,7 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.TRUNCATEDS: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
@@ -1345,6 +1346,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
                             SampleBatch.DONES,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,
@@ -1363,6 +1365,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
                             SampleBatch.DONES,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,

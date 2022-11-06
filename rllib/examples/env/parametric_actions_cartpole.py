@@ -55,11 +55,12 @@ class ParametricActionsCartPole(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         self.update_avail_actions()
+        obs, infos = self.wrapped.reset()
         return {
             "action_mask": self.action_mask,
             "avail_actions": self.action_assignments,
-            "cart": self.wrapped.reset(),
-        }, {}
+            "cart": obs,
+        }, infos
 
     def step(self, action):
         if action == self.left_idx:
@@ -118,10 +119,11 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
         self._skip_env_checking = True
 
     def reset(self, *, seed=None, options=None):
+        obs, infos = self.wrapped.reset()
         return {
             "valid_avail_actions_mask": self.valid_avail_actions_mask,
-            "cart": self.wrapped.reset(),
-        }, {}
+            "cart": obs,
+        }, infos
 
     def step(self, action):
         if action == self.left_idx:
