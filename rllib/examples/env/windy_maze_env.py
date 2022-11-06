@@ -92,7 +92,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.flat_env = WindyMazeEnv(env_config)
 
     def reset(self, *, seed=None, options=None):
-        self.cur_obs = self.flat_env.reset()
+        self.cur_obs, infos = self.flat_env.reset()
         self.current_goal = None
         self.steps_remaining_at_level = None
         self.num_high_level_steps = 0
@@ -101,7 +101,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.low_level_agent_id = "low_level_{}".format(self.num_high_level_steps)
         return {
             "high_level_agent": self.cur_obs,
-        }, {}
+        }, {"high_level_agent": infos}
 
     def step(self, action_dict):
         assert len(action_dict) == 1, action_dict
@@ -128,7 +128,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         goal_pos = self.flat_env._get_new_pos(cur_pos, self.current_goal)
 
         # Step in the actual env
-        f_obs, f_rew, f_done, _ = self.flat_env.step(action)
+        f_obs, f_rew, f_done, f_truncated, info = self.flat_env.step(action)
         new_pos = tuple(f_obs[0])
         self.cur_obs = f_obs
 
@@ -144,6 +144,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
 
         # Handle env termination & transitions back to higher level.
         done = {"__all__": False}
+        truncated = {"__all__": False}
         if f_done:
             done["__all__"] = True
             logger.debug("high level final reward {}".format(f_rew))
@@ -151,7 +152,8 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
             obs["high_level_agent"] = f_obs
         elif self.steps_remaining_at_level == 0:
             done[self.low_level_agent_id] = True
+            truncated[self.low_level_agent_id] = False
             rew["high_level_agent"] = 0
             obs["high_level_agent"] = f_obs
 
-        return obs, rew, done, done, {}
+        return obs, rew, done, done, truncated, {self.low_level_agent_id: info}

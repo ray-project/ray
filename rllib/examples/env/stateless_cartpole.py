@@ -34,6 +34,6 @@ class StatelessCartPole(CartPoleEnv):
         return np.array([next_obs[0], next_obs[2]]), reward, done, truncated, info
 
     def reset(self, *, seed=None, options=None):
-        init_obs = super().reset(seed=seed, options=options)
+        init_obs, init_info = super().reset(seed=seed, options=options)
         # init_obs is [x-pos, x-veloc, angle, angle-veloc]
-        return np.array([init_obs[0], init_obs[2]]), {}
+        return np.array([init_obs[0], init_obs[2]]), init_info

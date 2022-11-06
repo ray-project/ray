@@ -30,6 +30,6 @@ class StatelessPendulum(PendulumEnv):
         return next_obs[:-1], reward, done, truncated, info
 
     def reset(self, *, seed=None, options=None):
-        init_obs = super().reset(seed=seed, options=options)
+        init_obs, init_info = super().reset(seed=seed, options=options)
         # init_obs is [cos(theta), sin(theta), theta-dot (angular velocity)]
-        return init_obs[:-1], {}
+        return init_obs[:-1], init_info
