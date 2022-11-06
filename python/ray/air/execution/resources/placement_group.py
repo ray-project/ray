@@ -174,3 +174,6 @@ class PlacementGroupResourceManager(ResourceManager):
 
         for acquired_pg in self._acquired_pgs:
             remove_placement_group(acquired_pg)
+
+    def __del__(self):
+        self.clear()
