@@ -1,15 +1,16 @@
 import base64
+import numpy as np
 import io
 import zlib
 from typing import Dict
 
-import gymnasium as gym
-import numpy as np
-
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.gym import try_import_gymnasium_and_gym
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
+
+gym, old_gym = try_import_gymnasium_and_gym()
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -115,15 +116,15 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             d[k] = gym_space_to_dict(s)
         return d
 
-    if isinstance(space, gym.spaces.Box):
+    if isinstance(space, (gym.spaces.Box, old_gym.spaces.Box)):
         return _box(space)
-    elif isinstance(space, gym.spaces.Discrete):
+    elif isinstance(space, (gym.spaces.Discrete, old_gym.spaces.Discrete)):
         return _discrete(space)
-    elif isinstance(space, gym.spaces.MultiDiscrete):
+    elif isinstance(space, (gym.spaces.MultiDiscrete, old_gym.spaces.MultiDiscrete)):
         return _multi_discrete(space)
-    elif isinstance(space, gym.spaces.Tuple):
+    elif isinstance(space, (gym.spaces.Tuple, old_gym.spaces.Tuple)):
         return _tuple(space)
-    elif isinstance(space, gym.spaces.Dict):
+    elif isinstance(space, (gym.spaces.Dict, old_gym.spaces.Dict)):
         return _dict(space)
     elif isinstance(space, Simplex):
         return _simplex(space)

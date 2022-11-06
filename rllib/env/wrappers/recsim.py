@@ -10,6 +10,7 @@ https://github.com/google-research/recsim
 from collections import OrderedDict
 import gymnasium as gym
 from gymnasium.spaces import Dict, Discrete, MultiDiscrete
+from gymnasium.wrappers import EnvCompatibility
 import numpy as np
 from recsim.document import AbstractDocumentSampler
 from recsim.simulator import environment, recsim_gym
@@ -19,6 +20,7 @@ from typing import Callable, List, Optional, Type
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 
 
 class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
@@ -35,7 +37,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
 
     def __init__(self, env: gym.Env):
         super().__init__(env)
-        obs_space = self.env.observation_space
+        obs_space = gym_space_from_dict(gym_space_to_dict(self.env.observation_space))
         doc_space = Dict(
             OrderedDict(
                 [
@@ -54,6 +56,9 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
             )
         )
         self._sampled_obs = self.observation_space.sample()
+        self.action_space = gym_space_from_dict(
+            gym_space_to_dict(self.env.action_space)
+        )
 
     def observation(self, obs):
         new_obs = OrderedDict()
@@ -77,7 +82,7 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
 
     def __init__(self, env: gym.Env):
         super().__init__(env)
-        obs_space = self.env.observation_space
+        obs_space = gym_space_from_dict(gym_space_to_dict(self.env.observation_space))
 
         num_items = len(obs_space["doc"])
         embedding_dim = next(iter(obs_space["doc"].values())).shape[-1]
@@ -94,6 +99,9 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
             )
         )
         self._sampled_obs = self.observation_space.sample()
+        self.action_space = gym_space_from_dict(
+            gym_space_to_dict(self.env.action_space)
+        )
 
     def observation(self, obs):
         new_obs = OrderedDict()
@@ -251,6 +259,8 @@ def make_recsim_env(
             )
             # Convert raw RecSim env to a gym.Env.
             gym_env = recsim_gym.RecSimGymEnv(raw_recsim_env, reward_aggregator)
+            # Wrap for the new gym API (RecSim does not support this).
+            gym_env = EnvCompatibility(gym_env)
 
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
