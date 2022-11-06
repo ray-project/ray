@@ -1,12 +1,10 @@
 from copy import deepcopy
 from gym.spaces import Space
-import logging
 import math
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
-from ray.util import log_once
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -22,8 +20,6 @@ from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
-
-logger = logging.getLogger(__name__)
 
 
 def _to_float_np_array(v: List[Any]) -> np.ndarray:
@@ -182,6 +178,11 @@ class AgentCollector:
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
+
+        # TODO (Kourosh): Error out when one of the keys are missing.
+        # TODO (Kourosh): Error out when the the new input_values shapes do not match
+        # the existing ones in the buffer.
+
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
@@ -195,19 +196,7 @@ class AgentCollector:
 
         # Default to next timestep if not provided in input values
         if SampleBatch.T not in input_values:
-            if log_once("no_timesteps_provided_in_add_action_reward_next_obs"):
-                logger.warning(
-                    "Agent collector is not receiving timesteps."
-                    "Timesteps are built internally."
-                )
             values[SampleBatch.T] = self.buffers[SampleBatch.T][0][-1] + 1
-        if SampleBatch.REWARDS not in input_values:
-            if log_once("no_rewards_provided_in_add_action_reward_next_obs"):
-                logger.warning(
-                    "Agent collector is not receiving rewards."
-                    "Rewards are set to zero."
-                )
-            values[SampleBatch.REWARDS] = 0
 
         # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
@@ -509,12 +498,7 @@ class AgentCollector:
     def _cache_in_np(self, cache_dict: Dict[str, List[np.ndarray]], key: str) -> None:
         """Caches the numpy version of the key in the buffer dict."""
         if key not in cache_dict:
-            arrays_to_cache = []
-            for d in self.buffers[key]:
-                # Don't attempt to cache empty arrays
-                if len(d):
-                    arrays_to_cache.append(_to_float_np_array(d))
-            cache_dict[key] = arrays_to_cache
+            cache_dict[key] = [_to_float_np_array(d) for d in self.buffers[key]]
 
     def _unflatten_as_buffer_struct(
         self, data: List[np.ndarray], key: str
@@ -569,6 +553,8 @@ class AgentCollector:
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
+                    #  state_out_x assumes the values do not have a batch dimension
+                    #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,
                         batch_size=0,
