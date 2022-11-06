@@ -124,6 +124,7 @@ class PettingZooEnv(MultiAgentEnv):
             obs_d[a] = obs
             rew_d[a] = rew
             done_d[a] = done
+            truncated_d[a] = False
             info_d[a] = info
             if self.env.dones[self.env.agent_selection]:
                 self.env.step(None)
@@ -133,7 +134,7 @@ class PettingZooEnv(MultiAgentEnv):
         all_done = not self.env.agents
         done_d["__all__"] = all_done
 
-        return obs_d, rew_d, done_d, info_d
+        return obs_d, rew_d, done_d, truncated_d, info_d
 
     def close(self):
         self.env.close()
@@ -141,7 +142,7 @@ class PettingZooEnv(MultiAgentEnv):
     def seed(self, seed=None):
         self.env.seed(seed)
 
-    def render(self, mode="human"):
+    def render(self):
         return self.env.render(mode)
 
     @property

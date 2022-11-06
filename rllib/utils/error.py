@@ -44,6 +44,39 @@ c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
 """
 
+
+ERR_MSG_OLD_GYM_API = """Your environment ({}) does not abide to the new gymnasium-style API!
+From Ray 2.2 on, RLlib only supports the new (gym>=0.26 or gymnasium) Env APIs.
+{}
+Learn more about the most important changes here:
+https://github.com/openai/gym and here: https://github.com/Farama-Foundation/Gymnasium
+
+In order to fix this problem, do the following:
+
+1) Run `pip install gymnasium` on your command line.
+2) Change all your import statements in your code from `import gym` -> `import gymnasium as gym` OR
+   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`, etc..
+
+For your custom (single agent) gym.Env classes:
+3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import EnvCompatibility` wrapper class.
+3.2) Alternatively to 3.1:
+ - Change your `reset()` method to have the call signature 'def reset(self, *, seed=None, options=None)'
+ - Return an additional info dict (empty dict should be fine) from your `reset()` method.
+ - Return an additional `truncated` flag from your `step()` method (between `done` and `info`). This flag should
+   indicate, whether the episode was terminated prematurely due to some time constraint or other kind of horizon setting.
+
+For your custom RLlib `MultiAgentEnv` classes:
+4.1) Either wrap your old MultiAgentEnv via the provided `from ray.rllib.env.wrappers.multi_agent_env_compatibility import MultiAgentEnvCompatibility` wrapper class.
+4.2) Alternatively to 4.1:
+ - Change your `reset()` method to have the call signature 'def reset(self, *, seed=None, options=None)'
+ - Return an additional per-agent info dict (empty dict should be fine) from your `reset()` method.
+ - Return an additional `truncateds` per-agent dictionary flag from your `step()` method, including the `__all__` key
+   (100% analogous to your `dones` per-agent dict). Return this new `truncateds` dict between `dones` and `infos`.
+   This flag should indicate, whether the episode (for some agent or all agents) was terminated prematurely due to some time
+   constraint or other kind of horizon setting.
+"""
+
+
 ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under self[TfPolicy].model.base_model!
     This is either due to ..
     a) .. this Policy's ModelV2 not having any `base_model` (tf.keras.Model) property

@@ -61,7 +61,9 @@ class MultiAgentEnv(gym.Env):
     @PublicAPI
     def reset(
         self,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         """Resets the env and returns observations from ready agents.
 
@@ -77,7 +79,7 @@ class MultiAgentEnv(gym.Env):
             ...     # Define your env here. # doctest: +SKIP
             ...     ... # doctest: +SKIP
             >>> env = MyMultiAgentEnv() # doctest: +SKIP
-            >>> obs, infos = env.reset(seed=42) # doctest: +SKIP
+            >>> obs, infos = env.reset(seed=42, options={}) # doctest: +SKIP
             >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
@@ -293,7 +295,7 @@ class MultiAgentEnv(gym.Env):
         return self._agent_ids
 
     @PublicAPI
-    def render(self, mode=None) -> None:
+    def render(self) -> None:
         """Tries to render the environment."""
 
         # By default, do nothing.
@@ -552,12 +554,7 @@ def make_multi_agent(
             obs, rew, done, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
                 results = self.envs[i].step(action)
-                # Gym < 0.26 support.
-                if check_old_gym_env(self.envs[i], step_results=results):
-                    obs[i], rew[i], done[i], info[i] = results
-                    truncated[i] = False
-                else:
-                    obs[i], rew[i], done[i], truncated[i], info[i] = results
+                obs[i], rew[i], done[i], truncated[i], info[i] = results
 
                 if done[i]:
                     self.dones.add(i)
@@ -568,8 +565,8 @@ def make_multi_agent(
             return obs, rew, done, truncated, info
 
         @override(MultiAgentEnv)
-        def render(self, mode=None):
-            return self.envs[0].render(mode)
+        def render(self):
+            return self.envs[0].render(self.render_mode)
 
     return MultiEnv
 
@@ -609,6 +606,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         self.restart_failed_sub_environments = restart_failed_sub_environments
 
         self.dones = set()
+        self.truncateds = set()
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
@@ -683,7 +681,9 @@ class MultiAgentEnvWrapper(BaseEnv):
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Optional[Tuple[MultiEnvDict, MultiEnvDict]]:
         ret_obs = {}
         ret_infos = {}
@@ -692,10 +692,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            if seed is None:
-                obs_and_infos = self.env_states[idx].reset()
-            else:
-                obs_and_infos = self.env_states[idx].reset(seed)
+            obs_and_infos = self.env_states[idx].reset(seed=seed, options=options)
 
             # Gym < 0.26 support.
             if check_old_gym_env(self.envs[idx], reset_results=obs_and_infos):
@@ -889,19 +886,12 @@ class _MultiAgentEnvState:
 
     def reset(
         self,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         try:
-            # Gym < 0.26 support.
-            if seed is None:
-                obs_and_infos = self.env.reset()
-            else:
-                obs_and_infos = self.env.reset(seed)
-
-            # Gym < 0.26 support.
-            if check_old_gym_env(self.env, reset_results=obs_and_infos):
-                obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
-
+            obs_and_infos = self.env.reset(seed=seed, options=options)
         except Exception as e:
             if self.return_error_as_obs:
                 logger.exception(e.args[0])

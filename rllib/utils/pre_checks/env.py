@@ -5,11 +5,11 @@ import logging
 import numpy as np
 import traceback
 import tree  # pip install dm_tree
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Set, Union
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.error import ERR_MSG_OLD_GYM_API, UnsupportedSpaceException
 from ray.rllib.utils.gym import check_old_gym_env, try_import_gymnasium_and_gym
 from ray.rllib.utils.spaces.space_utils import (
     convert_element_to_space_type,
@@ -103,8 +103,8 @@ def check_env(env: EnvType) -> None:
 
 
 @DeveloperAPI
-def check_gym_environments(env: gym.Env) -> None:
-    """Checking for common errors in gym environments.
+def check_gym_environments(env: Union[gym.Env, old_gym.Env]) -> None:
+    """Checking for common errors in a gymnasium/gym environments.
 
     Args:
         env: Environment to be checked.
@@ -134,7 +134,11 @@ def check_gym_environments(env: gym.Env) -> None:
         AssertionError: If env.step() returns an env_info that is not a dict.
     """
 
-    # check that env has observation and action spaces
+    # Check for old gym.Env.
+    if isinstance(env, old_gym.Env):
+        raise ValueError(ERR_MSG_OLD_GYM_API.format(env, ""))
+
+    # Check that env has observation and action spaces.
     if not hasattr(env, "observation_space"):
         raise AttributeError("Env must have observation_space.")
     if not hasattr(env, "action_space"):
@@ -142,9 +146,9 @@ def check_gym_environments(env: gym.Env) -> None:
 
     # check that observation and action spaces are gym.spaces
     if not isinstance(env.observation_space, gym.spaces.Space):
-        raise ValueError("Observation space must be a gym.space")
+        raise ValueError("Observation space must be a gymnasium.Space!")
     if not isinstance(env.action_space, gym.spaces.Space):
-        raise ValueError("Action space must be a gym.space")
+        raise ValueError("Action space must be a gymnasium.Space!")
 
     # Raise a warning if there isn't a max_episode_steps attribute.
     if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
@@ -175,10 +179,17 @@ def check_gym_environments(env: gym.Env) -> None:
     sampled_observation = env.observation_space.sample()
     # Check if observation generated from stepping the environment is
     # contained within the observation space
-    obs_and_infos = env.reset()
-    # Gym < 0.26 support.
-    if check_old_gym_env(reset_results=obs_and_infos):
-        obs_and_infos = (obs_and_infos, {})
+    try:
+        obs_and_infos = env.reset(seed=42, options={})
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(reset_results=obs_and_infos)
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `reset()` method seems to be faulty."
+            )
+        ) from e
     reset_obs, reset_infos = obs_and_infos
 
     if not env.observation_space.contains(reset_obs):
@@ -207,14 +218,18 @@ def check_gym_environments(env: gym.Env) -> None:
     # Check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
     # the correct dtypes.
-    results = env.step(sampled_action)
-
-    # Gym < 0.26 support.
-    if check_old_gym_env(env, step_results=results):
-        next_obs, reward, done, info = results
-        truncated = True
-    else:
-        next_obs, reward, done, truncated, info = results
+    try:
+        results = env.step(sampled_action)
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(step_results=results)
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `step()` method seems to be faulty."
+            )
+        ) from e
+    next_obs, reward, done, truncated, info = results
 
     if not env.observation_space.contains(next_obs):
         temp_sampled_next_obs = convert_element_to_space_type(
@@ -271,10 +286,17 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
             )
         return
 
-    obs_and_infos = env.reset()
-    if check_old_gym_env(env, reset_results=obs_and_infos):
-        obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
-
+    try:
+        obs_and_infos = env.reset(seed=42, options={})
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(reset_results=obs_and_infos)
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `reset()` method seems to be faulty."
+            )
+        ) from e
     reset_obs, reset_infos = obs_and_infos
 
     sampled_obs = env.observation_space_sample()
@@ -320,13 +342,18 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    results = env.step(sampled_action)
-    # Gym < 0.26 support.
-    if check_old_gym_env(env, step_results=results):
-        next_obs, reward, done, info = results
-        truncated = {k: False for k in done.keys() if k != "__all__"}
-    else:
-        next_obs, reward, done, truncated, info = results
+    try:
+        results = env.step(sampled_action)
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(step_results=results)
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `step()` method seems to be faulty."
+            )
+        ) from e
+    next_obs, reward, done, truncated, info = results
 
     _check_if_element_multi_agent_dict(env, next_obs, "step, next_obs")
     _check_if_element_multi_agent_dict(env, reward, "step, reward")
@@ -363,7 +390,18 @@ def check_base_env(env: "BaseEnv") -> None:
     if not isinstance(env, BaseEnv):
         raise ValueError("The passed env is not a BaseEnv.")
 
-    reset_obs, reset_infos = env.try_reset()
+    try:
+        obs_and_infos = env.try_reset(seed=42, options={})
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(reset_results=obs_and_infos)
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `try_reset()` method seems to be faulty."
+            )
+        ) from e
+    reset_obs, reset_infos = obs_and_infos
 
     sampled_obs = env.observation_space_sample()
     _check_if_multi_env_dict(env, reset_obs, "try_reset")
@@ -406,7 +444,19 @@ def check_base_env(env: "BaseEnv") -> None:
 
     env.send_actions(sampled_action)
 
-    next_obs, reward, done, truncated, info, _ = env.poll()
+    try:
+        results = env.poll()
+        # No more gym < 0.26 support! Error and explain the user how to upgrade to
+        # gymnasium.
+        check_old_gym_env(step_results=results[:-1])
+    except Exception as e:
+        raise ValueError(
+            ERR_MSG_OLD_GYM_API.format(
+                env, "In particular, the `poll()` method seems to be faulty."
+            )
+        ) from e
+    next_obs, reward, done, truncated, info, _ = results
+
     _check_if_multi_env_dict(env, next_obs, "step, next_obs")
     _check_if_multi_env_dict(env, reward, "step, reward")
     _check_if_multi_env_dict(env, done, "step, done")
@@ -441,11 +491,11 @@ def check_vector_env(env: "VectorEnv") -> None:
 
     # Test `vector_reset()`.
     try:
-        vector_reset = env.vector_reset(seed=42)
+        vector_reset = env.vector_reset(seed=42, options={})
     except Exception as e:
         raise ValueError(
-            "Your `vector_reset()` function has some error! Make sure it expects a "
-            "seed (int) as optional arg."
+            "Your Env's `vector_reset()` method has some error! Make sure it expects a "
+            "seed (int) as well as an options dict as optional, named args."
         ) from e
 
     if not isinstance(vector_reset, tuple) or len(vector_reset) != 2:
@@ -482,10 +532,10 @@ def check_vector_env(env: "VectorEnv") -> None:
 
     # Test `reset_at()`.
     try:
-        reset_at = env.reset_at(index=0, seed=42)
+        reset_at = env.reset_at(index=0, seed=42, options={})
     except Exception as e:
         raise ValueError(
-            "Your `reset_at()` function has some error! Make sure it expects a vector "
+            "Your Env's `reset_at()` method has some error! Make sure it expects a vector "
             "index (int) and an optional seed (int) as args."
         ) from e
     if not isinstance(reset_at, tuple) or len(reset_at) != 2:

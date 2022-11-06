@@ -214,7 +214,7 @@ if __name__ == "__main__":
 
     while num_episodes < 100:
         action = env.action_space.sample()
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, truncated, _ = env.step(action)
 
         episode_reward += reward
         if done:

@@ -49,9 +49,9 @@ class RandomEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         self.steps = 0
         if not self.static_samples:
-            return self.observation_space.sample()
+            return self.observation_space.sample(), {}
         else:
-            return copy.deepcopy(self.observation_sample)
+            return copy.deepcopy(self.observation_sample), {}
 
     def step(self, action):
         if self.check_action_bounds and not self.action_space.contains(action):

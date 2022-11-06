@@ -23,6 +23,7 @@ class BasicMultiAgent(MultiAgentEnv):
     metadata = {
         "render.modes": ["rgb_array"],
     }
+    render_mode = "rgb_array"
 
     def __init__(self, num):
         super().__init__()
@@ -37,7 +38,11 @@ class BasicMultiAgent(MultiAgentEnv):
     def reset(self, *, seed=None, options=None):
         self.resetted = True
         self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}, {}
+        reset_results = [a.reset() for a in self.agents]
+        return (
+            {i: oi[0] for i, oi in enumerate(reset_results)},
+            {i: oi[1] for i, oi in enumerate(reset_results)},
+        )
 
     def step(self, action_dict):
         obs, rew, done, truncated, info = {}, {}, {}, {}, {}
@@ -51,7 +56,7 @@ class BasicMultiAgent(MultiAgentEnv):
         truncated["__all__"] = len(self.truncateds) == len(self.agents)
         return obs, rew, done, truncated, info
 
-    def render(self, mode="rgb_array"):
+    def render(self):
         # Just generate a random image here for demonstration purposes.
         # Also see `gym/envs/classic_control/cartpole.py` for
         # an example on how to use a Viewer object.
@@ -228,8 +233,9 @@ class RoundRobinMultiAgent(MultiAgentEnv):
             self.last_done[i] = False
             self.last_truncated[i] = False
         obs_dict = {self.i: self.last_obs[self.i]}
+        info_dict = {self.i: self.last_info[self.i]}
         self.i = (self.i + 1) % self.num
-        return obs_dict
+        return obs_dict, info_dict
 
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)

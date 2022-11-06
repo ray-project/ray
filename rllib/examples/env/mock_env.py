@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+from typing import Optional
 
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override
@@ -39,6 +40,7 @@ class MockEnv2(gym.Env):
     metadata = {
         "render.modes": ["rgb_array"],
     }
+    render_mode: Optional[str] = "rgb_array"
 
     def __init__(self, episode_length):
         self.episode_length = episode_length
@@ -57,7 +59,7 @@ class MockEnv2(gym.Env):
         done = truncated = self.i >= self.episode_length
         return self.i, 100.0, done, truncated, {}
 
-    def render(self, mode="rgb_array"):
+    def render(self):
         # Just generate a random image here for demonstration purposes.
         # Also see `gym/envs/classic_control/cartpole.py` for
         # an example on how to use a Viewer object.

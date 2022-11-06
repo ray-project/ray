@@ -5,7 +5,6 @@ from typing import Callable, List, Optional, Tuple, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
-from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import (
     EnvActionType,
     EnvID,
@@ -273,7 +272,7 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(
-        self, seed: Optional[int] = None
+        self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
@@ -281,7 +280,7 @@ class _VectorizedGymEnv(VectorEnv):
         resetted_infos = []
         for i in range(len(self.envs)):
             while True:
-                obs, infos = self.reset_at(i, seed)
+                obs, infos = self.reset_at(i, seed=seed, options=options)
                 if not isinstance(obs, Exception):
                     break
                 assert isinstance(infos, Exception), (
@@ -296,20 +295,14 @@ class _VectorizedGymEnv(VectorEnv):
     def reset_at(
         self,
         index: Optional[int] = None,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[Union[EnvObsType, Exception], Union[EnvInfoDict, Exception]]:
         if index is None:
             index = 0
         try:
-            # Gym < 0.26 support.
-            if seed is None:
-                obs_and_infos = self.envs[index].reset()
-            else:
-                obs_and_infos = self.envs[index].reset(seed)
-
-            # Gym < 0.26 support.
-            if check_old_gym_env(self.envs[index], reset_results=obs_and_infos):
-                obs_and_infos = (obs_and_infos, {})
+            obs_and_infos = self.envs[index].reset(seed=seed, options=options)
 
         except Exception as e:
             if self.restart_failed_sub_environments:
@@ -318,6 +311,7 @@ class _VectorizedGymEnv(VectorEnv):
                 obs_and_infos = e, e
             else:
                 raise e
+
         return obs_and_infos
 
     @override(VectorEnv)
@@ -363,12 +357,8 @@ class _VectorizedGymEnv(VectorEnv):
                     results = e, 0.0, True, True, {}
                 else:
                     raise e
-            # Gym < 0.26 support.
-            if check_old_gym_env(self.envs[i], step_results=results):
-                obs, r, done, info = results
-                truncated = False
-            else:
-                obs, r, done, truncated, info = results
+
+            obs, r, done, truncated, info = results
 
             if not isinstance(info, dict):
                 raise ValueError(
@@ -476,14 +466,16 @@ class VectorEnvWrapper(BaseEnv):
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
+        *,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 
         if env_id is None:
             env_id = 0
         assert isinstance(env_id, int)
-        obs, infos = self.vector_env.reset_at(env_id, seed=seed)
+        obs, infos = self.vector_env.reset_at(env_id, seed=seed, options=options)
 
         # If exceptions were returned, return MultiEnvDict mapping env indices to
         # these exceptions (for obs and infos).

@@ -20,7 +20,7 @@ def make_simple_serving(multiagent, superclass):
     class SimpleServing(superclass):
         def __init__(self, env):
             superclass.__init__(self, env.action_space, env.observation_space)
-            self.env = gym.wrappers.EnvCompatibility(env)
+            self.env = env
 
         def run(self):
             eid = self.start_episode()
@@ -52,18 +52,18 @@ class PartOffPolicyServing(ExternalEnv):
 
     def run(self):
         eid = self.start_episode()
-        obs = self.env.reset()
+        obs, info = self.env.reset()
         while True:
             if random.random() < self.off_pol_frac:
                 action = self.env.action_space.sample()
                 self.log_action(eid, obs, action)
             else:
                 action = self.get_action(eid, obs)
-            obs, reward, done, info = self.env.step(action)
+            obs, reward, done, truncated, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
             if done:
                 self.end_episode(eid, obs)
-                obs = self.env.reset()
+                obs, info = self.env.reset()
                 eid = self.start_episode()
 
 
@@ -75,15 +75,15 @@ class SimpleOffPolicyServing(ExternalEnv):
 
     def run(self):
         eid = self.start_episode()
-        obs = self.env.reset()
+        obs, info = self.env.reset()
         while True:
             action = self.fixed_action
             self.log_action(eid, obs, action)
-            obs, reward, done, info = self.env.step(action)
+            obs, reward, done, truncted, info = self.env.step(action)
             self.log_returns(eid, reward, info=info)
             if done:
                 self.end_episode(eid, obs)
-                obs = self.env.reset()
+                obs, info = self.env.reset()
                 eid = self.start_episode()
 
 
@@ -103,10 +103,10 @@ class MultiServing(ExternalEnv):
                 if i not in cur_obs:
                     eids[i] = uuid.uuid4().hex
                     self.start_episode(episode_id=eids[i])
-                    cur_obs[i] = envs[i].reset()
+                    cur_obs[i], _ = envs[i].reset()
             actions = [self.get_action(eids[i], cur_obs[i]) for i in active]
             for i, action in zip(active, actions):
-                obs, reward, done, _ = envs[i].step(action)
+                obs, reward, done, _, _ = envs[i].step(action)
                 cur_obs[i] = obs
                 self.log_returns(eids[i], reward)
                 if done:
@@ -117,7 +117,7 @@ class MultiServing(ExternalEnv):
 class TestExternalEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
