@@ -32,7 +32,8 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         Args:
             configuration (Optional[Dict[str, Any]]): configuration of the
                 football environment. For detailed information, see:
-                https://github.com/Kaggle/kaggle-environments/blob/master/kaggle_environments/envs/football/football.json
+                https://github.com/Kaggle/kaggle-environments/blob/master/kaggle_\
+                environments/envs/football/football.json
         """
         super().__init__()
         self.kaggle_env = kaggle_environments.make(
@@ -56,7 +57,9 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
 
     def step(
         self, action_dict: Dict[AgentID, int]
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
         # Convert action_dict (used by RLlib) to a list of actions (used by
         # kaggle_environments)
         action_list = [None] * len(self.kaggle_env.state)
@@ -112,7 +115,8 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         """Construct the action and observation spaces
 
         Description of actions and observations:
-        https://github.com/google-research/football/blob/master/gfootball/doc/observation.md
+        https://github.com/google-research/football/blob/master/gfootball/doc/
+        observation.md
         """  # noqa: E501
         action_space = Discrete(19)
         # The football field's corners are [+-1., +-0.42]. However, the players

@@ -740,7 +740,9 @@ def _env_runner(
                 # ImageViewer not defined yet, try to create one.
                 if simple_image_viewer is None:
                     try:
-                        from gymnasium.envs.classic_control.rendering import SimpleImageViewer
+                        from gymnasium.envs.classic_control.rendering import (
+                            SimpleImageViewer,
+                        )
 
                         simple_image_viewer = SimpleImageViewer()
                     except (ImportError, ModuleNotFoundError):

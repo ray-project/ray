@@ -24,7 +24,7 @@ class OpenSpielEnv(MultiAgentEnv):
         )
         self.action_space = Discrete(self.env.num_distinct_actions())
 
-    def reset(self, *, seed: Optional[int] = None, options: Optionsl[dict] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         self.state = self.env.new_initial_state()
         return self._get_obs(), {}
 

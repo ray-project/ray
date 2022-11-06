@@ -30,7 +30,7 @@ class PettingZooEnv(MultiAgentEnv):
         >>> from pettingzoo.butterfly import prison_v3
         >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
         >>> env = PettingZooEnv(prison_v3.env())
-        >>> obs = env.reset()
+        >>> obs, infos = env.reset()
         >>> print(obs)
         # only returns the observation for the agent which should be stepping
         {
@@ -42,9 +42,9 @@ class PettingZooEnv(MultiAgentEnv):
                 [0, 0, 0],
                 [0, 0, 0]]], dtype=uint8)
         }
-        >>> obs, rewards, dones, infos = env.step({
-        ...                 "prisoner_0": 1
-        ...             })
+        >>> obs, rewards, dones, truncateds, infos = env.step({
+        ...     "prisoner_0": 1
+        ... })
         # only returns the observation, reward, info, etc, for
         # the agent who's turn is next.
         >>> print(obs)
@@ -62,6 +62,10 @@ class PettingZooEnv(MultiAgentEnv):
             'prisoner_1': 0
         }
         >>> print(dones)
+        {
+            'prisoner_1': False, '__all__': False
+        }
+        >>> print(truncateds)
         {
             'prisoner_1': False, '__all__': False
         }
@@ -105,6 +109,9 @@ class PettingZooEnv(MultiAgentEnv):
         self._agent_ids = set(self.env.agents)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        if seed is not None:
+            self.env.seed(seed)
+
         self.env.reset()
         return (
             {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
@@ -139,11 +146,8 @@ class PettingZooEnv(MultiAgentEnv):
     def close(self):
         self.env.close()
 
-    def seed(self, seed=None):
-        self.env.seed(seed)
-
     def render(self):
-        return self.env.render(mode)
+        return self.env.render(self.render_mode)
 
     @property
     def get_sub_environments(self):

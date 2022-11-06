@@ -1014,7 +1014,9 @@ class TestRolloutWorker(unittest.TestCase):
                 self.training_enabled = training_enabled
 
             def step(self, action):
-                obs, rew, done, truncated, info = super(NoTrainingEnv, self).step(action)
+                obs, rew, done, truncated, info = super(NoTrainingEnv, self).step(
+                    action
+                )
                 return (
                     obs,
                     rew,

@@ -108,8 +108,7 @@ class TestGymEnvAPIs(unittest.TestCase):
         )
 
     def test_gymnasium_old_api_but_wrapped(self):
-        """Tests a gymnasium Env that uses the old API, but is correctly wrapped.
-        """
+        """Tests a gymnasium Env that uses the old API, but is correctly wrapped."""
 
         from gymnasium.wrappers import EnvCompatibility
 

@@ -21,8 +21,8 @@ class EnvError(Exception):
 
 # Message explaining there are no GPUs available for the
 # num_gpus=n or num_gpus_per_worker=m settings.
-ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your machine
-    does not have any GPUs, you should set the config keys `num_gpus` and
+ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your
+    machine does not have any GPUs, you should set the config keys `num_gpus` and
     `num_gpus_per_worker` to 0 (they may be set to 1 by default for your
     particular RL algorithm)."""
 
@@ -54,26 +54,36 @@ https://github.com/openai/gym and here: https://github.com/Farama-Foundation/Gym
 In order to fix this problem, do the following:
 
 1) Run `pip install gymnasium` on your command line.
-2) Change all your import statements in your code from `import gym` -> `import gymnasium as gym` OR
-   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`, etc..
+2) Change all your import statements in your code from
+   `import gym` -> `import gymnasium as gym` OR
+   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`
 
 For your custom (single agent) gym.Env classes:
-3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import EnvCompatibility` wrapper class.
+3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import
+     EnvCompatibility` wrapper class.
 3.2) Alternatively to 3.1:
- - Change your `reset()` method to have the call signature 'def reset(self, *, seed=None, options=None)'
- - Return an additional info dict (empty dict should be fine) from your `reset()` method.
- - Return an additional `truncated` flag from your `step()` method (between `done` and `info`). This flag should
-   indicate, whether the episode was terminated prematurely due to some time constraint or other kind of horizon setting.
+ - Change your `reset()` method to have the call signature 'def reset(self, *,
+   seed=None, options=None)'
+ - Return an additional info dict (empty dict should be fine) from your `reset()`
+   method.
+ - Return an additional `truncated` flag from your `step()` method (between `done` and
+   `info`). This flag should indicate, whether the episode was terminated prematurely
+   due to some time constraint or other kind of horizon setting.
 
 For your custom RLlib `MultiAgentEnv` classes:
-4.1) Either wrap your old MultiAgentEnv via the provided `from ray.rllib.env.wrappers.multi_agent_env_compatibility import MultiAgentEnvCompatibility` wrapper class.
+4.1) Either wrap your old MultiAgentEnv via the provided
+     `from ray.rllib.env.wrappers.multi_agent_env_compatibility import
+     MultiAgentEnvCompatibility` wrapper class.
 4.2) Alternatively to 4.1:
- - Change your `reset()` method to have the call signature 'def reset(self, *, seed=None, options=None)'
- - Return an additional per-agent info dict (empty dict should be fine) from your `reset()` method.
- - Return an additional `truncateds` per-agent dictionary flag from your `step()` method, including the `__all__` key
-   (100% analogous to your `dones` per-agent dict). Return this new `truncateds` dict between `dones` and `infos`.
-   This flag should indicate, whether the episode (for some agent or all agents) was terminated prematurely due to some time
-   constraint or other kind of horizon setting.
+ - Change your `reset()` method to have the call signature
+   'def reset(self, *, seed=None, options=None)'
+ - Return an additional per-agent info dict (empty dict should be fine) from your
+   `reset()` method.
+ - Return an additional `truncateds` per-agent dictionary flag from your `step()`
+   method, including the `__all__` key (100% analogous to your `dones` per-agent dict).
+   Return this new `truncateds` dict between `dones` and `infos`. This flag should
+   indicate, whether the episode (for some agent or all agents) was terminated
+   prematurely due to some time constraint or other kind of horizon setting.
 """
 
 

@@ -118,7 +118,9 @@ class Unity3DEnv(MultiAgentEnv):
 
     def step(
         self, action_dict: MultiAgentDict
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
         """Performs one multi-agent step through the game.
 
         Args:
@@ -188,7 +190,9 @@ class Unity3DEnv(MultiAgentEnv):
 
         return obs, rewards, dones, truncateds, infos
 
-    def reset(self, *, seed=None, options=None) -> Tuple[MultiAgentDict, MultiAgentDict]:
+    def reset(
+        self, *, seed=None, options=None
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
         self.unity_env.reset()

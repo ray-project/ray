@@ -15,6 +15,7 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
     Known limitations:
     - Environments that use `self.np_random` might not work as expected.
     """
+
     def __init__(self, old_env, render_mode: Optional[str] = None):
         """A wrapper which converts old-style envs to valid modern envs.
 
@@ -52,7 +53,9 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
         infos = {k: {} for k in obs.keys()}
         return obs, infos
 
-    def step(self, action) -> Tuple[
+    def step(
+        self, action
+    ) -> Tuple[
         MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
     ]:
         obs, rewards, dones, infos = self.env.step(action)
