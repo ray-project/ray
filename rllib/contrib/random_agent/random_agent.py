@@ -25,13 +25,13 @@ class RandomAgent(Algorithm):
         rewards = []
         steps = 0
         for _ in range(self.config.rollouts_per_iteration):
-            obs = self.env.reset()
+            self.env.reset()
             done = False
             reward = 0.0
             while not done:
                 action = self.env.action_space.sample()
-                obs, r, done, info = self.env.step(action)
-                reward += r
+                _, rew, done, _, _ = self.env.step(action)
+                reward += rew
                 steps += 1
             rewards.append(reward)
         return {

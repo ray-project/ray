@@ -639,21 +639,18 @@ class MultiAgentEnvWrapper(BaseEnv):
                 )
             env = self.envs[env_id]
             try:
-                results = env.step(agent_dict)
+                obs, rewards, dones, truncateds, infos = env.step(agent_dict)
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.try_restart(env_id=env_id)
-                    results = e, {}, {"__all__": True}, {}, {}
+                    obs = e
+                    rewards = {}
+                    dones = {"__all__": True}
+                    truncateds = {"__all__": False}
+                    infos = {}
                 else:
                     raise e
-
-            # Gym < 0.26 support.
-            if check_old_gym_env(env, step_results=results):
-                obs, rewards, dones, infos = results
-                truncateds = {k: False for k in dones.keys() if k != "__all__"}
-            else:
-                obs, rewards, dones, truncateds, infos = results
 
             assert isinstance(
                 obs, (dict, Exception)

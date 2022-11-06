@@ -63,10 +63,13 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
         if self.render_mode == "human":
             self.render()
 
+        # Truncated should always be False by default.
         truncateds = {k: False for k in dones.keys()}
+
         return obs, rewards, dones, truncateds, infos
 
     def render(self):
+        # Use the old `render()` API, where we have to pass in the mode to each call.
         return self.env.render(mode=self.render_mode)
 
     def close(self):

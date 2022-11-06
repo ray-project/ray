@@ -37,30 +37,30 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_basic_mock(self):
         env = BasicMultiAgent(4)
-        obs = env.reset()
+        obs, info = env.reset()
         self.assertEqual(obs, {0: 0, 1: 0, 2: 0, 3: 0})
         for _ in range(24):
-            obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
+            obs, rew, done, truncated, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(obs, {0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(rew, {0: 1, 1: 1, 2: 1, 3: 1})
             self.assertEqual(
                 done, {0: False, 1: False, 2: False, 3: False, "__all__": False}
             )
-        obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
+        obs, rew, done, truncated, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
         self.assertEqual(done, {0: True, 1: True, 2: True, 3: True, "__all__": True})
 
     def test_round_robin_mock(self):
         env = RoundRobinMultiAgent(2)
-        obs = env.reset()
+        obs, info = env.reset()
         self.assertEqual(obs, {0: 0})
         for _ in range(5):
-            obs, rew, done, info = env.step({0: 0})
+            obs, rew, done, truncated, info = env.step({0: 0})
             self.assertEqual(obs, {1: 0})
             self.assertEqual(done["__all__"], False)
-            obs, rew, done, info = env.step({1: 0})
+            obs, rew, done, truncated, info = env.step({1: 0})
             self.assertEqual(obs, {0: 0})
             self.assertEqual(done["__all__"], False)
-        obs, rew, done, info = env.step({0: 0})
+        obs, rew, done, truncated, info = env.step({0: 0})
         self.assertEqual(done["__all__"], True)
 
     def test_no_reset_until_poll(self):

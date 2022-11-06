@@ -11,8 +11,10 @@ import numpy as np
 import os
 from packaging import version
 import pkg_resources
+import re
 import tempfile
 import time
+import tree
 from typing import (
     Callable,
     Container,
@@ -25,8 +27,6 @@ from typing import (
     Type,
     Union,
 )
-from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -60,6 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
@@ -383,7 +384,8 @@ class Algorithm(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
+            env_descr_for_dir = re.sub("[/\\\\]", "-", env_descr)
+            logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 # Possible race condition if dir is created several times on
                 # rollout workers

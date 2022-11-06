@@ -220,7 +220,7 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     # (hopefully) learned to "just always repeat the observation!".
     env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1, ))})
     # Get the initial observation (some value between -10.0 and 10.0).
-    obs = env.reset()
+    obs, info = env.reset()
     done = False
     total_reward = 0.0
     # Play one episode.
@@ -229,7 +229,7 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
         # from the environment.
         action = algo.compute_single_action(obs)
         # Apply the computed action in the environment.
-        obs, reward, done, info = env.step(action)
+        obs, reward, done, truncated, info = env.step(action)
         # Sum up rewards for reporting purposes.
         total_reward += reward
     # Report results.

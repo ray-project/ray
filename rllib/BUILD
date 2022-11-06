@@ -1236,7 +1236,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"torch\", \"num_workers\": 2, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'",
@@ -1357,7 +1357,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000}, \"num_steps_sampled_before_learning_starts\": 10000, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
@@ -1400,7 +1400,7 @@ py_test(
     tags = ["team:rllib", "quick_train"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     args = [
-        "--env", "PongDeterministic-v4",
+        "--env", "ALE/Pong-v5",
         "--run", "IMPALA",
         "--stop", "'{\"timesteps_total\": 30000}'",
         "--ray-object-store-memory=1000000000",

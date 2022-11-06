@@ -156,4 +156,4 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
             rew["high_level_agent"] = 0
             obs["high_level_agent"] = f_obs
 
-        return obs, rew, done, done, truncated, {self.low_level_agent_id: info}
+        return obs, rew, done, truncated, {self.low_level_agent_id: info}

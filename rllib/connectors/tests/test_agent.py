@@ -487,7 +487,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -503,11 +503,12 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             )
             action = policy_output[0][0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, dones, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.DONES: dones,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
                 # state_out
