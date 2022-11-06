@@ -78,24 +78,19 @@ class GroupAgentsWrapper(MultiAgentEnv):
         for group_id in groups.keys():
             self._agent_ids.add(group_id)
 
-    def seed(self, seed=None):
-        if not hasattr(self.env, "seed"):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        if seed is not None:
             # This is a silent fail. However, OpenAI gyms also silently fail
             # here.
-            return
+            if hasattr(self.env, "seed"):
+                self.env.seed(seed)
 
-        self.env.seed(seed)
-
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        obs_and_info = self.env.seed(seed=seed, options=options)
-
-        if check_old_gym_env(self.env, reset_results=obs_and_info):
-            obs_and_info = obs_and_info, {}
+        obs, info = self.env.reset(seed=seed, options=options)
 
         return (
-            self._group_items(obs_and_info[0]),
+            self._group_items(obs),
             self._group_items(
-                obs_and_info[1],
+                info,
                 agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())},
             ),
         )

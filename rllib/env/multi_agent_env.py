@@ -692,13 +692,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            obs_and_infos = self.env_states[idx].reset(seed=seed, options=options)
-
-            # Gym < 0.26 support.
-            if check_old_gym_env(self.envs[idx], reset_results=obs_and_infos):
-                obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
-
-            obs, infos = obs_and_infos
+            obs, infos = self.env_states[idx].reset(seed=seed, options=options)
 
             if isinstance(obs, Exception):
                 if self.restart_failed_sub_environments:
@@ -823,7 +817,7 @@ class _MultiAgentEnvState:
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
         truncateds = {}
-        infos = {}
+        infos = self.last_infos
 
         # If episode is done or we have an error, release everything we have.
         if dones["__all__"] or isinstance(observations, Exception):
