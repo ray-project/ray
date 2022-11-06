@@ -85,10 +85,10 @@ class ARSTFPolicy(Policy):
             for _, variable in self.variables.variables.items()
         )
 
-    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
+    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = obs_batch[0]
+        observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 
