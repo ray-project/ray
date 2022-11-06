@@ -5,8 +5,10 @@ from dataclasses import dataclass
 import ray
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import AllocatedResource
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 @dataclass
 class VirtualAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
@@ -17,5 +19,6 @@ class VirtualAllocatedResource(AllocatedResource):
         return objects
 
 
+@DeveloperAPI
 class VirtualResourceManager(FixedResourceManager):
     _resource_cls: AllocatedResource = VirtualAllocatedResource

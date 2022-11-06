@@ -13,6 +13,8 @@ from ray.air.execution.resources.resource_manager import ResourceManager
 
 # Avoid numerical errors by multiplying and subtracting with this number.
 # Compare: 0.99 - 0.33 vs (0.99 * 1000 - 0.33 * 1000) / 1000
+from ray.util.annotations import DeveloperAPI
+
 _DIGITS = 100000
 
 
@@ -25,6 +27,7 @@ def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
     return all_resources
 
 
+@DeveloperAPI
 @dataclass
 class FixedAllocatedResource(AllocatedResource):
     bundles: List[Dict[str, float]]
@@ -61,6 +64,7 @@ class FixedAllocatedResource(AllocatedResource):
         return annotated
 
 
+@DeveloperAPI
 class FixedResourceManager(ResourceManager):
     _resource_cls: AllocatedResource = FixedAllocatedResource
 

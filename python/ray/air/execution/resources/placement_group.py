@@ -10,10 +10,12 @@ from ray.air.execution.resources.request import (
     AllocatedResource,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
+from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
+@DeveloperAPI
 @dataclass
 class PlacementGroupAllocatedResource(AllocatedResource):
     placement_group: PlacementGroup
@@ -54,6 +56,7 @@ class PlacementGroupAllocatedResource(AllocatedResource):
         return annotated
 
 
+@DeveloperAPI
 class PlacementGroupResourceManager(ResourceManager):
     _resource_cls: AllocatedResource = PlacementGroupAllocatedResource
 
