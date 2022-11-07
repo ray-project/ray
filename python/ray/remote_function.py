@@ -165,7 +165,8 @@ class RemoteFunction:
                 (this can be used to address memory leaks in third-party
                 libraries or to reclaim resources that cannot easily be
                 released, e.g., GPU memory that was acquired by TensorFlow).
-                By default this is infinite.
+                By default this is infinite for CPU tasks and 1 for GPU tasks
+                (thereby GPU tasks release resources after finish).
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
