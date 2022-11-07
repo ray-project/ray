@@ -138,6 +138,8 @@ Status CreateRequestQueue::ProcessRequests() {
                                 *request_it,
                                 /*spilling_required=*/nullptr);
         if (!status.ok()) {
+          // This only happens when an allocation is bigger than available disk space.
+          // We should throw OutOfDisk Error here.
           (*request_it)->error = PlasmaError::OutOfDisk;
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
