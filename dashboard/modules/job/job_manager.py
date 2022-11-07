@@ -228,7 +228,11 @@ class JobSupervisor:
             # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
-                child_pgid = os.getpgid(child_pid)
+                try:
+                    child_pgid = os.getpgid(child_pid)
+                except ProcessLookupError:
+                    # Process died before we could get its pgid.
+                    return child_process
 
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
