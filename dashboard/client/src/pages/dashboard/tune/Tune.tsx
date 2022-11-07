@@ -79,7 +79,7 @@ class Tune extends React.Component<
     typeof mapDispatchToProps,
   State
 > {
-  timeout: number = 0;
+  timeout = 0;
 
   state: State = {
     tabIndex: 0,
@@ -97,7 +97,9 @@ class Tune extends React.Component<
         this.props.setTuneInfo(tuneInfo);
       }
     } catch (error) {
-      this.props.setError(error.toString());
+      if (error instanceof Error) {
+        this.props.setError(error.toString());
+      }
     } finally {
       this.timeout = window.setTimeout(this.refreshTuneInfo, 1000);
     }
@@ -127,7 +129,9 @@ class Tune extends React.Component<
       await this.refreshTuneInfo();
       this.setState({ loading: false });
     } catch (error) {
-      this.props.setError(error.toString());
+      if (error instanceof Error) {
+        this.props.setError(error.toString());
+      }
       this.setState({ loading: false });
     }
   };
