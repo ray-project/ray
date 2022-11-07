@@ -1,5 +1,6 @@
 import logging
-from collections import dataclass, defaultdict
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from ray.autoscaler._private.constants import (
@@ -30,8 +31,8 @@ class ScaleRequest:
         workers_to_delete: List of ids of nodes that should be removed.
     """
 
-    desired_num_workers: Dict[NodeType, int] = {}
-    workers_to_delete: Set[NodeID] = []
+    desired_num_workers: Dict[NodeType, int] = field(default_factory=dict)
+    workers_to_delete: Set[NodeID] = field(default_factory=set)
 
 
 @dataclass
@@ -162,13 +163,18 @@ class BatchingNodeProvider(NodeProvider):
 
         # Initialize ScaleRequest
         self.scale_request = ScaleRequest(
-            desired_num_workers=self.cur_num_workers,  # Current scale
+            desired_num_workers=self.cur_num_workers(),  # Current scale
             workers_to_delete=set(),  # No workers to delete yet
         )
         return list(self.node_data_dict.keys())
 
-    @property
-    def cur_num_workers(self, node_data_dict: Dict[str, Any]):
+    def cur_num_workers(self):
+        """Returns dict mapping node type to the number of nodes of that type.
+        """
+        # Factor like this for convenient re-use.
+        return self._cur_num_workers(self.node_data_dict)
+
+    def _cur_num_workers(self, node_data_dict: Dict[str, Any]):
         num_workers_dict = defaultdict(int)
         for node_data in node_data_dict.values():
             if node_data.kind == NodeKind.HEAD:
