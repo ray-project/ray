@@ -431,8 +431,6 @@ class JobManager:
 
     It does not provide persistence, all info will be lost if the cluster
     goes down.
-
-    Manages multiple jobs.
     """
 
     # Time that we will sleep while tailing logs if no new log line is
@@ -523,7 +521,7 @@ class JobManager:
                         message=(f"Job supervisor actor could not be scheduled: {e}"),
                     )
                 else:
-                    logger.warning(
+                    logger.debug(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
