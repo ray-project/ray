@@ -49,8 +49,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(actors) == 3
             one_entry = list(actors.values())[0]
             assert "jobId" in one_entry
-            assert "functionDescriptor" in one_entry
-            assert type(one_entry["functionDescriptor"]) is dict
+            assert "className" in one_entry
             assert "address" in one_entry
             assert type(one_entry["address"]) is dict
             assert "state" in one_entry
@@ -95,10 +94,11 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     def handle_pub_messages(msgs, timeout, expect_num):
         start_time = time.time()
         while time.time() - start_time < timeout and len(msgs) < expect_num:
-            _, actor_data = sub.poll(timeout=timeout)
-            if actor_data is None:
-                continue
-            msgs.append(actor_data)
+            published = sub.poll(timeout=timeout)
+            for _, actor_data in published:
+                if actor_data is None:
+                    continue
+                msgs.append(actor_data)
 
     msgs = []
     handle_pub_messages(msgs, timeout, 3)
@@ -122,7 +122,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "jobId",
                 "workerId",
                 "rayletId",
-                "actorCreationDummyObjectId",
                 "callerId",
                 "taskId",
                 "parentTaskId",
@@ -157,13 +156,13 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "state",
                 "address",
                 "actorId",
-                "actorCreationDummyObjectId",
                 "jobId",
                 "ownerAddress",
                 "className",
                 "serializedRuntimeEnv",
-                "functionDescriptor",
                 "rayNamespace",
+                "functionDescriptor",
+                "actorCreationDummyObjectId",
             }
         else:
             raise Exception("Unknown state: {}".format(actor_data_dict["state"]))

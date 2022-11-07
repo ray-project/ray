@@ -391,6 +391,7 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
             return self._pop_function_key(self._queue)
 
 
+# Test-only
 class GcsActorSubscriber(_SyncSubscriber):
     """Subscriber to actor updates. Thread safe.
 
@@ -413,7 +414,7 @@ class GcsActorSubscriber(_SyncSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
-    def poll(self, timeout=None) -> Optional[bytes]:
+    def poll(self, timeout=None) -> List[Tuple[bytes, str]]:
         """Polls for new actor messages.
 
         Returns:
@@ -422,7 +423,7 @@ class GcsActorSubscriber(_SyncSubscriber):
         """
         with self._lock:
             self._poll_locked(timeout=timeout)
-            return self._pop_actor(self._queue)
+            return self._pop_actors(self._queue, batch_size=1)
 
 
 class GcsAioPublisher(_PublisherBase):
