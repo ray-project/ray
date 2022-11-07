@@ -6,6 +6,7 @@ import traceback
 from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+from ray.rllib.utils.deprecation import Deprecated
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -247,6 +248,11 @@ ALGORITHMS = {
 }
 
 
+@Deprecated(
+    new="ray.tune.registry.get_trainable_cls([algo name], return_config=False) and cls="
+    "ray.tune.registry.get_trainable_cls([algo name]); cls.get_default_config();",
+    error=False,
+)
 def get_algorithm_class(
     alg: str,
     return_config=False,

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 import ray
 from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -39,6 +38,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.logger import Logger
+from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -685,7 +685,7 @@ class AlgorithmConfig:
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
-            algo_class = get_algorithm_class(self.algo_class)
+            algo_class = get_trainable_cls(self.algo_class)
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),

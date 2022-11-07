@@ -13,7 +13,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.tune.registry import register_trainable
+from ray.tune.registry import get_trainable_cls, register_trainable
 
 
 def _setup_logger():
@@ -30,7 +30,7 @@ def _setup_logger():
 
 def _register_all():
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.registry import ALGORITHMS, get_algorithm_class
+    from ray.rllib.algorithms.registry import ALGORITHMS
     from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
     for key in (
@@ -38,7 +38,7 @@ def _register_all():
         + list(CONTRIBUTED_ALGORITHMS.keys())
         + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
     ):
-        register_trainable(key, get_algorithm_class(key))
+        register_trainable(key, get_trainable_cls(key))
 
     def _see_contrib(name):
         """Returns dummy agent class warning algo is in contrib/."""
