@@ -1,9 +1,10 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
+from ray.tune.experiment.trial import Trial
 from ray.tune.schedulers import TrialScheduler
-from ray.tune.search import Searcher, SearchAlgorithm
+from ray.tune.search import SearchAlgorithm, Searcher
 from ray.util import PublicAPI
 
 
@@ -66,4 +67,6 @@ class TuneConfig:
     max_concurrent_trials: Optional[int] = None
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None
     reuse_actors: Optional[bool] = None
+    trial_name_creator: Optional[Callable[[Trial], str]] = None
+    trial_dirname_creator: Optional[Callable[[Trial], str]] = None
     chdir_to_trial_dir: bool = True
