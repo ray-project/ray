@@ -54,6 +54,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
 
     retries = 0
     backoff_time_s = 0.05
+    backoff = False
     loop = asyncio.get_event_loop()
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
@@ -98,8 +99,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                     'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 client_disconnection_task.cancel()
-                backoff_time_s *= 1.5
-                retries += 1
+                backoff = True
             else:
                 result = await object_ref
                 client_disconnection_task.cancel()
@@ -118,12 +118,15 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."
             )
+            backoff = True
+        if backoff:
             await asyncio.sleep(backoff_time_s)
             # Be careful about the expotential backoff scaling here.
             # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
             # initial backoff time, while 2x scaling means 512x the initial.
             backoff_time_s *= 1.5
             retries += 1
+            backoff = False
     else:
         error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
