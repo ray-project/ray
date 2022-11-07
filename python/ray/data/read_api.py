@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import torch
 
 
 T = TypeVar("T")
@@ -1337,6 +1338,42 @@ def from_huggingface(
             "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
             f"got {type(dataset)}"
         )
+
+
+@PublicAPI
+def from_torch(
+    dataset: "torch.utils.data.Dataset",
+) -> Dataset:
+    """Create a dataset from a Torch dataset.
+
+    This function is inefficient. Use it to read small datasets or prototype.
+
+    .. warning::
+        If your dataset is large, this function may execute slowly or raise an
+        out-of-memory error. To avoid issues, read the underyling data with a function
+        like :meth:`~ray.data.read_images`.
+
+    .. note::
+        This function isn't paralellized. It loads the entire dataset into the head
+        node's memory before moving the data to the distributed object store.
+
+    Examples:
+        >>> import ray
+        >>> from torchvision import datasets
+        >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
+        >>> dataset = ray.data.from_torch(dataset)  # doctest: +SKIP
+        >>> dataset  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        >>> dataset.take(1)  # doctest: +SKIP
+        [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
+
+    Args:
+        dataset: A Torch dataset.
+
+    Returns:
+        A :class:`Dataset` that contains the samples stored in the Torch dataset.
+    """
+    return from_items(list(dataset))
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
