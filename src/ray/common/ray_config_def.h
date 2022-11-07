@@ -701,8 +701,7 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// A feature flag to enable pull based health check.
-/// TODO: Turn it on by default
-RAY_CONFIG(bool, pull_based_healthcheck, false)
+RAY_CONFIG(bool, pull_based_healthcheck, true)
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
