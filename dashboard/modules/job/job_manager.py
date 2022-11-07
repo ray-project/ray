@@ -159,8 +159,9 @@ class JobSupervisor:
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
         self._metadata.update(user_metadata)
 
-        # fire and forget call from outer job manager to this actor
+        # fire and forget calls from outer job manager to this actor
         self._stop_event = asyncio.Event()
+        self._delete_event = asyncio.Event()
 
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
@@ -367,17 +368,23 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
+                [polling_task, self._stop_event.wait(), self._delete_event.wait()],
+                return_when=FIRST_COMPLETED,
             )
 
-            if self._stop_event.is_set():
+            if self._stop_event.is_set() or self._delete_event.is_set():
                 polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
                     # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
                     child_process.kill()
-                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
+                if not self._delete_event.is_set():
+                    # Deleting the job info is handled by the JobManager. Avoid race
+                    # by only putting it if it's not being deleted.
+                    await self._job_info_client.put_status(
+                        self._job_id, JobStatus.STOPPED
+                    )
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -411,8 +418,12 @@ class JobSupervisor:
             ray.actor.exit_actor()
 
     def stop(self):
-        """Set step_event and let run() handle the rest in its asyncio.wait()."""
+        """Set stop_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
+
+    def delete(self):
+        """Set delete_event and let run() handle the rest in its asyncio.wait()."""
+        self._delete_event.set()
 
 
 class JobManager:
@@ -420,6 +431,8 @@ class JobManager:
 
     It does not provide persistence, all info will be lost if the cluster
     goes down.
+
+    Manages multiple jobs.
     """
 
     # Time that we will sleep while tailing logs if no new log line is
@@ -433,12 +446,13 @@ class JobManager:
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
-        self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
         except Exception:
             self.event_logger = None
 
+        # Maps job_id to the task monitoring the job.
+        self._monitor_tasks: Dict[str, asyncio.Task] = {}
         create_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
@@ -450,7 +464,7 @@ class JobManager:
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                create_task(self._monitor_job(job_id))
+                self._monitor_tasks[job_id] = create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -462,24 +476,6 @@ class JobManager:
             return None
 
     async def _monitor_job(
-        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
-    ):
-        """Monitors the specified job until it enters a terminal state.
-
-        This is necessary because we need to handle the case where the
-        JobSupervisor dies unexpectedly.
-        """
-        if job_id in self.monitored_jobs:
-            logger.debug(f"Job {job_id} is already being monitored.")
-            return
-
-        self.monitored_jobs.add(job_id)
-        try:
-            await self._monitor_job_internal(job_id, job_supervisor)
-        finally:
-            self.monitored_jobs.remove(job_id)
-
-    async def _monitor_job_internal(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
         is_alive = True
@@ -540,9 +536,7 @@ class JobManager:
 
                 # Log events
                 if self.event_logger:
-                    event_log = (
-                        f"Completed a ray job {job_id} with a status {job_status}."
-                    )
+                    event_log = f"Completed Ray job {job_id} with status {job_status}."
                     if job_error_message:
                         event_log += f" {job_error_message}"
                         self.event_logger.error(event_log, submission_id=job_id)
@@ -550,23 +544,14 @@ class JobManager:
                         self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        # TODO(architkulkarni): We need to do this in the DELETE case as well
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
-    def _get_current_node_resource_key(self) -> str:
-        """Get the Ray resource key for current node.
-
-        It can be used for actor placement.
-        """
-        current_node_id = ray.get_runtime_context().node_id.hex()
-        for node in ray.nodes():
-            if node["NodeID"] == current_node_id:
-                # Found the node.
-                for key in node["Resources"].keys():
-                    if key.startswith("node:"):
-                        return key
+        if job_id in self._monitor_tasks:
+            del self._monitor_tasks[job_id]
         else:
-            raise ValueError("Cannot find the node dictionary for current node.")
+            logger.warning(f"Job {job_id} not found in monitor tasks.")
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
@@ -776,7 +761,12 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
+            if self._monitor_tasks.get(submission_id) is None:
+                self._monitor_tasks[submission_id] = asyncio.create_task(
+                    self._monitor_job(submission_id, job_supervisor=supervisor)
+                )
+            else:
+                logger.debug(f"Job {submission_id} already being monitored.")
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,
@@ -799,6 +789,28 @@ class JobManager:
             return True
         else:
             return False
+
+    async def delete_job(self, job_id) -> bool:
+        """Delete a job from the cluster.
+
+        Returns whether or not the job was running.
+        """
+        job_supervisor_actor = self._get_actor_for_job(job_id)
+        if job_supervisor_actor is not None:
+            # Actor is still alive, signal it to stop the driver without
+            # updating its job status, fire and forget
+            job_supervisor_actor.delete.remote()
+            job_was_running = True
+        else:
+            job_was_running = False
+
+        if job_id in self._monitor_tasks:
+            self._monitor_tasks[job_id].cancel()
+            del self._monitor_tasks[job_id]
+
+        await self._job_info_client.delete_info(job_id)
+
+        return job_was_running
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

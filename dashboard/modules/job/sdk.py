@@ -19,6 +19,7 @@ except ImportError:
     JobDetails = None
 
 from ray.dashboard.modules.job.common import (
+    JobDeleteResponse,
     JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -253,6 +254,41 @@ class JobSubmissionClient(SubmissionClient):
 
         if r.status_code == 200:
             return JobStopResponse(**r.json()).stopped
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="alpha")
+    def delete_job(
+        self,
+        job_id: str,
+    ) -> bool:
+        """Delete a job and all of its associated data.
+
+        If the job is running, it will be stopped first.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> ray.init()
+            >>> client = JobSubmissionClient()
+            >>> submission_id = client.submit_job(entrypoint="echo hello")
+            >>> client.delete_job(submission_id)
+            True
+
+        Args:
+            job_id: submission ID for the job to be deleted.
+
+        Returns:
+            True if the job was deleted, otherwise False.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
+        logger.debug(f"Deleting job with job_id={job_id}.")
+        r = self._do_request("DELETE", f"/api/jobs/{job_id}")
+
+        if r.status_code == 200:
+            return JobDeleteResponse(**r.json()).deleted
         else:
             self._raise_error(r)
 
