@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 
 import ray
 import ray.cloudpickle as pickle
-from ray import tune
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, ExperimentAnalysis, TuneError
