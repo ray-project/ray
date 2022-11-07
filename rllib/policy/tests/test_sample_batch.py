@@ -424,6 +424,67 @@ class TestSampleBatch(unittest.TestCase):
             # should raise an error if framework is not torch
             s.to_device(cuda_if_possible, framework="tf")
 
+    def test_count(self):
+        # Tests if counts are what we would expect from different batches
+
+        input_dicts_and_lengths = [
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                3,
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1, 2, 3]]),
+                        "b": np.array([[0, 0, 1]]),
+                        "c": np.array([[4, 5, 6]]),
+                    }
+                },
+                1,
+            ),
+            (
+                {
+                    SampleBatch.INFOS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    }
+                },
+                0,  # This should have a length of zero, since we can not determine it
+            ),
+            (
+                {
+                    SampleBatch.OBS: {
+                        "a": np.array([[1], [2], [3]]),
+                        "b": np.array([[0], [0], [1]]),
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                    SampleBatch.SEQ_LENS: np.array([[1], [2], [3]]),
+                },
+                6,  # This should have a length of six, since we don't try to infer
+                # from inputs but count by sequence lengths
+            ),
+            (
+                {
+                    SampleBatch.NEXT_OBS: {
+                        "a": {"b": np.array([[1], [2], [3]])},
+                        "c": np.array([[4], [5], [6]]),
+                    },
+                },
+                3,  # Test if we properly support nesting
+            ),
+        ]
+
+        for input_dict, length in input_dicts_and_lengths:
+            s = SampleBatch(input_dict)
+            self.assertEqual(s.count, length)
+
 
 if __name__ == "__main__":
     import pytest
