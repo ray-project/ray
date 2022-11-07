@@ -234,3 +234,10 @@ class _BlockPretcher:
 
     def prefetch(self, *blocks) -> None:
         pass
+
+
+class DefaultBatchSize:
+    """Helper class to default default batch size for map_batches."""
+
+    def __init__(self, value: int):
+        self.value = value

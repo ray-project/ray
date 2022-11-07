@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.data._internal.batcher import Batcher
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_batching import BatchType, DefaultBatchSize, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -80,7 +80,6 @@ from ray.data.context import (
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
     DEFAULT_BATCH_SIZE,
-    DefaultBatchSize,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -324,7 +323,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[Union[int, DefaultBatchSize]] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,

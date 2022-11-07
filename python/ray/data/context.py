@@ -1,6 +1,7 @@
 import os
 import threading
 from typing import Optional
+from ray.data._internal.block_batching import DefaultBatchSize
 
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -80,12 +81,6 @@ WARN_PREFIX = "⚠️ "
 
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
-
-
-class DefaultBatchSize:
-    def __init__(self, value: int):
-        self.value = value
-
 
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = DefaultBatchSize(4096)
