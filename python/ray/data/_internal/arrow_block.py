@@ -78,7 +78,7 @@ class ArrowRow(TableRow):
 
         schema = self._row.schema
         if isinstance(
-            schema.field(schema.get_field_index(key)).type,
+            schema.field(key).type,
             (ArrowTensorType, ArrowVariableShapedTensorType),
         ):
             # Build a tensor row.
