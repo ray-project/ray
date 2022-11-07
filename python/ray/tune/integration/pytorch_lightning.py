@@ -18,7 +18,7 @@ _allowed_hooks = {
 }
 
 
-def _override_ptl_hooks(callback_cls: Type["_TuneCallback"]) -> Type["_TuneCallback"]:
+def _override_ptl_hooks(callback_cls: Type["TuneCallback"]) -> Type["TuneCallback"]:
     """Overrides all allowed PTL Callback hooks with our custom handle logic."""
 
     def generate_overridden_hook(fn_name):
@@ -34,7 +34,7 @@ def _override_ptl_hooks(callback_cls: Type["_TuneCallback"]) -> Type["_TuneCallb
 
         return overridden_hook
 
-    # Set the overridden hook to all the allowed hooks in _TuneCallback.
+    # Set the overridden hook to all the allowed hooks in TuneCallback.
     for fn_name in _allowed_hooks:
         setattr(callback_cls, fn_name, generate_overridden_hook(fn_name))
 
@@ -42,7 +42,7 @@ def _override_ptl_hooks(callback_cls: Type["_TuneCallback"]) -> Type["_TuneCallb
 
 
 @_override_ptl_hooks
-class _TuneCallback(Callback):
+class TuneCallback(Callback):
     """Base class for Tune's PyTorch Lightning callbacks.
 
     Args:
@@ -72,7 +72,7 @@ class _TuneCallback(Callback):
 
 
 @PublicAPI
-class TuneReportCallback(_TuneCallback):
+class TuneReportCallback(TuneCallback):
     """PyTorch Lightning to Ray Tune reporting callback
 
     Reports metrics to Ray Tune.
@@ -144,7 +144,7 @@ class TuneReportCallback(_TuneCallback):
             tune.report(**report_dict)
 
 
-class _TuneCheckpointCallback(_TuneCallback):
+class _TuneCheckpointCallback(TuneCallback):
     """PyTorch Lightning checkpoint callback
 
     Saves checkpoints after each validation step.
@@ -178,7 +178,7 @@ class _TuneCheckpointCallback(_TuneCallback):
 
 
 @PublicAPI
-class TuneReportCheckpointCallback(_TuneCallback):
+class TuneReportCheckpointCallback(TuneCallback):
     """PyTorch Lightning report and checkpoint callback
 
     Saves checkpoints after each validation step. Also reports metrics to Tune,
