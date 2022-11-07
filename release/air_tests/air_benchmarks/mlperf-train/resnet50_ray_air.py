@@ -194,7 +194,7 @@ def train_loop_for_worker(config):
             )
         )
 
-        # You can also use ray.air.callbacks.keras.Callback
+        # You can also use ray.air.integrations.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
         session.report(
             {
@@ -489,15 +489,26 @@ if __name__ == "__main__":
             train_loop_config["data_loader"] = TF_DATA
         else:
             logger.info("Using Ray Datasets loader")
+
+            # Enable block splitting to support larger file sizes w/o OOM.
+            ctx = ray.data.context.DatasetContext.get_current()
+            ctx.block_splitting_enabled = True
+
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
             )
+            # Set a lower batch size for images to prevent OOM.
+            batch_size = 32
             if args.online_processing:
-                preprocessor = BatchMapper(decode_tf_record_batch)
+                preprocessor = BatchMapper(
+                    decode_tf_record_batch, batch_size=batch_size
+                )
             else:
-                preprocessor = BatchMapper(decode_crop_and_flip_tf_record_batch)
+                preprocessor = BatchMapper(
+                    decode_crop_and_flip_tf_record_batch, batch_size=batch_size
+                )
             train_loop_config["data_loader"] = RAY_DATA
 
     trainer = TensorflowTrainer(

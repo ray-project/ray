@@ -1823,7 +1823,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1855,7 +1855,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: app_config_np.yaml
@@ -3161,8 +3161,8 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
-    type: sdk_command
-    file_manager: sdk
+    type: job
+    file_manager: job
 
 - name: shuffle_50gb
   group: core-multi-test

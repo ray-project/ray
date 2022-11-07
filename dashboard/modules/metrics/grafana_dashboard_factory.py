@@ -51,6 +51,9 @@ METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
 
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 GRAFANA_PANELS = [
     Panel(
         id=26,
@@ -396,11 +399,7 @@ PANEL_TEMPLATE = {
 
 def generate_grafana_dashboard() -> str:
     base_json = json.load(
-        open(
-            os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"
-            )
-        )
+        open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
     return json.dumps(base_json, indent=4)

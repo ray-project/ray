@@ -3,7 +3,7 @@ import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.callbacks.keras import Callback
+from ray.air.integrations.keras import Callback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (

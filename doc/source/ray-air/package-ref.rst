@@ -349,20 +349,20 @@ Monitoring Integrations
 Comet
 #####
 
-.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
 
 Keras
 #####
 
-.. autoclass:: ray.air.callbacks.keras.Callback
+.. autoclass:: ray.air.integrations.keras.Callback
     :members:
 
 MLflow
 ######
 
-.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
 
 Weights and Biases
 ##################
 
-.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback
