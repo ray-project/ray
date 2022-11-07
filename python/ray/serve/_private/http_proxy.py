@@ -36,6 +36,9 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
+SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -51,6 +54,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
 
     retries = 0
     backoff_time_s = 0.05
+    backoff = False
     loop = asyncio.get_event_loop()
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
@@ -58,7 +62,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     while retries < MAX_REPLICA_FAILURE_RETRIES:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
+            [assignment_task, client_disconnection_task],
+            return_when=FIRST_COMPLETED,
         )
         if client_disconnection_task in done:
             message = await client_disconnection_task
@@ -66,7 +71,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 "Received additional request payload that's not disconnect. "
                 "This is an invalid HTTP state."
             )
-
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
                 "request."
@@ -75,9 +79,31 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
-            result = await object_ref
-            client_disconnection_task.cancel()
-            break
+
+            # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
+            # some replicas crash simultaneously (e.g. if the head node crashes),
+            # requests to the dead replicas hang until the gcs recovers.
+            # This asyncio.wait can kill those hanging requests and retry them
+            # at another replica. Release tests should kill the head node and
+            # check if latency drops significantly. See
+            # https://github.com/ray-project/ray/pull/29534 for more info.
+
+            _, request_timed_out = await asyncio.wait(
+                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            )
+            if request_timed_out:
+                logger.info(
+                    "Request didn't finish within "
+                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    "with another replica. You can modify this timeout by "
+                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                )
+                client_disconnection_task.cancel()
+                backoff = True
+            else:
+                result = await object_ref
+                client_disconnection_task.cancel()
+                break
         except asyncio.CancelledError:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
@@ -92,14 +118,17 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."
             )
+            backoff = True
+        if backoff:
             await asyncio.sleep(backoff_time_s)
             # Be careful about the expotential backoff scaling here.
             # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
             # initial backoff time, while 2x scaling means 512x the initial.
             backoff_time_s *= 1.5
             retries += 1
+            backoff = False
     else:
-        error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
