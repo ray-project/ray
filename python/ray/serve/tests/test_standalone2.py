@@ -39,6 +39,32 @@ def shutdown_ray():
         ray.shutdown()
 
 
+@pytest.fixture()
+def ray_instance(request):
+    """Starts and stops a Ray instance for this test.
+
+    Args:
+        request: request.param should contain a dictionary of env vars and
+            their values. The Ray instance will be started with these env vars.
+    """
+
+    original_env_vars = os.environ.copy()
+
+    try:
+        requested_env_vars = request.param
+    except AttributeError:
+        requested_env_vars = {}
+
+    os.environ.update(requested_env_vars)
+
+    yield ray.init()
+
+    ray.shutdown()
+
+    os.environ.clear()
+    os.environ.update(original_env_vars)
+
+
 @contextmanager
 def start_and_shutdown_ray_cli():
     subprocess.check_output(
@@ -713,6 +739,25 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     serve.shutdown()
     ray.shutdown()
+
+
+class TestRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
+
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
+
+        serve.run(f.bind())
+
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
