@@ -311,34 +311,6 @@ class BackendExecutor:
 
         return local_rank_map, local_world_size_map, node_rank_map
 
-    def _create_local_world_map(self) -> Dict:
-        ip_dict = defaultdict(int)
-        local_world_size_map = {}
-        for world_rank in range(len(self.worker_group)):
-            worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            ip_dict[node_ip] += 1
-
-        for world_rank in range(len(self.worker_group)):
-            worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            local_world_size_map[world_rank] = ip_dict[node_ip]
-        return local_world_size_map
-
-    def _create_node_rank(self) -> Dict:
-        node_ips = dict()
-        node_cnt = 0
-        node_rank_map = {}
-
-        for world_rank in range(len(self.worker_group)):
-            worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            if node_ip not in node_ips:
-                node_ips[node_ip] = node_cnt
-                node_cnt += 1
-            node_rank_map[world_rank] = node_ips[node_ip]
-        return node_rank_map
-
     def start_training(
         self,
         train_func: Callable[[], T],
