@@ -40,13 +40,14 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
 
         # Provide full (preferred format) observation- and action-spaces as Dicts
         # mapping agent IDs to the individual agents' spaces.
-        self._spaces_in_preferred_format = True
+        self._obs_space_in_preferred_format = True
         self.observation_space = gym.spaces.Dict(
             {
                 "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
                 "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
             }
         )
+        self._action_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)}
         )

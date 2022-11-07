@@ -265,7 +265,6 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     Args:
         env: The env to be checked.
-
     """
     from ray.rllib.env import MultiAgentEnv
 
@@ -275,12 +274,13 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         hasattr(env, "observation_space")
         and hasattr(env, "action_space")
         and hasattr(env, "_agent_ids")
-        and hasattr(env, "_spaces_in_preferred_format")
+        and hasattr(env, "_observation_space_in_preferred_format")
+        and hasattr(env, "_action_space_in_preferred_format")
     ):
         if log_once("ma_env_super_ctor_called"):
             logger.warning(
                 f"Your MultiAgentEnv {env} does not have some or all of the needed "
-                "base-class attributes! Make sure you call `super().__init__` from "
+                "base-class attributes! Make sure you call `super().__init__()` from "
                 "within your MutiAgentEnv's constructor. "
                 "This will raise an error in the future."
             )
@@ -328,7 +328,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    sampled_action = env.action_space_sample(reset_obs.keys())
+    sampled_action = env.action_space_sample(list(reset_obs.keys()))
     _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
     try:
         env.action_space_contains(sampled_action)

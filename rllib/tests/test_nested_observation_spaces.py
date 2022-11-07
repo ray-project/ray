@@ -93,7 +93,6 @@ class NestedDictEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = DICT_SPACE
-        self._spec = EnvSpec("NestedDictEnv-v0")
         self.steps = 0
 
     def reset(self, *, seed=None, options=None):
@@ -110,7 +109,6 @@ class NestedTupleEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = TUPLE_SPACE
-        self._spec = EnvSpec("NestedTupleEnv-v0")
         self.steps = 0
 
     def reset(self, *, seed=None, options=None):
@@ -127,7 +125,6 @@ class RepeatedSpaceEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = REPEATED_SPACE
-        self._spec = EnvSpec("RepeatedSpaceEnv-v0")
         self.steps = 0
 
     def reset(self, *, seed=None, options=None):

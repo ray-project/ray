@@ -59,7 +59,8 @@ class MyCartPole(gym.Env):
         return obs, reward, done, truncated, info
 
     def reset(self, *, seed=None, options=None):
-        return np.hstack((self._env.reset(), [8.0, 6.0])), {}
+        obs, info = self._env.reset()
+        return np.hstack((obs, [8.0, 6.0])), info
 
 
 # Custom agent connector to drop the last 2 feature values.

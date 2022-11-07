@@ -55,8 +55,6 @@ class MultiAgentEnv(gym.Env):
             self._action_space_in_preferred_format = None
         if not hasattr(self, "_obs_space_in_preferred_format"):
             self._obs_space_in_preferred_format = None
-        if not hasattr(self, "_spaces_in_preferred_format"):
-            self._spaces_in_preferred_format = None
 
     @PublicAPI
     def reset(
@@ -411,14 +409,6 @@ class MultiAgentEnv(gym.Env):
             )
 
         return env
-
-    @DeveloperAPI
-    def _check_if_space_maps_agent_id_to_sub_space(self) -> bool:
-        """Checks if spaces map from agent ids to spaces of individual agents."""
-        return (
-            self._check_if_obs_space_maps_agent_id_to_sub_space()
-            and self._check_if_action_space_maps_agent_id_to_sub_space
-        )
 
     @DeveloperAPI
     def _check_if_obs_space_maps_agent_id_to_sub_space(self) -> bool:

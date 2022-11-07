@@ -2075,8 +2075,8 @@ class AlgorithmConfig:
                     # policy IDs.
                     if (
                         isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_spaces_in_preferred_format")
-                        and env._spaces_in_preferred_format
+                        and hasattr(env, "_obs_space_in_preferred_format")
+                        and env._obs_space_in_preferred_format
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -2123,8 +2123,8 @@ class AlgorithmConfig:
                     # policy IDs.
                     if (
                         isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_spaces_in_preferred_format")
-                        and env._spaces_in_preferred_format
+                        and hasattr(env, "_action_space_in_preferred_format")
+                        and env._action_space_in_preferred_format
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
