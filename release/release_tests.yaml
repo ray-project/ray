@@ -633,7 +633,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: bash out_of_core_benchmark.sh
     type: sdk_command
     file_manager: sdk
