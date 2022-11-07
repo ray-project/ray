@@ -1823,7 +1823,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1855,7 +1855,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: app_config_np.yaml
