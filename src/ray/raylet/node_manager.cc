@@ -170,6 +170,7 @@ void HeartbeatSender::Heartbeat() {
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
         if (status.IsDisconnected()) {
+          RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD") << "This node has beem marked as dead.";
           RAY_LOG(FATAL) << "This node has beem marked as dead.";
         }
       }));
@@ -424,6 +425,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   if (RayConfig::instance().use_ray_syncer()) {
+    periodical_runner_.RunFnPeriodically(
+        [this]() {
+          auto now = absl::Now();
+          auto threshold =
+              now - absl::Milliseconds(
+                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+          auto &resource_manager =
+              cluster_resource_scheduler_->GetClusterResourceManager();
+          for (auto &[node_id, resource] : resource_message_udpated_) {
+            auto modified_ts = resource_manager.GetNodeResourceModifiedTs(
+                scheduling::NodeID(node_id.Binary()));
+            if (modified_ts && *modified_ts < threshold) {
+              UpdateResourceUsage(node_id, resource);
+            }
+          }
+        },
+        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
@@ -462,7 +480,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
 ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeat here to ensure it happening after raylet being registered.
-  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -1026,6 +1046,14 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   if (node_id == self_node_id_) {
     if (!is_node_drained_) {
+      // TODO(iycheng): Don't duplicate log here once we enable event by default.
+      RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
+          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+             "dead by the "
+          << "GCS: GCS didn't receive heartbeats from this node for "
+          << RayConfig::instance().num_heartbeats_timeout() *
+                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
+          << " ms. This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
@@ -1044,6 +1072,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
+
+  // Remove the messages received
+  resource_message_udpated_.erase(node_id);
 
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
@@ -2523,43 +2554,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
-  // Ensure we never report an empty set of metrics.
-  if (!recorded_metrics_) {
-    RecordMetrics();
-  }
-  for (const auto &view : opencensus::stats::StatsExporter::GetViewData()) {
-    auto view_data = reply->add_view_data();
-    view_data->set_view_name(view.first.name());
-    if (view.second.type() == opencensus::stats::ViewData::Type::kInt64) {
-      for (const auto &measure : view.second.int_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_int_value(measure.second);
-      }
-    } else if (view.second.type() == opencensus::stats::ViewData::Type::kDouble) {
-      for (const auto &measure : view.second.double_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_double_value(measure.second);
-      }
-    } else {
-      RAY_CHECK(view.second.type() == opencensus::stats::ViewData::Type::kDistribution);
-      for (const auto &measure : view.second.distribution_data()) {
-        auto measure_data = view_data->add_measures();
-        measure_data->set_tags(compact_tag_string(view.first, measure.first));
-        measure_data->set_distribution_min(measure.second.min());
-        measure_data->set_distribution_mean(measure.second.mean());
-        measure_data->set_distribution_max(measure.second.max());
-        measure_data->set_distribution_count(measure.second.count());
-        for (const auto &bound : measure.second.bucket_boundaries().lower_boundaries()) {
-          measure_data->add_distribution_bucket_boundaries(bound);
-        }
-        for (const auto &count : measure.second.bucket_counts()) {
-          measure_data->add_distribution_bucket_counts(count);
-        }
-      }
-    }
-  }
   // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
@@ -2840,6 +2834,9 @@ void NodeManager::ConsumeSyncMessage(
     if (UpdateResourceUsage(node_id, data)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
+    // Message view shouldn't carry this field.
+    RAY_CHECK(!data.should_global_gc());
+    resource_message_udpated_[node_id] = std::move(data);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
@@ -2855,6 +2852,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
   rpc::ResourcesData resources_data;
   resources_data.set_should_global_gc(true);
+  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
