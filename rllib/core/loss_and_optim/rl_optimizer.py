@@ -1,6 +1,7 @@
 import abc
-from typing import Mapping, Any, Union
+from typing import Mapping, Any, List
 
+from ray.rllib import SampleBatch
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.utils.annotations import (
@@ -37,12 +38,12 @@ class RLOptimizer(abc.ABC):
 
     """
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, module: Union[RLModule, MultiAgentRLModule], config: Mapping[str, Any]):
+    def __init__(self, module: RLModule, config: Mapping[str, Any]):
         self._module = module
-        self._optim_config = config
+        self._config = config
 
     @abc.abstractmethod
-    def compute_optimization_vars(self, fwd_out: Mapping[str, Any]) -> Mapping[str, Any]:
+    def compute_loss(self, fwd_out: Mapping[str, Any]) -> Mapping[str, Any]:
         """Computes variables for optimizing self._module based on fwd_out.
 
         Args:
@@ -53,19 +54,41 @@ class RLOptimizer(abc.ABC):
             A dictionary of tensors used for optimizing self._module.
         """
 
-    @abc.abstractmethod
-    def optimize(self, optimization_vars: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
-        """Perform an update on self._module
+    @OverrideToImplementCustomLogic
+    def on_compute_loss_start(self, fwd_out: Mapping[str, Any], fwd_in: SampleBatch):
+        """Called before `compute_loss` is called."""
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_compute_loss_end(self, loss_dict: Mapping[str, Any], fwd_out: Mapping[str, Any], fwd_in: SampleBatch):
+        """Called after `compute_loss` is called."""
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_compute_gradients_start(self, loss_dict: Mapping[str, Any]):
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_compute_gradients_end(self, loss_dict: Mapping[str, Any], gradients_dict: Mapping[str, Any]):
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_apply_gradients_start():
+        pass
+
+    # @abc.abstractmethod
+    # def compute_gradients(self, optimization_vars: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    #     """Perform an update on self._module
         
-            For example compute and apply gradients to self._module if
-                necessary.
+    #         For example compute and apply gradients to self._module if
+    #             necessary.
         
-        Args:
-            optimization_vars: named variables used for optimizing self._module 
+    #     Args:
+    #         optimization_vars: named variables used for optimizing self._module 
             
-        Returns:
-            A dictionary of extra information and statistics.
-        """
+    #     Returns:
+    #         A dictionary of extra information and statistics.
+    #     """
 
     @abc.abstractmethod
     def get_state(self) -> Mapping[str, Any]:
