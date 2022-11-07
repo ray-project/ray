@@ -16,6 +16,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
+    _is_local_scheme,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -48,6 +49,7 @@ from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import dask
@@ -57,6 +59,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import torch
 
 
 T = TypeVar("T")
@@ -309,6 +312,17 @@ def read_datasource(
         and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
+
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
 
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
@@ -1324,6 +1338,42 @@ def from_huggingface(
             "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
             f"got {type(dataset)}"
         )
+
+
+@PublicAPI
+def from_torch(
+    dataset: "torch.utils.data.Dataset",
+) -> Dataset:
+    """Create a dataset from a Torch dataset.
+
+    This function is inefficient. Use it to read small datasets or prototype.
+
+    .. warning::
+        If your dataset is large, this function may execute slowly or raise an
+        out-of-memory error. To avoid issues, read the underyling data with a function
+        like :meth:`~ray.data.read_images`.
+
+    .. note::
+        This function isn't paralellized. It loads the entire dataset into the head
+        node's memory before moving the data to the distributed object store.
+
+    Examples:
+        >>> import ray
+        >>> from torchvision import datasets
+        >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
+        >>> dataset = ray.data.from_torch(dataset)  # doctest: +SKIP
+        >>> dataset  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        >>> dataset.take(1)  # doctest: +SKIP
+        [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
+
+    Args:
+        dataset: A Torch dataset.
+
+    Returns:
+        A :class:`Dataset` that contains the samples stored in the Torch dataset.
+    """
+    return from_items(list(dataset))
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:

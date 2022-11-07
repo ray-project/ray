@@ -5,6 +5,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import torchvision
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
 from fsspec.implementations.local import LocalFileSystem
@@ -17,7 +18,6 @@ from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
     SimpleTensorFlowDatasource,
-    SimpleTorchDatasource,
     WriteResult,
 )
 
@@ -216,39 +216,14 @@ def test_tensorflow_datasource(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_torch_datasource(ray_start_regular_shared, local_path):
-    import torchvision
-
-    # Download datasets to separate folders to prevent interference.
-    torch_dataset_root = os.path.join(local_path, "torch")
-    ray_dataset_root = os.path.join(local_path, "ray")
-
-    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+def test_from_torch(shutdown_only, tmp_path):
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    def dataset_factory():
-        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+    ray_dataset = ray.data.from_torch(torch_dataset)
 
-    ray_dataset = ray.data.read_datasource(
-        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
-    )
-    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
-
+    actual_data = list(ray_dataset.take_all())
     assert actual_data == expected_data
-
-
-def test_torch_datasource_value_error(shutdown_only, local_path):
-    import torchvision
-
-    dataset = torchvision.datasets.MNIST(local_path, download=True)
-
-    with pytest.raises(ValueError):
-        # `dataset_factory` should be a function, not a Torch dataset.
-        ray.data.read_datasource(
-            SimpleTorchDatasource(),
-            parallelism=1,
-            dataset_factory=dataset,
-        )
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
