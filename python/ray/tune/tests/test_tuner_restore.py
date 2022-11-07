@@ -32,15 +32,13 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def _train_fn_sometimes_failing(config, checkpoint_dir=None):
+def _train_fn_sometimes_failing(config):
     # Fails if failing is set and marker file exists.
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
     if session.get_checkpoint():
         state = session.get_checkpoint().to_dict()
-    # if checkpoint_dir:
-    #     state = Checkpoint.from_directory(checkpoint_dir).to_dict()
     else:
         state = {"it": 0}
 
