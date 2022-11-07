@@ -4,7 +4,7 @@ from ray.rllib.algorithms.sac import (
     SAC,
     SACConfig,
 )
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -59,7 +59,7 @@ class RNNSACConfig(SACConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
+        zero_init_states: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "RNNSACConfig":
         """Sets the training related configuration.
@@ -76,7 +76,7 @@ class RNNSACConfig(SACConfig):
             This updated AlgorithmConfig object.
         """
         super().training(**kwargs)
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
 
         return self

@@ -3,7 +3,7 @@ import math
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -83,7 +83,7 @@ class A2CConfig(A3CConfig):
     def training(
         self,
         *,
-        microbatch_size: Optional[int] = None,
+        microbatch_size: Optional[int] = NotProvided,
         **kwargs,
     ) -> "A2CConfig":
         """Sets the training related configuration.
@@ -100,7 +100,7 @@ class A2CConfig(A3CConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if microbatch_size is not None:
+        if microbatch_size is not NotProvided:
             self.microbatch_size = microbatch_size
 
         return self

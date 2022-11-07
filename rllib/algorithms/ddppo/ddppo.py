@@ -21,7 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -129,8 +129,8 @@ class DDPPOConfig(PPOConfig):
     def training(
         self,
         *,
-        keep_local_weights_in_sync: Optional[bool] = None,
-        torch_distributed_backend: Optional[str] = None,
+        keep_local_weights_in_sync: Optional[bool] = NotProvided,
+        torch_distributed_backend: Optional[str] = NotProvided,
         **kwargs,
     ) -> "DDPPOConfig":
         """Sets the training related configuration.
@@ -148,9 +148,9 @@ class DDPPOConfig(PPOConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if keep_local_weights_in_sync is not None:
+        if keep_local_weights_in_sync is not NotProvided:
             self.keep_local_weights_in_sync = keep_local_weights_in_sync
-        if torch_distributed_backend is not None:
+        if torch_distributed_backend is not NotProvided:
             self.torch_distributed_backend = torch_distributed_backend
 
         return self
