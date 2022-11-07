@@ -6,13 +6,21 @@ import ray
 
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
+    num_masters = 250
+    num_slaves_per_master = 19
+
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
         def foo(self):
             pass
+        def create(self):
+            return [Actor.options(max_restarts=-1).remote() for _ in range(num_slaves_per_master)]
 
     print("Start launch actors")
-    actors = [Actor.options(max_restarts=-1).remote() for _ in range(total_actors)]
+    masters = [Actor.options(max_restarts=-1).remote() for _ in range(num_masters)]
+    actors = masters.copy()
+    for master in masters:
+        actors.extend(master.create.remote())
     return actors
 
 
