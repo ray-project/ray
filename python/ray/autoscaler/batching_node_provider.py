@@ -169,8 +169,7 @@ class BatchingNodeProvider(NodeProvider):
         return list(self.node_data_dict.keys())
 
     def cur_num_workers(self):
-        """Returns dict mapping node type to the number of nodes of that type.
-        """
+        """Returns dict mapping node type to the number of nodes of that type."""
         # Factor like this for convenient re-use.
         return self._cur_num_workers(self.node_data_dict)
 
