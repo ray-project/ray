@@ -1,0 +1,2 @@
+import ray
+ray.init()

@@ -1417,7 +1417,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name):
+                  startup_token, session_name, entrypoint):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1468,6 +1468,7 @@ cdef class CoreWorker:
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
+        options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
