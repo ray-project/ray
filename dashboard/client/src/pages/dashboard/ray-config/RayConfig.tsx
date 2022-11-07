@@ -49,7 +49,9 @@ const RayConfig: React.FC = () => {
       const rayConfig = await getRayConfig();
       dispatch(setRayConfig(rayConfig));
     } catch (error) {
-      dispatch(setError(error.toString()));
+      if (error instanceof Error) {
+        dispatch(setError(error.toString()));
+      }
     }
   }, [dispatch]);
   const intervalId = useRef<any>(null);

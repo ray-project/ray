@@ -102,12 +102,13 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
   // Construct the custom message from the actor.
   let actorCustomDisplay: JSX.Element[] = [];
   if (isFullActorInfo(actor) && actor.webuiDisplay) {
+    const webuiDisplay = actor.webuiDisplay;
     actorCustomDisplay = Object.keys(actor.webuiDisplay)
       .sort()
-      .map((key, _, __) => {
+      .map((key) => {
         // Construct the value from actor.
         // Please refer to worker.py::show_in_webui for schema.
-        const valueEncoded = actor.webuiDisplay![key];
+        const valueEncoded = webuiDisplay[key];
         const valueParsed = JSON.parse(valueEncoded);
         let valueRendered = valueParsed["message"];
         if (valueParsed["dtype"] === "html") {

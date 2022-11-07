@@ -78,7 +78,7 @@ class TuneTable extends React.Component<
     typeof mapDispatchToProps,
   State
 > {
-  timeout: number = 0;
+  timeout = 0;
 
   state: State = {
     sortedColumn: undefined,
@@ -194,10 +194,10 @@ class TuneTable extends React.Component<
       return trialDetails;
     }
 
-    let getAttribute = (trial: TuneTrial) => trial[sortedColumn!];
+    let getAttribute = (trial: TuneTrial) => trial[sortedColumn];
     if (sortedColumn === "metrics" || sortedColumn === "params") {
       getAttribute = (trial: TuneTrial) =>
-        trial[sortedColumn!][metricParamColumn];
+        trial[sortedColumn][metricParamColumn];
     }
 
     if (sortedColumn) {

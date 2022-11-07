@@ -10,7 +10,7 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   const formattedParams = Object.entries(params)
     .map((pair) => pair.join("="))
     .join("&");
-  const url = [formatUrl(path), formattedParams].filter((x) => x!!).join("?");
+  const url = [formatUrl(path), formattedParams].filter((x) => x).join("?");
 
   const response = await fetch(url);
   const json: APIResponse<T> = await response.json();
@@ -53,7 +53,7 @@ type ProcessStats = {
     text: number;
     lib: number;
     data: number;
-    dirty: Number;
+    dirty: number;
   };
   createTime: number;
   cmdline: string[];
@@ -325,7 +325,7 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number,
 ) =>
-  get<{}>("/logical/kill_actor", {
+  get<Record<string, never>>("/logical/kill_actor", {
     // make sure object is okay
     actorId: actorId,
     ipAddress: actorIpAddress,
@@ -401,7 +401,7 @@ export const setTuneExperiment = (experiment: string) =>
   });
 
 export const enableTuneTensorBoard = () =>
-  get<{}>("/tune/enable_tensorboard", {});
+  get<Record<string, never>>("/tune/enable_tensorboard", {});
 
 export type MemoryTableSummary = {
   totalActorHandles: number;
@@ -442,7 +442,7 @@ export type MemoryTableResponse = {
 };
 
 // This doesn't return anything.
-export type StopMemoryTableResponse = {};
+export type StopMemoryTableResponse = Record<string, never>;
 
 export type MemoryGroupByKey = "node" | "stack_trace" | "";
 
@@ -453,4 +453,4 @@ export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
 };
 
 export const setMemoryTableCollection = (value: boolean) =>
-  get<{}>("/memory/set_fetch", { shouldFetch: value });
+  get<Record<string, never>>("/memory/set_fetch", { shouldFetch: value });

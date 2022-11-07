@@ -15,7 +15,7 @@ const timeReg =
 const value2react = (
   { type, tagName, properties, children, value = "" }: any,
   key: string,
-  keywords: string = "",
+  keywords = "",
 ) => {
   switch (type) {
     case "element":

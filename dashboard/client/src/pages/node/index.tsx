@@ -278,7 +278,7 @@ const Nodes = () => {
                     (page.pageNo - 1) * page.pageSize,
                     page.pageNo * page.pageSize,
                   )
-                  .map((node, i) => (
+                  .map((node) => (
                     <NodeRows
                       key={node.raylet.nodeId}
                       node={node}
