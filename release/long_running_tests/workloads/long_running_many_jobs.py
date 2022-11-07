@@ -19,7 +19,7 @@ import ray
 from ray.job_submission import JobSubmissionClient
 
 NUM_CLIENTS = 4
-NUM_JOBS_PER_BATCH = 10
+NUM_JOBS_PER_BATCH = 4
 
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
