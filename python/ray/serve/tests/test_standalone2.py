@@ -4,7 +4,8 @@ import sys
 import time
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Dict
+from typing import Dict, Set
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import pytest
 import requests
@@ -15,7 +16,11 @@ import ray._private.state
 from ray.experimental.state.api import list_actors
 
 from ray import serve
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+    SignalActor,
+)
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
@@ -741,9 +746,9 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
-class TestRequestProcessingTimeoutS:
+class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
-        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
     )
     def test_normal_operation(self, ray_instance):
         """Checks that a moderate timeout doesn't affect normal operation."""
@@ -756,6 +761,51 @@ class TestRequestProcessingTimeoutS:
 
         for _ in range(20):
             requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
+
+    @pytest.mark.parametrize(
+        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}], indirect=True
+    )
+    def test_hanging_request(self, ray_instance):
+        """Checks that the env var mitigates the hang."""
+
+        @ray.remote
+        class PidTracker:
+            def __init__(self):
+                self.pids = set()
+
+            def add_pid(self, pid: int) -> None:
+                self.pids.add(pid)
+
+            def get_pids(self) -> Set[int]:
+                return self.pids
+
+        pid_tracker = PidTracker.remote()
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(num_replicas=2)
+        async def waiter(*args):
+            import os
+
+            ray.get(pid_tracker.add_pid.remote(os.getpid()))
+            await signal_actor.wait.remote()
+            return "Success!"
+
+        serve.run(waiter.bind())
+
+        with ThreadPoolExecutor() as pool:
+            response_fut = pool.submit(requests.get, "http://localhost:8000")
+
+            # Force request to hang
+            time.sleep(0.5)
+            ray.get(signal_actor.send.remote())
+
+            wait_for_condition(lambda: response_fut.done())
+            assert response_fut.result().text == "Success!"
+
+        # Hanging request should have been retried
+        assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
 

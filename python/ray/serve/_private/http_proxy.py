@@ -98,7 +98,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                     "with another replica. You can modify this timeout by "
                     'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
-                client_disconnection_task.cancel()
                 backoff = True
             else:
                 result = await object_ref
