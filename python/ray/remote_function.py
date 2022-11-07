@@ -94,6 +94,14 @@ class RemoteFunction:
             )
         self._default_options = task_options
 
+        # When gpu is used, set the task non-recyclable by default.
+        # Ready https://github.com/ray-project/ray/issues/29624 for more context.
+        if (
+            self._default_options.get("num_gpus", 0) > 0
+            and self._default_options.get("max_calls", None) is None
+        ):
+            self._default_options["max_calls"] = 1
+
         # TODO(suquark): This is a workaround for class attributes of options.
         # They are being used in some other places, mostly tests. Need cleanup later.
         # E.g., actors uses "__ray_metadata__" to collect options, we can so something
@@ -103,14 +111,6 @@ class RemoteFunction:
         self._runtime_env = parse_runtime_env(self._runtime_env)
         if "runtime_env" in self._default_options:
             self._default_options["runtime_env"] = self._runtime_env
-
-        # When gpu is used, set the task non-recyclable by default.
-        # Ready https://github.com/ray-project/ray/issues/29624 for more context.
-        if (
-            self._default_options.get("num_gpus", 0) > 0
-            and self._default_options.get("max_calls", None) is None
-        ):
-            self._default_options["max_calls"] = 1
 
         self._language = language
         self._function = _inject_tracing_into_function(function)
