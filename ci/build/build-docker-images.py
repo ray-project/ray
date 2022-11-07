@@ -38,7 +38,7 @@ PY_MATRIX = {
 }
 
 BASE_IMAGES = {
-    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
+    "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
     "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
@@ -49,7 +49,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
-    "cu116": "CUDA 11.6",
+    "cu117": "CUDA 11.7",
     "cu113": "CUDA 11.3",
     "cu112": "CUDA 11.2",
     "cu111": "CUDA 11.1",
@@ -62,7 +62,7 @@ CUDA_FULL = {
 # If changing the CUDA version in the below line, you should also change the base Docker
 # image being used in ~/ci/docker/Dockerfile.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu116"
+ML_CUDA_VERSION = "cu117"
 
 DEFAULT_PYTHON_VERSION = "py37"
 
