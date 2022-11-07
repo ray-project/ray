@@ -520,7 +520,6 @@ class TestSAC(unittest.TestCase):
             def __init__(self):
                 self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
                 self.observation_space = dict_space
-                self._spec = EnvSpec("NestedDictEnv-v0")
                 self.steps = 0
 
             def reset(self, *, seed=None, options=None):
