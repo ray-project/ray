@@ -543,7 +543,7 @@
   instance_size: medium
   commands:
     - export LINT=1
-    - DOC_TESTING=1 INSTALL_HOROVOD=1 DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 INSTALL_HOROVOD=1 TRAIN_TESTING=1 TUNE_TESTING=1 RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel clean --expunge
     - ./ci/ci.sh build
