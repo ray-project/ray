@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 ENCODED_DATA_KEY = "torch_encoded_data"
+TRAINING_STATE_KEY = "_training_state"
 
 
 @PublicAPI(stability="beta")
@@ -74,6 +75,7 @@ class TorchCheckpoint(Checkpoint):
         state_dict: Dict[str, Any],
         *,
         preprocessor: Optional["Preprocessor"] = None,
+        training_state: Optional[Dict[str, Any]] = None,
     ) -> "TorchCheckpoint":
         """Create a :class:`~ray.air.checkpoint.Checkpoint` that stores a model state
         dictionary.
@@ -103,7 +105,7 @@ class TorchCheckpoint(Checkpoint):
             >>> checkpoint.get_model(torch.nn.Linear(1, 1))
             Linear(in_features=1, out_features=1, bias=True)
         """
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: state_dict})
+        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: state_dict, TRAINING_STATE_KEY: training_state})
 
     @classmethod
     def from_model(
@@ -111,6 +113,7 @@ class TorchCheckpoint(Checkpoint):
         model: torch.nn.Module,
         *,
         preprocessor: Optional["Preprocessor"] = None,
+        training_state: Optional[Dict[str, Any]] = None,
     ) -> "TorchCheckpoint":
         """Create a :class:`~ray.air.checkpoint.Checkpoint` that stores a Torch model.
 
@@ -143,7 +146,7 @@ class TorchCheckpoint(Checkpoint):
             >>>
             >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
         """  # noqa: E501
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
+        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model, TRAINING_STATE_KEY: training_state})
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
@@ -169,3 +172,6 @@ class TorchCheckpoint(Checkpoint):
                 )
         model = load_torch_model(saved_model=saved_model, model_definition=model)
         return model
+
+    def get_training_state(self) -> Dict[str, Any]:
+        return self.to_dict()[TRAINING_STATE_KEY]

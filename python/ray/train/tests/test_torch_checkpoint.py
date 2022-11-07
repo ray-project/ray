@@ -25,6 +25,18 @@ def test_from_model():
     assert_equal_torch_models(checkpoint_model, model)
 
 
+def test_get_training_state():
+    model = torch.nn.Linear(1, 1)
+
+    checkpoint = TorchCheckpoint.from_model(model, training_state={"epoch": 0})
+    assert checkpoint.get_training_state() == {"epoch": 0}
+
+    checkpoint = TorchCheckpoint.from_state_dict(
+        model.state_dict(), training_state={"epoch": 0}
+    )
+    assert checkpoint.get_training_state() == {"epoch": 0}
+
+
 def test_from_state_dict():
     model = torch.nn.Linear(1, 1)
     expected_state_dict = model.state_dict()
