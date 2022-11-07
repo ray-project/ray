@@ -21,15 +21,15 @@ _allowed_hooks = {
 def _override_ptl_hooks(callback_cls: Type["_TuneCallback"]) -> Type["_TuneCallback"]:
     """Overrides all allowed PTL Callback hooks with our custom handle logic."""
 
-    def generate_overridden_hook(func_name):
+    def generate_overridden_hook(fn_name):
         def overridden_hook(
             self,
             trainer: Trainer,
-            pl_module: Optional[LightningModule],
             *args,
+            pl_module: Optional[LightningModule] = None,
             **kwargs,
         ):
-            if func_name in self._on:
+            if fn_name in self._on:
                 self._handle(trainer=trainer, pl_module=pl_module)
 
         return overridden_hook
@@ -54,12 +54,17 @@ class _TuneCallback(Callback):
     def __init__(self, on: Union[str, List[str]] = "validation_end"):
         if not isinstance(on, list):
             on = [on]
+
         for hook in on:
             if f"on_{hook}" not in _allowed_hooks:
                 raise ValueError(
                     f"Invalid hook selected: {hook}. Must be one of "
                     f"{_allowed_hooks}"
                 )
+
+        # Add back the "on_" prefix for internal consistency.
+        on = [f"on_{hook}" for hook in on]
+
         self._on = on
 
     def _handle(self, trainer: Trainer, pl_module: Optional[LightningModule]):
