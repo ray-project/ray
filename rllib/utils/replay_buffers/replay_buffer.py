@@ -423,7 +423,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         error=True,
     )
     def replay(self, num_items):
-        return self.sample(num_items)
+        pass
 
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
