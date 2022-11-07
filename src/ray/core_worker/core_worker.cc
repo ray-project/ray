@@ -567,7 +567,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 #endif
 }
 
-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
+CoreWorker::~CoreWorker() {
+  RAY_LOG(INFO) << "Core worker is destructed";
+  reference_counter_->ClearAll();
+}
 
 void CoreWorker::Shutdown() {
   if (is_shutdown_) {

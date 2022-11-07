@@ -523,6 +523,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
+  void ClearAll() {
+    absl::MutexLock lock(&mutex_);
+    object_id_refs_.clear();
+  }
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
