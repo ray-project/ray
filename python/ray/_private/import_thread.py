@@ -6,8 +6,8 @@ from collections import defaultdict
 import grpc
 
 import ray
-import ray._private.profiling as profiling
 import ray._private.metrics as metrics
+import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 
@@ -45,8 +45,7 @@ class ImportThread:
         self._lock = threading.Lock()
         # Try to load all FunctionsToRun so that these functions will be
         # run before accepting tasks.
-        with metrics.monitor("worker.import"):
-            self._do_importing()
+        self._do_importing()
 
     def start(self):
         """Start the import thread."""
@@ -82,18 +81,19 @@ class ImportThread:
 
     def _do_importing(self):
         while True:
-            with self._lock:
-                export_key = ray._private.function_manager.make_export_key(
-                    self.num_imported + 1, self.worker.current_job_id
-                )
-                key = self.gcs_client.internal_kv_get(
-                    export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
-                )
-                if key is not None:
-                    self._process_key(key)
-                    self.num_imported += 1
-                else:
-                    break
+            with metrics.monitor("worker.do_import"):
+                with self._lock:
+                    export_key = ray._private.function_manager.make_export_key(
+                        self.num_imported + 1, self.worker.current_job_id
+                    )
+                    key = self.gcs_client.internal_kv_get(
+                        export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+                    )
+                    if key is not None:
+                        self._process_key(key)
+                        self.num_imported += 1
+                    else:
+                        break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
