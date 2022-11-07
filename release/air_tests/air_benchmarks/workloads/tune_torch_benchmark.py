@@ -111,14 +111,14 @@ def tune_torch(
 @click.option("--num-workers", type=int, default=4)
 @click.option("--use-gpu", is_flag=True)
 @click.option("--smoke-test", is_flag=True, default=False)
-@click.option("--strict-pack", is_flag=True, default=True)
+@click.option("--disable-strict-pack", is_flag=True, default=False)
 def main(
     num_runs: int = 1,
     num_trials: int = 8,
     num_workers: int = 4,
     use_gpu: bool = False,
     smoke_test: bool = False,
-    strict_pack: bool = True,
+    disable_strict_pack: bool = False,
 ):
     ray.init(
         runtime_env={
@@ -156,7 +156,7 @@ def main(
                 num_workers=num_workers,
                 num_trials=num_trials,
                 use_gpu=use_gpu,
-                strict_pack=strict_pack,
+                strict_pack=not disable_strict_pack,
                 config=config,
             ),
             number=1,

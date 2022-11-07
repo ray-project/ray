@@ -52,6 +52,43 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+def test_submit_job_with_resources(shutdown_only):
+    ctx = ray.init(
+        include_dashboard=True,
+        num_cpus=1,
+        num_gpus=1,
+        resources={"Custom": 1},
+        dashboard_port=8269,
+    )
+    address = ctx.address_info["webui_url"]
+    client = JobSubmissionClient(format_web_url(address))
+    # Check the case of too many resources.
+    for kwargs in [
+        {"entrypoint_num_cpus": 2},
+        {"entrypoint_num_gpus": 2},
+        {"entrypoint_resources": {"Custom": 2}},
+    ]:
+        job_id = client.submit_job(entrypoint="echo hello", **kwargs)
+        data = client.get_job_info(job_id)
+        assert "waiting for resources" in data.message
+
+    # Check the case of sufficient resources.
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        entrypoint_num_cpus=1,
+        entrypoint_num_gpus=1,
+        entrypoint_resources={"Custom": 1},
+    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
+
+
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs_empty(headers, use_sdk: bool):
     # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
@@ -294,7 +331,12 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
+    # Conda env takes longer to install, causing flakiness.
+    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
+
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout
+    )
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs

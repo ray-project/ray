@@ -87,8 +87,8 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
 def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatchType:
     # Clip actions (from any values into env's bounds), if necessary.
     cfg = ioctx.config
-    # TODO(jungong) : we should not clip_action in input reader.
-    # Use connector to handle this.
+    # TODO(jungong): We should not clip_action in input reader.
+    #  Use connector to handle this.
     if cfg.get("clip_actions"):
         if ioctx.worker is None:
             raise ValueError(

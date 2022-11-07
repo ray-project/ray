@@ -4,10 +4,10 @@ import pytest
 import ray
 from ray.air import session
 from ray.train.examples.tf.tensorflow_regression_example import (
-    get_dataset,
     train_func as tensorflow_linear_train_func,
 )
 from ray.air.config import ScalingConfig
+from ray.data.preprocessors import Concatenator
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.tensorflow import (
@@ -32,7 +32,6 @@ def build_model():
     model = tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=()),
-            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1),
         ]
@@ -44,25 +43,28 @@ def build_model():
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     """Also tests air Keras callback."""
+    epochs = 3
 
     def train_func(config):
         result = tensorflow_linear_train_func(config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
 
-    num_workers = num_workers
-    epochs = 3
-    scaling_config = ScalingConfig(num_workers=num_workers)
-    config = {
+    train_loop_config = {
         "lr": 1e-3,
         "batch_size": 32,
         "epochs": epochs,
     }
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
+    preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
-        train_loop_config=config,
+        train_loop_config=train_loop_config,
         scaling_config=scaling_config,
-        datasets={TRAIN_DATASET_KEY: get_dataset()},
+        datasets={TRAIN_DATASET_KEY: dataset},
+        preprocessor=preprocessor,
     )
     trainer.fit()
 

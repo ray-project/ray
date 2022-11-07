@@ -1,8 +1,10 @@
 import json
 import os
 import pathlib
-from pprint import pformat
+import sys
 import requests
+
+from pprint import pformat
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +15,7 @@ from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
     fetch_prometheus,
+    fetch_prometheus_metrics,
     get_log_batch,
     wait_for_condition,
     raw_metrics,
@@ -48,7 +51,6 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_heartbeat_report_ms_sum",
     "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
     "ray_internal_num_spilled_tasks",
@@ -110,9 +112,45 @@ _AUTOSCALER_METRICS = [
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _DASHBOARD_METRICS = [
-    "dashboard_api_requests_duration_seconds",
-    "dashboard_api_requests_count",
+    "ray_dashboard_api_requests_duration_seconds",
+    "ray_dashboard_api_requests_count",
+    "ray_component_cpu_percentage",
+    "ray_component_rss_mb",
 ]
+
+_NODE_METRICS = [
+    "ray_node_cpu_utilization",
+    "ray_node_cpu_count",
+    "ray_node_mem_used",
+    "ray_node_mem_available",
+    "ray_node_mem_total",
+    "ray_node_disk_io_read",
+    "ray_node_disk_io_write",
+    "ray_node_disk_io_read_count",
+    "ray_node_disk_io_write_count",
+    "ray_node_disk_io_read_speed",
+    "ray_node_disk_io_write_speed",
+    "ray_node_disk_read_iops",
+    "ray_node_disk_write_iops",
+    "ray_node_disk_usage",
+    "ray_node_disk_free",
+    "ray_node_disk_utilization_percentage",
+    "ray_node_network_sent",
+    "ray_node_network_received",
+    "ray_node_network_send_speed",
+    "ray_node_network_receive_speed",
+]
+
+_NODE_COMPONENT_METRICS = [
+    "ray_component_cpu_percentage",
+    "ray_component_rss_mb",
+    "ray_component_uss_mb",
+]
+
+if ray._raylet.Config.pull_based_healthcheck():
+    _METRICS.append("ray_health_check_rpc_latency_ms_sum")
+else:
+    _METRICS.append("ray_heartbeat_report_ms_sum")
 
 
 @pytest.fixture
@@ -231,6 +269,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         for sample in metric_samples:
             if sample.name in _METRICS:
                 assert sample.labels["SessionName"] == session_name
+            if sample.name in _DASHBOARD_METRICS:
+                assert sample.labels["SessionName"] == session_name
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
@@ -307,6 +347,60 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+def test_metrics_export_node_metrics(shutdown_only):
+    # Verify node metrics are available.
+    addr = ray.init()
+    dashboard_export_addr = "{}:{}".format(
+        addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
+    )
+
+    def verify_node_metrics():
+        avail_metrics = raw_metrics(addr)
+
+        components = set()
+        for metric in _NODE_COMPONENT_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"raylet", "agent", "workers"}
+
+        avail_metrics = set(avail_metrics)
+
+        for node_metric in _NODE_METRICS:
+            assert node_metric in avail_metrics
+        for node_metric in _NODE_COMPONENT_METRICS:
+            assert node_metric in avail_metrics
+        return True
+
+    def verify_dashboard_metrics():
+        avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
+        # Run list nodes to trigger dashboard API.
+        ray.experimental.state.api.list_nodes()
+
+        # Verify components
+        components = set()
+        for metric in _DASHBOARD_METRICS:
+            samples = avail_metrics[metric]
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert components == {"dashboard"}
+
+        # Verify metrics exist.
+        avail_metrics = set(avail_metrics)
+        for metric in _DASHBOARD_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(
+                name.startswith(metric) for name in avail_metrics
+            ), f"{metric} not in {avail_metrics}"
+        return True
+
+    wait_for_condition(verify_node_metrics)
+    wait_for_condition(verify_dashboard_metrics)
+
+
 def test_operation_stats(monkeypatch, shutdown_only):
     # Test operation stats are available when flag is on.
     operation_metrics = [
@@ -337,7 +431,7 @@ def test_operation_stats(monkeypatch, shutdown_only):
             assert {"raylet", "gcs_server", "core_worker"} == components
             return True
 
-        wait_for_condition(verify, timeout=30)
+        wait_for_condition(verify, timeout=60)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
