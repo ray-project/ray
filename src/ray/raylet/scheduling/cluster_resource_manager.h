@@ -56,6 +56,13 @@ class ClusterResourceManager {
   /// \param resource_data The node resource data.
   bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
 
+  /// Return the timestamp when the resource of the node got updated by scheduler.
+  ///
+  /// \param node_id ID of the node to query
+  /// \return The timestamp when the node resource got updated. If it's null, it means
+  ///    there is no such node or the resource of the node never got updated.
+  std::optional<absl::Time> GetNodeResourceModifiedTs(scheduling::NodeID node_id) const;
+
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///

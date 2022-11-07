@@ -431,7 +431,7 @@ def test_operation_stats(monkeypatch, shutdown_only):
             assert {"raylet", "gcs_server", "core_worker"} == components
             return True
 
-        wait_for_condition(verify, timeout=30)
+        wait_for_condition(verify, timeout=60)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):

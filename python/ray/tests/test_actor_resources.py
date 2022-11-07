@@ -320,7 +320,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actors_and_tasks_with_gpus(ray_start_cluster):
+def test_actors_and_tasks_with_gpus(enable_syncer_test, ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 2
