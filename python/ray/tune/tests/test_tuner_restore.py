@@ -510,7 +510,15 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
     os.environ["TUNE_RESTORE_RETRY_NUM"] = old_retry_num
 
 
-def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
+@pytest.mark.parametrize("use_function_trainable", [True, False])
+def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_trainable):
+    """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
+    def train_func(config, data_str=None, data_obj=None):
+        assert data_str is not None and data_obj is not None
+        fail_marker = config.pop("fail_marker", None)
+        config["failing_hanging"] = (fail_marker, None)
+        _train_fn_sometimes_failing(config)
+
     class FailingTrainable(Trainable):
         def setup(self, config, data_str=None, data_obj=None):
             assert data_str is not None and data_obj is not None
@@ -529,14 +537,17 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
         def load_checkpoint(self, checkpoint_dict):
             self.idx = checkpoint_dict["idx"]
 
+    trainable = train_func if use_function_trainable else FailingTrainable
+
     data = MockData()
     trainable_with_params = tune.with_parameters(
-        FailingTrainable, data_str="data", data_obj=data
+        trainable, data_str="data", data_obj=data
     )
+    # Test that wrapping again in `tune.with_resources` still works
     trainable_with_resources = tune.with_resources(
         trainable_with_params, resources={"cpu": 2.0}
     )
-    exp_name = "restore_with_params_class"
+    exp_name = "restore_with_params"
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -549,12 +560,13 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
             failure_config=FailureConfig(max_failures=0),
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         ),
-        param_space={"fail_marker": fail_marker}
+        param_space={"fail_marker": fail_marker},
     )
     results = tuner.fit()
     assert results.errors
 
     del tuner
+    # Simulate restoring from a new script (re-initializing Ray runtime)
     ray.shutdown()
     ray.init(num_cpus=4, configure_logging=False)
     fail_marker.unlink()
@@ -573,51 +585,6 @@ def test_restore_with_parameters_class(ray_start_4_cpus, tmp_path):
         resume_errored=True,
     )
     results = tuner.fit()
-    assert not results.errors
-
-
-def test_restore_with_parameters_fn(ray_start_4_cpus, tmp_path):
-    def train_func(config, data_str=None, data_obj=None):
-        assert data_str is not None and data_obj is not None
-        _train_fn_sometimes_failing(config)
-
-    fail_marker = tmp_path / "fail_marker"
-    fail_marker.write_text("", encoding="utf-8")
-
-    data = MockData()
-    trainable_with_params = tune.with_parameters(
-        train_func, data_str="data", data_obj=data
-    )
-    trainable_with_resources = tune.with_resources(
-        trainable_with_params, resources={"cpu": 2.0}
-    )
-    exp_name = "restore_with_params_fn"
-    tuner = Tuner(
-        trainable_with_resources,
-        param_space={"failing_hanging": (fail_marker, None)},
-        run_config=RunConfig(name=exp_name, local_dir=str(tmp_path)),
-    )
-    tuner.fit()
-
-    ray.shutdown()
-    ray.init(num_cpus=4, configure_logging=False)
-    fail_marker.unlink()
-
-    # Restoring should fail if we don't re-specify all the attached objects
-    with pytest.raises(ValueError):
-        tuner = Tuner.restore(
-            str(tmp_path / exp_name),
-            with_parameters=dict(data_str="data"),
-            resume_errored=True,
-        )
-
-    tuner = Tuner.restore(
-        str(tmp_path / exp_name),
-        with_parameters=dict(data_str="data", data_obj=data),
-        resume_errored=True,
-    )
-    results = tuner.fit()
-
     assert not results.errors
 
 
