@@ -36,14 +36,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
-    PolicyID,
-    ResultDict,
-    SampleBatchType,
-    T,
-)
+from ray.rllib.utils.typing import PolicyID, ResultDict, SampleBatchType, T
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
@@ -475,14 +468,14 @@ class Impala(Algorithm):
                 return A3CTFPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
         self.batches_to_place_on_learner = []
         self.batch_being_built = []
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
             # experiences coming from RolloutWorkers in parallel. We force
             # colocation on the same node (localhost) to maximize data bandwidth
@@ -501,7 +494,7 @@ class Impala(Algorithm):
                             self.config,
                         ],
                         {},
-                        self.config["num_aggregation_workers"],
+                        self.config.num_aggregation_workers,
                     )
                 ],
                 node=localhost,
@@ -511,31 +504,31 @@ class Impala(Algorithm):
             ]
             self._aggregator_actor_manager = AsyncRequestsManager(
                 self._aggregator_workers,
-                max_remote_requests_in_flight_per_worker=self.config[
-                    "max_requests_in_flight_per_aggregator_worker"
-                ],
-                ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
+                max_remote_requests_in_flight_per_worker=(
+                    self.config.max_requests_in_flight_per_aggregator_worker
+                ),
+                ray_wait_timeout_s=self.config.timeout_s_aggregator_manager,
             )
 
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
             self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                 capacity=(
-                    self.config["replay_buffer_num_slots"]
-                    if self.config["replay_buffer_num_slots"] > 0
+                    self.config.replay_buffer_num_slots
+                    if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config["replay_ratio"],
+                replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
 
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_sampler_worker"
-            ],
+            max_remote_requests_in_flight_per_worker=(
+                self.config.max_requests_in_flight_per_sampler_worker
+            ),
             return_object_refs=True,
-            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
         )
 
         # Create and start the learner thread.
@@ -552,15 +545,13 @@ class Impala(Algorithm):
             raise RuntimeError("The learner thread died while training!")
 
         # Get references to sampled SampleBatches from our workers.
-        unprocessed_sample_batches_refs, num_grad_updates_per_policy = (
-            self.get_samples_from_workers()
-        )
+        unprocessed_sample_batches_refs = self.get_samples_from_workers()
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
 
         # Send the collected batches (still object refs) to our aggregation workers.
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             batches = self.process_experiences_tree_aggregation(
                 unprocessed_sample_batches_refs
             )
@@ -655,7 +646,7 @@ class Impala(Algorithm):
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
-                >= self.config["train_batch_size"]
+                >= self.config.train_batch_size
             ):
                 batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
@@ -667,32 +658,25 @@ class Impala(Algorithm):
 
     def get_samples_from_workers(
         self,
-    ) -> Tuple[
-        Dict[
-            Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
-        ],
-        Dict[PolicyID, int],
+    ) -> Dict[
+        Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
+        """Perform asynchronous sampling on all (remote) rollout workers."""
+
+        # Sample on all remote workers.
         if self.workers.remote_workers():
-
-            def get_samples_and_num_grad_updates(worker):
-                sample = worker.sample()
-                num_updates = worker.global_vars["gradient_updates_per_policy"]
-                return sample, num_updates
-
             self._sampling_actor_manager.call_on_all_available(
-                get_samples_and_num_grad_updates
+                lambda worker: worker.sample()
             )
-            sample_batches, num_grad_updates = self._sampling_actor_manager.get_ready()
-
+            sample_batches: Dict[
+                ActorHandle, List[ObjectRef]
+            ] = self._sampling_actor_manager.get_ready()
+        # Only sampling on the local worker.
         else:
-            local_worker = self.workers.local_worker()
-            # Only sampling on the local worker.
-            sample_batches = {local_worker: [local_worker.sample()]}
-            num_grad_updates = local_worker.global_vars["gradient_updates_per_policy"]
-
-        return sample_batches, num_grad_updates
+            sample_batches = {
+                self.workers.local_worker(): [self.workers.local_worker().sample()]
+            }
+        return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
         while self.batches_to_place_on_learner:
@@ -812,7 +796,7 @@ class Impala(Algorithm):
         if (
             self.workers.remote_workers()
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
-            >= self.config["broadcast_interval"]
+            >= self.config.broadcast_interval
             and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
@@ -855,15 +839,15 @@ class Impala(Algorithm):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: AlgorithmConfigDict):
+    def __init__(self, config: AlgorithmConfig):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
-                self.config["replay_buffer_num_slots"]
-                if self.config["replay_buffer_num_slots"] > 0
+                self.config.replay_buffer_num_slots
+                if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config["replay_ratio"],
+            replay_ratio=self.config.replay_ratio,
             replay_mode=ReplayMode.LOCKSTEP,
         )
 

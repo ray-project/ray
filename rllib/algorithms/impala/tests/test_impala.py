@@ -18,7 +18,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -28,20 +28,21 @@ class TestIMPALA(unittest.TestCase):
         """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
+            .environment("CartPole-v1")
             .resources(num_gpus=0)
             .training(
                 model={
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
+                num_aggregation_workers=1,#TODO
             )
         )
-        env = "CartPole-v1"
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             for lstm in [False, True]:
-                config.num_aggregation_workers = 0 if not lstm else 1
+                #config.num_aggregation_workers = 0 if not lstm else 1
                 config.model["use_lstm"] = lstm
                 print(
                     "lstm={} aggregation-workers={}".format(
@@ -50,7 +51,7 @@ class TestIMPALA(unittest.TestCase):
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                algo = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
                     check_train_results(results)

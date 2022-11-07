@@ -33,7 +33,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import DIFF_NUM_GRAD_UPDATES, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -588,6 +588,9 @@ class EagerTFPolicyV2(Policy):
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                DIFF_NUM_GRAD_UPDATES: (
+                    self.num_grad_updates - postprocessed_batch.num_grad_updates
+                ),
             }
         )
         return convert_to_numpy(stats)

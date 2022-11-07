@@ -537,9 +537,10 @@ class RolloutWorker(ParallelIteratorWorker):
             "timesteps": 0,
 
             # Counter for performed gradient updates per policy in `self.policy_map`.
-            # Allows for compiling metrics on the off-policy'ness of an update given that
-            # the number of gradient updates of the sampling policies are known to the
-            # learner (and can be compared to the learner version of the same policy).
+            # Allows for compiling metrics on the off-policy'ness of an update given
+            # that the number of gradient updates of the sampling policies are known
+            # to the learner (and can be compared to the learner version of the same
+            # policy).
             "gradient_updates_per_policy": defaultdict(int),
         }
 
@@ -1765,10 +1766,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:
-        """Returns the current global_vars dict of this worker.
+        """Returns the current `self.global_vars` dict of this RolloutWorker.
 
         Returns:
-            The current global_vars dict of this worker.
+            The current `self.global_vars` dict of this RolloutWorker.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -1787,7 +1788,8 @@ class RolloutWorker(ParallelIteratorWorker):
         Updates are done using the dict's update method.
 
         Args:
-            global_vars: The global_vars dict to update from.
+            global_vars: The global_vars dict to update the `self.global_vars` dict
+                from.
 
         Examples:
             >>> worker = ... # doctest: +SKIP
