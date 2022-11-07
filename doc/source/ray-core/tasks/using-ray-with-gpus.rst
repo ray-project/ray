@@ -105,7 +105,7 @@ in the ``ray.remote`` decorator.
 
   import tensorflow as tf
 
-  # By default, ray will not reuse workers for GPU tasks which prevents
+  # By default, ray will not reuse workers for GPU tasks to prevent
   # GPU resource leakage.
   @ray.remote(num_gpus=1)
   def leak_gpus():
