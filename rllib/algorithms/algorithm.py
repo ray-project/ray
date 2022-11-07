@@ -384,7 +384,7 @@ class Algorithm(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            env_descr_for_dir = re.sub("[/\\\\]", "-", env_descr)
+            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 # Possible race condition if dir is created several times on
