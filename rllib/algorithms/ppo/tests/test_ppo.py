@@ -121,7 +121,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
