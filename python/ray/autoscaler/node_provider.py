@@ -245,7 +245,7 @@ class NodeProvider:
         """Fills out missing "resources" field for available_node_types."""
         return cluster_config
 
-    def post_process() -> None:
+    def post_process(self) -> None:
         """This optional method is executed at the end of
         StandardAutoscaler._update().
         """
