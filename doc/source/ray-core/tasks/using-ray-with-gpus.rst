@@ -97,8 +97,8 @@ through TensorFlow), the task may allocate memory on the GPU and may not release
 it when the task finishes executing. This can lead to problems the next time a
 task tries to use the same GPU. To address the problem, Ray disables the worker
 process reuse between tasks by default, where the GPU resources is released after
-the task process exists. Since this adds overhead to GPU tasks scheduling,
-you can re-enable worker reuses by setting ``max_calls=0``
+the task process exists. Since this adds overhead to GPU task scheduling,
+you can re-enable worker reuse by setting ``max_calls=0``
 in the ``ray.remote`` decorator.
 
 .. code-block:: python
