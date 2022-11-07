@@ -172,7 +172,7 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "errors", label: "Errors", numeric: false, sortable: true },
 ];
 
-const NodeInfo: React.FC<{}> = () => {
+const NodeInfo: React.FC = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>(null);
   const [isGrouped, setIsGrouped] = useState(true);
