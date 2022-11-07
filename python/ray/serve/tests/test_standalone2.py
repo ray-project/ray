@@ -741,21 +741,23 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
-# class TestRequestProcessingTimeoutS:
-#     @pytest.mark.parametrize(
-#         "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
-#     )
-#     def test_normal_operation(self, ray_instance):
-#         """Checks that a moderate timeout doesn't affect normal operation."""
+class TestRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
 
-#         @serve.deployment(num_replicas=2)
-#         def f(*args):
-#             return "Success!"
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
 
-#         serve.run(f.bind())
+        serve.run(f.bind())
 
-#         for _ in range(20):
-#             requests.get("http://localhost:8000").text == "Success!"
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
