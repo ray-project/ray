@@ -3,14 +3,20 @@ package io.ray.serve.router;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.function.PyActorMethod;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
+import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
+import io.ray.serve.deployment.Deployment;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
@@ -18,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -31,7 +38,14 @@ public class ReplicaSet {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReplicaSet.class);
 
-  private final Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> inFlightQueries;
+  // The key is the name of the actor, and the value is a set of all flight queries objectrefs of
+  // the actor.
+  private final Map<String, Set<ObjectRef<Object>>> inFlightQueries;
+
+  // Map the actor name to the handle of the actor.
+  private final Map<String, BaseActorHandle> allActorHandles;
+
+  private DeploymentLanguage language;
 
   private AtomicInteger numQueuedQueries = new AtomicInteger();
 
@@ -41,6 +55,16 @@ public class ReplicaSet {
 
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
+    this.allActorHandles = new ConcurrentHashMap<>();
+    try {
+      Deployment deployment = Serve.getDeployment(deploymentName);
+      this.language = deployment.getConfig().getDeploymentLanguage();
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to get language from controller. Set it to Java as default value. The exception is ",
+          e);
+      this.language = DeploymentLanguage.JAVA;
+    }
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =
@@ -54,26 +78,26 @@ public class ReplicaSet {
 
   @SuppressWarnings("unchecked")
   public synchronized void updateWorkerReplicas(Object actorSet) {
-    List<String> actorNames = ((ActorNameList) actorSet).getNamesList();
-    Set<ActorHandle<RayServeWrappedReplica>> workerReplicas = new HashSet<>();
-    if (!CollectionUtil.isEmpty(actorNames)) {
-      actorNames.forEach(
-          name ->
-              workerReplicas.add(
-                  (ActorHandle<RayServeWrappedReplica>)
-                      Ray.getActor(name, Constants.SERVE_NAMESPACE).get()));
-    }
-
-    Set<ActorHandle<RayServeWrappedReplica>> added =
-        new HashSet<>(Sets.difference(workerReplicas, inFlightQueries.keySet()));
-    Set<ActorHandle<RayServeWrappedReplica>> removed =
-        new HashSet<>(Sets.difference(inFlightQueries.keySet(), workerReplicas));
-
-    added.forEach(actorHandle -> inFlightQueries.put(actorHandle, Sets.newConcurrentHashSet()));
-    removed.forEach(inFlightQueries::remove);
-
-    if (added.size() > 0 || removed.size() > 0) {
-      LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
+    if (null != actorSet) {
+      Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
+      Set<String> added = new HashSet<>(Sets.difference(actorNameSet, inFlightQueries.keySet()));
+      Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
+      added.forEach(
+          name -> {
+            Optional<BaseActorHandle> handleOptional =
+                Ray.getActor(name, Constants.SERVE_NAMESPACE);
+            if (handleOptional.isPresent()) {
+              allActorHandles.put(name, handleOptional.get());
+              inFlightQueries.put(name, Sets.newConcurrentHashSet());
+            } else {
+              LOGGER.warn("Can not get actor handle. actor name is {}", name);
+            }
+          });
+      removed.forEach(inFlightQueries::remove);
+      removed.forEach(allActorHandles::remove);
+      if (added.size() > 0 || removed.size() > 0) {
+        LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
+      }
     }
     hasPullReplica = true;
   }
@@ -121,20 +145,32 @@ public class ReplicaSet {
       }
       loopCount++;
     }
-    List<ActorHandle<RayServeWrappedReplica>> handles = new ArrayList<>(inFlightQueries.keySet());
+    List<BaseActorHandle> handles = new ArrayList<>(allActorHandles.values());
     if (CollectionUtil.isEmpty(handles)) {
       throw new RayServeException("ReplicaSet found no replica.");
     }
     int randomIndex = RandomUtils.nextInt(0, handles.size());
-    ActorHandle<RayServeWrappedReplica> replica =
+    BaseActorHandle replica =
         handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
-    return replica
-        .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
-        .remote();
+    if (language == DeploymentLanguage.PYTHON) {
+      return ((PyActorHandle) replica)
+          .task(
+              PyActorMethod.of("handle_request_from_java"),
+              query.getMetadata().toByteArray(),
+              query.getArgs())
+          .remote();
+    } else {
+      return ((ActorHandle<RayServeWrappedReplica>) replica)
+          .task(
+              RayServeWrappedReplica::handleRequest,
+              query.getMetadata().toByteArray(),
+              query.getArgs())
+          .remote();
+    }
   }
 
-  public Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> getInFlightQueries() {
+  public Map<String, Set<ObjectRef<Object>>> getInFlightQueries() {
     return inFlightQueries;
   }
 }

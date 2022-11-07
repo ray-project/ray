@@ -242,9 +242,15 @@ TEST(RayClusterModeTest, ActorHandleTest) {
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto obj1 = actor1.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(1, *obj1.Get());
+  // Test `ActorHandle` type object as parameter.
   auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto obj2 = actor2.Task(&Counter::Plus1ForActor).Remote(actor1);
   EXPECT_EQ(2, *obj2.Get());
+  // Test `ActorHandle` type object as return value.
+  std::string child_actor_name = "child_actor_name";
+  auto child_actor =
+      actor1.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
+  EXPECT_EQ(1, *child_actor->Task(&Counter::Plus1).Remote().Get());
 }
 
 TEST(RayClusterModeTest, PythonInvocationTest) {

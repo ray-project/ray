@@ -2,11 +2,13 @@ common: &common
   env:
     BUILDKITE: "true"
     CI: "true"
-    PYTHON: "3.6"
+    PYTHON: "3.7"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
     LANG: en_US.UTF-8
+    BUILD: "1"
+    DL: "1"
 
 prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs

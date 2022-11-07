@@ -5,7 +5,9 @@
 # Atari
 autorom[accept-rom-license]
 gym>=0.21.0,<0.24.1; python_version >= '3.7'
-gym[atari]==0.19.0; python_version < '3.7'
+gym==0.19.0; python_version < '3.7'
+ale-py==0.7.5; python_version >= '3.7'
+ale-py==0.7.1; python_version < '3.7'
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
@@ -20,9 +22,9 @@ supersuit==3.3.3; python_version >= '3.7'
 pybullet==3.2.0
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
-tensorflow_estimator==2.6.0
+tensorflow_estimator==2.9.0
 # DeepMind's OpenSpiel
-open-spiel==1.0.2
+open-spiel==1.2
 
 # Other.
 # ------
@@ -31,9 +33,9 @@ higher==0.2.1
 # For auto-generating an env-rendering Window.
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
-# Ray Serve example
-starlette==0.16.0
 # ONNX
-onnx==1.9.0
-onnxruntime==1.9.0
-tf2onnx==1.8.5
+onnx==1.12.0
+onnxruntime==1.12.0
+tf2onnx==1.12.1
+typer==0.6.1
+rich==12.0.1

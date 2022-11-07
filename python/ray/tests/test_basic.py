@@ -203,23 +203,37 @@ def test_invalid_arguments():
     )
 
     # Type check
-    for keyword in ("num_returns", "max_retries", "max_calls"):
+    for keyword in ("max_retries", "max_calls"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
             ray.remote(**{keyword: np.random.uniform(0, 1)})(f)
+    num_returns_template = (
+        "The type of keyword 'num_returns' "
+        + f"must be {(int, str, type(None))}, but received type {float}"
+    )
+    with pytest.raises(TypeError, match=re.escape(num_returns_template)):
+        ray.remote(**{"num_returns": np.random.uniform(0, 1)})(f)
 
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
             ray.remote(**{keyword: np.random.uniform(0, 1)})(A)
 
     # Value check for non-negative finite values
-    for keyword in ("num_returns", "max_calls"):
-        for v in (np.random.randint(-100, -2), -1):
-            with pytest.raises(
-                ValueError,
-                match=f"The keyword '{keyword}' only accepts None, "
-                f"0 or a positive integer",
-            ):
-                ray.remote(**{keyword: v})(f)
+    for v in (np.random.randint(-100, -2), -1):
+        keyword = "max_calls"
+        with pytest.raises(
+            ValueError,
+            match=f"The keyword '{keyword}' only accepts None, "
+            f"0 or a positive integer",
+        ):
+            ray.remote(**{keyword: v})(f)
+
+        keyword = "num_returns"
+        with pytest.raises(
+            ValueError,
+            match=f"The keyword '{keyword}' only accepts None, "
+            'a non-negative integer, or "dynamic"',
+        ):
+            ray.remote(**{keyword: v})(f)
 
     # Value check for non-negative and infinite values
     template2 = (
@@ -406,13 +420,13 @@ def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
     for i in range(100):
-        value_before = i * 10 ** 6
+        value_before = i * 10**6
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
-        value_before = i * 10 ** 6 * 1.0
+        value_before = i * 10**6 * 1.0
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
@@ -469,7 +483,7 @@ def test_function_descriptor():
 def test_ray_options(shutdown_only):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
-    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2 ** 20, resources={"custom1": 1})
+    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo(expected_resources):
         # Possibly wait until the available resources have been updated
         # (there might be a delay due to heartbeats)
@@ -497,7 +511,7 @@ def test_ray_options(shutdown_only):
     expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
     memory_available_with_options = ray.get(
         foo.options(
-            num_cpus=3, num_gpus=4, memory=50 * 2 ** 20, resources={"custom1": 0.5}
+            num_cpus=3, num_gpus=4, memory=50 * 2**20, resources={"custom1": 0.5}
         ).remote(expected_resources_with_options)
     )
 

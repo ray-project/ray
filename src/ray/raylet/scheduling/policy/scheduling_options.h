@@ -81,13 +81,14 @@ struct SchedulingOptions {
   static SchedulingOptions AffinityWithBundle(const BundleID &bundle_id) {
     auto scheduling_context =
         std::make_unique<AffinityWithBundleSchedulingContext>(bundle_id);
-    return SchedulingOptions(SchedulingType::AFFINITY_WITH_BUNDLE,
-                             /*spread_threshold*/ 0,
-                             /*avoid_local_node*/ false,
-                             /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false,
-                             /*max_cpu_fraction_per_node*/ 0,
-                             std::move(scheduling_context));
+    return SchedulingOptions(
+        SchedulingType::AFFINITY_WITH_BUNDLE,
+        /*spread_threshold*/ 0,
+        /*avoid_local_node*/ false,
+        /*require_node_available*/ true,
+        /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
+        /*max_cpu_fraction_per_node*/ 0,
+        std::move(scheduling_context));
   }
 
   /*

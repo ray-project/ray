@@ -1,7 +1,10 @@
 import asyncio
 import logging
 
-from distutils.version import LooseVersion
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 
@@ -22,7 +25,7 @@ class HttpServerAgent:
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+        if Version(aiohttp.__version__) < Version("4.0.0"):
             self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()

@@ -2,11 +2,10 @@
 
 # Clone pinned Kuberay commit to temporary directory, copy the CRD definitions
 # into the autoscaler folder.
+KUBERAY_COMMIT="v0.3.0-rc.2"
+OPERATOR_TAG="v0.3.0-rc.2"
 
-KUBERAY_SHA="ce84f0441c991eb4b0f52ee2cd85c0a5ac048d11"
-OPERATOR_TAG=${KUBERAY_SHA:0:7}
-
-# Requires Kustomize (dependency to be removed after KubeRay 0.3.0 cut)
+# Requires Kustomize
 if ! command -v kustomize &> /dev/null
 then
     echo "Please install kustomize. Then re-run this script."
@@ -18,12 +17,9 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 DIR=$(mktemp -d -t "kuberay-XXXXXX")
 
 pushd "$DIR" || exit
-    git clone https://github.com/ray-project/kuberay/
-    pushd "kuberay" || exit
-        git checkout "$KUBERAY_SHA$"
-        pushd ray-operator/config/default || exit
-            kustomize edit set image kuberay/operator=kuberay/operator:"$OPERATOR_TAG"
-        popd || exit
-        cp -r ray-operator/config "$SCRIPT_DIR/"
+    git clone https://github.com/ray-project/kuberay/ --branch "$KUBERAY_COMMIT" --depth 1
+    pushd kuberay/ray-operator/config/default || exit
+        kustomize edit set image kuberay/operator=kuberay/operator:"$OPERATOR_TAG"
     popd || exit
+    cp -r kuberay/ray-operator/config "$SCRIPT_DIR/"
 popd || exit

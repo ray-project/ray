@@ -92,7 +92,7 @@ def configure_aws():
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
     dlami = (
-        moto.ec2.ec2_backends["us-west-2"]
+        moto.ec2.models.ec2_backends["us-west-2"]["us-west-2"]
         .describe_images(filters={"name": "Deep Learning AMI Ubuntu*"})[0]
         .id
     )
@@ -356,7 +356,7 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    sys.platform == "darwin",
     reason=("Mac builds don't provide proper locale support. "),
 )
 @pytest.mark.skipif(
@@ -433,7 +433,7 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    sys.platform == "darwin",
     reason=("Mac builds don't provide proper locale support. "),
 )
 @pytest.mark.skipif(

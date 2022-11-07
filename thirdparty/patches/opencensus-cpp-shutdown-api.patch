@@ -85,7 +85,7 @@ diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal
 index 43ddbc7..37b4ae1 100644
 --- opencensus/stats/internal/stats_exporter.cc
 +++ opencensus/stats/internal/stats_exporter.cc
-@@ -95,25 +95,52 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
  }
  
  void StatsExporterImpl::StartExportThread() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -139,6 +139,11 @@ index 43ddbc7..37b4ae1 100644
 +  StatsExporterImpl::Get()->ClearHandlersForTesting();
 +}
 +
++void StatsExporter::ExportNow() {
++  DeltaProducer::Get()->Flush();
++  StatsExporterImpl::Get()->Export();
++}
++
  // static
  void StatsExporter::SetInterval(absl::Duration interval) {
    StatsExporterImpl::Get()->SetInterval(interval);
@@ -158,11 +163,12 @@ diff --git opencensus/stats/stats_exporter.h opencensus/stats/stats_exporter.h
 index 6756858..65e0262 100644
 --- opencensus/stats/stats_exporter.h
 +++ opencensus/stats/stats_exporter.h
-@@ -45,6 +45,8 @@ class StatsExporter final {
+@@ -45,6 +45,9 @@ class StatsExporter final {
    // Removes the view with 'name' from the registry, if one is registered.
    static void RemoveView(absl::string_view name);
  
 +  static void Shutdown();
++  static void ExportNow();
 +
    // StatsExporter::Handler is the interface for push exporters that export
    // recorded data for registered views. The exporter should provide a static

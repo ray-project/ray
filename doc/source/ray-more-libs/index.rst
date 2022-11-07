@@ -10,4 +10,3 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`ray-joblib`
 - :ref:`ray-multiprocessing`
 - :ref:`ray-collective`
-- :ref:`ray-lightning`

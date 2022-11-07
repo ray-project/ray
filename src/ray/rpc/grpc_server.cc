@@ -39,6 +39,9 @@ GrpcServer::GrpcServer(std::string name,
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
+  // Enable built in health check implemented by gRPC:
+  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  grpc::EnableDefaultHealthCheckService(true);
 }
 
 void GrpcServer::Run() {
@@ -58,6 +61,15 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
+
+  // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
+  // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
+  // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:
+  // https://github.com/ray-project/ray/blob/releases/2.0.0/python/ray/_private/gcs_utils.py#L72
+  // Setting this value larger will trigger GOAWAY from the gRPC server to be sent to the
+  // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
+                             60000);
 
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config

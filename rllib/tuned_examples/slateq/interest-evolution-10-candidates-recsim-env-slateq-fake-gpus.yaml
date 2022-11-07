@@ -35,12 +35,12 @@ interest-evolution-recsim-env-slateq:
 
         replay_buffer_config:
             capacity: 100000
+        num_steps_sampled_before_learning_starts: 10000
 
         # Double learning rate and batch size.
         lr: 0.002
         train_batch_size: 64
 
-        learning_starts: 10000
         target_network_update_freq: 3200
 
         metrics_num_episodes_for_smoothing: 200

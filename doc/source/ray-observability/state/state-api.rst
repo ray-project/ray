@@ -9,7 +9,7 @@ Ray state APIs allow users to conveniently access the current state (snapshot) o
 
 .. note:: 
 
-    APIs are at the alpha stage and under active development. APIs are subject to change and not stable across versions. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires the dashboard component to be available. The dashboard component needs to be included when starting the ray cluster, which is the default behavior for ``ray start`` and ``ray.init()``. For more in-depth debugging, you could check the dashboard log at ``<RAY_LOG_DIR>/dashboard.log``, which is usually ``/tmp/ray/session_latest/logs/dashboard.log``.
 
 Getting Started
 ---------------
@@ -417,6 +417,8 @@ E.g., Get a node info
 Logs
 ----
 
+.. _state-api-log-doc:
+
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
@@ -537,4 +539,6 @@ Or it cleans up the FINISHED state of tasks when its lineage goes out of scope.
 API Reference
 -------------
 
-See :ref:`State API Reference <state-api-ref>`.
+- For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
+- For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
+- For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.

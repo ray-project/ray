@@ -4,7 +4,6 @@ import time
 from typing import Any, Dict, Optional
 
 import ray
-from ray._private import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.resources import Resources
 
@@ -14,7 +13,7 @@ TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 
 
 def _to_gb(n_bytes):
-    return round(n_bytes / (1024 ** 3), 2)
+    return round(n_bytes / (1024**3), 2)
 
 
 class _ResourceUpdater:
@@ -69,10 +68,8 @@ class _ResourceUpdater:
         resources = resources.copy()
         num_cpus = resources.pop("CPU", 0)
         num_gpus = resources.pop("GPU", 0)
-        memory = ray_constants.from_memory_units(resources.pop("memory", 0))
-        object_store_memory = ray_constants.from_memory_units(
-            resources.pop("object_store_memory", 0)
-        )
+        memory = resources.pop("memory", 0)
+        object_store_memory = resources.pop("object_store_memory", 0)
         custom_resources = resources
 
         self._avail_resources = Resources(

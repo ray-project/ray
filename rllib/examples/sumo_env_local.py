@@ -161,7 +161,7 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
+    results = tune.Tuner(
         "PPO",
         param_space=config,
         run_config=air.RunConfig(

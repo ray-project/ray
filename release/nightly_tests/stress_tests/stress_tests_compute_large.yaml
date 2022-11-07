@@ -1,0 +1,26 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+max_workers: 6
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: m4.16xlarge
+    resources:
+      cpu: 64
+
+worker_node_types:
+   - name: worker_node
+     instance_type: m4.16xlarge
+     min_workers: 6
+     max_workers: 6
+     use_spot: false
+     resources:
+      cpu: 64

@@ -551,6 +551,62 @@ TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionOneCpuReservationGuarant
   ASSERT_TRUE(to_schedule.status.IsSuccess());
 }
 
+TEST_F(SchedulingPolicyTest,
+       BundleSchedulingMinFractionExcludeOneCpuReservationGuaranteeTest) {
+  /*
+   * Test that when the max cpu fraction is high, it excludes at least 1 CPU.
+   */
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
+  std::vector<const ResourceRequest *> req_list;
+  req_list.push_back(&req);
+
+  // NOTE: We can reserve up to 3.96 CPU, but it will round down to 3 (exclude 1 CPU),
+  // which means a regular task with 1 CPU can be scheduled.
+  auto pack_op = SchedulingOptions::BundlePack(/*max_cpu_fraction_per_node*/ 0.99);
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  // req is unscheduleable because the max cpu fraction reaches 0.5.
+  auto to_schedule = raylet_scheduling_policy::BundlePackSchedulingPolicy(
+                         cluster_resource_manager, [](auto) { return true; })
+                         .Schedule(req_list, pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+
+  req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+
+  auto to_schedule_task =
+      raylet_scheduling_policy::CompositeSchedulingPolicy(
+          local_node, cluster_resource_manager, [](auto) { return true; })
+          .Schedule(req, HybridOptions(0.50, false, false));
+  ASSERT_TRUE(!to_schedule_task.IsNil());
+}
+
+TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionWorkingWhenNormalResourceUsed) {
+  /*
+   * Test that it can schedule placement group correctly when there are non-pg
+   * resources occupying resources.
+   */
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  std::vector<const ResourceRequest *> req_list;
+  req_list.push_back(&req);
+
+  // 2 CPUs / 4 CPUs is used by a regular task/actor.
+  // It means that when the fraction is 0.5, we still should
+  // be able to schedule a pg because 50% of CPUs still can be
+  // used for the placement group.
+  auto pack_op = SchedulingOptions::BundlePack(/*max_cpu_fraction_per_node*/ 0.5);
+  nodes.emplace(local_node, CreateNodeResources(2, 4, 0, 0, 0, 0));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  // req is unscheduleable because the max cpu fraction reaches 0.5.
+  auto to_schedule = raylet_scheduling_policy::BundlePackSchedulingPolicy(
+                         cluster_resource_manager, [](auto) { return true; })
+                         .Schedule(req_list, pack_op);
+  ASSERT_TRUE(to_schedule.status.IsSuccess());
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

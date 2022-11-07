@@ -9,6 +9,7 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air import CheckpointConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -150,6 +151,7 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -290,6 +292,13 @@ def run(
             for generating the trial dirname. This function should take
             in a Trial object and return a string representing the
             name of the directory. The return value cannot be a path.
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of
@@ -428,6 +437,8 @@ def run(
 
     del remote_run_kwargs
 
+    ray._private.usage.usage_lib.record_library_usage("tune")
+
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
@@ -441,6 +452,21 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     _validate_upload_dir(sync_config)
+
+    checkpoint_score_attr = checkpoint_score_attr or ""
+    if checkpoint_score_attr.startswith("min-"):
+        checkpoint_score_attr = checkpoint_score_attr[4:]
+        checkpoint_score_order = "min"
+    else:
+        checkpoint_score_order = "max"
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=keep_checkpoints_num,
+        checkpoint_score_attribute=checkpoint_score_attr,
+        checkpoint_score_order=checkpoint_score_order,
+        checkpoint_frequency=checkpoint_freq,
+        checkpoint_at_end=checkpoint_at_end,
+    )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -508,7 +534,9 @@ def run(
         )
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
+        reuse_actors=reuse_actors,
+        result_buffer_length=result_buffer_length,
+        chdir_to_trial_dir=chdir_to_trial_dir,
     )
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -528,13 +556,10 @@ def run(
                 local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
+                checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
-                checkpoint_freq=checkpoint_freq,
-                checkpoint_at_end=checkpoint_at_end,
-                keep_checkpoints_num=keep_checkpoints_num,
-                checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
                 restore=restore,
@@ -624,7 +649,9 @@ def run(
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
     # Create syncer callbacks
-    callbacks = _create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = _create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -671,9 +698,11 @@ def run(
         else:
             logger.warning(
                 "Tune detects GPUs, but no trials are using GPUs. "
-                "To enable trials to use GPUs, set "
-                "tune.run(resources_per_trial={'gpu': 1}...) "
+                "To enable trials to use GPUs, wrap `train_func` with "
+                "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
+                "For Ray AIR Trainers, you can specify GPU resources "
+                "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
                 "Trainable API."

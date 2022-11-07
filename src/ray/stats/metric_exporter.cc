@@ -108,8 +108,9 @@ void MetricPointExporter::ExportViewData(
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  instrumented_io_context &io_service,
-                                                 const std::string address)
-    : client_call_manager_(io_service) {
+                                                 const std::string address,
+                                                 const WorkerID &worker_id)
+    : client_call_manager_(io_service), worker_id_(worker_id) {
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 };
 
@@ -120,6 +121,7 @@ void OpenCensusProtoExporter::ExportViewData(
   // The format can be found here
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
   rpc::ReportOCMetricsRequest request_proto;
+  request_proto.set_worker_id(worker_id_.Binary());
 
   for (const auto &datum : data) {
     // Unpack the fields we need for in memory data structure.

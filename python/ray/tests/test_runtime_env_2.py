@@ -1,6 +1,6 @@
 import pytest
-import sys
 import time
+import sys
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -11,7 +11,8 @@ bad_runtime_env_cache_ttl_seconds = 10
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+    sys.version_info >= (3, 10, 0),
+    reason=("Currently not passing on Python 3.10"),
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 @pytest.mark.parametrize(

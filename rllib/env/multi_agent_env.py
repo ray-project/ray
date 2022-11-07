@@ -33,6 +33,11 @@ class MultiAgentEnv(gym.Env):
     Agents are identified by (string) agent ids. Note that these "agents" here
     are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
+
+    The preferred format for action- and observation space is a mapping from agent
+    ids to their individual spaces. If that is not provided, the respective methods'
+    observation_space_contains(), action_space_contains(),
+    action_space_sample() and observation_space_sample() have to be overwritten.
     """
 
     def __init__(self):
@@ -45,6 +50,10 @@ class MultiAgentEnv(gym.Env):
 
         # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
+        if not hasattr(self, "_action_space_in_preferred_format"):
+            self._action_space_in_preferred_format = None
+        if not hasattr(self, "_obs_space_in_preferred_format"):
+            self._obs_space_in_preferred_format = None
         if not hasattr(self, "_spaces_in_preferred_format"):
             self._spaces_in_preferred_format = None
 
@@ -126,17 +135,17 @@ class MultiAgentEnv(gym.Env):
                 in x.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_obs_space_in_preferred_format")
+            or self._obs_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._obs_space_in_preferred_format = (
+                self._check_if_obs_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._obs_space_in_preferred_format:
             for key, agent_obs in x.items():
                 if not self.observation_space[key].contains(agent_obs):
                     return False
-            if not all(k in self.observation_space for k in x):
+            if not all(k in self.observation_space.spaces for k in x):
                 if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
                     logger.warning(
                         "You environment returns observations that are "
@@ -148,7 +157,13 @@ class MultiAgentEnv(gym.Env):
                     )
             return True
 
-        logger.warning("observation_space_contains() has not been implemented")
+        logger.warning(
+            "observation_space_contains() of {} has not been implemented. "
+            "You "
+            "can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces. ".format(self)
+        )
         return True
 
     @ExperimentalAPI
@@ -162,17 +177,23 @@ class MultiAgentEnv(gym.Env):
             True if the action space contains all actions in x.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_action_space_in_preferred_format")
+            or self._action_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._action_space_in_preferred_format = (
+                self._check_if_action_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._action_space_in_preferred_format:
             return all([self.action_space[agent].contains(x[agent]) for agent in x])
 
         if log_once("action_space_contains"):
-            logger.warning("action_space_contains() has not been implemented")
+            logger.warning(
+                "action_space_contains() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self)
+            )
         return True
 
     @ExperimentalAPI
@@ -189,13 +210,13 @@ class MultiAgentEnv(gym.Env):
             A random action for each environment.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_action_space_in_preferred_format")
+            or self._action_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._action_space_in_preferred_format = (
+                self._check_if_action_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._action_space_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
@@ -204,7 +225,13 @@ class MultiAgentEnv(gym.Env):
                 for agent_id in agent_ids
                 if agent_id != "__all__"
             }
-        logger.warning("action_space_sample() has not been implemented")
+        logger.warning(
+            "action_space_sample() of {} has not been implemented. "
+            "You "
+            "can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces. ".format(self)
+        )
         return {}
 
     @ExperimentalAPI
@@ -223,20 +250,26 @@ class MultiAgentEnv(gym.Env):
         """
 
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_obs_space_in_preferred_format")
+            or self._obs_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._obs_space_in_preferred_format = (
+                self._check_if_obs_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._obs_space_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
         if log_once("observation_space_sample"):
-            logger.warning("observation_space_sample() has not been implemented")
+            logger.warning(
+                "observation_space_sample() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self)
+            )
         return {}
 
     @PublicAPI
@@ -370,19 +403,29 @@ class MultiAgentEnv(gym.Env):
 
     @DeveloperAPI
     def _check_if_space_maps_agent_id_to_sub_space(self) -> bool:
-        # do the action and observation spaces map from agent ids to spaces
-        # for the individual agents?
-        obs_space_check = (
+        """Checks if spaces map from agent ids to spaces of individual agents."""
+        return (
+            self._check_if_obs_space_maps_agent_id_to_sub_space()
+            and self._check_if_action_space_maps_agent_id_to_sub_space
+        )
+
+    @DeveloperAPI
+    def _check_if_obs_space_maps_agent_id_to_sub_space(self) -> bool:
+        """Checks if obs space maps from agent ids to spaces of individual agents."""
+        return (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
             and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
-        action_space_check = (
+
+    @DeveloperAPI
+    def _check_if_action_space_maps_agent_id_to_sub_space(self) -> bool:
+        """Checks if action space maps from agent ids to spaces of individual agents."""
+        return (
             hasattr(self, "action_space")
             and isinstance(self.action_space, gym.spaces.Dict)
             and set(self.action_space.keys()) == self.get_agent_ids()
         )
-        return obs_space_check and action_space_check
 
 
 @PublicAPI
@@ -414,7 +457,7 @@ def make_multi_agent(
     Examples:
          >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v1") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
          >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
          >>> obs = ma_cartpole.reset() # doctest: +SKIP

@@ -1,11 +1,9 @@
 import itertools
 import logging
-import time
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
-import ray
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -66,7 +64,7 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
-PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 5
+PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
@@ -292,7 +290,6 @@ class _ParquetDatasourceReader(Reader):
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
         # TODO(ekl/cheng) take into account column pruning.
-        start_time = time.perf_counter()
         num_files = len(self._pq_ds.pieces)
         num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
         min_num_samples = min(
@@ -312,24 +309,23 @@ class _ParquetDatasourceReader(Reader):
 
         sample_piece = cached_remote_fn(_sample_piece)
         futures = []
-        for idx, sample in enumerate(file_samples):
-            # Sample i-th row group in i-th file.
+        for sample in file_samples:
+            # Sample the first rows batch in i-th file.
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
+            serialized_sample = _SerializedPiece(sample)
             futures.append(
                 sample_piece.options(scheduling_strategy="SPREAD").remote(
-                    _SerializedPiece(sample), idx
+                    self._reader_args,
+                    self._columns,
+                    self._schema,
+                    serialized_sample,
                 )
             )
-        sample_ratios = ray.get(futures)
+        sample_bar = ProgressBar("Parquet Files Sample", len(futures))
+        sample_ratios = sample_bar.fetch_until_complete(futures)
+        sample_bar.close()
         ratio = np.mean(sample_ratios)
-
-        sampling_duration = time.perf_counter() - start_time
-        if sampling_duration > 5:
-            logger.info(
-                "Parquet input size estimation took "
-                f"{round(sampling_duration, 2)} seconds."
-            )
         logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
@@ -427,31 +423,38 @@ def _fetch_metadata(
 
 
 def _sample_piece(
+    reader_args,
+    columns,
+    schema,
     file_piece: _SerializedPiece,
-    row_group_id: int,
 ) -> float:
-    # Sample the `row_group_id`-th row group from file piece `serialized_piece`.
+    # Sample the first rows batch from file piece `serialized_piece`.
     # Return the encoding ratio calculated from the sampled rows.
     piece = _deserialize_pieces_with_retry([file_piece])[0]
 
-    # If required row group index is out of boundary, sample the last row group.
-    row_group_id = min(piece.num_row_groups - 1, row_group_id)
-    assert (
-        row_group_id >= 0 and row_group_id <= piece.num_row_groups - 1
-    ), f"Required row group id {row_group_id} is not in expected bound"
-
-    row_group = piece.subset(row_group_ids=[row_group_id])
-    metadata = row_group.metadata.row_group(0)
-    num_rows = min(PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS, metadata.num_rows)
-    assert num_rows > 0 and metadata.num_rows > 0, (
-        f"Sampled number of rows: {num_rows} and total number of rows: "
-        f"{metadata.num_rows} should be positive"
+    # Only sample the first row group.
+    piece = piece.subset(row_group_ids=[0])
+    batch_size = min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS)
+    batches = piece.to_batches(
+        columns=columns,
+        schema=schema,
+        batch_size=batch_size,
+        **reader_args,
     )
-
-    parquet_size = metadata.total_byte_size / metadata.num_rows
-    # Set batch_size to num_rows will instruct Arrow Parquet reader to read exactly
-    # num_rows into memory, o.w. it will read more rows by default in batch manner.
-    in_memory_size = row_group.head(num_rows, batch_size=num_rows).nbytes / num_rows
-    ratio = in_memory_size / parquet_size
-    logger.debug(f"Estimated Parquet encoding ratio is {ratio} for piece {piece}.")
-    return in_memory_size / parquet_size
+    # Use first batch in-memory size as ratio estimation.
+    try:
+        batch = next(batches)
+        in_memory_size = batch.nbytes / batch.num_rows
+        metadata = piece.metadata
+        total_size = 0
+        for idx in range(metadata.num_row_groups):
+            total_size += metadata.row_group(idx).total_byte_size
+        file_size = total_size / metadata.num_rows
+        ratio = in_memory_size / file_size
+    except StopIteration:
+        ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    logger.debug(
+        f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
+        f"with batch size {batch_size}."
+    )
+    return ratio

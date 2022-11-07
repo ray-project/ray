@@ -150,13 +150,6 @@ def test_dashboard(shutdown_only):
                 )
 
 
-@pytest.fixture
-def set_agent_failure_env_var():
-    os.environ["_RAY_AGENT_FAILING"] = "1"
-    yield
-    del os.environ["_RAY_AGENT_FAILING"]
-
-
 conflict_port = 34567
 
 

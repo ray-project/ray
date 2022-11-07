@@ -1,7 +1,6 @@
 import os
 import platform
 
-import grpc
 import psutil  # We must import psutil after ray because we bundle it with ray.
 import pytest
 import requests
@@ -10,9 +9,9 @@ import ray
 from ray._private.test_utils import (
     wait_for_condition,
     wait_until_succeeded_without_exception,
+    get_node_stats,
 )
-from ray._private.utils import init_grpc_channel
-from ray.core.generated import common_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.core.generated import common_pb2
 
 _WIN32 = os.name == "nt"
 
@@ -21,27 +20,7 @@ _WIN32 = os.name == "nt"
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=2, include_dashboard=True)
     raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(
-        raylet["NodeManagerAddress"], ray.nodes()[0]["NodeManagerPort"]
-    )
-
-    channel = init_grpc_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-
-    def try_get_node_stats(num_retry=5, timeout=2):
-        reply = None
-        for _ in range(num_retry):
-            try:
-                reply = stub.GetNodeStats(
-                    node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
-                )
-                break
-            except grpc.RpcError:
-                continue
-        assert reply is not None
-        return reply
-
-    reply = try_get_node_stats()
+    reply = get_node_stats(raylet)
     # Check that there is one connected driver.
     drivers = [
         worker
@@ -67,7 +46,7 @@ def test_worker_stats(shutdown_only):
 
     # Test show_in_dashboard for remote functions.
     worker_pid = ray.get(f.remote())
-    reply = try_get_node_stats()
+    reply = get_node_stats(raylet)
     target_worker_present = False
     for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
@@ -80,7 +59,7 @@ def test_worker_stats(shutdown_only):
     # Test show_in_dashboard for remote actors.
     a = Actor.remote()
     worker_pid = ray.get(a.f.remote())
-    reply = try_get_node_stats()
+    reply = get_node_stats(raylet)
     target_worker_present = False
     for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
@@ -93,7 +72,7 @@ def test_worker_stats(shutdown_only):
     num_workers = 3
 
     def verify():
-        reply = try_get_node_stats()
+        reply = get_node_stats(raylet)
         # Check that the rest of the processes are workers, 1 for each CPU.
 
         assert len(reply.core_workers_stats) == num_workers
@@ -142,7 +121,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             response = requests.get(
                 "http://localhost:{}".format(metrics_export_port),
                 # Fail the request early on if connection timeout
-                timeout=0.01,
+                timeout=1.0,
             )
             return response.status_code == 200
 
@@ -150,7 +129,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             test_prometheus_endpoint,
             (requests.exceptions.ConnectionError,),
             # The dashboard takes more than 2s to startup.
-            timeout_ms=5000,
+            timeout_ms=10 * 1000,
         )
 
 

@@ -12,7 +12,7 @@ two-step-game-maddpg:
             env_config:
               actions_are_logits: true
 
-        learning_starts: 200
+        num_steps_sampled_before_learning_starts: 200
 
         multiagent:
             policies:

@@ -49,21 +49,33 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int]):
+    def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
+        """
+        Construct a batcher that yields batches of batch_sizes rows.
+
+        Args:
+            batch_size: The size of batches to yield.
+            ensure_copy: Whether batches are always copied from the underlying base
+                blocks (not zero-copy views).
+        """
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
+        self._ensure_copy = ensure_copy
 
     def add(self, block: Block):
         """Add a block to the block buffer.
 
+        Note empty block is not added to buffer.
+
         Args:
             block: Block to add to the block buffer.
         """
-        assert self.can_add(block)
-        self._buffer.append(block)
-        self._buffer_size += BlockAccessor.for_block(block).num_rows()
+        if BlockAccessor.for_block(block).num_rows() > 0:
+            assert self.can_add(block)
+            self._buffer.append(block)
+            self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the buffer."""
@@ -75,7 +87,7 @@ class Batcher(BatcherInterface):
 
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
-        return self._buffer and (
+        return self.has_any() and (
             self._batch_size is None or self._buffer_size >= self._batch_size
         )
 
@@ -94,6 +106,10 @@ class Batcher(BatcherInterface):
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
+            if self._ensure_copy:
+                # Copy block if needing to ensure fresh batch copy.
+                block = BlockAccessor.for_block(block)
+                block = block.slice(0, block.num_rows(), copy=True)
             self._buffer = []
             self._buffer_size = 0
             return block
@@ -123,7 +139,15 @@ class Batcher(BatcherInterface):
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
         self._buffer_size -= self._batch_size
-        return output.build()
+        batch = output.build()
+        if self._ensure_copy:
+            # Need to ensure that the batch is a fresh copy.
+            batch = BlockAccessor.for_block(batch)
+            # TOOD(Clark): This copy will often be unnecessary, e.g. for pandas
+            # DataFrame batches that have required concatenation to construct, which
+            # always requires a copy. We should elide this copy in those cases.
+            batch = batch.slice(0, batch.num_rows(), copy=True)
+        return batch
 
 
 class ShufflingBatcher(BatcherInterface):
@@ -199,11 +223,14 @@ class ShufflingBatcher(BatcherInterface):
     def add(self, block: Block):
         """Add a block to the shuffle buffer.
 
+        Note empty block is not added to buffer.
+
         Args:
             block: Block to add to the shuffle buffer.
         """
-        assert self.can_add(block)
-        self._builder.add_block(block)
+        if BlockAccessor.for_block(block).num_rows() > 0:
+            assert self.can_add(block)
+            self._builder.add_block(block)
 
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the shuffle buffer.

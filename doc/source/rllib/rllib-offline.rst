@@ -80,8 +80,8 @@ RLlib's OPE estimators output six metrics:
 - ``v_behavior_std``: The standard deviation corresponding to v_behavior.
 - ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch.
 - ``v_target_std``: The standard deviation corresponding to v_target.
-- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``, averaged over episodes in the batch. ``v_gain > 1.0`` indicates that the policy is better than the policy that generated the behavior data.
-- ``v_gain_std``: The standard deviation corresponding to v_gain.
+- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``. ``v_gain > 1.0`` indicates that the policy is better than the policy that generated the behavior data. In case, ``v_behavior <= 0``, ``v_delta`` should be used instead for comparison.
+- ``v_delta``: The difference between v_target and v_behavior.
 
 As an example, we generate an evaluation dataset for off-policy estimation:
 
@@ -124,11 +124,11 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
                 "wis": {"type": WeightedImportanceSampling},
                 "dm_fqe": {
                     "type": DirectMethod,
-                    "q_model_config": {"type": FQETorchModel, "tau": 0.05},
+                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
                 },
                 "dr_fqe": {
                     "type": DoublyRobust,
-                    "q_model_config": {"type": FQETorchModel, "tau": 0.05},
+                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
                 },
             },
         )
@@ -170,7 +170,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         batch = reader.next()
         print(estimator.estimate(batch))
         # {'v_behavior': ..., 'v_target': ..., 'v_gain': ...,
-        # 'v_behavior_std': ..., 'v_target_std': ..., 'v_gain_std': ...}
+        # 'v_behavior_std': ..., 'v_target_std': ..., 'v_delta': ...}
 
 Example: Converting external experiences to batch format
 --------------------------------------------------------
@@ -323,8 +323,6 @@ You can configure experience input for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 
 .. code-block:: python
@@ -420,8 +418,6 @@ You can configure experience output for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 .. code-block:: python
 

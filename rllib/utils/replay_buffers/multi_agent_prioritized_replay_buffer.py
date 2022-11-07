@@ -40,7 +40,6 @@ class MultiAgentPrioritizedReplayBuffer(
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -63,9 +62,6 @@ class MultiAgentPrioritizedReplayBuffer(
                 ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
-                return None).
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
@@ -136,7 +132,6 @@ class MultiAgentPrioritizedReplayBuffer(
             capacity=shard_capacity,
             storage_unit=storage_unit,
             replay_sequence_override=replay_sequence_override,
-            learning_starts=learning_starts,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,

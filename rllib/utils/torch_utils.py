@@ -12,7 +12,6 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -75,14 +74,9 @@ def apply_grad_clipping(
         return {}
 
 
-@Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
-)
+@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
-    """Atanh function for PyTorch."""
-    return 0.5 * torch.log(
-        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
-    )
+    pass
 
 
 @PublicAPI
@@ -114,32 +108,9 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        stats: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all torch tensors
-            being converted to numpy types.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to non-torch Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, torch.Tensor):
-            return (
-                item.cpu().item()
-                if len(item.size()) == 0
-                else item.detach().cpu().numpy()
-            )
-        else:
-            return item
-
-    return tree.map_structure(mapping, stats)
+    pass
 
 
 @PublicAPI
@@ -211,6 +182,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
+    if y_var == 0.0:
+        # Model case in which y does not vary with explained variance of -1
+        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
     return torch.max(min_, 1 - (diff_var / y_var))[0]

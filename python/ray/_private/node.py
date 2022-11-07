@@ -16,7 +16,6 @@ import time
 import traceback
 from collections import defaultdict
 from typing import Dict, Optional
-import urllib
 
 from filelock import FileLock
 
@@ -96,7 +95,7 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].split(":")
+            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -178,7 +177,7 @@ class Node:
         if head:
             # date including microsecond
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self.session_name = f"session_{date_str}_{os.getpid()}"
+            self._session_name = f"session_{date_str}_{os.getpid()}"
         else:
             session_name = ray._private.utils.internal_kv_get_with_retry(
                 self.get_gcs_client(),
@@ -186,21 +185,15 @@ class Node:
                 ray_constants.KV_NAMESPACE_SESSION,
                 num_retries=NUM_REDIS_GET_RETRIES,
             )
-            self.session_name = ray._private.utils.decode(session_name)
+            self._session_name = ray._private.utils.decode(session_name)
             # setup gcs client
             self.get_gcs_client()
 
         # Initialize webui url
         if head:
             self._webui_url = None
-            self._webui_url_with_protocol = None
         else:
-            self._webui_url_with_protocol = (
-                ray._private.services.get_webui_url_from_internal_kv()
-            )
-            self._webui_url = self._remove_protocol_from_url(
-                self._webui_url_with_protocol
-            )
+            self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
 
         self._init_temp()
 
@@ -231,10 +224,8 @@ class Node:
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.redis_address,
                     self.gcs_address,
                     self._raylet_ip_address,
-                    redis_password=self.redis_password,
                 )
                 self._plasma_store_socket_name = node_info.object_store_socket_name
                 self._raylet_socket_name = node_info.raylet_socket_name
@@ -279,7 +270,7 @@ class Node:
             # Make sure GCS is up.
             self.get_gcs_client().internal_kv_put(
                 b"session_name",
-                self.session_name.encode(),
+                self._session_name.encode(),
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
@@ -317,10 +308,8 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address,
                     self.gcs_address,
                     self._plasma_store_socket_name,
-                    self.redis_password,
                 )
             except TimeoutError:
                 raise Exception(
@@ -329,10 +318,8 @@ class Node:
                     "the Ray processes failed to startup."
                 )
             node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.redis_address,
                 self.gcs_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info.node_manager_port
@@ -340,6 +327,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
+        self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -405,7 +393,7 @@ class Node:
         try_to_create_directory(self._temp_dir)
 
         if self.head:
-            self._session_dir = os.path.join(self._temp_dir, self.session_name)
+            self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
             session_dir = ray._private.utils.internal_kv_get_with_retry(
                 self.get_gcs_client(),
@@ -487,6 +475,11 @@ class Node:
         return self._resource_spec
 
     @property
+    def session_name(self):
+        """Get the session name (cluster ID)."""
+        return self._session_name
+
+    @property
     def node_ip_address(self):
         """Get the IP address of this node."""
         return self._node_ip_address
@@ -539,11 +532,6 @@ class Node:
     def webui_url(self):
         """Get the cluster's web UI url."""
         return self._webui_url
-
-    @property
-    def webui_url_with_protocol(self):
-        """Get the cluster's web UI URl including the URL protocol."""
-        return self._webui_url_with_protocol
 
     @property
     def raylet_socket_name(self):
@@ -878,10 +866,7 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
-        (
-            self._webui_url_with_protocol,
-            process_info,
-        ) = ray._private.services.start_api_server(
+        self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
             raise_on_failure,
             self._ray_params.dashboard_host,
@@ -895,7 +880,6 @@ class Node:
             port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
         )
-        self._webui_url = self._remove_protocol_from_url(self._webui_url_with_protocol)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -919,6 +903,7 @@ class Node:
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
+            self.session_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -973,6 +958,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            self.session_name,
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
@@ -1012,13 +998,11 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
-            self.redis_address,
             self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
@@ -1442,7 +1426,7 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self.session_name
+                object_spilling_config, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1486,18 +1470,19 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self.session_name)
+        external_storage.setup_external_storage(deserialized_config, self._session_name)
         external_storage.reset_external_storage()
 
-    def _remove_protocol_from_url(self, url: Optional[str]) -> str:
-        """
-        Helper function to remove protocol from URL if it exists.
-        """
-        if not url:
-            return url
-        parsed_url = urllib.parse.urlparse(url)
-        if parsed_url.scheme:
-            # Construct URL without protocol
-            scheme = "%s://" % parsed_url.scheme
-            return parsed_url.geturl().replace(scheme, "", 1)
-        return url
+    def _record_stats(self):
+        # Initialize the internal kv so that the metrics can be put
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        if self.head:
+            # record head node stats
+            gcs_storage_type = (
+                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
+            )
+            record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)

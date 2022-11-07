@@ -27,11 +27,12 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -730,8 +731,9 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
+
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_numpy(o.state_dict())
@@ -742,7 +744,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
@@ -754,7 +756,7 @@ class TorchPolicy(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
@@ -856,30 +858,29 @@ class TorchPolicy(Policy):
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
         """
-        self._lazy_tensor_dict(self._dummy_batch)
-        # Provide dummy state inputs if not an RNN (torch cannot jit with
-        # returned empty internal states list).
-        if "state_in_0" not in self._dummy_batch:
-            self._dummy_batch["state_in_0"] = self._dummy_batch[
-                SampleBatch.SEQ_LENS
-            ] = np.array([1.0])
+        os.makedirs(export_dir, exist_ok=True)
 
-        state_ins = []
-        i = 0
-        while "state_in_{}".format(i) in self._dummy_batch:
-            state_ins.append(self._dummy_batch["state_in_{}".format(i)])
-            i += 1
-        dummy_inputs = {
-            k: self._dummy_batch[k]
-            for k in self._dummy_batch.keys()
-            if k != "is_training"
-        }
-
-        if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
-
-        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
+            self._lazy_tensor_dict(self._dummy_batch)
+            # Provide dummy state inputs if not an RNN (torch cannot jit with
+            # returned empty internal states list).
+            if "state_in_0" not in self._dummy_batch:
+                self._dummy_batch["state_in_0"] = self._dummy_batch[
+                    SampleBatch.SEQ_LENS
+                ] = np.array([1.0])
+            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
+
+            state_ins = []
+            i = 0
+            while "state_in_{}".format(i) in self._dummy_batch:
+                state_ins.append(self._dummy_batch["state_in_{}".format(i)])
+                i += 1
+            dummy_inputs = {
+                k: self._dummy_batch[k]
+                for k in self._dummy_batch.keys()
+                if k != "is_training"
+            }
+
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
                 self.model,
@@ -897,14 +898,16 @@ class TorchPolicy(Policy):
                     + ["state_ins", SampleBatch.SEQ_LENS]
                 },
             )
+        # Save the torch.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
         else:
-            traced = torch.jit.trace(self.model, (dummy_inputs, state_ins, seq_lens))
-            file_name = os.path.join(export_dir, "model.pt")
-            traced.save(file_name)
-
-    @override(Policy)
-    def export_checkpoint(self, export_dir: str) -> None:
-        raise NotImplementedError
+            filename = os.path.join(export_dir, "model.pt")
+            try:
+                torch.save(self.model, f=filename)
+            except Exception:
+                if os.path.exists(filename):
+                    os.remove(filename)
+                logger.warning(ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL)
 
     @override(Policy)
     @DeveloperAPI

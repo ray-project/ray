@@ -36,7 +36,7 @@ def batch_blocks(
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
-    batch_format: str = "native",
+    batch_format: str = "default",
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
@@ -58,10 +58,10 @@ def batch_blocks(
             the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
-            Specify "native" to use the current block format (promoting
+            Specify "default" to use the current block format (promoting
             Arrow to pandas automatically), "pandas" to
             select ``pandas.DataFrame`` or "pyarrow" to select
-            ``pyarrow.Table``. Default is "native".
+            ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
@@ -137,8 +137,8 @@ def batch_blocks(
 
 
 def _format_batch(batch: Block, batch_format: str) -> BatchType:
-    if batch_format == "native":
-        batch = BlockAccessor.for_block(batch).to_native()
+    if batch_format == "default" or batch_format == "native":
+        batch = BlockAccessor.for_block(batch).to_default()
     elif batch_format == "pandas":
         batch = BlockAccessor.for_block(batch).to_pandas()
     elif batch_format == "pyarrow":
@@ -147,8 +147,8 @@ def _format_batch(batch: Block, batch_format: str) -> BatchType:
         batch = BlockAccessor.for_block(batch).to_numpy()
     else:
         raise ValueError(
-            f"The given batch format: {batch_format} "
-            f"is invalid. Supported batch type: {BatchType}"
+            f"The given batch format '{batch_format}' is invalid. Supported "
+            f"`batch_format` values: {'default', 'pandas', 'pyarrow', 'numpy'}."
         )
     return batch
 

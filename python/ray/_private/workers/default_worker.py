@@ -85,12 +85,6 @@ parser.add_argument(
     help="True if code is loaded from local files, as opposed to the GCS.",
 )
 parser.add_argument(
-    "--use-pickle",
-    default=False,
-    action="store_true",
-    help="True if cloudpickle should be used for serialization.",
-)
-parser.add_argument(
     "--worker-type",
     required=False,
     type=str,
@@ -209,6 +203,7 @@ if __name__ == "__main__":
     ray._private.worker._global_node = node
     ray._private.worker.connect(
         node,
+        node.session_name,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,

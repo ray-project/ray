@@ -282,6 +282,14 @@ class TestSampleBatch(unittest.TestCase):
         eps_split = [b["a"] for b in s.split_by_episode()]
         check(true_split, eps_split)
 
+        # Check that splitting by EPS_ID works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="eps_id")]
+        check(true_split, eps_split)
+
+        # Check that splitting by DONES works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="dones")]
+        check(true_split, eps_split)
+
         # Check that splitting by DONES works correctly
         del s["eps_id"]
         dones_split = [b["a"] for b in s.split_by_episode()]
@@ -347,7 +355,7 @@ class TestSampleBatch(unittest.TestCase):
         check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
 
     def test_to_device(self):
-        """Tests whether to_device works properly under different circumestances"""
+        """Tests whether to_device works properly under different circumstances"""
         torch, _ = try_import_torch()
 
         # sample batch includes

@@ -5,6 +5,8 @@ import threading
 from concurrent.futures import Future
 from queue import Queue
 
+from pathlib import Path
+
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
@@ -16,14 +18,20 @@ from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
-from urllib.parse import urlparse
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
 
 
 logger = logging.getLogger(__name__)
@@ -104,11 +112,13 @@ class DashboardHead:
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
+        self.session_name = Path(session_dir).name
         self.aiogrpc_gcs_channel = None
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
+        DataOrganizer.head_node_ip = self.ip
         ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
@@ -125,7 +135,14 @@ class DashboardHead:
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
         http_server = HttpServerDashboardHead(
-            self.ip, self.http_host, self.http_port, self.http_port_retries
+            self.ip,
+            self.http_host,
+            self.http_port,
+            self.http_port_retries,
+            self.gcs_address,
+            self.gcs_client,
+            self.session_name,
+            self.metrics,
         )
         await http_server.run(modules)
         return http_server
@@ -201,12 +218,44 @@ class DashboardHead:
         logger.info("Loaded %d modules. %s", len(modules), modules)
         return modules
 
+    def _setup_metrics(self):
+        metrics = DashboardPrometheusMetrics()
+
+        # Setup prometheus metrics export server
+        assert internal_kv._internal_kv_initialized()
+        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
+        internal_kv._internal_kv_put("DashboardMetricsAddress", address, True)
+        if prometheus_client:
+            try:
+                logger.info(
+                    "Starting dashboard metrics server on port {}".format(
+                        DASHBOARD_METRIC_PORT
+                    )
+                )
+                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+                prometheus_client.start_http_server(
+                    port=DASHBOARD_METRIC_PORT,
+                    registry=metrics.registry,
+                    **kwargs,
+                )
+            except Exception:
+                logger.exception(
+                    "An exception occurred while starting the metrics server."
+                )
+        elif not prometheus_client:
+            logger.warning(
+                "`prometheus_client` not found, so metrics will not be exported."
+            )
+
+        return metrics
+
     async def run(self):
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
         internal_kv._initialize_internal_kv(self.gcs_client)
+        self.metrics = self._setup_metrics()
         self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
         self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
 
@@ -236,20 +285,9 @@ class DashboardHead:
         if not self.minimal:
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
-
-        # Override with external ray dashboard URL if it exists.
-        dashboard_address = (
-            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
-            if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ
-            else f"{http_host}:{http_port}"
-        )
-        # Add http protocol to dashboard URL if it doesn't
-        # already contain a protocol.
-        if not urlparse(dashboard_address).scheme:
-            dashboard_address = "http://" + dashboard_address
         internal_kv._internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS,
-            dashboard_address,
+            f"{http_host}:{http_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 

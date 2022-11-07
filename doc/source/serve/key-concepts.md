@@ -13,7 +13,7 @@ The number of replicas can be scaled up or down (or even autoscaled) to match th
 
 To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
 Then, `bind` the deployment with optional arguments to the constructor (see below).
-Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command).
+Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
 ```python
 @serve.deployment
@@ -22,7 +22,7 @@ class MyFirstDeployment:
   def __init__(self, msg):
       self.msg = msg
 
-  def __call__(self, request):
+  def __call__(self):
       return self.msg
 
 my_first_deployment = MyFirstDeployment.bind("Hello world!")
@@ -47,10 +47,10 @@ class Driver:
         self._model_b_handle = model_b_handle
 
     async def __call__(self, request):
-        refa = await self._model_a_handle.remote(request)
-        refb = await self._model_b_handle.remote(request)
-        return (await refa) + (await refb)
-        
+        ref_a = await self._model_a_handle.remote(request)
+        ref_b = await self._model_b_handle.remote(request)
+        return (await ref_a) + (await ref_b)
+
 
 model_a = ModelA.bind()
 model_b = ModelB.bind()
@@ -61,6 +61,8 @@ driver = Driver.bind(model_a, model_b)
 # Deploys model_a, model_b, and driver.
 serve.run(driver)
 ```
+
+(serve-key-concepts-ingress-deployment)=
 
 ## Ingress Deployment (HTTP handling)
 
@@ -79,7 +81,7 @@ Here's an example:
 class MostBasicIngress:
   async def __call__(self, request: starlette.requests.Request) -> str:
       name = await request.json()["name"]
-      return f"Hello {name}" 
+      return f"Hello {name}"
 ```
 
 After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
@@ -103,7 +105,7 @@ app = FastAPI()
 class MostBasicIngress:
   @app.get("/{name}")
   async def say_hi(self, name: str) -> str:
-      return f"Hello {name}" 
+      return f"Hello {name}"
 ```
 
 (serve-key-concepts-deployment-graph)=
@@ -118,8 +120,8 @@ Here's a simple example combining a preprocess function and model.
 ```
 
 ## What's Next?
-Now that you have learned about the key concepts, you can dive into our [User Guides](user-guide) for more details about:
-- [Creating, updating, and deleting deployments](managing-deployments)
-- [Configuring HTTP ingress and integrating with FastAPI](http-guide)
-- [Composing deployments using ServeHandle](handle-guide)
-- [Building deployment graphs](serve-model-composition-deployment-graph)
+Now that you have learned the key concepts, you can dive into the [User Guide](user-guide):
+- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Configuring HTTP logic and integrating with FastAPI](http-guide)
+- [Development workflow for Serve applications](dev-workflow)
+- [Composing deployments to perform model composition](model_composition)

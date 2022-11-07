@@ -51,8 +51,8 @@ def get_cliff_walking_wall_policy_and_data(
     )
     workers = WorkerSet(
         env_creator=lambda env_config: CliffWalkingWallEnv(),
-        policy_class=CliffWalkingWallPolicy,
-        trainer_config=config,
+        default_policy_class=CliffWalkingWallPolicy,
+        config=config,
         num_workers=4,
     )
     ep_ret = []

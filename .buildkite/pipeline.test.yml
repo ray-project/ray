@@ -1,0 +1,55 @@
+- label: ":book: LinkCheck"
+  instance_size: small
+  commands:
+    - export LINT=1
+    - ./ci/env/install-dependencies.sh
+    - ./ci/ci.sh check_sphinx_links
+  soft_fail: True
+
+
+- label: ":python: Release test package unit tests"
+  conditions: ["ALWAYS"]
+  instance_size: small
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip install -e release/
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=release_unit
+      release/...
+
+
+- label: ":octopus: Tune soft imports test"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  instance_size: small
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    # no TUNE_TESTING=1 on purpose
+    - ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
+
+- label: ":python: Ray DAG Tests"
+  conditions:
+    [
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  instance_size: small
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip install -U pydot
+    - sudo apt-get install -y graphviz
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=ray_dag_tests
+      python/ray/dag/...
+
+- label: ":toolbox: CI Tools"
+  conditions: ["RAY_CI_TOOLS_AFFECTED"]
+  instance_size: small
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only ci/run/bazel_sharding/...

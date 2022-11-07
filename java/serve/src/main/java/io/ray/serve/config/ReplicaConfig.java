@@ -142,10 +142,14 @@ public class ReplicaConfig {
     if (proto == null) {
       return null;
     }
+    Object[] initArgs = null;
+    if (0 != proto.getInitArgs().toByteArray().length) {
+      initArgs = MessagePackSerializer.decode(proto.getInitArgs().toByteArray(), null);
+    }
     ReplicaConfig replicaConfig =
         new ReplicaConfig(
             proto.getDeploymentDefName(),
-            MessagePackSerializer.decode(proto.getInitArgs().toByteArray(), null), // TODO-xlang
+            initArgs,
             gson.fromJson(proto.getRayActorOptions(), Map.class));
     return replicaConfig;
   }

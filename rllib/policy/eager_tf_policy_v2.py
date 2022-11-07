@@ -3,12 +3,12 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import logging
-import threading
-from typing import Dict, List, Optional, Tuple, Type, Union
-
 import gym
+import logging
+import os
+import threading
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -20,7 +20,7 @@ from ray.rllib.policy.eager_tf_policy import (
     _OptimizerWrapper,
     _traced_eager_policy,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -31,6 +31,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class EagerTFPolicyV2(Policy):
-    """A TF-eageer / TF2 based tensorflow policy.
+    """A TF-eager / TF2 based tensorflow policy.
 
     This class is intended to be used and extended by sub-classing.
     """
@@ -74,9 +75,6 @@ class EagerTFPolicyV2(Policy):
         )
 
         Policy.__init__(self, observation_space, action_space, config)
-
-        config = dict(self.get_default_config(), **config)
-        self.config = config
 
         self._is_training = False
         # Global timestep should be a tensor.
@@ -100,9 +98,9 @@ class EagerTFPolicyV2(Policy):
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
-        self._max_seq_len = config["model"]["max_seq_len"]
+        self._max_seq_len = self.config["model"]["max_seq_len"]
 
-        self.validate_spaces(observation_space, action_space, config)
+        self.validate_spaces(observation_space, action_space, self.config)
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
@@ -142,11 +140,6 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -667,8 +660,11 @@ class EagerTFPolicyV2(Policy):
         return []
 
     @override(Policy)
-    def get_state(self):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
+
         state["global_timestep"] = state["global_timestep"].numpy()
         if self._optimizer and len(self._optimizer.variables()) > 0:
             state["_optimizer_variables"] = self._optimizer.variables()
@@ -677,8 +673,9 @@ class EagerTFPolicyV2(Policy):
         return state
 
     @override(Policy)
-    def set_state(self, state):
-        # Set optimizer vars first.
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
+        # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
             logger.warning(
@@ -700,12 +697,34 @@ class EagerTFPolicyV2(Policy):
         super().set_state(state)
 
     @override(Policy)
-    def export_checkpoint(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+    def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        if onnx:
+            try:
+                import tf2onnx
+            except ImportError as e:
+                raise RuntimeError(
+                    "Converting a TensorFlow model to ONNX requires "
+                    "`tf2onnx` to be installed. Install with "
+                    "`pip install tf2onnx`."
+                ) from e
 
-    @override(Policy)
-    def export_model(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+            model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                self.model.base_model,
+                output_path=os.path.join(export_dir, "model.onnx"),
+            )
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
+            try:
+                self.model.base_model.save(export_dir, save_format="tf")
+            except Exception:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+        else:
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Type
 import ray
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
@@ -147,6 +148,10 @@ class _Shard:
         replay_actor_class,
         replay_actor_args,
     ):
+        # For now, remain in config dict-land (b/c we are dealing with Policy classes
+        # here which do NOT use AlgorithmConfig yet).
+        if isinstance(config, AlgorithmConfig):
+            config = config.to_dict()
         self.config = config
         self.has_replay_buffer = False
         self.max_num_policies = max_num_policies
@@ -215,6 +220,9 @@ class _Shard:
         actual_policy_class = get_tf_eager_cls_if_necessary(
             policy_spec.policy_class, config
         )
+
+        if isinstance(config, AlgorithmConfig):
+            config = config.to_dict()
 
         colocated = create_colocated_actors(
             actor_specs=[

@@ -25,6 +25,8 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     resource_to_schema,
 )
+from ray.experimental.state.exception import RayStateApiException
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +335,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
+@PublicAPI(stability="alpha")
 def ray_get(
     resource: str,
     id: str,
@@ -383,12 +386,15 @@ def ray_get(
     options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
-    data = client.get(
-        resource=resource,
-        id=id,
-        options=options,
-        _explain=_should_explain(AvailableFormat.YAML),
-    )
+    try:
+        data = client.get(
+            resource=resource,
+            id=id,
+            options=options,
+            _explain=_should_explain(AvailableFormat.YAML),
+        )
+    except RayStateApiException as e:
+        raise click.UsageError(str(e))
 
     # Print data to console.
     print(
@@ -439,6 +445,7 @@ def ray_get(
 )
 @timeout_option
 @address_option
+@PublicAPI(stability="alpha")
 def ray_list(
     resource: str,
     format: str,
@@ -526,12 +533,15 @@ def ray_list(
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
-    data = client.list(
-        resource,
-        options=options,
-        raise_on_missing_output=False,
-        _explain=_should_explain(format),
-    )
+    try:
+        data = client.list(
+            resource,
+            options=options,
+            raise_on_missing_output=False,
+            _explain=_should_explain(format),
+        )
+    except RayStateApiException as e:
+        raise click.UsageError(str(e))
 
     # If --detail is given, the default formatting is yaml.
     if detail and format == AvailableFormat.DEFAULT:
@@ -549,6 +559,7 @@ def ray_list(
 
 @click.group("summary")
 @click.pass_context
+@PublicAPI(stability="alpha")
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     pass
@@ -558,6 +569,7 @@ def summary_state_cli_group(ctx):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def task_summary(ctx, timeout: float, address: str):
     """Summarize the task state of the cluster.
 
@@ -588,6 +600,7 @@ def task_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def actor_summary(ctx, timeout: float, address: str):
     """Summarize the actor state of the cluster.
 
@@ -619,6 +632,7 @@ def actor_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def object_summary(ctx, timeout: float, address: str):
     """Summarize the object state of the cluster.
 

@@ -6,8 +6,10 @@ import pandas as pd
 from ray.data.preprocessor import Preprocessor
 
 from ray.data.preprocessors.utils import simple_hash
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class FeatureHasher(Preprocessor):
     """Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
@@ -26,13 +28,6 @@ class FeatureHasher(Preprocessor):
     .. warning::
         Sparse matrices aren't supported. If you use a large ``num_features``, this
         preprocessor might behave poorly.
-
-    Args:
-        columns: The columns to apply the hashing trick to. Each column should describe
-            the frequency of a token.
-        num_features: The number of features used to represent the vocabulary. You
-            should choose a value large enough to prevent hash collisions between
-            distinct tokens.
 
     Examples:
 
@@ -62,6 +57,13 @@ class FeatureHasher(Preprocessor):
         Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index
         :math:`3`. You can avoid hash collisions like these by increasing
         ``num_features``.
+
+    Args:
+        columns: The columns to apply the hashing trick to. Each column should describe
+            the frequency of a token.
+        num_features: The number of features used to represent the vocabulary. You
+            should choose a value large enough to prevent hash collisions between
+            distinct tokens.
 
     .. seealso::
         :class:`~ray.data.preprocessors.CountVectorizer`

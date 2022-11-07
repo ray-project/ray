@@ -9,33 +9,6 @@ exports_files(["test_myst_doc.py"])
 # root directory.
 # --------------------------------------------------------------------
 
-# Support for Dask has been dropped in 3.6.
-py_test(
-    name = "dask_xgboost",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    args = ["--path", "doc/source/ray-core/examples/dask_xgboost/dask_xgboost.ipynb",
-            "--smoke-test", "--address ''", "--num-actors 4", "--cpus-per-actor 1", "--num-actors-inference 4",
-            "--cpus-per-actor-inference 1"]
-)
-
-# Support for Modin has been dropped in 3.6.
-py_test(
-    name = "modin_xgboost",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    args = ["--path", "doc/source/ray-core/examples/modin_xgboost/modin_xgboost.ipynb",
-            "--smoke-test", "--address ''", "--num-actors 4",
-            "--cpus-per-actor 1", "--num-actors-inference 4",
-            "--cpus-per-actor-inference 1"]
-)
-
 py_test(
     name = "highly_parallel",
     size = "medium",
@@ -80,6 +53,36 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/plot_hyperparameter.ipynb"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
+)
+
+py_test(
+    name = "automl_for_time_series",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "statsforecast"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/automl_for_time_series.ipynb"]
+)
+
+py_test(
+    name = "batch_prediction",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/batch_prediction.ipynb"]
+)
+
+py_test(
+    name = "batch_training",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/batch_training.ipynb"]
 )
 
 py_test(

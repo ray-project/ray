@@ -57,22 +57,24 @@ training.
     to automatically prepare your model and data for distributed training.
 
     .. note::
-       Ray Train will still work even if you don't use the ``prepare_model`` and ``prepare_data_loader`` utilities below,
+       Ray Train will still work even if you don't use the :func:`ray.train.torch.prepare_model`
+       and :func:`ray.train.torch.prepare_data_loader` utilities below,
        and instead handle the logic directly inside your training function.
 
-    First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
+    First, use the :func:~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
 
     .. code-block:: diff
 
         import torch
         from torch.nn.parallel import DistributedDataParallel
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -         torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -81,7 +83,7 @@ training.
 
         -   model = model.to(device)
         -   model = DistributedDataParallel(model,
-        -       device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+        -       device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
 
         +   model = train.torch.prepare_model(model)
 
@@ -89,18 +91,20 @@ training.
 
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
-    and move the batches to the right device.
+    and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
+    (see :ref:`train-datasets`)
 
     .. code-block:: diff
 
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -          torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -121,7 +125,7 @@ training.
 
         .. code-block::
 
-            global_batch_size = worker_batch_size * train.world_size()
+            global_batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: TensorFlow
 
@@ -158,7 +162,7 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * train.world_size()
+        +batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: Horovod
 
@@ -216,7 +220,7 @@ with one of the following:
             scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
         )
 
-To customize the backend setup, you can use a :ref:`train-api-backend-config` object.
+To customize the backend setup, you can use the :ref:`framework-specific config objects <train-integration-api>`.
 
 .. tabbed:: PyTorch
 
@@ -258,7 +262,7 @@ To customize the backend setup, you can use a :ref:`train-api-backend-config` ob
             scaling_config=ScalingConfig(num_workers=2),
         )
 
-For more configurability, please reference the :class:`BaseTrainer` API.
+For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
 Run training function
 ~~~~~~~~~~~~~~~~~~~~~
@@ -327,7 +331,7 @@ Accessing Training Results
 
 .. TODO(ml-team) Flesh this section out.
 
-The return of a ``Trainer.fit`` is a :class:`Result` object, containing
+The return of a ``Trainer.fit`` is a :py:class:`~ray.air.result.Result` object, containing
 information about the training run. You can access it to obtain saved checkpoints,
 metrics and other relevant data.
 
@@ -370,7 +374,7 @@ For example, you can:
 
     print(result.metrics_dataframe)
 
-* Obtain the :class:`Checkpoint`, used for resuming training, prediction and serving.
+* Obtain the :py:class:`~ray.air.checkpoint.Checkpoint`, used for resuming training, prediction and serving.
 
 .. code-block:: python
 
@@ -385,7 +389,7 @@ Log Directory Structure
 Each ``Trainer`` will have a local directory created for logs and checkpoints.
 
 You can obtain the path to the directory by accessing the ``log_dir`` attribute
-of the :class:`Result` object returned by ``Trainer.fit``.
+of the :py:class:`~ray.air.result.Result` object returned by ``Trainer.fit()``.
 
 .. code-block:: python
 
@@ -497,7 +501,7 @@ training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
 The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of 
-the :class:`Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
 attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
@@ -619,7 +623,7 @@ Configuring checkpoints
 +++++++++++++++++++++++
 
 For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a :class:`CheckpointConfig` can be passed into
+checkpoints to disk), a :py:class:`~ray.air.config.CheckpointConfig` can be passed into
 ``Trainer``.
 
 As an example, to completely disable writing checkpoints to disk:
@@ -627,13 +631,13 @@ As an example, to completely disable writing checkpoints to disk:
 .. code-block:: python
     :emphasize-lines: 9,14
 
-    from ray import train
-    from ray.air import RunConfig, CheckpointConfig, ScalingConfig
+    from ray.air import session, RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
         for epoch in range(3):
-            train.save_checkpoint(epoch=epoch)
+            checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
+            session.report({}, checkpoint=checkpoint)
 
     checkpoint_config = CheckpointConfig(num_to_keep=0)
 
@@ -684,11 +688,11 @@ Loading checkpoints
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, ``session.get_checkpoint`` can be used to access
-   the most recently saved :class:`Checkpoint`. This is useful to continue training even
+1. From the training function, :func:`ray.air.session.get_checkpoint` can be used to access
+   the most recently saved :py:class:`~ray.air.checkpoint.Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
-   :class:`Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
+   :py:class:`~ray.air.checkpoint.Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
 
 .. tabbed:: PyTorch
 
@@ -835,7 +839,7 @@ Callbacks
 
 You may want to plug in your training code with your favorite experiment management framework.
 Ray AIR provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
-(the values passed into ``session.report(...)``).
+(the values passed into :func:`ray.air.session.report`).
 
 Ray AIR contains :ref:`built-in callbacks <air-builtin-callbacks>` for popular tracking frameworks, or you can implement your own callback via the :ref:`Callback <tune-callbacks-docs>` interface.
 
@@ -860,7 +864,7 @@ Custom Callbacks
 ++++++++++++++++
 
 If the provided callbacks do not cover your desired integrations or use-cases,
-you may always implement a custom callback by subclassing ``Callback``. If
+you may always implement a custom callback by subclassing :py:class:`~ray.tune.logger.LoggerCallback`. If
 the callback is general enough, please feel welcome to :ref:`add it <getting-involved>`
 to the ``ray`` `repository <https://github.com/ray-project/ray>`_.
 
@@ -1034,7 +1038,7 @@ Hyperparameter tuning (Ray Tune)
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported
 with Ray Train. Specifically, you can take an existing ``Trainer`` and simply
-pass it into a :class:`Tuner`.
+pass it into a :py:class:`~ray.tune.tuner.Tuner`.
 
 .. code-block:: python
 
@@ -1076,9 +1080,9 @@ precision datatype for operations like linear layers and convolutions.
 
     You can train your Torch model with AMP by:
 
-    1. Adding ``train.torch.accelerate(amp=True)`` to the top of your training function.
-    2. Wrapping your optimizer with ``train.torch.prepare_optimizer``.
-    3. Replacing your backward call with ``train.torch.backward``.
+    1. Adding :func:`ray.train.torch.accelerate` with ``amp=True`` to the top of your training function.
+    2. Wrapping your optimizer with :func:`ray.train.torch.prepare_optimizer`.
+    3. Replacing your backward call with :func:`ray.train.torch.backward`.
 
     .. code-block:: diff
 
@@ -1120,7 +1124,7 @@ Reproducibility
 .. tabbed:: PyTorch
 
     To limit sources of nondeterministic behavior, add
-    ``train.torch.enable_reproducibility()`` to the top of your training
+    :func:`ray.train.torch.enable_reproducibility` to the top of your training
     function.
 
     .. code-block:: diff
@@ -1133,7 +1137,7 @@ Reproducibility
 
             ...
 
-    .. warning:: ``train.torch.enable_reproducibility`` can't guarantee
+    .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
         completely reproducible results across executions. To learn more, read
         the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
 

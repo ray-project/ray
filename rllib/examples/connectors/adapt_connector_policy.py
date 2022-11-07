@@ -8,14 +8,12 @@ import numpy as np
 from pathlib import Path
 from typing import Dict
 
-from ray.rllib.utils.policy import (
-    load_policies_from_checkpoint,
-    local_policy_inference,
-)
 from ray.rllib.connectors.connector import ConnectorContext
 from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
 from ray.rllib.connectors.agent.lambdas import register_lambda_agent_connector
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.policy import local_policy_inference
 from ray.rllib.utils.typing import (
     PolicyOutputType,
     StateBatches,
@@ -25,7 +23,7 @@ from ray.rllib.utils.typing import (
 
 parser = argparse.ArgumentParser()
 # A policy checkpoint that works with this example script can be found at:
-# rllib/tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022
+# rllib/tests/data/checkpoints/APPO_CartPole-v1_checkpoint-6-07092022
 parser.add_argument(
     "--checkpoint_file",
     help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
@@ -40,6 +38,7 @@ args = parser.parse_args()
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
+# __sphinx_doc_begin__
 class MyCartPole(gym.Env):
     """A mock CartPole environment.
 
@@ -47,7 +46,7 @@ class MyCartPole(gym.Env):
     """
 
     def __init__(self):
-        self._env = gym.make("CartPole-v0")
+        self._env = gym.make("CartPole-v1")
         self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(6,))
         self.action_space = gym.spaces.MultiDiscrete(nvec=[2, 2])
 
@@ -63,7 +62,7 @@ class MyCartPole(gym.Env):
         return np.hstack((self._env.reset(), [8.0, 6.0]))
 
 
-# Custom agent connector.
+# Custom agent connector to drop the last 2 feature values.
 def v2_to_v1_obs(data: Dict[str, TensorStructType]) -> Dict[str, TensorStructType]:
     data[SampleBatch.NEXT_OBS] = data[SampleBatch.NEXT_OBS][:-2]
     return data
@@ -76,7 +75,7 @@ V2ToV1ObsAgentConnector = register_lambda_agent_connector(
 )
 
 
-# Custom action connector.
+# Custom action connector to add a placeholder action as the addtional action input.
 def v1_to_v2_action(
     actions: TensorStructType, states: StateBatches, fetches: Dict
 ) -> PolicyOutputType:
@@ -92,7 +91,10 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 
 def run(checkpoint_path):
     # Restore policy.
-    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
+    policies = Policy.from_checkpoint(
+        checkpoint=checkpoint_path,
+        policy_ids=[args.policy_id],
+    )
     policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.
@@ -123,6 +125,9 @@ def run(checkpoint_path):
         print(f"step {step}", obs, actions)
 
         obs, _, done, _ = env.step(actions)
+
+
+# __sphinx_doc_end__
 
 
 if __name__ == "__main__":

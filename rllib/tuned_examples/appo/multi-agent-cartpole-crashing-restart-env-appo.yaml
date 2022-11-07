@@ -1,0 +1,53 @@
+multi-agent-cartpole-crashing-appo:
+    env: ray.rllib.examples.env.cartpole_crashing.MultiAgentCartPoleCrashing
+    run: APPO
+    stop:
+        evaluation/episode_reward_mean: 300.0
+    config:
+        # Works for both torch and tf.
+        framework: tf
+
+        env_config:
+            config:
+                num_agents: 2
+                # Crash roughly every n ts. This should be ok to measure 300+
+                # reward (episodes are 200 ts long).
+                p_crash: 0.001  # prob to crash during step()
+                p_crash_reset: 0.005  # prob to crash during reset()
+                # Time for the env to initialize when newly created.
+                # Every time a remote sub-environment crashes, a new env is created
+                # in its place and will take this long (sleep) to "initialize".
+                init_time_s_min: 10.0
+                init_time_s_max: 11.0
+        horizon: 200
+
+        num_workers: 5
+
+        # Disable env checking. Env checker doesn't handle Exceptions from
+        # user envs, and will crash rollout worker.
+        disable_env_checking: true
+
+        # Switch on resiliency for failed sub environments (within a vectorized stack).
+        restart_failed_sub_environments: true
+
+        # Switch on evaluation workers being managed by AsyncRequestsManager object.
+        enable_async_evaluation: true
+
+        evaluation_num_workers: 5
+        evaluation_interval: 1
+        evaluation_duration: 20
+        evaluation_duration_unit: episodes
+        evaluation_parallel_to_training: true
+        evaluation_config:
+            explore: false
+            env_config:
+                config:
+                    num_agents: 2
+                    # Crash roughly every n ts.
+                    p_crash: 0.002  # prob to crash during step()
+                    p_crash_reset: 0.02  # prob to crash during reset()
+                    # Time for the env to initialize when newly created.
+                    # Every time a remote sub-environment crashes, a new env is created
+                    # in its place and will take this long (sleep) to "initialize".
+                    init_time_s_min: 1.0
+                    init_time_s_max: 30.0

@@ -8,6 +8,7 @@ cluster_name: fake_multinode
 max_workers: 8
 provider:
     type: fake_multinode
+    # This must be true since the nodes share the same ip!
     use_node_id_as_ip: True
     disable_node_updaters: True
     disable_launch_config_check: True

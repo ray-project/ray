@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/common_types.h>
+#include <ray/api/ray_runtime_holder.h>
 #include <ray/api/serializer.h>
 #include <ray/api/type_traits.h>
 
@@ -33,6 +34,11 @@ namespace internal {
 template <typename T>
 inline static std::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
+  if constexpr (is_actor_handle_v<T>) {
+    auto serialized_actor_handle =
+        RayRuntimeHolder::Instance().Runtime()->SerializeActorHandle(result.ID());
+    return Serializer::Serialize(serialized_actor_handle);
+  }
   return Serializer::Serialize(std::move(result));
 }
 
@@ -47,16 +53,6 @@ inline static msgpack::sbuffer PackVoid() {
 }
 
 msgpack::sbuffer PackError(std::string error_msg);
-
-using ArgsBuffer = msgpack::sbuffer;
-using ArgsBufferList = std::vector<ArgsBuffer>;
-
-using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
-using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
-
-using RemoteMemberFunction =
-    std::function<msgpack::sbuffer(msgpack::sbuffer *, const ArgsBufferList &)>;
-using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
 
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.

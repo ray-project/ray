@@ -1,0 +1,186 @@
+# File name: config.yaml
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    port 6379
+    bind 0.0.0.0
+    protected-mode no
+    requirepass 5241590000000000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.8
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config
+---
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+  name: rayservice-sample
+  annotations:
+    ray.io/ft-enabled: "true"
+spec:
+  serviceUnhealthySecondThreshold: 300
+  deploymentUnhealthySecondThreshold: 300
+  serveConfig:
+    importPath: "sleepy_pid:app"
+    runtimeEnv: |
+      working_dir: "https://github.com/ray-project/serve_config_examples/archive/42d10bab77741b40d11304ad66d39a4ec2345247.zip"
+    deployments:
+      - name: SleepyPid
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 0
+  rayClusterConfig:
+    rayVersion: '2.0.0'
+    headGroupSpec:
+      serviceType: ClusterIP
+      replicas: 1
+      rayStartParams:
+        block: 'true'
+        num-cpus: '2'
+        object-store-memory: '100000000'
+        dashboard-host: '0.0.0.0'
+        node-ip-address: $MY_POD_IP # Auto-completed as the head pod IP
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: rayproject/ray:2.0.0
+              imagePullPolicy: Always
+              env:
+                - name: MY_POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+                - name: RAY_REDIS_ADDRESS
+                  value: redis:6379
+              resources:
+                limits:
+                  cpu: 2
+                  memory: 2Gi
+                requests:
+                  cpu: 2
+                  memory: 2Gi
+              ports:
+                - containerPort: 6379
+                  name: redis
+                - containerPort: 8265
+                  name: dashboard
+                - containerPort: 10001
+                  name: client
+                - containerPort: 8000
+                  name: serve
+    workerGroupSpecs:
+      - replicas: 2
+        minReplicas: 2
+        maxReplicas: 2
+        groupName: small-group
+        rayStartParams:
+          block: 'true'
+          node-ip-address: $MY_POD_IP
+        template:
+          spec:
+            initContainers:
+              - name: init-myservice
+                image: busybox:1.28
+                command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+            containers:
+              - name: machine-learning
+                image: rayproject/ray:2.0.0
+                imagePullPolicy: Always
+                env:
+                  - name:  RAY_DISABLE_DOCKER_CPU_WARNING
+                    value: "1"
+                  - name: TYPE
+                    value: "worker"
+                  - name: CPU_REQUEST
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: requests.cpu
+                  - name: CPU_LIMITS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: limits.cpu
+                  - name: MEMORY_LIMITS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: limits.memory
+                  - name: MEMORY_REQUESTS
+                    valueFrom:
+                      resourceFieldRef:
+                        containerName: machine-learning
+                        resource: requests.memory
+                  - name: MY_POD_NAME
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.name
+                  - name: MY_POD_IP
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: status.podIP
+                ports:
+                  - containerPort: 80
+                    name: client
+                lifecycle:
+                  preStop:
+                    exec:
+                      command: ["/bin/sh","-c","ray stop"]
+                resources:
+                  limits:
+                    cpu: "1"
+                    memory: "2Gi"
+                  requests:
+                    cpu: "500m"
+                    memory: "2Gi"

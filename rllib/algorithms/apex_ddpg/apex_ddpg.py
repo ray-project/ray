@@ -2,17 +2,15 @@ from typing import List, Optional
 
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
-from ray.util.iter import LocalIterator
 
 
 class ApexDDPGConfig(DDPGConfig):
@@ -23,12 +21,13 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="Pendulum-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="Pendulum-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> from ray import tune
+        >>> import ray.air as air
         >>> config = ApexDDPGConfig()
         >>> # Print out some default values.
         >>> print(config.lr) # doctest: +SKIP
@@ -39,11 +38,11 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "APEX_DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -67,7 +66,7 @@ class ApexDDPGConfig(DDPGConfig):
         self.n_step = 3
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
-        self.num_workers = 32
+        self.num_rollout_workers = 32
         self.min_sample_timesteps_per_iteration = 25000
         self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
@@ -82,8 +81,6 @@ class ApexDDPGConfig(DDPGConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick
@@ -99,6 +96,10 @@ class ApexDDPGConfig(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 50000
         self.target_network_update_freq = 500000
         self.training_intensity = 1
         # __sphinx_doc_end__
@@ -108,19 +109,15 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        optimizer: Optional[dict] = None,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_replay_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_replay_manager: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
     ) -> "ApexDDPGConfig":
         """Sets the training related configuration.
 
         Args:
-            optimizer: Apex-DDPG optimizer settings (dict). Set the number of reply
-                buffer shards in here via the `num_replay_buffer_shards` key
-                (default=4).
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the AsyncRequestsManager class for more
                 details. Tuning these values is important when running experimens with
@@ -155,19 +152,17 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if optimizer is not None:
-            self.optimizer = optimizer
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_replay_worker is not None:
+        if max_requests_in_flight_per_replay_worker is not NotProvided:
             self.max_requests_in_flight_per_replay_worker = (
                 max_requests_in_flight_per_replay_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_replay_manager is not None:
+        if timeout_s_replay_manager is not NotProvided:
             self.timeout_s_replay_manager = timeout_s_replay_manager
 
         return self
@@ -176,8 +171,8 @@ class ApexDDPGConfig(DDPGConfig):
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ApexDDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ApexDDPGConfig()
 
     @override(DDPG)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -198,19 +193,10 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        if self.config["_disable_execution_plan_api"]:
-            self._sampling_actor_manager.remove_workers(
-                removed_workers, remove_in_flight_requests=True
-            )
-            self._sampling_actor_manager.add_workers(new_workers)
-
-    @staticmethod
-    @override(DDPG)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Use APEX-DQN's execution plan."""
-        return ApexDQN.execution_plan(workers, config, **kwargs)
+        self._sampling_actor_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
+        self._sampling_actor_manager.add_workers(new_workers)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!
@@ -221,7 +207,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

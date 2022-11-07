@@ -22,10 +22,12 @@ from ray.tune.tune_config import TuneConfig
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
 
+
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
 _PARAM_SPACE_KEY = "_param_space"
+_EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
 
 
 class TunerInternal:
@@ -103,6 +105,8 @@ class TunerInternal:
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
         )
+
+        self._experiment_analysis = None
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
@@ -215,9 +219,18 @@ class TunerInternal:
                 self._setup_create_experiment_checkpoint_dir(self._run_config)
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
-                file_dir.rename(new_exp_path / file_dir.name)
+                file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+
+        try:
+            self._experiment_analysis = ExperimentAnalysis(
+                self._experiment_checkpoint_dir,
+                default_metric=self._tune_config.metric,
+                default_mode=self._tune_config.mode,
+            )
+        except Exception:
+            self._experiment_analysis = None
 
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
@@ -258,7 +271,7 @@ class TunerInternal:
             run_config.name,
         )
         if not os.path.exists(path):
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).
@@ -284,7 +297,17 @@ class TunerInternal:
         else:
             analysis = self._fit_resume(trainable)
 
-        return ResultGrid(analysis)
+        self._experiment_analysis = analysis
+
+        return ResultGrid(self._experiment_analysis)
+
+    def get_results(self) -> ResultGrid:
+        if not self._experiment_analysis:
+            raise RuntimeError(
+                "Can't return results as experiment has not been run, yet. "
+                "Call `Tuner.fit()` to run the experiment first."
+            )
+        return ResultGrid(self._experiment_analysis)
 
     def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
@@ -360,6 +383,7 @@ class TunerInternal:
             reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
+            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -413,6 +437,7 @@ class TunerInternal:
         state = self.__dict__.copy()
         state.pop(_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
+        state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
         return state
 
     def __setstate__(self, state):

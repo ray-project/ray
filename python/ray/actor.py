@@ -1161,6 +1161,12 @@ class ActorHandle:
                 not self._ray_is_cross_language
             ), "Cross language remote actor method cannot be executed locally."
 
+        if num_returns == "dynamic":
+            # TODO(swang): Support dynamic generators for actors.
+            raise NotImplementedError(
+                'num_returns="dynamic" not yet supported for actor tasks.'
+            )
+
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,

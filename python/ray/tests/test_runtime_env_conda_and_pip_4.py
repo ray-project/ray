@@ -109,8 +109,7 @@ def test_run_in_virtualenv(cloned_virtualenv):
 
 
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or sys.platform == "win32",
-    reason="Pip option not supported on Windows.",
+    "IN_VIRTUALENV" in os.environ, reason="Pip option not supported in virtual env."
 )
 def test_runtime_env_with_pip_config(start_cluster):
     @ray.remote(

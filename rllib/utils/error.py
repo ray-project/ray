@@ -44,6 +44,18 @@ c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
 """
 
+ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under self[TfPolicy].model.base_model!
+    This is either due to ..
+    a) .. this Policy's ModelV2 not having any `base_model` (tf.keras.Model) property
+    b) .. the ModelV2's `base_model` not being used by the Algorithm and thus its
+       variables not being properly initialized.
+"""
+
+ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL = """Could not save torch model under self[TorchPolicy].model!
+    This is most likely due to the fact that you are using an Algorithm that
+    uses a Catalog-generated TorchModelV2 subclass, which is torch.save() cannot pickle.
+"""
+
 # -------
 # HOWTO_ strings can be added to any error/warning/into message
 # to eplain to the user, how to actually fix the encountered problem.
@@ -53,8 +65,8 @@ c) Make sure you provide a fully qualified classpath, e.g.:
 HOWTO_CHANGE_CONFIG = """
 To change the config for the `rllib train|rollout` command, use
   `--config={'[key]': '[value]'}` on the command line.
-To change the config for `tune.run()` in a script: Modify the python dict
-  passed to `tune.run(config=[...])`.
+To change the config for `tune.Tuner().fit()` in a script: Modify the python dict
+  passed to `tune.Tuner(param_space=[...]).fit()`.
 To change the config for an RLlib Algorithm instance: Modify the python dict
   passed to the Algorithm's constructor, e.g. `PPO(config=[...])`.
 """

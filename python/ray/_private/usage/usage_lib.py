@@ -185,7 +185,7 @@ class LibUsageRecorder:
         self._lib_usage_dir = Path(temp_dir_path)
         self._lib_usage_prefix = "_ray_lib_usage-"
         self._lib_usage_filename_match = re.compile(
-            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
         )
 
     def put_lib_usage(self, lib_name: str):
@@ -258,6 +258,9 @@ class TagKey(Enum):
     SERVE_API_VERSION = auto()
     # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
+
+    # The GCS storage type, which could be memory or redis.
+    GCS_STORAGE = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -658,7 +661,7 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2 ** 30
+        to_GiB = 1 / 2**30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
@@ -754,8 +757,17 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            result.cloud_provider = "kubernetes"
+        # Check if we're on Kubernetes
+        if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
+            # Check if we're using KubeRay >= 0.4.0.
+            if usage_constant.KUBERAY_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERAY
+            # Check if we're using the legacy Ray Operator with Ray >= 2.1.0.
+            elif usage_constant.LEGACY_RAY_OPERATOR_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_LEGACY_RAY_OPERATOR
+            # Else, we're on Kubernetes but not in either of the above categories.
+            else:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
