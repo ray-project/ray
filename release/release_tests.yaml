@@ -2150,7 +2150,11 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
+
+  legacy:
+    test_name: long_running_many_jobs
+    test_suite: long_running_tests
 
   frequency: weekly
   team: serve
