@@ -114,9 +114,7 @@ if __name__ == "__main__":
 
     class RestoreWeightsCallback(DefaultCallbacks):
         def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
-            algorithm.set_weights(
-                {"policy_0": restored_policy_0.get_weights()}
-            )
+            algorithm.set_weights({"policy_0": restored_policy_0.get_weights()})
 
     # Make sure, the non-1st policies are not updated anymore.
     config.policies_to_train = [pid for pid in policy_ids if pid != "policy_0"]
