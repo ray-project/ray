@@ -105,8 +105,12 @@ class VectorizedMockEnv(VectorEnv):
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
 
     @override(VectorEnv)
-    def vector_reset(self, *, seed=None, options={}):
-        obs_and_infos = [e.reset() for e in self.envs]
+    def vector_reset(self, *, seeds=None, options=None):
+        seeds = seeds or [None] * self.num_envs
+        options = options or [None] * self.num_envs
+        obs_and_infos = [
+            e.reset(seed=seeds[i], options=options[i]) for i, e in enumerate(self.envs)
+        ]
         return [oi[0] for oi in obs_and_infos], [oi[1] for oi in obs_and_infos]
 
     @override(VectorEnv)
@@ -155,8 +159,15 @@ class MockVectorEnv(VectorEnv):
         self.ts = 0
 
     @override(VectorEnv)
-    def vector_reset(self, *, seed=None, options=None):
-        obs, infos = self.env.reset(seed=seed, options=options)
+    def vector_reset(self, *, seeds=None, options=None):
+        # Since we only have one underlying sub-environment, just use the first seed
+        # and the first options dict (the user of this env thinks, there are
+        # `self.num_envs` sub-environments and sends that many seeds/options).
+        seeds = seeds or [None]
+        options = options or [None]
+        obs, infos = self.env.reset(seed=seeds[0], options=options[0])
+        # Simply repeat the single obs/infos to pretend we really have
+        # `self.num_envs` sub-environments.
         return (
             [obs for _ in range(self.num_envs)],
             [infos for _ in range(self.num_envs)],

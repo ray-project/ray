@@ -79,9 +79,13 @@ class _VectorizedModelGymEnv(VectorEnv):
         )[0]
 
     @override(VectorEnv)
-    def vector_reset(self, seed=None):
+    def vector_reset(self, *, seeds=None, options=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        reset_results = [e.reset() for e in self.envs]
+        seeds = seeds or [None] * self.num_envs
+        options = options or [None] * self.num_envs
+        reset_results = [
+            e.reset(seed=seeds[i], options=options[i]) for i, e in enumerate(self.envs)
+        ]
         self.cur_obs = [io[0] for io in reset_results]
         infos = [io[1] for io in reset_results]
         return self.cur_obs, infos

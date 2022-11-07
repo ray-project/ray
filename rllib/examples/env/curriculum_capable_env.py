@@ -38,7 +38,7 @@ class CurriculumCapableEnv(TaskSettableEnv):
             self.switch_env = False
             self._make_lake()
         self._timesteps = 0
-        return self.frozen_lake.reset(), {}
+        return self.frozen_lake.reset(seed=seed, options=options)
 
     def step(self, action):
         self._timesteps += 1

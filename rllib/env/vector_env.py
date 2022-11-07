@@ -278,15 +278,17 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
+        self, *, seeds: Optional[List[int]] = None, options: Optional[List[dict]] = None
     ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
+        seeds = seeds or [None] * self.num_envs
+        options = options or [None] * self.num_envs
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
         resetted_obs = []
         resetted_infos = []
         for i in range(len(self.envs)):
             while True:
-                obs, infos = self.reset_at(i, seed=seed, options=options)
+                obs, infos = self.reset_at(i, seed=seeds[i], options=options[i])
                 if not isinstance(obs, Exception):
                     break
                 assert isinstance(infos, Exception), (
@@ -342,7 +344,7 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_step(
-        self, actions
+        self, actions: List[EnvActionType]
     ) -> Tuple[
         List[EnvObsType], List[float], List[bool], List[bool], List[EnvInfoDict]
     ]:
