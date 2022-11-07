@@ -15,6 +15,7 @@ from ray.tune.error import TuneError
 from ray.util.annotations import DeveloperAPI
 
 TRAINABLE_CLASS = "trainable_class"
+TRAINABLE_PARAMETER = "trainable_parameter"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
@@ -24,6 +25,7 @@ RLLIB_CONNECTOR = "rllib_connector"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS,
+    TRAINABLE_PARAMETER,
     ENV_CREATOR,
     RLLIB_MODEL,
     RLLIB_PREPROCESSOR,
@@ -84,8 +86,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
-    from ray.tune.trainable import wrap_function
-    from ray.tune.trainable import Trainable
+    from ray.tune.trainable import Trainable, wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
