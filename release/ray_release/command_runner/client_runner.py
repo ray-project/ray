@@ -119,7 +119,8 @@ class ClientRunner(CommandRunner):
             return get_prometheus_metrics(start_time, end_time)
 
         remote_run = _force_on_current_node(get_metrics)
-        metrics = ray.get(remote_run.remote(), timeout=timeout)
+        ref = remote_run.remote()
+        metrics = ray.get(ref, timeout=timeout)
         with open(self.metrics_output_json, "w") as metrics_output_file:
             json.dump(metrics, metrics_output_file)
 
