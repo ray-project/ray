@@ -838,9 +838,6 @@ class _MultiAgentEnvState:
                 if ag in self.last_truncateds:
                     truncateds[ag] = self.last_truncateds[ag]
                     del self.last_truncateds[ag]
-                if ag in self.last_infos:
-                    infos[ag] = self.last_infos[ag]
-                    del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
         self.last_truncateds["__all__"] = False

@@ -846,8 +846,17 @@ def _process_observations(
             # This will be filled with dummy observations below.
             all_agents_obs = {}
 
-        # If this episode is brand-new, call the episode start callback(s).
+        # Add init obs and infos (from the call to `reset/try_reset`) to episode.
+        for aid, obs in all_agents_obs.items():
+            episode._set_last_raw_obs(aid, obs)
+        common_infos = infos[env_id].get("__common__", {})
+        episode._set_last_info("__common__", common_infos)
+        for aid, info in infos[env_id].items():
+            episode._set_last_info(aid, info)
+
+        # Episode is brand new.
         if episode.started is False:
+            # Call the episode start callback(s).
             _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
         else:
             sample_collector.episode_step(episode)
@@ -912,9 +921,6 @@ def _process_observations(
             if not isinstance(all_agents_obs, dict):
                 raise ValueError("observe() must return a dict of agent observations")
 
-        common_infos = infos[env_id].get("__common__", {})
-        episode._set_last_info("__common__", common_infos)
-
         # For each agent in the environment.
         # types: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
@@ -943,12 +949,9 @@ def _process_observations(
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
             episode._set_last_observation(agent_id, filtered_obs)
-            episode._set_last_raw_obs(agent_id, raw_obs)
             episode._set_last_done(agent_id, agent_done)
             episode._set_last_truncated(agent_id, agent_truncated)
-            # Infos from the environment.
             agent_infos = infos[env_id].get(agent_id, {})
-            episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
             if last_observation is None:
@@ -1127,11 +1130,21 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs is not None and resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+
+                resetted_obs = resetted_obs[env_id]
+                resetted_infos = resetted_infos[env_id]
+
+                # Add init obs and infos (from the call to `reset/try_reset`) to episode.
+                for aid, obs in resetted_obs.items():
+                    new_episode._set_last_raw_obs(aid, obs)
+                common_infos = resetted_infos.get("__common__", {})
+                new_episode._set_last_info("__common__", common_infos)
+                for aid, info in resetted_infos.items():
+                    new_episode._set_last_info(aid, info)
+
                 _call_on_episode_start(new_episode, env_id, callbacks, worker, base_env)
 
                 _assert_episode_not_faulty(new_episode)
-                resetted_obs = resetted_obs[env_id]
-                resetted_infos = resetted_infos[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
@@ -1151,7 +1164,6 @@ def _process_observations(
                     filtered_obs: EnvObsType = _get_or_raise(worker.filters, policy_id)(
                         prep_obs
                     )
-                    new_episode._set_last_raw_obs(agent_id, raw_obs)
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.

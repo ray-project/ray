@@ -138,7 +138,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         local_worker = algo.workers.local_worker()
         env = local_worker.env
 
-        obs, rewards, dones, infos = local_worker.env.step(
+        obs, rewards, dones, truncated, infos = local_worker.env.step(
             {0: env.action_space.sample(), 1: env.action_space.sample()}
         )
 
@@ -146,7 +146,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         env_runner = local_worker.sampler._env_runner_obj
         env_runner.create_episode(env_id)
         to_eval, _ = env_runner._process_observations(
-            {0: obs}, {0: rewards}, {0: dones}, {0: infos}
+            {0: obs}, {0: rewards}, {0: dones}, {0: truncated}, {0: infos}
         )
 
         # We should have 2 separate batches for both policies.

@@ -36,13 +36,20 @@ class LastInfoCallback(DefaultCallbacks):
         last_obs = {
             k: np.where(v)[0].item() for k, v in episode._agent_to_last_obs.items()
         }
+        last_raw_obs = episode._agent_to_last_raw_obs
         last_info = episode._agent_to_last_info
         last_done = episode._agent_to_last_done
         last_action = episode._agent_to_last_action
         last_reward = {k: v[-1] for k, v in episode._agent_reward_history.items()}
         if self.step == 0:
-            for last in [last_obs, last_info, last_done, last_action, last_reward]:
+            for last in [last_obs, last_done, last_action, last_reward]:
                 self.tc.assertEqual(last, {})
+            self.tc.assertTrue("__common__" in last_info)
+            self.tc.assertTrue(len(last_raw_obs) > 0)
+            for agent in last_raw_obs.keys():
+                index = int(str(agent).replace("agent", ""))
+                self.tc.assertEqual(last_raw_obs[agent], 0)
+                self.tc.assertEqual(last_info[agent]["timestep"], self.step + index)
         else:
             for agent in last_obs.keys():
                 index = int(str(agent).replace("agent", ""))
@@ -85,11 +92,14 @@ class EpisodeEnv(MultiAgentEnv):
     def reset(self, *, seed=None, options=None):
         self.dones = set()
         self.truncateds = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}, {}
+        obs_and_infos = [a.reset() for a in self.agents]
+        return (
+            {i: oi[0] for i, oi in enumerate(obs_and_infos)},
+            {i: dict(oi[1], **{"timestep": i}) for i, oi in enumerate(obs_and_infos)},
+        )
 
     def step(self, action_dict):
         obs, rew, done, truncated, info = {}, {}, {}, {}, {}
-        print("ACTIONDICT IN ENV\n", action_dict)
         for i, action in action_dict.items():
             obs[i], rew[i], done[i], truncated[i], info[i] = self.agents[i].step(action)
             obs[i] = obs[i] + i

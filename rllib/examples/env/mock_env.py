@@ -81,7 +81,7 @@ class MockEnv3(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         self.i = 0
-        return self.i, {}
+        return self.i, {"timestep": 0}
 
     def step(self, action):
         self.i += 1

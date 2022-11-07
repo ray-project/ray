@@ -40,7 +40,12 @@ class EpisodeEnv(MultiAgentEnv):
 
     def reset(self, *, seed=None, options=None):
         self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}, {}
+        self.truncateds = set()
+        obs_and_infos = [a.reset() for a in self.agents]
+        return (
+            {i: oi[0] for i, oi in enumerate(obs_and_infos)},
+            {i: oi[1] for i, oi in enumerate(obs_and_infos)},
+        )
 
     def step(self, action_dict):
         obs, rew, done, truncated, info = {}, {}, {}, {}, {}
