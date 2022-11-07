@@ -3,7 +3,7 @@ import argparse
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_fashion_mnist_example import train_func
 from ray.train.torch import TorchTrainer
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def main(num_workers=2, use_gpu=False):

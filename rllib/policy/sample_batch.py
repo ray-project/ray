@@ -133,10 +133,34 @@ class SampleBatch(dict):
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
 
+        # Try to infer the "length" of the SampleBatch by finding the first
+        # value that is actually a ndarray/tensor.
         lengths = []
         copy_ = {k: v for k, v in self.items() if k != SampleBatch.SEQ_LENS}
         for k, v in copy_.items():
             assert isinstance(k, str), self
+
+            # If this is a nested dict (for example a nested observation),
+            # try to flatten it, assert that all elements have the same length (batch
+            # dimension)
+            if isinstance(v, (dict, tuple)):
+                if k == SampleBatch.INFOS:
+                    # Don't attempt to count on infos since we make no assumptions
+                    # about its content
+                    continue
+                v = tree.flatten(v)
+                try:
+                    # Add one of the elements length, since they are all the same
+                    len_ = len(v[0])
+                    if len_:
+                        lengths.append(len_)
+                except Exception:
+                    pass
+                else:
+                    # If we were able to figure out a length, all lengths of
+                    # elements of nested structure must be the same
+                    assert all(len(sub_space) == len(v[0]) for sub_space in v)
+                continue
 
             # TODO: Drop support for lists as values.
             # Convert lists of int|float into numpy arrays make sure all data
@@ -144,12 +168,8 @@ class SampleBatch(dict):
             if isinstance(v, list):
                 self[k] = np.array(v)
 
-            # Try to infer the "length" of the SampleBatch by finding the first
-            # value that is actually a ndarray/tensor. This would fail if
-            # all values are nested dicts/tuples of more complex underlying
-            # structures.
             try:
-                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                len_ = len(v)
                 if len_:
                     lengths.append(len_)
             except Exception:

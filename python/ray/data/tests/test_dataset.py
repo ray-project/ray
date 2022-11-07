@@ -4852,6 +4852,105 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
     assert "2 nodes used" not in ds.stats()
 
 
+def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    df = pd.DataFrame({"one": list(range(0, 10)), "two": list(range(10, 20))})
+    path = os.path.join(data_path, "test.parquet")
+    df.to_parquet(path)
+
+    # Read/write from Ray Client will result in error.
+    ray.init(address)
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet("local://" + path).fully_executed()
+    ds = ray.data.from_pandas(df)
+    with pytest.raises(ValueError):
+        ds.write_parquet("local://" + data_path).fully_executed()
+
+
+def test_read_write_local_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=10)
+
+    ray.init(cluster.address)
+
+    import os
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    num_files = 5
+    for idx in range(num_files):
+        df = pd.DataFrame(
+            {"one": list(range(idx, idx + 10)), "two": list(range(idx + 10, idx + 20))}
+        )
+        path = os.path.join(data_path, f"test{idx}.parquet")
+        df.to_parquet(path)
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.read_write_local_node = True
+
+    def check_dataset_is_local(ds):
+        blocks = ds.get_internal_block_refs()
+        assert len(blocks) == num_files
+        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(blocks)
+        locations = []
+        for block in blocks:
+            locations.extend(location_data[block]["node_ids"])
+        assert set(locations) == {ray.get_runtime_context().node_id.hex()}
+
+    local_path = "local://" + data_path
+    # Plain read.
+    ds = ray.data.read_parquet(local_path).fully_executed()
+    check_dataset_is_local(ds)
+    assert "1 nodes used" in ds.stats(), ds.stats()
+
+    # SPREAD scheduling got overridden when read local scheme.
+    ds = ray.data.read_parquet(
+        local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
+    ).fully_executed()
+    check_dataset_is_local(ds)
+    assert "1 nodes used" in ds.stats(), ds.stats()
+
+    # With fusion.
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
+    check_dataset_is_local(ds)
+    assert "1 nodes used" in ds.stats(), ds.stats()
+
+    # Write back to local scheme.
+    output = os.path.join(local_path, "test_read_write_local_node")
+    ds.write_parquet(output)
+    assert "1 nodes used" in ds.stats(), ds.stats()
+    ray.data.read_parquet(output).take_all() == ds.take_all()
+
+    # Mixing paths of local and non-local scheme is invalid.
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", data_path + "/test2.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", "example://iris.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            ["example://iris.parquet", local_path + "/test1.parquet"]
+        ).fully_executed()
+
+
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     cluster.add_node(

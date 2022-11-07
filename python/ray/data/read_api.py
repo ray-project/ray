@@ -16,6 +16,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
+    _is_local_scheme,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -48,6 +49,7 @@ from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import dask
@@ -309,6 +311,17 @@ def read_datasource(
         and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
+
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
 
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
