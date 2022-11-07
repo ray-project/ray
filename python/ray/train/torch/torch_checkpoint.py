@@ -88,6 +88,8 @@ class TorchCheckpoint(Checkpoint):
         Args:
             state_dict: The model state dictionary to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
+            training_state: A dictionary that contains the objects you need to resume
+                training.
 
         Returns:
             A :class:`TorchCheckpoint` containing the specified state dictionary.
@@ -104,8 +106,24 @@ class TorchCheckpoint(Checkpoint):
 
             >>> checkpoint.get_model(torch.nn.Linear(1, 1))
             Linear(in_features=1, out_features=1, bias=True)
-        """
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: state_dict, TRAINING_STATE_KEY: training_state})
+
+            To save training state like the optimizer *state_dict* or current epoch,
+            pass a dictionary to ``training_state``.
+
+            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict(), training_state={"epoch": 0})
+
+        .. seealso::
+
+            :meth:`TorchCheckpoint.get_training_state`
+                Call this method to retrieve the specified ``training_state``.
+        """  # noqa: E501
+        return cls.from_dict(
+            {
+                PREPROCESSOR_KEY: preprocessor,
+                MODEL_KEY: state_dict,
+                TRAINING_STATE_KEY: training_state,
+            }
+        )
 
     @classmethod
     def from_model(
@@ -128,6 +146,8 @@ class TorchCheckpoint(Checkpoint):
         Args:
             model: The Torch model to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
+            training_state: A dictionary that contains the objects you need to resume
+                training.
 
         Returns:
             A :class:`TorchCheckpoint` containing the specified model.
@@ -139,14 +159,30 @@ class TorchCheckpoint(Checkpoint):
             >>> model = torch.nn.Identity()
             >>> checkpoint = TorchCheckpoint.from_model(model)
 
+            To save training state like the optimizer *state_dict* or current epoch,
+            pass a dictionary to ``training_state``.
+
+            >>> checkpoint = TorchCheckpoint.from_model(model, training_state={"epoch": 0})
+
             You can use a :class:`TorchCheckpoint` to create an
             :class:`~ray.train.torch.TorchPredictor` and perform inference.
 
             >>> from ray.train.torch import TorchPredictor
             >>>
             >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
+
+        .. seealso::
+
+            :meth:`TorchCheckpoint.get_training_state`
+                Call this method to retrieve the specified ``training_state``.
         """  # noqa: E501
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model, TRAINING_STATE_KEY: training_state})
+        return cls.from_dict(
+            {
+                PREPROCESSOR_KEY: preprocessor,
+                MODEL_KEY: model,
+                TRAINING_STATE_KEY: training_state,
+            }
+        )
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
@@ -174,4 +210,22 @@ class TorchCheckpoint(Checkpoint):
         return model
 
     def get_training_state(self) -> Dict[str, Any]:
+        """Retrieve the training state stored in this checkpoint.
+
+        Call this method to retrieve the ``training_state`` you specified in
+        :meth:`~TorchCheckpoint.from_state_dict` or
+        :meth:`~TorchCheckpoint.from_model`.
+
+        Examples:
+            >>> import torch
+            >>> model = torch.nn.Linear(1, 1)
+            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict(), training_state={"epoch": 0})
+            >>> checkpoint.get_training_state()
+            {'epoch': 0}
+
+        Returns:
+            The ``training_state`` dictionary specified in
+            :class:`~TorchCheckpoint.from_state_dict` or
+            :class:`~TorchCheckpoint.from_model`.
+        """  # noqa: E501
         return self.to_dict()[TRAINING_STATE_KEY]
