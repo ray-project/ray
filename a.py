@@ -1,2 +1,0 @@
-import ray
-ray.init()
