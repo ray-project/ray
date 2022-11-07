@@ -138,10 +138,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             # If actor is not new registered but updated, we only update
             # states related fields.
             if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
-                actor_table_data_copy = DataSource.actors[actor_id]
+                actors = DataSource.actors[actor_id]
                 for k in state_keys:
-                    actor_table_data_copy[k] = actor_table_data[k]
-                actor_table_data = actor_table_data_copy
+                    actors[k] = actor_table_data[k]
+                actor_table_data = actors
             actor_id = actor_table_data["actorId"]
             node_id = actor_table_data["address"]["rayletId"]
             if actor_table_data["state"] == "DEAD":
