@@ -96,10 +96,8 @@ class RemoteFunction:
 
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
-        if (
-            self._default_options.get("num_gpus", 0) > 0
-            and self._default_options.get("max_calls", None) is None
-        ):
+        num_gpus = self._default_options.get("num_gpus") or 0
+        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
