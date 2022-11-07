@@ -47,7 +47,7 @@ MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 
 
 def _mib_string(num_bytes: float) -> str:
-    size_mib = float(num_bytes / 1024 ** 2)
+    size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
 
 

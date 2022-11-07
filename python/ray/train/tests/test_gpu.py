@@ -15,7 +15,7 @@ from ray import tune
 import ray.train as train
 from ray.air.config import ScalingConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train.examples.torch_linear_example import LinearDataset
+from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train._internal.worker_group import WorkerGroup
@@ -174,12 +174,12 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     @patch.object(
         ray.train.torch.train_loop_utils._TorchAccelerator,
         "get_device",
-        lambda self: torch.device(f"cuda:{1 - train.local_rank()}"),
+        lambda self: torch.device(f"cuda:{1 - session.get_local_rank()}"),
     )
     def train_func():
         # These assert statements must hold for prepare_model to wrap with DDP.
         assert torch.cuda.is_available()
-        assert train.world_size() > 1
+        assert session.get_world_size() > 1
         model = torch.nn.Linear(1, 1)
         data = torch.ones(1)
         data = data.to(train.torch.get_device())

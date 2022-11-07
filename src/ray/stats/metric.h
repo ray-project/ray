@@ -20,6 +20,7 @@
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+#include <utility>  // std::pair
 
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
@@ -362,6 +363,22 @@ class Stats {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
+    opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
+  }
+
+  /// Record a value
+  /// \param val The value to record
+  /// \param tags Registered tags and corresponding tag values for this value
+  void Record(double val,
+              const std::vector<std::pair<opencensus::tags::TagKey, std::string>> &tags) {
+    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
+      return;
+    }
+    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    for (auto const &[tag_key, tag_val] : tags) {
+      CheckPrintableChar(tag_val);
+    }
+    combined_tags.insert(combined_tags.end(), tags.begin(), tags.end());
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
 

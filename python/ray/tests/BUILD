@@ -13,7 +13,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -56,6 +55,7 @@ py_test_module_list(
     "test_gcs_utils.py",
     "test_generators.py",
     "test_metrics_agent.py",
+    "test_metrics_head.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -118,6 +118,7 @@ py_test_module_list(
     "test_memory_pressure.py",
     "test_metrics.py",
     "test_task_metrics.py",
+    "test_actor_state_metrics.py",
     "test_object_store_metrics.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
@@ -217,7 +218,8 @@ py_test_module_list(
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
-    "kuberay/test_autoscaling_config.py"
+    "kuberay/test_autoscaling_config.py",
+    "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:serverless"],
@@ -263,6 +265,8 @@ py_test_module_list(
     "test_state_api.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
+    "test_reconstruction_stress.py",
+    "test_reconstruction_stress_spill.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",

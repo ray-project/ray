@@ -66,7 +66,7 @@ def train_func(use_ray: bool, config: dict):
         )
 
     if use_ray:
-        from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+        from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
 
         class CustomReportCallback(TrainCheckpointReportCallback):
             def _handle(self, logs: dict, when: str = None):

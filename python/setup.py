@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=["tests"])
         else:
             return []
 
@@ -200,6 +200,7 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
 
 # html templates for notebook integration
 ray_files += [
@@ -300,7 +301,7 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0, <= 8.0.4",
+        "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.32.0; python_version < '3.10'",

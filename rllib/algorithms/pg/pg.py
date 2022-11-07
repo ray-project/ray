@@ -1,11 +1,10 @@
 from typing import List, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class PGConfig(AlgorithmConfig):
@@ -16,8 +15,8 @@ class PGConfig(AlgorithmConfig):
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -40,16 +39,17 @@ class PGConfig(AlgorithmConfig):
         ... ).fit()
     """
 
-    def __init__(self):
+    def __init__(self, algo_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(algo_class=PG)
+        super().__init__(algo_class=algo_class or PG)
 
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with PG-specific values.
-        self.num_workers = 0
         self.lr_schedule = None
         self.lr = 0.0004
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 200
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
@@ -58,7 +58,7 @@ class PGConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
     ) -> "PGConfig":
         """Sets the training related configuration.
@@ -80,10 +80,50 @@ class PGConfig(AlgorithmConfig):
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # Check for mismatches between `train_batch_size` and
+        # `rollout_fragment_length` (if not "auto")..
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        if (
+            self.rollout_fragment_length != "auto"
+            and not self.in_evaluation
+            and self.train_batch_size > 0
+        ):
+            min_batch_size = (
+                max(self.num_rollout_workers, 1)
+                * self.num_envs_per_worker
+                * self.rollout_fragment_length
+            )
+            batch_size = min_batch_size
+            while batch_size < self.train_batch_size:
+                batch_size += min_batch_size
+            if (
+                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
+                or batch_size - min_batch_size - self.train_batch_size
+                > (0.1 * self.train_batch_size)
+            ):
+                suggested_rollout_fragment_length = self.train_batch_size // (
+                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
+                )
+                raise ValueError(
+                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
+                    "value 10% off of that cannot be achieved with your other "
+                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length})! "
+                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    f"{suggested_rollout_fragment_length}."
+                )
 
 
 class PG(Algorithm):
@@ -97,22 +137,25 @@ class PG(Algorithm):
     https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
-    (`get_default_policy` and `get_default_config`). Utilizes
-    the default `execution_plan()` of `Trainer`.
+    (`get_default_policy_class` and `get_default_config`). Utilizes
+    the default `training_step()` method of `Algorithm`.
     """
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return PGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return PGConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 
             return PGTorchPolicy
-        elif config["framework"] == "tf":
+        elif config.framework_str == "tf":
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
             return PGTF1Policy

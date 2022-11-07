@@ -23,7 +23,7 @@ from ray.data._internal.arrow_serialization import (
 from ray.data._internal.block_list import BlockMetadata
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
@@ -643,7 +643,7 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
-        path = _resolve_example_path(path)
+        path = _resolve_custom_scheme(path)
         try:
             resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
                 path, filesystem
@@ -682,26 +682,6 @@ def _resolve_paths_and_filesystem(
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
-
-
-def _resolve_example_path(path: str) -> str:
-    """If an example path adhering to the example protocol, resolve to the true
-    underlying file path.
-
-    If the path does not adhere to the example protocol, it is returned untouched.
-
-    Args:
-        path: A file path possibly adhering to the example protocol.
-
-    Returns:
-        A resolved concrete file path.
-    """
-    example_protocol_scheme = "example://"
-    if path.startswith(example_protocol_scheme):
-        example_data_path = pathlib.Path(__file__).parent.parent / "examples" / "data"
-        path = example_data_path / path[len(example_protocol_scheme) :]
-        path = str(path.resolve())
-    return path
 
 
 def _expand_directory(
