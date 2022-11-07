@@ -1441,7 +1441,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
-        "--env", "Pong-v0",
+        "--env", "ALE/Pong-v5",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"train_batch_size\": 500, \"num_workers\": 1}'"

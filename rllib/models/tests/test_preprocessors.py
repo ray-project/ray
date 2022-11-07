@@ -85,7 +85,9 @@ class TestPreprocessors(unittest.TestCase):
         p3 = ModelCatalog.get_preprocessor(gym.make("MsPacman-ram-v0"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
-        p4 = ModelCatalog.get_preprocessor(gym.make("MsPacmanNoFrameskip-v4"))
+        p4 = ModelCatalog.get_preprocessor(
+            gym.make("ALE/MsPacman-v5", frameskip=1)
+        )
         self.assertEqual(type(p4), GenericPixelPreprocessor)
 
     def test_tuple_preprocessor(self):

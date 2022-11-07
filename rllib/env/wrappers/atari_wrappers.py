@@ -301,7 +301,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
 
 
 @PublicAPI
-def wrap_deepmind(env, dim=84, framestack=True):
+def wrap_deepmind(env, dim=84, framestack=True, noframeskip=False):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
@@ -313,7 +313,7 @@ def wrap_deepmind(env, dim=84, framestack=True):
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
-    if env.spec is not None and "NoFrameskip" in env.spec.id:
+    if env.spec is not None and noframeskip is True:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():

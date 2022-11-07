@@ -128,7 +128,6 @@ class TestSAC(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                # "MsPacmanNoFrameskip-v4",
                 "CartPole-v1",
             ]:
                 print("Env={}".format(env))

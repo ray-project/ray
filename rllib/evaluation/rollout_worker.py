@@ -605,7 +605,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
                 def wrap(env):
                     env = wrap_deepmind(
-                        env, dim=self.config.model.get("dim"), framestack=use_framestack
+                        env,
+                        dim=self.config.model.get("dim"),
+                        framestack=use_framestack,
+                        noframeskip=self.config.env_config.get("frameskip", 0) == 1
                     )
                     return env
 

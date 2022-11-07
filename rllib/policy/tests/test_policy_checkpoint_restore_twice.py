@@ -19,7 +19,7 @@ def _do_checkpoint_twice_test(framework):
     config = PPOConfig()
     for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
-        algo2 = config.build(env="PongNoFrameskip-v4")
+        algo2 = config.build(env="ALE/Pong-v5")
 
         algo1.train()
         algo2.train()

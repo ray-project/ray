@@ -79,7 +79,7 @@ class TestPG(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                "MsPacmanNoFrameskip-v4",
+                "ALE/MsPacman-v5",
                 "CartPole-v1",
                 "FrozenLake-v1",
             ]:

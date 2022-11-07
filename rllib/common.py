@@ -280,7 +280,7 @@ EXAMPLES = {
     },
     "pong-a3c": {
         "file": "tuned_examples/a3c/pong-a3c.yaml",
-        "description": "Runs A3C on the PongDeterministic-v4 environment.",
+        "description": "Runs A3C on the ALE/Pong-v5 (deterministic) environment.",
     },
     # AlphaStar
     "multi-agent-cartpole-alpha-star": {
@@ -304,7 +304,7 @@ EXAMPLES = {
     # Apex DQN
     "breakout-apex-dqn": {
         "file": "tuned_examples/apex_dqn/atari-apex-dqn.yaml",
-        "description": "Runs Apex DQN on BreakoutNoFrameskip-v4.",
+        "description": "Runs Apex DQN on ALE/Breakout-v5 (no frameskip).",
     },
     "cartpole-apex-dqn": {
         "file": "tuned_examples/apex_dqn/cartpole-apex-dqn.yaml",
@@ -312,7 +312,7 @@ EXAMPLES = {
     },
     "pong-apex-dqn": {
         "file": "tuned_examples/apex_dqn/pong-apex-dqn.yaml",
-        "description": "Runs Apex DQN on PongNoFrameskip-v4.",
+        "description": "Runs Apex DQN on ALE/Pong-v5 (no frameskip).",
     },
     # APPO
     "cartpole-appo": {
@@ -337,7 +337,7 @@ EXAMPLES = {
     },
     "pong-appo": {
         "file": "tuned_examples/appo/pong-appo.yaml",
-        "description": "Runs APPO on PongNoFrameskip-v4.",
+        "description": "Runs APPO on ALE/Pong-v5 (no frameskip).",
     },
     # ARS
     "cartpole-ars": {
@@ -405,7 +405,7 @@ EXAMPLES = {
     # DDPPO
     "breakout-ddppo": {
         "file": "tuned_examples/ddppo/atari-ddppo.yaml",
-        "description": "Runs DDPPO on BreakoutNoFrameskip-v4.",
+        "description": "Runs DDPPO on ALE/Breakout-v5 (no frameskip).",
     },
     "cartpole-ddppo": {
         "file": "tuned_examples/ddppo/cartpole-ddppo.yaml",
@@ -431,11 +431,11 @@ EXAMPLES = {
     },
     "pong-dqn": {
         "file": "tuned_examples/dqn/pong-dqn.yaml",
-        "description": "Run DQN on PongDeterministic-v4.",
+        "description": "Run DQN on ALE/Pong-v5 (deterministic).",
     },
     "pong-rainbow": {
         "file": "tuned_examples/dqn/pong-rainbow.yaml",
-        "description": "Run Rainbow on PongDeterministic-v4.",
+        "description": "Run Rainbow on ALE/Pong-v5 (deterministic).",
     },
     # DREAMER
     "dm-control-dreamer": {
@@ -479,7 +479,7 @@ EXAMPLES = {
     },
     "pong-impala": {
         "file": "tuned_examples/impala/pong-impala-fast.yaml",
-        "description": "Run IMPALA on PongNoFrameskip-v4.",
+        "description": "Run IMPALA on ALE/Pong-v5 (no frameskip).",
     },
     # MADDPG
     "two-step-game-maddpg": {
@@ -553,7 +553,7 @@ EXAMPLES = {
     },
     "pong-ppo": {
         "file": "tuned_examples/ppo/pong-ppo.yaml",
-        "description": "Run PPO on PongNoFrameskip-v4.",
+        "description": "Run PPO on ALE/Pong-v5 (no frameskip).",
     },
     "recsys-ppo": {
         "file": "tuned_examples/ppo/recomm-sys001-ppo.yaml",
@@ -592,7 +592,7 @@ EXAMPLES = {
     },
     "pacman-sac": {
         "file": "tuned_examples/sac/mspacman-sac.yaml",
-        "description": "Run SAC on MsPacmanNoFrameskip-v4.",
+        "description": "Run SAC on ALE/MsPacman-v5 (no frameskip).",
     },
     "pendulum-sac": {
         "file": "tuned_examples/sac/pendulum-sac.yaml",
