@@ -439,7 +439,7 @@ class ImmutableDict(Immutable, Mapping):
         return "%s(%s)" % (self.__class__.__name__, dict.__repr__(self._dict))
 
 
-class Dict(dict, MutableMapping):
+class MutableNotificationDict(dict, MutableMapping):
     """A simple descriptor for dict type to notify data changes.
     :note: Only the first level data report change.
     """
@@ -485,49 +485,49 @@ class Dict(dict, MutableMapping):
             self[key] = value
 
 
-# class Dict(ImmutableDict, MutableMapping):
-#     """A simple descriptor for dict type to notify data changes.
-#     :note: Only the first level data report change.
-#     """
+class Dict(ImmutableDict, MutableMapping):
+    """A simple descriptor for dict type to notify data changes.
+    :note: Only the first level data report change.
+    """
 
-#     ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
+    ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
 
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(dict(*args, **kwargs))
-#         self.signal = Signal(self)
+    def __init__(self, *args, **kwargs):
+        super().__init__(dict(*args, **kwargs))
+        self.signal = Signal(self)
 
-#     def __setitem__(self, key, value):
-#         old = self._dict.pop(key, None)
-#         self._proxy.pop(key, None)
-#         self._dict[key] = value
-#         if len(self.signal) and old != value:
-#             if old is None:
-#                 co = self.signal.send(
-#                     Change(owner=self, new=Dict.ChangeItem(key, value))
-#                 )
-#             else:
-#                 co = self.signal.send(
-#                     Change(
-#                         owner=self,
-#                         old=Dict.ChangeItem(key, old),
-#                         new=Dict.ChangeItem(key, value),
-#                     )
-#                 )
-#             NotifyQueue.put(co)
+    def __setitem__(self, key, value):
+        old = self._dict.pop(key, None)
+        self._proxy.pop(key, None)
+        self._dict[key] = value
+        if len(self.signal) and old != value:
+            if old is None:
+                co = self.signal.send(
+                    Change(owner=self, new=Dict.ChangeItem(key, value))
+                )
+            else:
+                co = self.signal.send(
+                    Change(
+                        owner=self,
+                        old=Dict.ChangeItem(key, old),
+                        new=Dict.ChangeItem(key, value),
+                    )
+                )
+            NotifyQueue.put(co)
 
-#     def __delitem__(self, key):
-#         old = self._dict.pop(key, None)
-#         self._proxy.pop(key, None)
-#         if len(self.signal) and old is not None:
-#             co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
-#             NotifyQueue.put(co)
+    def __delitem__(self, key):
+        old = self._dict.pop(key, None)
+        self._proxy.pop(key, None)
+        if len(self.signal) and old is not None:
+            co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
+            NotifyQueue.put(co)
 
-#     def reset(self, d):
-#         assert isinstance(d, Mapping)
-#         for key in self._dict.keys() - d.keys():
-#             del self[key]
-#         for key, value in d.items():
-#             self[key] = value
+    def reset(self, d):
+        assert isinstance(d, Mapping)
+        for key in self._dict.keys() - d.keys():
+            del self[key]
+        for key, value in d.items():
+            self[key] = value
 
 
 # Register immutable types.

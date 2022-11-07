@@ -225,7 +225,7 @@ ray.get(a.ping.remote())
 
     for actor_id, entry in data["data"]["snapshot"]["actors"].items():
         assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
-        assert entry["actorClass"] == "Pinger"
+        assert entry["className"] == "Pinger"
         assert entry["startTime"] >= 0
         if entry["isDetached"]:
             assert entry["endTime"] == 0, entry
