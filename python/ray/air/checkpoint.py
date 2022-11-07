@@ -585,27 +585,7 @@ class Checkpoint:
 
         self._save_checkpoint_metadata_in_directory(path)
 
-    def to_directory(
-        self, path: Optional[str] = None, *, move_instead_of_copy: bool = False
-    ) -> str:
-        """Write checkpoint data to directory.
-
-        Args:
-            path: Target directory to restore data in. If not specified,
-                will create a temporary directory.
-            move_instead_of_copy: If True and the checkpoint is already
-                directory based, will move files to the new path
-                instead of copying them.
-
-        Returns:
-            str: Directory containing checkpoint data.
-        """
-        user_provided_path = path is not None
-        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
-        path = os.path.normpath(str(path))
-
-        _make_dir(path, acquire_del_lock=not user_provided_path)
-
+    def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
         try:
             # Timeout 0 means there will be only one attempt to acquire
             # the file lock. If it cannot be aquired, a TimeoutError
@@ -623,8 +603,39 @@ class Checkpoint:
                     "another process. Please raise an issue on GitHub: "
                     "https://github.com/ray-project/ray/issues"
                 )
-
         return path
+
+    def _move_directory(self, path: str) -> str:
+        """Move to a new directory, changing state.
+
+        Only for local directory backed checkpoints."""
+        if not self._local_path:
+            raise RuntimeError(
+                "_move_directory requires the checkpoint to be backed by"
+                " a local directory"
+            )
+        path = os.path.normpath(str(path))
+        _make_dir(path, acquire_del_lock=True)
+        self._local_path = self._to_directory_safe(path, move_instead_of_copy=True)
+        return self._local_path
+
+    def to_directory(self, path: Optional[str] = None) -> str:
+        """Write checkpoint data to directory.
+
+        Args:
+            path: Target directory to restore data in. If not specified,
+                will create a temporary directory.
+
+        Returns:
+            str: Directory containing checkpoint data.
+        """
+        user_provided_path = path is not None
+        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
+        path = os.path.normpath(str(path))
+
+        _make_dir(path, acquire_del_lock=not user_provided_path)
+
+        return self._to_directory_safe(path)
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:

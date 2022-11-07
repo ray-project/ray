@@ -13,8 +13,10 @@ import ray
 from ray._private.dict import flatten_dict
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
+from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
 from ray.util import log_once
+from ray._private.ray_constants import env_integer
 
 
 logger = logging.getLogger(__name__)
@@ -53,9 +55,6 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
-        move_instead_of_copy: If True, and the checkpoint is an
-            AIR Checkpoint backed by a local directory, will
-            move files to ``path`` instead of copying them when commiting to disk.
     """
 
     def __init__(
@@ -65,7 +64,6 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
-        move_instead_of_copy: bool = True,
     ):
         from ray.tune.result import NODE_IP
 
@@ -75,7 +73,12 @@ class _TrackedCheckpoint:
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
-        self.move_instead_of_copy = move_instead_of_copy
+        # If True, and the checkpoint is an AIR Checkpoint backed by
+        # a local directory, will move files instead of copying them
+        # when commiting to disk.
+        self.move_instead_of_copy = not bool(
+            env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
+        )
 
         if (
             dir_or_data is not None
@@ -102,9 +105,7 @@ class _TrackedCheckpoint:
             return
 
         if isinstance(self.dir_or_data, Checkpoint):
-            self.dir_or_data = self.dir_or_data.to_directory(
-                str(path), move_instead_of_copy=self.move_instead_of_copy
-            )
+            self.dir_or_data = self.dir_or_data._move_directory(str(path))
             return
 
         if not isinstance(self.dir_or_data, dict):

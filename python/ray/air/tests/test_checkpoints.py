@@ -135,7 +135,8 @@ class TestCheckpointSerializedAttrs:
 
         path = checkpoint.to_directory()
         recovered_checkpoint = StubCheckpoint.from_directory(path)
-        new_path = recovered_checkpoint.to_directory(move_instead_of_copy=True)
+        tmpdir = tempfile.gettempdir()
+        new_path = recovered_checkpoint._move_directory(tmpdir)
         new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
 
         assert new_recovered_checkpoint.foo == "bar"
