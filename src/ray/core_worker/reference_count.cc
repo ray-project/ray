@@ -802,7 +802,8 @@ std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
 }
 
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
-                                                  const NodeID &raylet_id) {
+                                                  const NodeID &raylet_id,
+                                                  const bool &ha_object) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -820,7 +821,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
                     << ". This should only happen during reconstruction";
     }
     // Only the owner tracks the location.
-    RAY_CHECK(it->second.owned_by_us);
+    RAY_CHECK(it->second.owned_by_us || ha_object);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
@@ -1609,6 +1610,27 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : nested().contains) {
     ref->add_contains(contains_id.Binary());
   }
+}
+
+rpc::ObjectReference ReferenceCounter::GetObjectReference(
+    const ObjectID &object_id, const rpc::Address owner_address) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+
+  auto ref = rpc::ObjectReference();
+  ref.set_object_id(object_id.Binary());
+  if (it->second.owner_address.has_value()) {
+    RAY_CHECK(WorkerID::FromBinary(it->second.owner_address.value().worker_id()) ==
+              WorkerID::FromBinary(owner_address.worker_id()));
+  }
+  ref.mutable_owner_address()->CopyFrom(owner_address);
+  ref.set_call_site(it->second.call_site);
+  ref.set_spilled_url(it->second.spilled_url);
+  ref.set_spilled_node_id(it->second.spilled_node_id.Binary());
+  ref.set_global_owner_id(it->second.global_owner_id.Binary());
+
+  return ref;
 }
 
 }  // namespace core

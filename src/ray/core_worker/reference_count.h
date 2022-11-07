@@ -375,8 +375,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] raylet_id The raylet that is now pinning the object ID.
-  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &raylet_id)
-      LOCKS_EXCLUDED(mutex_);
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
+                                  const NodeID &raylet_id,
+                                  const bool &ha_object = false) LOCKS_EXCLUDED(mutex_);
 
   /// Check whether the object is pinned at a remote plasma store node or
   /// spilled to external storage. In either case, a copy of the object is
@@ -519,6 +520,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
+
+  rpc::ObjectReference GetObjectReference(const ObjectID &object_id,
+                                          const rpc::Address owner_address)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Contains information related to nested object refs only.

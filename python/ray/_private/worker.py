@@ -2871,7 +2871,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
-    _owner: Optional["ray.actor.ActorHandle"] = Undefined,
+    _ha: bool = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3051,7 +3051,13 @@ def remote(
 
     """
 
-    _owner = kwargs.pop("_owner")
+    _ha = kwargs.pop("_ha", False)
+    _owner = None
+    if _ha:
+        worker = global_worker
+        worker.check_connected()
+        _owner = _get_global_owner()
+
     if isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
@@ -3063,7 +3069,8 @@ def remote(
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
         kwargs["returned_object_owner_address"] = owner_address.SerializeToString()
-    else:
+        kwargs["returned_object_global_owner_id"] = _owner._actor_id.binary()
+    elif _owner is not None:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
     # "callable" returns true for both function and class.
@@ -3071,5 +3078,7 @@ def remote(
         # This is the case where the decorator is just @ray.remote.
         # "args[0]" is the class or function under the decorator.
         return _make_remote(args[0], {})
-    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
+    assert len(args) == 0 and len(kwargs) > 0, (
+        ray_option_utils.remote_args_error_string + " " + str(kwargs)
+    )
     return functools.partial(_make_remote, options=kwargs)

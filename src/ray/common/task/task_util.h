@@ -258,10 +258,15 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  TaskSpecBuilder &SetReturnedObjectOwnerAddressTaskSpec(
-      const rpc::Address &owner_address) {
-    if (!WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
-      message_->mutable_returned_object_owner_address()->CopyFrom(owner_address);
+  TaskSpecBuilder &SetReturnedObjectInfo(
+      const rpc::Address &returned_object_owner_address,
+      const ActorID &returned_object_global_owner_id) {
+    if (!WorkerID::FromBinary(returned_object_owner_address.worker_id()).IsNil()) {
+      RAY_CHECK(!returned_object_global_owner_id.IsNil());
+      message_->mutable_returned_object_owner_address()->CopyFrom(
+          returned_object_owner_address);
+      message_->set_returned_object_global_owner_id(
+          returned_object_global_owner_id.Binary());
     }
     return *this;
   }

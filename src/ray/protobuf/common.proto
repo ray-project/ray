@@ -373,6 +373,8 @@ message TaskSpec {
   repeated bytes dynamic_return_ids = 31;
   // The address of the returned object owner.
   optional Address returned_object_owner_address = 32;
+  // The global owner id of the returned object owner.
+  optional bytes returned_object_global_owner_id = 33;
 }
 
 message TaskInfoEntry {

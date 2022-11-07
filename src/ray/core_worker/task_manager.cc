@@ -32,7 +32,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
     const std::string &call_site,
-    int max_retries) {
+    int max_retries,
+    std::function<void(const ObjectID &object_id,
+                       const TaskSpecification &task_spec,
+                       bool is_reconstructable)> assign_returned_object_owner_callback) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
@@ -69,31 +72,34 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
       bool is_reconstructable = max_retries != 0;
-      // We pass an empty vector for inner IDs because we do not know the return
-      // value of the task yet. If the task returns an ID(s), the worker will
-      // publish the WaitForRefRemoved message that we are now a borrower for
-      // the inner IDs. Note that this message can be received *before* the
-      // PushTaskReply.
-      // NOTE(swang): We increment the local ref count to ensure that the
-      // object is considered in scope before we return the ObjectRef to the
-      // language frontend. Note that the language bindings should set
-      // skip_adding_local_ref=True to avoid double referencing the object.
-      reference_counter_->AddOwnedObject(return_id,
-                                         /*inner_ids=*/{},
-                                         caller_address,
-                                         call_site,
-                                         /*spilled_url=*/"",
-                                         /*spilled_node_id=*/NodeID::Nil(),
-                                         -1,
-                                         is_reconstructable,
-                                         /*add_local_ref=*/true);
+      if (spec.ReturnedObjectOwnerAddress().worker_id() == caller_address.worker_id()) {
+        // We pass an empty vector for inner IDs because we do not know the return
+        // value of the task yet. If the task returns an ID(s), the worker will
+        // publish the WaitForRefRemoved message that we are now a borrower for
+        // the inner IDs. Note that this message can be received *before* the
+        // PushTaskReply.
+        // NOTE(swang): We increment the local ref count to ensure that the
+        // object is considered in scope before we return the ObjectRef to the
+        // language frontend. Note that the language bindings should set
+        // skip_adding_local_ref=True to avoid double referencing the object.
+        reference_counter_->AddOwnedObject(return_id,
+                                           /*inner_ids=*/{},
+                                           spec.ReturnedObjectOwnerAddress(),
+                                           call_site,
+                                           /*spilled_url=*/"",
+                                           /*spilled_node_id=*/NodeID::Nil(),
+                                           -1,
+                                           is_reconstructable,
+                                           /*add_local_ref=*/true);
+      } else {
+        RAY_CHECK(assign_returned_object_owner_callback != nullptr);
+        assign_returned_object_owner_callback(return_id, spec, is_reconstructable);
+      }
     }
 
     return_ids.push_back(return_id);
-    rpc::ObjectReference ref;
-    ref.set_object_id(spec.ReturnId(i).Binary());
-    ref.mutable_owner_address()->CopyFrom(caller_address);
-    ref.set_call_site(call_site);
+    rpc::ObjectReference ref = reference_counter_->GetObjectReference(
+        return_id, spec.ReturnedObjectOwnerAddress());
     returned_refs.push_back(std::move(ref));
   }
 
@@ -238,7 +244,8 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
+bool TaskManager::HandleTaskReturn(const TaskID &task_id,
+                                   const ObjectID &object_id,
                                    const rpc::ReturnObject &return_object,
                                    const NodeID &worker_raylet_id,
                                    bool store_in_plasma) {
@@ -250,10 +257,17 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
   if (return_object.in_plasma()) {
+    auto task_it = submissible_tasks_.find(task_id);
+    RAY_CHECK(task_it != submissible_tasks_.end());
+    auto task_spec = task_it->second.spec;
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
     // will choose the right raylet for any queued dependent tasks.
-    reference_counter_->UpdateObjectPinnedAtRaylet(object_id, worker_raylet_id);
+    reference_counter_->UpdateObjectPinnedAtRaylet(
+        object_id,
+        worker_raylet_id,
+        task_spec.ReturnedObjectOwnerAddress().worker_id() !=
+            task_spec.CallerAddress().worker_id());
     // Mark it as in plasma with a dummy object.
     RAY_CHECK(
         in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
@@ -319,7 +333,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         reference_counter_->AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }
-      if (!HandleTaskReturn(object_id,
+      if (!HandleTaskReturn(task_id,
+                            object_id,
                             return_object,
                             NodeID::FromBinary(worker_addr.raylet_id()),
                             store_in_plasma_ids.count(object_id))) {
@@ -332,7 +347,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    if (HandleTaskReturn(object_id,
+    if (HandleTaskReturn(task_id,
+                         object_id,
                          return_object,
                          NodeID::FromBinary(worker_addr.raylet_id()),
                          store_in_plasma_ids.count(object_id))) {

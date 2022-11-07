@@ -160,6 +160,47 @@ def test_object_location(ray_start_cluster, actor_resources):
             ray.get(worker_2.try_get.remote(), timeout=10)
 
 
+def test_normal_task_returned_object(ray_start_cluster):
+    NODE_NUMBER = 2
+    cluster_node_config = [
+        {
+            "num_cpus": 10,
+            "resources": {f"node{i+1}": 10},
+            "object_store_memory": 75 * 1024 * 1024,
+        }
+        for i in range(NODE_NUMBER)
+    ]
+    cluster_node_config[0]["_system_config"] = {
+        "object_spilling_config": json.dumps(mock_distributed_fs_object_spilling_config)
+    }
+    cluster = ray_start_cluster
+    for kwargs in cluster_node_config:
+        cluster.add_node(**kwargs)
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"node1": 1}, _ha=True)
+    def test_remote_function():
+        return "TEST", np.zeros((30 * 1024 * 1024, 1))
+
+    @ray.remote(resources={"node1": 1})
+    class Worker:
+        def do_test(self):
+            ref = test_remote_function.remote()
+            assert ray.get(ref)[0] == "TEST"
+            assert ref.spilled_url().decode("utf-8") == "PLACEMENT_HOLD"
+
+            # evict all object in plasma
+            ref1 = ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8))
+            ref2 = ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8))
+            del ref1, ref2
+
+            assert ray.get(ref)[0] == "TEST"
+            return True
+
+    worker = Worker.remote()
+    assert ray.get(worker.do_test.remote()) is True
+
+
 if __name__ == "__main__":
     import pytest
 

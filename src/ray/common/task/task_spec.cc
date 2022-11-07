@@ -384,6 +384,13 @@ const rpc::Address &TaskSpecification::ReturnedObjectOwnerAddress() const {
   return CallerAddress();
 }
 
+const ActorID TaskSpecification::ReturnedObjectGlobalOwnerID() const {
+  if (message_->has_returned_object_global_owner_id()) {
+    return ActorID::FromBinary(message_->returned_object_global_owner_id());
+  }
+  return ActorID::Nil();
+}
+
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }

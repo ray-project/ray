@@ -101,6 +101,8 @@ _common_options = {
         )
     ),
     "_metadata": Option((dict, type(None))),
+    "returned_object_owner_address": Option((bytes, type(None))),
+    "returned_object_global_owner_id": Option((bytes, type(None))),
 }
 
 

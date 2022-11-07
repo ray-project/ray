@@ -303,6 +303,10 @@ class RemoteFunction:
             num_returns = -1
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+        returned_object_owner_address = task_options["returned_object_owner_address"]
+        returned_object_global_owner_id = task_options[
+            "returned_object_global_owner_id"
+        ]
         if isinstance(retry_exceptions, (list, tuple)):
             retry_exception_allowlist = tuple(retry_exceptions)
             retry_exceptions = True
@@ -387,7 +391,8 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
-                self._returned_object_owner_address,
+                returned_object_owner_address,
+                returned_object_global_owner_id,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

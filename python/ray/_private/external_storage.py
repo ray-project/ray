@@ -5,7 +5,6 @@ import random
 import shutil
 import time
 import urllib
-import uuid
 from collections import namedtuple
 from typing import IO, List, Optional, Tuple
 
@@ -193,7 +192,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             + global_owner_id_len
             + self.HEADER_LENGTH
         )
-        if data_size_in_bytes != obtained_data_size:
+        if obtained_data_size > 0 and data_size_in_bytes != obtained_data_size:
             raise ValueError(
                 f"Obtained data has a size of {data_size_in_bytes}, "
                 "although it is supposed to have the "
@@ -332,9 +331,20 @@ class FileSystemStorage(ExternalStorage):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
             # Retrieve the information needed.
-            parsed_result = parse_url_with_offset(url_with_offset)
-            base_url = parsed_result.base_url
-            offset = parsed_result.offset
+            if url_with_offset == "PLACEMENT_HOLD":
+                # In the prototype, we assure len(_directory_paths)==1,
+                # so object_id can generate checkpoint_url and and offset always 0.
+                directory_path = self._directory_paths[self._current_directory_index]
+                filename = _get_unique_spill_filename([object_ref])
+
+                base_url = f"{os.path.join(directory_path, filename)}"
+                offset = 0
+                data_size = -1
+            else:
+                parsed_result = parse_url_with_offset(url_with_offset)
+                base_url = parsed_result.base_url
+                offset = parsed_result.offset
+                data_size = parsed_result.size
             # Read a part of the file and recover the object.
             with open(base_url, "rb") as f:
                 f.seek(offset)
@@ -347,7 +357,7 @@ class FileSystemStorage(ExternalStorage):
                     metadata_len,
                     buf_len,
                     global_owner_id_len,
-                    parsed_result.size,
+                    data_size,
                 )
                 total += buf_len
                 owner_address = f.read(address_len)
@@ -743,4 +753,5 @@ def _get_unique_spill_filename(object_refs: List[ObjectRef]):
     Args:
         object_refs: objects to be spilled in this file.
     """
-    return f"{uuid.uuid4().hex}-multi-{len(object_refs)}"
+    # To generate checkpoint URL when the data doesn't exist yet
+    return f"{object_refs[0].hex()}-multi-{len(object_refs)}"

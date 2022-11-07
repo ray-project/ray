@@ -123,10 +123,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
-                                                   const TaskSpecification &spec,
-                                                   const std::string &call_site,
-                                                   int max_retries = 0);
+  std::vector<rpc::ObjectReference> AddPendingTask(
+      const rpc::Address &caller_address,
+      const TaskSpecification &spec,
+      const std::string &call_site,
+      int max_retries = 0,
+      std::function<void(const ObjectID &object_id,
+                         const TaskSpecification &task_spec,
+                         bool is_reconstructable)> assign_returned_object_owner_callback =
+          nullptr);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -373,7 +378,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
   /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
+  bool HandleTaskReturn(const TaskID &task_id,
+                        const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
                         const NodeID &worker_raylet_id,
                         bool store_in_plasma) LOCKS_EXCLUDED(mu_);

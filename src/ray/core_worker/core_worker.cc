@@ -1014,6 +1014,53 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
+Status CoreWorker::AssignObjectOwnerInternal(
+    const ObjectID &object_id,
+    const size_t total_data_size,
+    const std::vector<ObjectID> &contained_object_ids,
+    const rpc::Address &owner_address,
+    const ActorID &global_owner_id,
+    bool is_reconstructable) {
+  // Because in the remote worker's `HandleAssignObjectOwner`,
+  // a `WaitForRefRemoved` RPC request will be sent back to
+  // the current worker. So we need to make sure ref count is > 0
+  // by invoking `AddLocalReference` first. Note that in worker.py we set
+  // skip_adding_local_ref=True to avoid double referencing the object.
+  AddLocalReference(object_id);
+  RAY_UNUSED(
+      reference_counter_->AddBorrowedObject(object_id,
+                                            ObjectID::Nil(),
+                                            owner_address,
+                                            // TODO(kfstorm): We need to update this.
+                                            /*spilled_url=*/"",
+                                            /*spilled_node_id=*/NodeID::Nil(),
+                                            /*foreign_owner_already_monitoring=*/true,
+                                            /*global_owner_id*/ global_owner_id));
+
+  // Remote call `AssignObjectOwner()`.
+  rpc::AssignObjectOwnerRequest request;
+  request.set_object_id(object_id.Binary());
+  request.mutable_borrower_address()->CopyFrom(rpc_address_);
+  request.set_call_site(CurrentCallSite());
+  request.set_is_reconstructable(is_reconstructable);
+
+  for (auto &contained_object_id : contained_object_ids) {
+    request.add_contained_object_ids(contained_object_id.Binary());
+  }
+  request.set_object_size(total_data_size);
+  RAY_LOG(DEBUG) << "connect to " << owner_address.ip_address() << ":"
+                 << owner_address.port();
+  auto conn = core_worker_client_pool_->GetOrConnect(owner_address);
+  std::promise<Status> status_promise;
+  conn->AssignObjectOwner(request,
+                          [&status_promise](const Status &returned_status,
+                                            const rpc::AssignObjectOwnerReply &reply) {
+                            status_promise.set_value(returned_status);
+                          });
+  // Block until the remote call `AssignObjectOwner` returns.
+  return status_promise.get_future().get();
+}
+
 Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     const std::shared_ptr<Buffer> &metadata,
     const size_t data_size,
@@ -1045,44 +1092,12 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
-    // a `WaitForRefRemoved` RPC request will be sent back to
-    // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first. Note that in worker.py we set
-    // skip_adding_local_ref=True to avoid double referencing the object.
-    AddLocalReference(*object_id);
-    RAY_UNUSED(
-        reference_counter_->AddBorrowedObject(*object_id,
-                                              ObjectID::Nil(),
-                                              real_owner_address,
-                                              // TODO(kfstorm): We need to update this.
-                                              /*spilled_url=*/"",
-                                              /*spilled_node_id=*/NodeID::Nil(),
-                                              /*foreign_owner_already_monitoring=*/true,
-                                              /*global_owner_id*/ global_owner_id));
-
-    // Remote call `AssignObjectOwner()`.
-    rpc::AssignObjectOwnerRequest request;
-    request.set_object_id(object_id->Binary());
-    request.mutable_borrower_address()->CopyFrom(rpc_address_);
-    request.set_call_site(CurrentCallSite());
-
-    for (auto &contained_object_id : contained_object_ids) {
-      request.add_contained_object_ids(contained_object_id.Binary());
-    }
-    request.set_object_size(data_size + metadata->Size());
-    RAY_LOG(DEBUG) << "connect to " << real_owner_address.ip_address() << ":"
-                   << real_owner_address.port()
-                   << ", input owner address is null: " << (owner_address == nullptr);
-    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
-    std::promise<Status> status_promise;
-    conn->AssignObjectOwner(request,
-                            [&status_promise](const Status &returned_status,
-                                              const rpc::AssignObjectOwnerReply &reply) {
-                              status_promise.set_value(returned_status);
-                            });
-    // Block until the remote call `AssignObjectOwner` returns.
-    status = status_promise.get_future().get();
+    status = AssignObjectOwnerInternal(*object_id,
+                                       data_size + metadata->Size(),
+                                       contained_object_ids,
+                                       real_owner_address,
+                                       global_owner_id,
+                                       /*is_reconstructable=*/false);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1212,9 +1227,15 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
   if (spilled_url) {
     *spilled_url = future.get();
-    RAY_CHECK(
-        reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
-    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+    bool success =
+        reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil());
+    if (success) {
+      RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+    } else {
+      RAY_LOG(DEBUG)
+          << "Failed HandleObjectSpilled, object(" << object_id
+          << ") is out of scope or not on local reference table(task returned object).";
+    }
   }
 
   return Status::OK();
@@ -1732,7 +1753,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
-    const std::unique_ptr<rpc::Address> &returned_object_owner_address) {
+    const std::unique_ptr<rpc::Address> &returned_object_owner_address,
+    const ActorID &returned_object_global_owner_id) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1770,8 +1792,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
                             scheduling_strategy);
+
   if (returned_object_owner_address) {
-    builder.SetReturnedObjectOwnerAddressTaskSpec(*returned_object_owner_address);
+    builder.SetReturnedObjectInfo(*returned_object_owner_address,
+                                  returned_object_global_owner_id);
   }
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
@@ -1779,8 +1803,24 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
   } else {
-    returned_refs = task_manager_->AddPendingTask(
-        task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+    auto assign_returned_object_owner_callback = [this](
+                                                     const ObjectID &object_id,
+                                                     const TaskSpecification &task_spec,
+                                                     bool is_reconstructable) {
+      AssignObjectOwnerInternal(object_id,
+                                -1,
+                                {},
+                                task_spec.ReturnedObjectOwnerAddress(),
+                                task_spec.ReturnedObjectGlobalOwnerID(),
+                                is_reconstructable);
+      RAY_CHECK(reference_counter_->HandleObjectSpilled(
+          object_id, "PLACEMENT_HOLD", NodeID::Nil()));
+    };
+    returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(),
+                                                  task_spec,
+                                                  CurrentCallSite(),
+                                                  max_retries,
+                                                  assign_returned_object_owner_callback);
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -2298,9 +2338,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const std::vector<ObjectID> &contained_object_ids,
                                         int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
-  rpc::Address owner_address(options_.is_local_mode
-                                 ? rpc::Address()
-                                 : worker_context_.GetCurrentTask()->CallerAddress());
+  rpc::Address owner_address(
+      options_.is_local_mode
+          ? rpc::Address()
+          : worker_context_.GetCurrentTask()->ReturnedObjectOwnerAddress());
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
@@ -2322,12 +2363,15 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       *task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
+      ActorID global_owner_id =
+          worker_context_.GetCurrentTask()->ReturnedObjectGlobalOwnerID();
       RAY_RETURN_NOT_OK(CreateExisting(metadata,
                                        data_size,
                                        object_id,
                                        owner_address,
                                        &data_buffer,
-                                       /*created_by_worker=*/true));
+                                       /*created_by_worker=*/true,
+                                       global_owner_id));
       object_already_exists = !data_buffer;
     }
   }
@@ -2397,12 +2441,11 @@ Status CoreWorker::ExecuteTask(
                      << " should return dynamic object " << dynamic_return_id;
 
       AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
-      reference_counter_->AddBorrowedObject(
-          dynamic_return_id,
-          ObjectID::Nil(),
-          task_spec.CallerAddress(),
-          /*spilled_url=*/"",
-          /*spilled_node_id=*/NodeID::Nil());
+      reference_counter_->AddBorrowedObject(dynamic_return_id,
+                                            ObjectID::Nil(),
+                                            task_spec.CallerAddress(),
+                                            /*spilled_url=*/"",
+                                            /*spilled_node_id=*/NodeID::Nil());
     }
   }
 
@@ -2538,11 +2581,23 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   Status status = Status::OK();
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
-  std::unique_ptr<rpc::Address> caller_address =
-      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
+  std::unique_ptr<rpc::Address> owner_address = std::make_unique<rpc::Address>(
+      worker_context_.GetCurrentTask()->ReturnedObjectOwnerAddress());
+  ActorID global_owner_id =
+      worker_context_.GetCurrentTask()->ReturnedObjectGlobalOwnerID();
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(
-        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
+    std::string spilled_url;
+    bool ha_returned_object =
+        !(WorkerID::FromBinary(owner_address->worker_id()) ==
+          WorkerID::FromBinary(
+              worker_context_.GetCurrentTask()->CallerAddress().worker_id()));
+    status = SealExisting(return_id,
+                          /*pin_object=*/true,
+                          generator_id,
+                          std::move(owner_address),
+                          global_owner_id,
+                          ha_returned_object ? &spilled_url : nullptr);
+    RAY_LOG(DEBUG) << "success dump checkpoint to " << spilled_url;
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
@@ -2623,12 +2678,11 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
   const auto return_id =
       ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
-  reference_counter_->AddBorrowedObject(
-      return_id,
-      ObjectID::Nil(),
-      worker_context_.GetCurrentTask()->CallerAddress(),
-      /*spilled_url=*/"",
-      /*spilled_node_id=*/NodeID::Nil());
+  reference_counter_->AddBorrowedObject(return_id,
+                                        ObjectID::Nil(),
+                                        worker_context_.GetCurrentTask()->CallerAddress(),
+                                        /*spilled_url=*/"",
+                                        /*spilled_node_id=*/NodeID::Nil());
   return return_id;
 }
 
@@ -3511,7 +3565,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       spilled_url,
       spilled_node_id,
       request.object_size(),
-      /*is_reconstructable=*/false,
+      /*is_reconstructable=*/request.is_reconstructable(),
       /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);

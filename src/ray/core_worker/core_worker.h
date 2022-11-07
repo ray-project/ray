@@ -470,6 +470,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool inline_small_object = true,
       const ActorID &global_owner_id = ActorID::Nil());
 
+  Status AssignObjectOwnerInternal(const ObjectID &object_id,
+                                   const size_t total_data_size,
+                                   const std::vector<ObjectID> &contained_object_ids,
+                                   const rpc::Address &owner_address,
+                                   const ActorID &global_owner_id,
+                                   bool is_reconstructable);
+
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
   /// caller must call `SealExisting()` to finalize the object. The `CreateExisting()`
@@ -656,7 +663,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist = "",
-      const std::unique_ptr<rpc::Address> &returned_object_owner_address = nullptr);
+      const std::unique_ptr<rpc::Address> &returned_object_owner_address = nullptr,
+      const ActorID &returned_object_global_owner_id = ActorID::Nil());
 
   /// Create an actor.
   ///
