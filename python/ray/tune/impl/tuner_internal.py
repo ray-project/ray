@@ -219,9 +219,7 @@ class TunerInternal:
                     "for them to be registered again in the object store."
                 )
             parameter_registry = _Registry(prefix=prefix)
-            ray._private.worker._post_init_hooks.append(
-                parameter_registry.flush_values
-            )
+            ray._private.worker._post_init_hooks.append(parameter_registry.flush_values)
             for k, v in parameters.items():
                 parameter_registry.register(TRAINABLE_PARAMETER, k, v)
 

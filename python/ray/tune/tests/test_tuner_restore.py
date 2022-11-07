@@ -513,6 +513,7 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
 @pytest.mark.parametrize("use_function_trainable", [True, False])
 def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_trainable):
     """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
+
     def train_func(config, data_str=None, data_obj=None):
         assert data_str is not None and data_obj is not None
         fail_marker = config.pop("fail_marker", None)
