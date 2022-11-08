@@ -58,13 +58,16 @@ class TunerInternal:
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
             if applicable. Refer to ray.air.config.RunConfig for more info.
+        with_parameters: If the original Trainable was wrapped with
+            `tune.with_parameters`, then the attached objects need to be
+            re-specified through this argument on restore in order for training to
+            continue.
     """
 
     def __init__(
         self,
         restore_path: str = None,
         resume_config: Optional[_ResumeConfig] = None,
-        with_parameters: Optional[Dict[str, Any]] = None,
         trainable: Optional[
             Union[
                 str,
@@ -76,6 +79,7 @@ class TunerInternal:
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
+        with_parameters: Optional[Dict[str, Any]] = None,
         _tuner_kwargs: Optional[Dict] = None,
     ):
         from ray.train.trainer import BaseTrainer

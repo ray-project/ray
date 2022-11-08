@@ -379,7 +379,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             trainable_with_params._resources = trainable._resources
 
     trainable_with_params.__name__ = trainable_name
-    # Keep the original trainable and the extra param names have been attached
+    # Keep the original trainable and the extra param names that have been attached
     # This allows the parameters to be re-attached to the original trainable on restore
     trainable_with_params._unwrapped_trainable_and_params = (trainable, keys)
     return trainable_with_params

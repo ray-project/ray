@@ -194,7 +194,10 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-
+            with_parameters: If the original Trainable was wrapped with
+                `tune.with_parameters`, then the attached objects need to be
+                re-specified through this argument in order for training to
+                continue.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
