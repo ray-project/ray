@@ -23,7 +23,6 @@ from ray_release.exception import (
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.command_runner._prometheus_metrics import get_prometheus_metrics
 from ray_release.wheels import install_matching_ray_locally
 
 
@@ -107,22 +106,12 @@ class ClientRunner(CommandRunner):
         logger.info(f"All {num_nodes} nodes are up.")
 
     def save_metrics(self, start_time: float, timeout: float = 900):
-        import ray
-        from ray.tune.utils.node import _force_on_current_node
-
-        ray_address = self.cluster_manager.get_cluster_address()
-        ray.init(address=ray_address, ignore_reinit_error=True)
-
-        @ray.remote(num_cpus=0)
-        def get_metrics():
-            end_time = time.time()
-            return get_prometheus_metrics(start_time, end_time)
-
-        remote_run = _force_on_current_node(get_metrics)
-        ref = remote_run.remote()
-        metrics = ray.get(ref, timeout=timeout)
-        with open(self.metrics_output_json, "w") as metrics_output_file:
-            json.dump(metrics, metrics_output_file)
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        self.run_command(
+            f'python "{metrics_script}" {start_time} --use_ray', timeout=timeout
+        )
 
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs

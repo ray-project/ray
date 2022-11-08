@@ -115,13 +115,32 @@ def get_prometheus_metrics(start_time: float, end_time: float) -> dict:
 
 
 def save_prometheus_metrics(
-    start_time: float, end_time: Optional[float] = None, path: Optional[str] = None
+    start_time: float,
+    end_time: Optional[float] = None,
+    path: Optional[str] = None,
+    use_ray: bool = False,
 ) -> bool:
     path = path or os.environ.get("METRICS_OUTPUT_JSON", None)
     if path:
         if not end_time:
             end_time = time.time()
-        metrics = get_prometheus_metrics(start_time, end_time)
+        if use_ray:
+            import ray
+            from ray.tune.utils.node import _force_on_current_node
+
+            addr = os.environ.get("RAY_ADDRESS", None)
+            ray.init(addr)
+
+            @ray.remote(num_cpus=0)
+            def get_metrics():
+                end_time = time.time()
+                return get_prometheus_metrics(start_time, end_time)
+
+            remote_run = _force_on_current_node(get_metrics)
+            ref = remote_run.remote()
+            metrics = ray.get(ref, timeout=900)
+        else:
+            metrics = get_prometheus_metrics(start_time, end_time)
         with open(path, "w") as metrics_output_file:
             json.dump(metrics, metrics_output_file)
         return path
@@ -134,6 +153,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path", default="", type=str, help="Where to save the metrics json"
     )
+    parser.add_argument(
+        "--use_ray",
+        default=False,
+        action="store_true",
+        help="Whether to run this script in a ray.remote call (for Ray Client)",
+    )
 
     args = parser.parse_args()
-    save_prometheus_metrics(args.start_time, path=args.path)
+    save_prometheus_metrics(args.start_time, path=args.path, use_ray=args.use_ray)
