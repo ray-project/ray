@@ -30,6 +30,6 @@ RUN bash --login -i ./ci/ci.sh build
 RUN export CC=clang CXX=clang++-12
 
 # Run determine test to run
-RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
+RUN bash --login -i -c "python3 ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
 RUN cat affected_set.json
 
