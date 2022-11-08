@@ -4767,10 +4767,14 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+def test_unsupported_pyarrow_versions_check(
+    shutdown_only, unsupported_pyarrow_version_that_exists
+):
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+    ray.init(
+        runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"]}
+    )
 
     # Test Arrow-native creation APIs.
     # Test range_table.
@@ -4792,14 +4796,14 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
 
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
-    unsupported_pyarrow_version,
+    unsupported_pyarrow_version_that_exists,
     disable_pyarrow_version_check,
 ):
     # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
     # initial pyarrow use when the version check is disabled.
     ray.init(
         runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
+            "pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"],
             "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
         },
     )
