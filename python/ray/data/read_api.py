@@ -421,13 +421,34 @@ def read_images(
         >>> ds  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
 
-        If you also need the image file paths, set ``include_paths=True``.
+        If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
+
+        If your images are arranged like:
+
+        .. code::
+
+            root/dog/xxx.png
+            root/dog/xxy.png
+
+            root/cat/123.png
+            root/cat/nsdf3.png
+
+        Then you can include the labels by specifying a
+        :class:`~ray.data.datasource.partitioning.Partitioning`.
+
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> root = "example://tiny-imagenet-200/train"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
