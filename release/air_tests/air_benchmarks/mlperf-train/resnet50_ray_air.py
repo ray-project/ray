@@ -562,14 +562,11 @@ if __name__ == "__main__":
             raise
 
     if exc is not None:
-        if (
-            isinstance(exc.as_instanceof_cause(), ray.exceptions.OutOfDiskError)
-            and disk_error_expected
-        ):
-            print(
-                f"Job required {expected_disk_usage}GB disk space, "
-                f"{available_disk_space}GB available. "
-                "OutOfDiskError raised, as expected."
-            )
-        else:
+        print(f"Raised exception: {exc}")
+        if not disk_error_expected:
             raise exc
+        else:
+            # There is no way to get the error cause from the TuneError
+            # returned by AIR, so it's possible that it raised an error other
+            # than OutOfDiskError here.
+            pass
