@@ -59,18 +59,15 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def save_metrics(self, start_time: float, timeout: float = 900.0):
-        """Wait for cluster nodes to be up.
+        """Obtains Prometheus metrics from head node and saves them
+        to ``self.metrics_output_json``.
 
         Args:
-            num_nodes: Number of nodes to wait for.
-            timeout: Timeout in seconds to wait for nodes before
-             raising a ``PrepareCommandTimeoutError``.
+            start_time: From which UNIX timestamp to start the query.
+            timeout: Timeout in seconds.
 
         Returns:
             None
-
-        Raises:
-            PrepareCommandTimeoutError
         """
         raise NotImplementedError
 
