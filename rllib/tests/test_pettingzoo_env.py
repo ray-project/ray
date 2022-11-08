@@ -10,6 +10,7 @@ from ray.rllib.env import PettingZooEnv
 from ray.tune.registry import register_env
 
 
+# TODO(sven): Move into rllib/env/wrappers/tests/.
 class TestPettingZooEnv(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()

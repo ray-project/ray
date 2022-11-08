@@ -121,10 +121,10 @@ class PettingZooEnv(MultiAgentEnv):
         if seed is not None:
             self.env.seed(seed)
 
-        self.env.reset()
+        info = self.env.reset(seed=seed, return_info=True, options=options)
         return (
             {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
-            {},
+            info or {},
         )
 
     def step(self, action):
@@ -132,23 +132,25 @@ class PettingZooEnv(MultiAgentEnv):
         obs_d = {}
         rew_d = {}
         done_d = {}
-        truncated_d = {"__all__": False}
+        truncated_d = {}
         info_d = {}
         while self.env.agents:
-            obs, rew, done, info = self.env.last()
+            obs, rew, done, truncated, info = self.env.last()
             agent_id = self.env.agent_selection
             obs_d[agent_id] = obs
             rew_d[agent_id] = rew
             done_d[agent_id] = done
-            truncated_d[agent_id] = False
+            truncated_d[agent_id] = truncated
             info_d[agent_id] = info
-            if self.env.dones[self.env.agent_selection]:
+            TODO: >???
+            if self.env.termination[self.env.agent_selection]:
                 self.env.step(None)
             else:
                 break
 
         all_done = not self.env.agents
         done_d["__all__"] = all_done
+        truncated_d["__all__"] = all(truncated_d.values())
 
         return obs_d, rew_d, done_d, truncated_d, info_d
 
@@ -202,15 +204,13 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        if seed is not None:
-            self.par_env.seed(seed)
-
-        return self.par_env.reset(), {}
+        obs, info = self.par_env.reset(seed=seed, return_info=True, options=options)
+        return obs, info or {}
 
     def step(self, action_dict):
-        obss, rews, dones, infos = self.par_env.step(action_dict)
+        obss, rews, dones, truncateds, infos = self.par_env.step(action_dict)
         dones["__all__"] = all(dones.values())
-        truncateds = {k: False for k in dones.keys()}
+        truncateds["__all__"] = all(truncateds.values())
         return obss, rews, dones, truncateds, infos
 
     def close(self):
