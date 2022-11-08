@@ -23,7 +23,7 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
-        config = appo.APPOConfig().rollouts(num_rollout_workers=1)
+        config = appo.APPOConfig()
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
