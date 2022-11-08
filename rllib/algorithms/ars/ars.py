@@ -94,6 +94,7 @@ class ARSConfig(AlgorithmConfig):
         self.eval_prob = 0.03
         self.report_length = 10
         self.offset = 0
+        self.tf_single_threaded = True
 
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.num_rollout_workers = 2
@@ -125,6 +126,7 @@ class ARSConfig(AlgorithmConfig):
         eval_prob: Optional[float] = NotProvided,
         report_length: Optional[int] = NotProvided,
         offset: Optional[int] = NotProvided,
+        tf_single_threaded: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "ARSConfig":
         """Sets the training related configuration.
@@ -143,6 +145,8 @@ class ARSConfig(AlgorithmConfig):
             report_length: How many of the last rewards we average over.
             offset: Value to subtract from the reward (e.g. survival bonus
                 from humanoid) during rollouts.
+            tf_single_threaded: Whether the tf-session should be generated without any
+                parallelism options.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -168,6 +172,8 @@ class ARSConfig(AlgorithmConfig):
             self.report_length = report_length
         if offset is not NotProvided:
             self.offset = offset
+        if tf_single_threaded is not NotProvided:
+            self.tf_single_threaded = tf_single_threaded
 
         return self
 
@@ -240,7 +246,6 @@ class Worker:
 
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.config.single_threaded = True
         self.noise = SharedNoiseTable(noise)
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
@@ -367,7 +372,7 @@ class ARS(Algorithm):
         env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config.callbacks()
+        self.callbacks = self.config.callbacks_class()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(

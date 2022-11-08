@@ -92,6 +92,7 @@ class ESConfig(AlgorithmConfig):
         self.stepsize = 0.01
         self.noise_size = 250000000
         self.report_length = 10
+        self.tf_single_threaded = True
 
         # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
@@ -124,6 +125,7 @@ class ESConfig(AlgorithmConfig):
         stepsize: Optional[float] = NotProvided,
         noise_size: Optional[int] = NotProvided,
         report_length: Optional[int] = NotProvided,
+        tf_single_threaded: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "ESConfig":
         """Sets the training related configuration.
@@ -141,6 +143,8 @@ class ESConfig(AlgorithmConfig):
             noise_size: Number of rows in the noise table (shared across workers).
                 Each row contains a gaussian noise value for each model parameter.
             report_length: How many of the last rewards we average over.
+            tf_single_threaded: Whether the tf-session should be generated without any
+                parallelism options.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -168,6 +172,8 @@ class ESConfig(AlgorithmConfig):
             self.noise_size = noise_size
         if report_length is not NotProvided:
             self.report_length = report_length
+        if tf_single_threaded is not NotProvided:
+            self.tf_single_threaded = tf_single_threaded
 
         return self
 
@@ -245,7 +251,6 @@ class Worker:
         self.min_task_runtime = min_task_runtime
         self.config = config.to_dict()
         self.config.update(policy_params)
-        self.config.single_threaded = True
         self.noise = SharedNoiseTable(noise)
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
@@ -374,7 +379,7 @@ class ES(Algorithm):
         env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config.callbacks()
+        self.callbacks = self.config.callbacks_class()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(

@@ -344,13 +344,6 @@ class AlphaStar(appo.APPO):
         #   one or more GPU nodes.
         # - On each such node, also locate one replay buffer shard.
 
-        # By default, set max_num_policies_to_train to the number of policy IDs
-        # provided in the multiagent config.
-        if self.config.max_num_policies_to_train is None:
-            self.config.max_num_policies_to_train = len(
-                self.workers.local_worker().get_policies_to_train()
-            )
-
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
         num_gpus = 0.01 if (self.config.num_gpus and not self.config._fake_gpus) else 0
@@ -370,7 +363,12 @@ class AlphaStar(appo.APPO):
         # the initial first n learnable policies (found in the config).
         distributed_learners = DistributedLearners(
             config=self.config,
-            max_num_policies_to_train=self.config.max_num_policies_to_train,
+            # By default, set max_num_policies_to_train to the number of policy IDs
+            # provided in the multiagent config.
+            max_num_policies_to_train=(
+                self.config.max_num_policies_to_train
+                or len(self.workers.local_worker().get_policies_to_train())
+            ),
             replay_actor_class=ReplayActor,
             replay_actor_args=replay_actor_args,
         )
