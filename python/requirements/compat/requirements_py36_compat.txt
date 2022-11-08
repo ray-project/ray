@@ -9,7 +9,7 @@
 
 # ML libraries
 torch==1.7.0
-tensorflow==2.6.0
+tensorflow==2.7.2
 keras==2.6.0
 
 # Torch addons

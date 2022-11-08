@@ -11,7 +11,7 @@
 
 # ML libraries
 torch==1.9.0
-tensorflow==2.7.0
+tensorflow==2.7.2
 tensorflow-probability==0.14.1
 keras==2.7.0
 
