@@ -137,7 +137,11 @@ class ArrowTensorArray(pa.ExtensionArray):
         """
         if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
             # Stack ndarrays and pass through to ndarray handling logic below.
-            arr = np.stack(arr, axis=0)
+            try:
+                arr = np.stack(arr, axis=0)
+            except ValueError:
+                # ndarray stacking may fail if the arrays are heterogeneously-shaped.
+                arr = np.array(arr, dtype=object)
         if isinstance(arr, np.ndarray):
             if len(arr) > 0 and np.isscalar(arr[0]):
                 # Elements are scalar so a plain Arrow Array will suffice.
@@ -303,8 +307,10 @@ class ArrowTensorArray(pa.ExtensionArray):
             # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
             # underlying storage array buffers (NumPy roundtrip will not be zero-copy
             # for e.g. boolean arrays).
+            # NOTE(Clark): Iterating over a tensor extension array converts each element
+            # to an ndarray view.
             return ArrowVariableShapedTensorArray.from_numpy(
-                np.array([e for a in to_concat for e in a.to_numpy()], dtype=object)
+                [e for a in to_concat for e in a]
             )
         else:
             storage = pa.concat_arrays([c.storage for c in to_concat])

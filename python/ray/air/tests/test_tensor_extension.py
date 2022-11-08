@@ -496,6 +496,26 @@ def test_arrow_tensor_array_concat(a1, a2):
             np.testing.assert_array_equal(arr, expected)
 
 
+def test_variable_shaped_tensor_array_chunked_concat():
+    # Test that chunking a tensor column and concatenating its chunks preserves typing
+    # and underlying data.
+    shape1 = (2, 2, 2)
+    shape2 = (3, 4, 4)
+    a1 = np.arange(np.prod(shape1)).reshape(shape1)
+    a2 = np.arange(np.prod(shape2)).reshape(shape2)
+    ta1 = ArrowTensorArray.from_numpy(a1)
+    ta2 = ArrowTensorArray.from_numpy(a2)
+    chunked_ta = ArrowTensorArray._chunk_tensor_arrays([ta1, ta2])
+    ta = ArrowTensorArray._concat_same_type(chunked_ta.chunks)
+    assert len(ta) == shape1[0] + shape2[0]
+    assert isinstance(ta.type, ArrowVariableShapedTensorType)
+    assert pa.types.is_struct(ta.type.storage_type)
+    for arr, expected in zip(
+        ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+    ):
+        np.testing.assert_array_equal(arr, expected)
+
+
 def test_variable_shaped_tensor_array_uniform_dim():
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
