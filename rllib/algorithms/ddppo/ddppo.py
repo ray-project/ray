@@ -56,11 +56,10 @@ class DDPPOConfig(PPOConfig):
         >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)
         >>> config = config..resources(num_gpus=1)
         >>> config = config..rollouts(num_rollout_workers=10)
-        >>> print(config.to_dict()) # doctest: +ELLIPSIS
-        ...
+        >>> print(config.to_dict())   # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -68,8 +67,7 @@ class DDPPOConfig(PPOConfig):
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
-        >>> print(config.kl_coeff) # doctest: +ELLIPSIS
-        ...
+        >>> print(config.kl_coeff)   # doctest: +SKIP
         >>> # Update the config object.
         >>> config.training( # doctest: +SKIP
         ...     lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)

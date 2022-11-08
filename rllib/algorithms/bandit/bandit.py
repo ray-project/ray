@@ -44,10 +44,10 @@ class BanditLinTSConfig(BanditConfig):
         >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):
@@ -67,10 +67,10 @@ class BanditLinUCBConfig(BanditConfig):
         >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):

@@ -23,8 +23,7 @@ class BCConfig(MARWILConfig):
         >>> from ray import tune
         >>> config = BCConfig()
         >>> # Print out some default values.
-        >>> print(config.beta)
-        0.0
+        >>> print(config.beta)  # doctest: +SKIP
         >>> # Update the config object.
         >>> config.training(  # doctest:+SKIP
         ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75

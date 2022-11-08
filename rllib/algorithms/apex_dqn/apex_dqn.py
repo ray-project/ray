@@ -54,7 +54,7 @@ class ApexDQNConfig(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config) # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 100000,
@@ -63,13 +63,13 @@ class ApexDQNConfig(DQNConfig):
         >>>         "prioritized_replay_eps": 3e-6,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
+        >>> config.training(replay_buffer_config=replay_config)\ # doctest: +SKIP
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> algo = config.build() # doctest: +SKIP
+        >>> while True: # doctest: +SKIP
+        >>>     algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -78,7 +78,7 @@ class ApexDQNConfig(DQNConfig):
         >>> config = ApexDQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         >>>     "APEX",
         >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
         >>>     param_space=config.to_dict()
@@ -87,8 +87,8 @@ class ApexDQNConfig(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
         >>>     {
         >>>         "type": "EpsilonGreedy",
         >>>         "initial_epsilon": 0.96,
@@ -96,20 +96,20 @@ class ApexDQNConfig(DQNConfig):
         >>>         "epsilone_timesteps": 5000,
         >>>     }
         >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\  # doctest: +SKIP
         >>>       .exploration(exploration_config=explore_config)
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
         >>>     {
         >>>         "type": "SoftQ",
         >>>         "temperature": [1.0],
         >>>     }
         >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\  # doctest: +SKIP
         >>>       .exploration(exploration_config=explore_config)
     """
 

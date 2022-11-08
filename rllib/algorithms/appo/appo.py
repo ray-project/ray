@@ -46,7 +46,7 @@ class APPOConfig(ImpalaConfig):
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
@@ -54,8 +54,7 @@ class APPOConfig(ImpalaConfig):
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
-        >>> print(config.sample_async) # doctest: +ELLIPSIS
-        ...
+        >>> print(config.sample_async)   # doctest: +SKIP
         >>> # Update the config object.
         >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.

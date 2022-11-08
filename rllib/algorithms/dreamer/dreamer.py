@@ -39,7 +39,7 @@ class DreamerConfig(AlgorithmConfig):
         >>> config = DreamerConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
         >>> algo.train()
@@ -50,14 +50,14 @@ class DreamerConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
         >>> config = DreamerConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
         >>> # Set the config object's env.
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "Dreamer",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),

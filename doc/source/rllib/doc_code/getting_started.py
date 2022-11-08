@@ -22,50 +22,49 @@ for i in range(10):
         print(f"Checkpoint saved in directory {checkpoint_dir}")
 # __rllib-first-config-end__
 
-
-# __rllib-tune-config-begin__
 import ray
-from ray import air, tune
+ray.shutdown()
+
+if False:
+    # __rllib-tune-config-begin__
+    import ray
+    from ray import air, tune
 
 
-ray.init()
+    ray.init()
 
-config = PPOConfig().training(lr=tune.grid_search([0.01, 0.001, 0.0001]))
+    config = PPOConfig().training(lr=tune.grid_search([0.01, 0.001, 0.0001]))
 
-tuner = tune.Tuner(
-    "PPO",
-    run_config=air.RunConfig(
-        stop={"episode_reward_mean": 150},
-    ),
-    param_space=config,
-)
+    tuner = tune.Tuner(
+        "PPO",
+        run_config=air.RunConfig(
+            stop={"episode_reward_mean": 150},
+        ),
+        param_space=config,
+    )
 
-tuner.fit()
-# __rllib-tune-config-end__
+    tuner.fit()
+    # __rllib-tune-config-end__
 
-# __rllib-tuner-begin__
-# ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
-results = ray.tune.Tuner(
-    "PPO",
-    param_space=config,
-    run_config=air.RunConfig(
-        stop={"episode_reward_mean": 150},
-        checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
-    ),
-).fit()
+    # __rllib-tuner-begin__
+    # ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
+    tuner = ray.tune.Tuner(
+        "PPO",
+        param_space=config,
+        run_config=air.RunConfig(
+            stop={"episode_reward_mean": 150},
+            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+        ),
+    )
 
-# list of lists: one list per checkpoint; each checkpoint list contains
-# 1st the path, 2nd the metric value
-checkpoints = results.get_trial_checkpoints_paths(
-    trial=results.get_best_trial("episode_reward_mean"), metric="episode_reward_mean"
-)
+    results = tuner.fit()
 
-# or simply get the last checkpoint (with highest "training_step")
-last_checkpoint = results.get_last_checkpoint()
-# if there are multiple trials, select a specific trial or automatically
-# choose the best one according to a given metric
-last_checkpoint = results.get_last_checkpoint(metric="episode_reward_mean", mode="max")
-# __rllib-tuner-end__
+    # Get the best result based on a particular metric.
+    best_result = results.get_best_result(metric="episode_reward_mean", mode="max")
+
+    # Get the best checkpoint corresponding to the best result.
+    best_checkpoint = best_result.checkpoint
+    # __rllib-tuner-end__
 
 
 # __rllib-compute-action-begin__

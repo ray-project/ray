@@ -48,7 +48,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity":  40000,
@@ -65,7 +65,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         >>>     "SimpleQ",
         >>>     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         >>>     param_space=config.to_dict()
@@ -74,7 +74,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.5,
@@ -87,7 +87,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "softq",

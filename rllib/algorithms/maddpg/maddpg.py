@@ -31,7 +31,7 @@ class MADDPGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> config = MADDPGConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 100000,
@@ -45,8 +45,8 @@ class MADDPGConfig(AlgorithmConfig):
         >>>       .rollouts(num_rollout_workers=4)\
         >>>       .environment("CartPole-v1")
         >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> while True:  # doctest: +SKIP
+        >>>     algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -55,7 +55,7 @@ class MADDPGConfig(AlgorithmConfig):
         >>> config = MADDPGConfig()
         >>> config.training(n_step=tune.grid_search([3, 5]))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         >>>     "MADDPG",
         >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
         >>>     param_space=config.to_dict()

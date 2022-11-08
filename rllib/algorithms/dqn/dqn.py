@@ -59,7 +59,7 @@ class DQNConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 60000,
@@ -73,8 +73,8 @@ class DQNConfig(SimpleQConfig):
         >>>       .rollouts(num_rollout_workers=3)\
         >>>       .environment("CartPole-v1")
         >>> trainer = DQN(config=config)
-        >>> while True:
-        >>>     trainer.train()
+        >>> while True:  # doctest: +SKIP
+        >>>     trainer.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -83,7 +83,7 @@ class DQNConfig(SimpleQConfig):
         >>> config = DQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         >>>     "DQN",
         >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
         >>>     param_space=config.to_dict()
@@ -92,7 +92,7 @@ class DQNConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.5,
@@ -106,7 +106,7 @@ class DQNConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "softq",
