@@ -20,6 +20,7 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
     exclude = [
+        "client/node_modules/**",
         "modules/test/**", 
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 

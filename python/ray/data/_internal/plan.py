@@ -1,6 +1,7 @@
 import copy
 import functools
 import itertools
+import logging
 import uuid
 from typing import (
     TYPE_CHECKING,
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class Stage:
@@ -298,6 +302,7 @@ class ExecutionPlan:
         """
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
+            context = DatasetContext.get_current()
             for stage_idx, stage in enumerate(stages):
                 if allow_clear_input_blocks:
                     clear_input_blocks = self._should_clear_input_blocks(
@@ -314,6 +319,8 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
+                if context.enable_auto_log_stats:
+                    logger.info(stats.summary_string(include_parent=False))
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats

@@ -801,6 +801,17 @@ def start(
                     ),
                 )
             cli_logger.newline()
+            cli_logger.print("To see the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+            dashboard_url = node.address_info["webui_url"]
+            if dashboard_url:
+                cli_logger.print("To monitor and debug Ray, view the dashboard at ")
+                cli_logger.print(
+                    "  {}".format(
+                        cf.bold(dashboard_url),
+                    )
+                )
+            cli_logger.newline()
             cli_logger.print(
                 cf.underlined(
                     "If connection fails, check your "

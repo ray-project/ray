@@ -38,7 +38,6 @@ from ray.data.datasource.partitioning import (
 )
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.text_datasource import TextDatasource
-from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 
 __all__ = [
     "BaseFileMetadataProvider",
@@ -69,7 +68,6 @@ __all__ = [
     "RangeDatasource",
     "ReadTask",
     "Reader",
-    "SimpleTorchDatasource",
     "TextDatasource",
     "TFRecordDatasource",
     "WriteResult",
