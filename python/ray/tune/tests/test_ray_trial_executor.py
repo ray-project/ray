@@ -633,7 +633,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):
-        ray.init(local_mode=True)
+        ray.init(local_mode=True, ignore_reinit_error=True)
         self.trial_executor = RayTrialExecutor()
 
     def tearDown(self):

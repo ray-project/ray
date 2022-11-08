@@ -558,7 +558,7 @@ class RayTrialExecutor:
             sum(len(cached) for cached in self._cached_resources_to_actor.values())
             > self._max_staged_actors
         ):
-            # Reached of cached actors
+            # Reached maximum of cached actors
             return False
 
         allocated_resources = self._trial_to_allocated_resources[trial]
@@ -568,6 +568,10 @@ class RayTrialExecutor:
         if (
             len(self._cached_resources_to_actor[cached_resources])
             >= staged_resource_count[cached_resources]
+            # If we don't have any cached actors, cache. We will reconcile
+            # in the step end anyway. This is to avoid non-working actor re-use
+            # if we only generate new trials one by one.
+            and any(v for v in self._cached_resources_to_actor.values())
         ):
             # We don't need that many cached actors
             logger.debug(
@@ -578,6 +582,9 @@ class RayTrialExecutor:
             return False
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
+
+        # Set the last actor cleanup, so we don't reconcile right away
+        self._last_cached_actor_cleanup = time.time()
 
         self._cached_resources_to_actor[cached_resources].append(
             (trial.runner, allocated_resources)
