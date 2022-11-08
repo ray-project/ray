@@ -23,8 +23,8 @@ def test_actor_ready(actors):
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cpus-per-actor", type=float, default=0.2)
-    parser.add_argument("--total-actors", type=int, default=5000)
+    parser.add_argument("--cpus-per-actor", type=float, default=0.1)
+    parser.add_argument("--total-actors", type=int, default=10000)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--fail", default=False, action="store_true")
     return parser.parse_known_args()
