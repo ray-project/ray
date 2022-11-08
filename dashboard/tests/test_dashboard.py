@@ -420,7 +420,7 @@ def test_class_method_route_table(enable_test_module):
 
     loop = asyncio.get_event_loop()
     r = loop.run_until_complete(post_handler())
-    assert r.status == 200
+    assert r.status == 500
     resp = json.loads(r.body)
     assert resp["result"] is False
     assert "Traceback" in resp["msg"]
@@ -537,7 +537,8 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert len(collections.Counter(volatile_value_timestamps)) == 10
 
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
-    response.raise_for_status()
+    with pytest.raises(Exception):
+        response.raise_for_status()
     result = response.json()
     assert result["result"] is False
     assert "KeyError" in result["msg"]

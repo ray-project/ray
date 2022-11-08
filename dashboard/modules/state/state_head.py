@@ -152,9 +152,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             success=False,
             error_message=(
                 "Max number of in-progress requests="
-                f"{self.max_num_call_} reached."
+                f"{self.max_num_call_} reached. "
                 "To set a higher limit, set environment variable: "
-                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'."
+                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'. "
                 f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
             ),
             result=None,
