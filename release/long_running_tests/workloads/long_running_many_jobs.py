@@ -11,10 +11,7 @@ import argparse
 import json
 import os
 import time
-import random
-from typing import List, Optional
-from ray.dashboard.modules.job.common import JobStatus
-from ray.dashboard.modules.job.pydantic_models import JobDetails
+from typing import List
 import ray
 from ray.job_submission import JobSubmissionClient
 
@@ -24,22 +21,7 @@ NUM_JOBS_PER_BATCH = 4
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
 
-
-def wait_until_finish(
-    client: JobSubmissionClient,
-    job_id: str,
-    timeout_s: int = 10 * 60,
-    retry_interval_s: int = 10,
-) -> Optional[JobStatus]:
-    start_time_s = time.time()
-    while time.time() - start_time_s <= timeout_s:
-        # Test calling list_jobs
-        client.list_jobs()
-        status = client.get_job_status(job_id)
-        if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
-            return status
-        time.sleep(retry_interval_s)
-    return None
+SLEEP_TIME_PER_BATCH_S = 4
 
 
 def submit_batch_jobs(
@@ -58,20 +40,6 @@ def submit_batch_jobs(
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
 
-    for job_id in job_ids:
-        client = clients[job_ids.index(job_id) % len(clients)]
-        status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
-        if status != JobStatus.SUCCEEDED:
-            print(
-                f"Info for failed/timed-out job {job_id}: {client.get_job_info(job_id)}"
-            )
-            print(
-                f"Logs for failed/timed-out job {job_id}: {client.get_job_logs(job_id)}"
-            )
-            print(
-                f"Job {job_id} failed with status {status} (`None` indicates timeout)"
-            )
-            return False
     return True
 
 
@@ -112,19 +80,7 @@ if __name__ == "__main__":
             print("FAILED")
             exit(1)
 
-        # Test list jobs
-        jobs: List[JobDetails] = clients[0].list_jobs()
-        print(f"Total jobs submitted so far: {len(jobs)}")
-
-        # Get job logs from random submission job
-        is_submission_job = False
-        while not is_submission_job:
-            job_details = random.choice(jobs)
-            is_submission_job = job_details.type == "SUBMISSION"
-        job_id = job_details.submission_id
-        print(f"Getting logs for randomly chosen job {job_id}...")
-        logs = clients[0].get_job_logs(job_id)
-        print(logs)
+    time.sleep(SLEEP_TIME_PER_BATCH_S)
 
     time_taken = time.time() - start
     result = {
