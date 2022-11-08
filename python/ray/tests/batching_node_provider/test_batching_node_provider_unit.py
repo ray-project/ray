@@ -287,8 +287,8 @@ def test_batching_node_provider_many_requests():
 
 def test_terminate_safeguards():
     """Tests the following behaviors:
-        - the node provider ignores requests to terminate a node twice.
-        - the node provider ignores requests to terminate an unknown node.
+    - the node provider ignores requests to terminate a node twice.
+    - the node provider ignores requests to terminate an unknown node.
     """
     node_provider = MockBatchingNodeProvider(
         provider_config={
@@ -302,7 +302,9 @@ def test_terminate_safeguards():
     nodes = node_provider.non_terminated_nodes({})
     assert len(nodes) == 1
     head_node = nodes[0]
-    node_provider.create_node(node_config={}, tags={TAG_RAY_USER_NODE_TYPE: "type"}, count=1)
+    node_provider.create_node(
+        node_config={}, tags={TAG_RAY_USER_NODE_TYPE: "type"}, count=1
+    )
     node_provider.post_process()
     nodes = node_provider.non_terminated_nodes({})
     assert len(nodes) == 2
