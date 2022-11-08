@@ -33,7 +33,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
-from ray.exceptions import GetTimeoutError, RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -552,36 +552,15 @@ class Algorithm(Trainable):
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            try:
-                self.workers = WorkerSet(
-                    env_creator=self.env_creator,
-                    validate_env=self.validate_env,
-                    default_policy_class=self.get_default_policy_class(self.config),
-                    config=self.config,
-                    num_workers=self.config["num_workers"],
-                    local_worker=True,
-                    logdir=self.logdir,
-                )
-            # WorkerSet creation possibly fails, if some (remote) workers cannot
-            # be initialized properly (due to some errors in the RolloutWorker's
-            # constructor).
-            except RayActorError as e:
-                # In case of an actor (remote worker) init failure, the remote worker
-                # may still exist and will be accessible, however, e.g. calling
-                # its `sample.remote()` would result in strange "property not found"
-                # errors.
-                if e.actor_init_failed:
-                    # Raise the original error here that the RolloutWorker raised
-                    # during its construction process. This is to enforce transparency
-                    # for the user (better to understand the real reason behind the
-                    # failure).
-                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
-                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
-                    # to a config mismatch) thrown inside the actor.
-                    raise e.args[0].args[2]
-                # In any other case, raise the RayActorError as-is.
-                else:
-                    raise e
+            self.workers = WorkerSet(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.config,
+                num_workers=self.config["num_workers"],
+                local_worker=True,
+                logdir=self.logdir,
+            )
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -1671,7 +1650,8 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
+        # Deprecated.
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1716,49 +1696,41 @@ class Algorithm(Trainable):
         """
         validate_policy_id(policy_id, error=True)
 
-        # Worker list is explicitly provided -> Use only those workers (local or remote)
-        # specified.
-        if workers is not None:
-            # Call static utility method.
-            WorkerSet.add_policy_to_workers(
-                workers,
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
-            )
-        # Add to all our regular RolloutWorkers and maybe also all evaluation workers.
-        else:
-            self.workers.add_policy(
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
+        if workers is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="workers",
+                help=(
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
+                    "and no-op now. Please do not use it anymore."
+                ),
+                error=False,
             )
 
-            # Add to evaluation workers, if necessary.
-            if evaluation_workers is True and self.evaluation_workers is not None:
-                self.evaluation_workers.add_policy(
-                    policy_id,
-                    policy_cls,
-                    policy,
-                    observation_space=observation_space,
-                    action_space=action_space,
-                    config=config,
-                    policy_state=policy_state,
-                    policy_mapping_fn=policy_mapping_fn,
-                    policies_to_train=policies_to_train,
-                )
+        self.workers.add_policy(
+            policy_id,
+            policy_cls,
+            policy,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+        # Add to evaluation workers, if necessary.
+        if evaluation_workers is True and self.evaluation_workers is not None:
+            self.evaluation_workers.add_policy(
+                policy_id,
+                policy_cls,
+                policy,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
@@ -2314,6 +2286,8 @@ class Algorithm(Trainable):
 
         return len(new_workers)
 
+    # TODO(jungong) : remove this callback once we get rid of all the worker
+    # failure handling logics from Algorithms.
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -2323,7 +2297,12 @@ class Algorithm(Trainable):
             removed_workers: List of removed workers.
             new_workers: List of new workers.
         """
-        pass
+        for actor in removed_workers:
+            # The list of workers for metrics may not be the
+            # same as the full list of workers.
+            if actor in self._remote_workers_for_metrics:
+                self._remote_workers_for_metrics.remove(actor)
+        self._remote_workers_for_metrics += new_workers
 
     @override(Trainable)
     def _export_model(

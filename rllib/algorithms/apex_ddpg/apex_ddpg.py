@@ -193,6 +193,7 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        super().on_worker_failures(removed_workers, new_workers)
         self._sampling_actor_manager.remove_workers(
             removed_workers, remove_in_flight_requests=True
         )
