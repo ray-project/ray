@@ -1130,11 +1130,12 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (
                         ValueError(
-                            e.args[0]
-                            + "\n traceback"
-                            + traceback.format_exc()
-                            + "\n"
-                            + "In tower {} on device {}".format(shard_idx, device)
+                            f"Error In tower {shard_idx} on device "
+                            f"{device} during multi GPU parallel gradient "
+                            f"calculation:"
+                            f": {e}\n"
+                            f"Traceback: \n"
+                            f"{traceback.format_exc()}\n"
                         ),
                         e,
                     )
