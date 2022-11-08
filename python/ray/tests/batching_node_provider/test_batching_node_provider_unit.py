@@ -91,6 +91,7 @@ class BatchingNodeProviderTester:
         )
         self.expected_node_counts = defaultdict(int)
         self.expected_node_counts["head-group"] = 1
+        self.expected_scale_request_submitted_count = 0
 
     def update(self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag):
         """Simulates an autoscaler update with multiple terminate and create calls.
@@ -105,7 +106,7 @@ class BatchingNodeProviderTester:
 
         # Terminate some nodes.
         # Set to track nodes marked for termination during the update.
-        to_terminate_this_update = {}
+        to_terminate_this_update = set()
         for node_type, count in terminate_nodes_requests:
             # Terminate "count" nodes of the given node_type.
             # If count is greater than the number of nodes of the type, terminate
@@ -139,7 +140,7 @@ class BatchingNodeProviderTester:
             # else: the scale request will not be submitted.
 
         # Scale change is needed exactly when there's something to create or terminate.
-        assert self.node_provider.scale_change_needed is (create_node_requests or terminate_nodes_requests)
+        assert self.node_provider.scale_change_needed is bool(create_node_requests or terminate_nodes_requests)
 
         # Submit the scale request.
         self.node_provider.post_process()
@@ -179,8 +180,7 @@ class BatchingNodeProviderTester:
         # Make some assertions about internal structure of the node provider.
         expected_node_counts_without_head = copy(self.expected_node_counts)
         del expected_node_counts_without_head["head-group"]
-
-        assert self.node_provider.scale_request.workers_to_delete == expected_node_counts_without_head
+        assert self.node_provider.scale_request.desired_num_workers == expected_node_counts_without_head
         assert self.node_provider.scale_change_needed is False
         assert self.node_provider._scale_request_submitted_count == self.expected_scale_request_submitted_count
 
