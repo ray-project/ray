@@ -335,7 +335,7 @@ class GroupedDataset(Generic[T]):
             builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end, False)
+                group = block_accessor.slice(start, end)
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
