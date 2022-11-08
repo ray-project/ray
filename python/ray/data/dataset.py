@@ -3035,9 +3035,9 @@ class Dataset(Generic[T]):
                 Call this method if you need more flexibility.
 
         """  # noqa: E501
-        from ray.air._internal.tensorflow_utils import get_type_spec
-        from ray.air.util.data_batch_conversion import (
-            _unwrap_ndarray_object_type_if_needed,
+        from ray.air._internal.tensorflow_utils import (
+            get_type_spec,
+            convert_ndarray_to_tf_tensor,
         )
 
         try:
@@ -3079,16 +3079,6 @@ class Dataset(Generic[T]):
         validate_columns(feature_columns)
         validate_columns(label_columns)
 
-        def convert_ndarray_to_tensor(
-            ndarray: np.ndarray, type_spec: tf.TypeSpec
-        ) -> tf.Tensor:
-            ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
-            is_ragged = isinstance(type_spec, tf.RaggedTensorSpec)
-            if is_ragged:
-                return tf.ragged.constant(ndarray)
-            else:
-                return tf.convert_to_tensor(ndarray)
-
         def convert_batch_to_tensors(
             batch: Dict[str, np.ndarray],
             *,
@@ -3096,11 +3086,16 @@ class Dataset(Generic[T]):
             type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
             if isinstance(columns, str):
-                return convert_ndarray_to_tensor(batch[columns], type_spec)
-            return {
-                column: convert_ndarray_to_tensor(batch[column], type_spec[column])
-                for column in columns
-            }
+                is_ragged = isinstance(type_spec, tf.RaggedTensorSpec)
+                return convert_ndarray_to_tf_tensor(batch[columns], ragged=is_ragged)
+
+            tensors = {}
+            for column in columns:
+                is_ragged = isinstance(type_spec[column], tf.RaggedTensorSpec)
+                tensor = convert_ndarray_to_tf_tensor(batch[column], ragged=is_ragged)
+                tensors[column] = tensor
+
+            return tensors
 
         def generator():
             for batch in self.iter_batches(

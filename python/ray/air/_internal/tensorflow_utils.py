@@ -10,21 +10,26 @@ if TYPE_CHECKING:
     from ray.data._internal.pandas_block import PandasBlockSchema
 
 
-def convert_ndarray_batch_to_tf_tensor(
-    batch: np.ndarray,
+def convert_ndarray_to_tf_tensor(
+    ndarray: np.ndarray,
     dtype: Optional[tf.dtypes.DType] = None,
+    ragged: bool = False,
 ) -> tf.Tensor:
     """Convert a NumPy ndarray to a TensorFlow Tensor.
 
     Args:
-        batch: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
+        ndarray: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
         dtype: A TensorFlow dtype for the created tensor; if None, the dtype will be
             inferred from the NumPy ndarray data.
+        ragged: If ``True``, return a ragged tensor instead of a normal tensor.
 
     Returns: A TensorFlow Tensor.
     """
-    batch = _unwrap_ndarray_object_type_if_needed(batch)
-    return tf.convert_to_tensor(batch, dtype=dtype)
+    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
+    if ragged:
+        return tf.ragged.constant(ndarray, dtype=dtype)
+    else:
+        return tf.convert_to_tensor(ndarray, dtype=dtype)
 
 
 def convert_ndarray_batch_to_tf_tensor_batch(
@@ -50,11 +55,11 @@ def convert_ndarray_batch_to_tf_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_batch_to_tf_tensor(ndarrays, dtypes)
+        batch = convert_ndarray_to_tf_tensor(ndarrays, dtypes)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: convert_ndarray_batch_to_tf_tensor(
+            col_name: convert_ndarray_to_tf_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
             )
