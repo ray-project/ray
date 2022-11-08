@@ -148,10 +148,10 @@ class SampleBatch(dict):
                     # Don't attempt to count on infos since we make no assumptions
                     # about its content
                     continue
-                v = tree.flatten(v)
+                v_flat = tree.flatten(v)
                 try:
                     # Add one of the elements length, since they are all the same
-                    len_ = len(v[0])
+                    len_ = len(v_flat[0])
                     if len_:
                         lengths.append(len_)
                 except Exception:
@@ -159,13 +159,12 @@ class SampleBatch(dict):
                 else:
                     # If we were able to figure out a length, all lengths of
                     # elements of nested structure must be the same
-                    assert all(len(sub_space) == len(v[0]) for sub_space in v)
+                    assert all(len(sub_space) == len(v_flat[0]) for sub_space in v_flat)
                 continue
-
             # TODO: Drop support for lists as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            if isinstance(v, list):
+            elif isinstance(v, list):
                 self[k] = np.array(v)
 
             try:

@@ -456,7 +456,7 @@ class TestSampleBatch(unittest.TestCase):
                         "c": np.array([[4], [5], [6]]),
                     }
                 },
-                0,  # This should have a length of zero, since we can not determine it
+                0,  # This should have a length of zero, since we can ignore INFO
             ),
             (
                 {
