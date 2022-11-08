@@ -24,7 +24,7 @@ if [ -n "${BUILDKITE-}" ]; then
   BUILD_DIR="${ROOT_DIR}/../.."
 fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
-TEST_SCRIPTS=("PY_IGNORE_IMPORTMISMATCH=1 $TEST_DIR/test_microbenchmarks.py" "PY_IGNORE_IMPORTMISMATCH=1 $TEST_DIR/test_basic.py")
+TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
 
 
@@ -122,7 +122,8 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
+      PYTHON_SITE_PACKAGE_PATH="$MACPYTHON_PY_PREFIX/$PY_MM/lib/python$PY_MM/site-packages/"
+      PYTHONPATH="${PYTHON_SITE_PACKAGE_PATH}:${PYTHON_SITE_PACKAGE_PATH}" "$PIP_CMD" uninstall -y ray PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
     done
   done
 elif [ "${platform}" = windows ]; then
