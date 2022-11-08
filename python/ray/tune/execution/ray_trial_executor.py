@@ -232,6 +232,8 @@ class RayTrialExecutor:
         self._max_staged_actors = 1
         self._cached_resources_to_actor = defaultdict(list)
         self._last_cached_actor_cleanup = float("-inf")
+        # Protect these actors from the first cleanup
+        self._newly_cached_actors = set()
 
         # Resource management
         self._resource_manager = PlacementGroupResourceManager()
@@ -583,13 +585,14 @@ class RayTrialExecutor:
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
 
-        # Set the last actor cleanup, so we don't reconcile right away
-        self._last_cached_actor_cleanup = time.time()
-
         self._cached_resources_to_actor[cached_resources].append(
             (trial.runner, allocated_resources)
         )
         self._trial_to_allocated_resources.pop(trial)
+
+        # Track caching of this actor to prevent it from being cleaned up right away.
+        # This is to enable actor re-use when there are no other pending trials, yet.
+        self._newly_cached_actors.add(trial.runner)
 
         trial.set_runner(None)
 
@@ -844,11 +847,23 @@ class RayTrialExecutor:
         staged_resources = self._count_staged_resources()
 
         for resource_request, actors in self._cached_resources_to_actor.items():
+            re_add = []
+
             while len(actors) > staged_resources.get(resource_request, 0) or (
                 force_all and len(actors)
             ):
                 actor, allocated_resources = actors.pop()
-                self._resource_manager.return_resources(allocated_resources)
+                if actor in self._newly_cached_actors and not force_all:
+                    self._newly_cached_actors.remove(actor)
+                    re_add.append((actor, allocated_resources))
+                else:
+                    self._resource_manager.return_resources(
+                        allocated_resources, cancel_request=True
+                    )
+
+            # Re-add actors in self._newly_cached_actors
+            for actor, allocated_resources in re_add:
+                actors.append((actor, allocated_resources))
 
         self._last_cached_actor_cleanup = time.time()
 
