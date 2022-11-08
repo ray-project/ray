@@ -1,10 +1,13 @@
 """Unit test for BatchingNodeProvider.
 Validates BatchingNodeProvider's book-keeping logic.
 """
+from copy import copy
 from uuid import uuid4
 import os
+import random
 import sys
 from typing import Any, Dict
+from collections import defaultdict
 
 import pytest
 
@@ -14,7 +17,7 @@ from ray.autoscaler.batching_node_provider import (
     ScaleRequest,
 )
 from ray.autoscaler._private.util import NodeID, NodeKind, NodeType
-from ray.autoscaler.tags import STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE
+from ray.autoscaler.tags import STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -36,12 +39,14 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         self._add_node(node_type="head-group", node_kind=NodeKind.HEAD)
         # Allow unit test to the control output of safe_to_scale.
         self._safe_to_scale_test_flag = True
+        self._scale_request_submitted_count = 0
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         return self._node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest) -> None:
         """Simulate modification of cluster state by an external cluster manager."""
+        self._scale_request_submitted_count += 1
         # Delete workers.
         for node_id in self.scale_request.workers_to_delete:
             del self._node_data_dict[node_id]
@@ -84,43 +89,133 @@ class BatchingNodeProviderTester:
             cluster_name="test-cluster",
             _allow_multiple=True,
         )
-        self.debug_print()
+        self.expected_node_counts = defaultdict(int)
+        self.expected_node_counts["head-group"] = 1
 
     def update(self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag):
+        """Simulates an autoscaler update with multiple terminate and create calls.
+
+        Calls non_terminated_nodes, then create/terminate nodes, then post_process.
+        """
         self.node_provider._safe_to_scale_test_flag = safe_to_scale_flag
+
+        # Call non_terminated_nodes to refresh internal caches.
+        # Also validate node provider state.
+        self.validate_non_terminated_nodes()
+
         # Terminate some nodes.
+        # Set to track nodes marked for termination during the update.
+        to_terminate_this_update = {}
         for node_type, count in terminate_nodes_requests:
-            to_terminate_list = []
+            # Terminate "count" nodes of the given node_type.
+            # If count is greater than the number of nodes of the type, terminate
+            # all of the nodes of the type.
+            # or just all of the nodes of the node_type if count is too big.
+            to_terminate_this_request = []
             for node in self.node_provider._node_data_dict:
-                if len(to_terminate_list) >= count:
+                if len(to_terminate_this_request) >= count:
                     break
                 if (
                     self.node_provider.node_tags(node)[TAG_RAY_USER_NODE_TYPE]
-                    == node_type
+                    != node_type
                 ):
-                    to_terminate_list.append(node)
-            self.node_provider.terminate_nodes(to_terminate_list)
+                    continue
+                if node in to_terminate_this_update:
+                    continue
+                to_terminate_this_update.add(node)
+                to_terminate_this_request.append(node)
+            self.node_provider.terminate_nodes(to_terminate_this_request)
+            if safe_to_scale_flag:
+                self.expected_node_counts[node_type] -= len(to_terminate_this_request)
+            # else: the scale request will not be submitted.
 
         # Create some nodes.
         for node_type, count in create_node_requests:
             self.node_provider.create_node(
                 node_config={}, tags={TAG_RAY_USER_NODE_TYPE: node_type}, count=count
             )
+            if safe_to_scale_flag:
+                self.expected_node_counts[node_type] += count
+            # else: the scale request will not be submitted.
+
+        # Scale change is needed exactly when there's something to create or terminate.
+        assert self.node_provider.scale_change_needed is (create_node_requests or terminate_nodes_requests)
 
         # Submit the scale request.
         self.node_provider.post_process()
-        self.debug_print()
+        if safe_to_scale_flag and (create_node_requests or terminate_nodes_requests):
+            self.expected_scale_request_submitted_count += 1
+
+    def validate_non_terminated_nodes(self):
+        """Calls non_terminated_nodes and validates output against this test classes's
+        accumulated expected state.
+
+        Tests methods internal_ip, node_tags, non_terminated_nodes of
+        BatchingNodeProvider.
+        """
+        nodes = self.node_provider.non_terminated_nodes({})
+
+        actual_node_counts = defaultdict(int)
+        for node in nodes:
+            # Trivial check. Just confirming we can call internal_ip with no issue.
+            assert isinstance(self.node_provider.internal_ip(node), str)
+
+            # Check tag structure.
+            tags = self.node_provider.node_tags(node)
+            assert set(tags.keys()) == {TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND}
+            node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            node_kind = tags[TAG_RAY_NODE_KIND]
+            node_status = tags[TAG_RAY_NODE_STATUS]
+            if node_type == "head-group":
+                assert node_kind == NodeKind.HEAD
+            else:
+                assert node_kind == NodeKind.WORKER
+            # Just by construction of this test:
+            assert node_status == STATUS_UP_TO_DATE
+
+            actual_node_counts[node_type] += 1
+        assert actual_node_counts == self.expected_node_counts
+
+        # Make some assertions about internal structure of the node provider.
+        expected_node_counts_without_head = copy(self.expected_node_counts)
+        del expected_node_counts_without_head["head-group"]
+
+        assert self.node_provider.scale_request.workers_to_delete == expected_node_counts_without_head
+        assert self.node_provider.scale_change_needed is False
+        assert self.node_provider._scale_request_submitted_count == self.expected_scale_request_submitted_count
+
+    def update_with_random_requests(self):
+        random_requests = self.generate_random_requests()
+        self.update(*random_requests)
+
+    def generate_random_requests(self):
+        num_creates = random.choice(range(100))
+        num_terminates = random.choice(range(100))
+
+        create_node_requests = []
+        for _ in range(num_creates):
+            # Choose from 5 worker types.
+            node_type = random.choice([f"type-{x}" for x in range(5)])
+            # Create up to 9 workers.
+            count = random.choice(range(10))
+            create_node_requests.append((node_type, count))
+
+        terminate_nodes_requests = []
+        for _ in range(num_terminates):
+            node_type = random.choice([f"type-{x}" for x in range(5)])
+            # Terminate up to 9 workers.
+            count = random.choice(range(10))
+            terminate_nodes_requests.append((node_type, count))
+
+        # 50% chance of the scale request being submitted.
+        safe_to_scale_flag = random.choice([True, False])
+
+        return create_node_requests, terminate_nodes_requests, safe_to_scale_flag
 
     def assert_worker_counts(self, expected_worker_counts):
+        """Validates worker counts against internal node_provider state.
+        """
         self.node_provider._assert_worker_counts(expected_worker_counts)
-
-    def debug_print(self):
-        print("==========================================")
-        for node in self.node_provider.non_terminated_nodes(tag_filters={}):
-            print(
-                self.node_provider.node_tags(node),
-                self.node_provider.internal_ip(node),
-            )
 
 
 def test_batching_node_provider_basic():
@@ -159,12 +254,16 @@ def test_batching_node_provider_basic():
     )
 
 
-def test_batching_node_provider_many_inputs():
-    pass
-
-
-def test_batching_node_provider_other_methods():
-    pass
+def test_batching_node_provider_many_requests():
+    """Simulate 10 autoscaler updates with randomly generated create/terminate
+    requests.
+    """
+    random.seed(0)
+    tester = BatchingNodeProviderTester()
+    for _ in range(2):
+        tester.update_with_random_requests()
+    # Final check.
+    tester.validate_non_terminated_nodes()
 
 
 if __name__ == "__main__":
