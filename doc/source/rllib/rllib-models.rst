@@ -361,7 +361,7 @@ You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"
 (see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__).
 RLlib will automatically run the update ops for the batch norm layers during optimization
 (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and
-`multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_impl.py>`__ for the exact handling of these updates).
+`multi_gpu_learner_thread.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_learner_thread.py>`__ for the exact handling of these updates).
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 

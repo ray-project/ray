@@ -207,6 +207,22 @@ def start_sending_traffics(duration, users):
     )
     print(helm_install_logs)
 
+    timeout_wait_for_locust_s = 300
+    while timeout_wait_for_locust_s > 0:
+        labels = [
+            f"app.kubernetes.io/instance=ray-locust-{cluster_id}",
+            "app.kubernetes.io/name=locust,component=master",
+        ]
+        pods = cli.list_namespaced_pod("default", label_selector=",".join(labels))
+        assert len(pods.items) == 1
+
+        if pods.items[0].status.phase == "Pending":
+            print("Waiting for the locust pod to be ready...")
+            time.sleep(30)
+            timeout_wait_for_locust_s -= 30
+        else:
+            break
+
     proc = subprocess.Popen(
         [
             "kubectl",

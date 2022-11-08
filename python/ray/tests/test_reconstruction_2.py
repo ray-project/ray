@@ -17,16 +17,34 @@ FINISHED = "FINISHED"
 WAITING_FOR_EXECUTION = "SUBMITTED_TO_WORKER"
 
 
+@pytest.fixture(params=[True, False])
+def config(request):
+    pull_based = request.param
+    if pull_based:
+        config = {
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 100,
+            "health_check_failure_threshold": 10,
+            "object_timeout_milliseconds": 200,
+            "pull_based_healthcheck": True,
+        }
+    else:
+        config = {
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 100,
+            "pull_based_healthcheck": False,
+            "object_timeout_milliseconds": 200,
+        }
+    yield config
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "max_direct_call_object_size": 100,
-        "task_retry_delay_ms": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabled):
+    config["max_direct_call_object_size"] = 100
+    config["task_retry_delay_ms"] = 100
+    config["object_timeout_milliseconds"] = 200
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -64,15 +82,12 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_hangs(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "max_direct_call_object_size": 100,
-        "task_retry_delay_ms": 100,
-        "object_timeout_milliseconds": 200,
-        "fetch_warn_timeout_milliseconds": 1000,
-    }
+def test_reconstruction_hangs(config, ray_start_cluster):
+    config["max_direct_call_object_size"] = 100
+    config["task_retry_delay_ms"] = 100
+    config["object_timeout_milliseconds"] = 200
+    config["fetch_warn_timeout_milliseconds"] = 1000
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -107,13 +122,8 @@ def test_reconstruction_hangs(ray_start_cluster):
         ray.get(x)
 
 
-def test_lineage_evicted(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-        "max_lineage_bytes": 10_000,
-    }
+def test_lineage_evicted(config, ray_start_cluster):
+    config["max_lineage_bytes"] = 10_000
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -163,12 +173,7 @@ def test_lineage_evicted(ray_start_cluster):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_multiple_returns(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_multiple_returns(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -215,13 +220,8 @@ def test_multiple_returns(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_nested(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-        "fetch_fail_timeout_milliseconds": 10_000,
-    }
+def test_nested(config, ray_start_cluster, reconstruction_enabled):
+    config["fetch_fail_timeout_milliseconds"] = 10_000
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -283,12 +283,7 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_spilled(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_spilled(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False
@@ -336,13 +331,7 @@ def test_spilled(ray_start_cluster, reconstruction_enabled):
             ray.get(obj, timeout=60)
 
 
-def test_memory_util(ray_start_cluster):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
-
+def test_memory_util(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -477,12 +466,7 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruct_freed_object(ray_start_cluster, reconstruction_enabled):
-    config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "object_timeout_milliseconds": 200,
-    }
+def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enabled):
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
         config["lineage_pinning_enabled"] = False

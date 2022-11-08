@@ -239,13 +239,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=True, message="Node summary fetched.", summary=all_node_summary
             )
-        elif view == "details":
-            all_node_details = await DataOrganizer.get_all_node_details()
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message="All node details fetched",
-                clients=all_node_details,
-            )
         elif view is not None and view.lower() == "hostNameList".lower():
             alive_hostnames = set()
             for node in DataSource.nodes.values():
