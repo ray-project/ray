@@ -90,7 +90,7 @@ class WorkerSet:
                 have no class defined, use this `default_policy_class`.
                 If None, PolicySpecs will be using the Algorithm's default Policy
                 class.
-            trainer_config: Optional AlgorithmConfig (or config dict).
+            config: Optional AlgorithmConfig (or config dict).
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
                 in the returned set as well (default: True). If `num_workers`
@@ -178,7 +178,7 @@ class WorkerSet:
         Args:
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
-            trainer_config: Optional dict that extends the common config of
+            config: Optional dict that extends the common config of
                 the Algorithm class.
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
