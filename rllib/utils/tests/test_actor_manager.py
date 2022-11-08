@@ -130,6 +130,28 @@ class TestActorManager(unittest.TestCase):
 
         manager.clear()
 
+    def test_sync_call_return_objrefs(self):
+        """Test synchronous remote calls to all actors asking for raw ObjectRefs."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        results = list(
+            manager.foreach_actor(
+                lambda w: w.call(), healthy_only=False, return_objref=True,
+            )
+        )
+
+        # We fired against all actors regardless of their status.
+        # So we should get 40 results back.
+        self.assertEqual(len(results), 4)
+
+        for r in results:
+            # Each result is an ObjectRef.
+            self.assertTrue(r.ok)
+            self.assertTrue(isinstance(r.get(), ray.ObjectRef))
+
+        manager.clear()
+
     def test_sync_call_fire_and_forget(self):
         """Test synchronous remote calls with 0 timeout_seconds."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
@@ -171,7 +193,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.foreach_actor(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[1, 1],
+            remote_actor_ids=[0, 0],
         )
         # Returns 1 and 2, representing the first and second calls to actor 0.
         self.assertEqual([r.get() for r in results.ignore_errors()], [1, 2])
@@ -187,7 +209,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[1, 1],
+            remote_actor_ids=[0, 0],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -248,7 +270,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[1, 1],
+            remote_actor_ids=[0, 0],
         )
         self.assertEqual(num_of_calls, 2)
 
@@ -256,7 +278,7 @@ class TestActorManager(unittest.TestCase):
         num_of_calls = manager.foreach_actor_async(
             lambda w: w.call(),
             healthy_only=False,
-            remote_actor_ids=[1],
+            remote_actor_ids=[0],
         )
         # We actually made 0 calls.
         self.assertEqual(num_of_calls, 0)
@@ -275,13 +297,28 @@ class TestActorManager(unittest.TestCase):
         def f(id, _):
             return id
 
-        func = [functools.partial(f, i + 1) for i in range(4)]
+        func = [functools.partial(f, i) for i in range(4)]
 
         manager.foreach_actor_async(func, healthy_only=True)
         results = manager.fetch_ready_async_reqs(timeout_seconds=None)
 
-        # Should get results back from calling actor 3 and 4.
-        self.assertEqual([r.get() for r in results], [3, 4])
+        # Should get results back from calling actor 0 and 3.
+        self.assertEqual([r.get() for r in results], [0, 3])
+
+        manager.clear()
+
+    def test_len_of_func_not_match_len_of_actors(self):
+        """Test healthy only mode works when a list of funcs are provided."""
+        actors = [Actor.remote(i) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        def f(id, _):
+            return id
+
+        func = [functools.partial(f, i) for i in range(3)]
+
+        with self.assertRaisesRegexp(AssertionError, "same number of callables") as _:
+            manager.foreach_actor_async(func, healthy_only=True),
 
         manager.clear()
 

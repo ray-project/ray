@@ -41,8 +41,30 @@ class TestWorkerSet(unittest.TestCase):
             local_worker=False,
         )
 
-        # 3 policies from only the remote workers.
+        # 2 policies from only the remote workers.
         self.assertEqual(len(policies), 2)
+
+        ws.stop()
+
+    def test_foreach_worker_return_objrefs(self):
+        """Test to make sure return_objref parameter works."""
+        ws = WorkerSet(
+            env_creator=lambda _: gym.make("CartPole-v1"),
+            default_policy_class=RandomPolicy,
+            config=AlgorithmConfig().rollouts(num_rollout_workers=2),
+            num_workers=2,
+        )
+
+        policy_refs = ws.foreach_worker(
+            lambda w: w.get_policy(DEFAULT_POLICY_ID),
+            local_worker=False,
+            return_objref=True,
+        )
+
+        # 2 policy references from remote workers.
+        self.assertEqual(len(policy_refs), 2)
+        self.assertTrue(isinstance(policy_refs[0], ray.ObjectRef))
+        self.assertTrue(isinstance(policy_refs[1], ray.ObjectRef))
 
         ws.stop()
 
@@ -66,6 +88,10 @@ class TestWorkerSet(unittest.TestCase):
         remote_results = ws.fetch_ready_async_reqs(timeout_seconds=None)
         self.assertEqual(len(remote_results), 2)
         for p in remote_results:
+            # p is in the format of (worker_id, result).
+            # First is the id of the remote worker.
+            self.assertTrue(p[0] in [1, 2])
+            # Next is the actual policy.
             self.assertIsInstance(p[1], RandomPolicy)
 
         ws.stop()

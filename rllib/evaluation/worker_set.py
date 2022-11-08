@@ -83,13 +83,14 @@ class WorkerSet:
         Args:
             env_creator: Function that returns env given env config.
             validate_env: Optional callable to validate the generated
-                environment (only on worker=0).
+                environment (only on worker=0). This callable should raise
+                an exception if the environment is invalid.
             default_policy_class: An optional default Policy class to use inside
                 the (multi-agent) `policies` dict. In case the PolicySpecs in there
                 have no class defined, use this `default_policy_class`.
                 If None, PolicySpecs will be using the Algorithm's default Policy
                 class.
-            config: Optional AlgorithmConfig (or config dict).
+            trainer_config: Optional AlgorithmConfig (or config dict).
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
                 in the returned set as well (default: True). If `num_workers`
@@ -132,7 +133,9 @@ class WorkerSet:
         self._logdir = logdir
 
         # Create remote worker manager.
-        self.__worker_manager = FaultTolerantActorManager()
+        # Note(jungong) : ID 0 is used by the local worker.
+        # Starting remote workers from ID 1 to avoid conflicts.
+        self.__worker_manager = FaultTolerantActorManager(init_id=1)
 
         if _setup:
             try:
@@ -680,6 +683,7 @@ class WorkerSet:
         healthy_only=False,
         remote_worker_indices: List[int] = None,
         timeout_seconds=None,
+        return_objref: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
 
@@ -690,10 +694,17 @@ class WorkerSet:
                 this will apply func on all workers regardless of their states.
             remote_worker_indices: Apply func on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
+            return_objref: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this WorkerSet.
 
         Returns:
              The list of return values of all calls to `func([worker])`.
         """
+        assert (not return_objref or not local_worker), (
+            "Can not return ObjectRef from local worker."
+        )
+
         local_result = []
         if local_worker and self.local_worker() is not None:
             local_result = [func(self.local_worker())]
@@ -703,6 +714,7 @@ class WorkerSet:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_indices,
             timeout_seconds=timeout_seconds,
+            return_objref=return_objref,
         )
         remote_results = [r.get() for r in remote_results.ignore_ray_errors()]
 
