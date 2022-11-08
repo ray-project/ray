@@ -23,7 +23,7 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
-        config = appo.APPOConfig()
+        config = appo.APPOConfig().rollouts(num_rollout_workers=1)
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -34,7 +34,7 @@ class TestAPPO(unittest.TestCase):
                 results = algo.train()
                 print(results)
                 check_train_results(results)
-                off_policy_ness = check_off_policyness(results, upper_limit=1.5)
+                off_policy_ness = check_off_policyness(results, upper_limit=10.0)
                 print(f"off-policy'ness={off_policy_ness}")
 
             check_compute_single_action(algo)
