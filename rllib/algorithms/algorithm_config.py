@@ -1973,26 +1973,26 @@ class AlgorithmConfig:
             ...   .framework("torch")
             ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
             ... )
-            >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup()
-            >>> is_policy_to_train("pol1")
-            ... True
-            >>> is_policy_to_train("pol2")
-            ... False
-            >>> print(policy_dict)
-            ... {
-            ...   "pol1": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ...   "pol2": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ... }
+            >>> policy_dict, is_policy_to_train =  config.get_multi_agent_setup()  # doctest: +SKIP
+            >>> is_policy_to_train("pol1") # doctest: +SKIP
+            True
+            >>> is_policy_to_train("pol2") # doctest: +SKIP
+            False
+            >>> print(policy_dict) # doctest: +SKIP
+            {
+              "pol1": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+              "pol2": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+            }
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs
