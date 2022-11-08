@@ -178,7 +178,7 @@ class RayTaskError(RayError):
             if line.startswith("Traceback "):
                 traceback_line = (
                     f"{colorama.Fore.CYAN}"
-                    f"{self.proctitle}"
+                    f"{self.proctitle}()"
                     f"{colorama.Fore.RESET} "
                     f"(pid={self.pid}, ip={self.ip}"
                 )

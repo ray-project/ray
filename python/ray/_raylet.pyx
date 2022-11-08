@@ -987,7 +987,7 @@ cdef execute_task_with_cancellation_handler(
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     task_name = name.decode("utf-8")
-    title = f"ray::{task_name}()"
+    title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs available to this task.
     ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())

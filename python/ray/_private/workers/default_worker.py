@@ -141,6 +141,7 @@ parser.add_argument(
     help="True if Ray debugger is made available externally.",
 )
 
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
