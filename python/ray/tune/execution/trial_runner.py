@@ -66,7 +66,7 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
 
 
 def _load_trial_from_checkpoint(
-    trial_cp: dict, stub: bool = False, local_dir: str = None
+    trial_cp: dict, stub: bool = False, new_local_dir: Optional[str] = None
 ) -> Trial:
     """_summary_
 
@@ -75,7 +75,8 @@ def _load_trial_from_checkpoint(
             `Trial.get_json_state`
         stub: Whether or not to validate the trainable name when creating the Trial.
             Used for testing purposes for creating mocks.
-        local_dir: if set, the Trial `local_dir` will be updated in the `trial_cp` state
+        new_local_dir: if set, the Trial `local_dir` will be updated in the
+            `trial_cp` state
 
     Returns:
         new_trial: New trial with state loaded from experiment checkpoint
@@ -85,8 +86,8 @@ def _load_trial_from_checkpoint(
         stub=stub,
         _setup_default_resource=False,
     )
-    if local_dir:
-        trial_cp["local_dir"] = local_dir
+    if new_local_dir:
+        trial_cp["local_dir"] = new_local_dir
     new_trial.__setstate__(trial_cp)
     return new_trial
 
@@ -94,7 +95,7 @@ def _load_trial_from_checkpoint(
 def _load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any],
     stub: bool = False,
-    **overwrite_checkpoint_kwargs,
+    new_local_dir: Optional[str] = None,
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
@@ -109,7 +110,7 @@ def _load_trials_from_experiment_checkpoint(
     for trial_cp in checkpoints:
         trials.append(
             _load_trial_from_checkpoint(
-                trial_cp, stub=stub, **overwrite_checkpoint_kwargs
+                trial_cp, stub=stub, new_local_dir=new_local_dir,
             )
         )
 
@@ -787,7 +788,7 @@ class TrialRunner:
 
         # Load trials with respect to the `_local_checkpoint_dir`
         trials = _load_trials_from_experiment_checkpoint(
-            runner_state, local_dir=self._local_checkpoint_dir
+            runner_state, new_local_dir=self._local_checkpoint_dir
         )
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
