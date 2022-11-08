@@ -102,8 +102,6 @@ elif [[ "$platform" == "macosx" ]]; then
           "3.9"
           "3.10")
 
-  _PYTHONPATH="${PYTHONPATH}"
-
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
 
@@ -112,17 +110,15 @@ elif [[ "$platform" == "macosx" ]]; then
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
     PYTHON_SITE_PACKAGE_PATH="$MACPYTHON_PY_PREFIX/$PY_MM/lib/python$PY_MM/site-packages/"
 
-    PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
-
     # Find the appropriate wheel by grepping for the Python version.
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
-    PYTHONPATH="${_PYTHONPATH}:${PYTHON_SITE_PACKAGE_PATH}" "$PIP_CMD" uninstall -y ray
-    "$PIP_CMD" install -q "$PYTHON_WHEEL"
+    "$PYTHON_EXE" -m pip uninstall -y ray
+    "$PYTHON_EXE" -m pip install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
+    "$PYTHON_EXE" -m pip install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
