@@ -30,7 +30,7 @@ class TestIMPALA(unittest.TestCase):
         config = (
             impala.ImpalaConfig()
             .environment("CartPole-v1")
-            .resources(num_gpus=2, _fake_gpus=True)  # TODO no fake
+            .resources(num_gpus=0)
             .training(
                 model={
                     "lstm_use_prev_action": True,
@@ -56,9 +56,7 @@ class TestIMPALA(unittest.TestCase):
                     results = algo.train()
                     print(results)
                     check_train_results(results)
-                    # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
-                    # 1 rollout worker.
-                    off_policy_ness = check_off_policyness(results, upper_limit=1.0)
+                    off_policy_ness = check_off_policyness(results, upper_limit=2.0)
                     print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
