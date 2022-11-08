@@ -101,7 +101,7 @@ const ObjectIdReader = () => {
             <br />
             {tagList
               .filter(
-                ([a, b, c]) => detectFlag(revertBit(id.slice(28, 32)), b) === c,
+                ([, b, c]) => detectFlag(revertBit(id.slice(28, 32)), b) === c,
               )
               .map(([name]) => (
                 <StatusChip key={name} type="tag" status={name} />

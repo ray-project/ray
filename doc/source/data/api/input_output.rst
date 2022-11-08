@@ -137,10 +137,20 @@ Mars
 .. automethod:: ray.data.Dataset.to_mars
     :noindex:
 
+Torch
+-----
+
+.. autofunction:: ray.data.from_torch
+
 HuggingFace
 ------------
 
 .. autofunction:: ray.data.from_huggingface
+
+TensorFlow
+----------
+
+.. autofunction:: ray.data.from_tf
 
 
 .. _data_source_api:
@@ -188,12 +198,6 @@ Built-in Datasources
     :members:
 
 .. autoclass:: ray.data.datasource.RangeDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.TFRecordDatasource
