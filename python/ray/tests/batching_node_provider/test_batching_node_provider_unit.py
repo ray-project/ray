@@ -240,6 +240,7 @@ class BatchingNodeProviderTester:
 
 def test_batching_node_provider_basic():
     tester = BatchingNodeProviderTester()
+
     tester.update(
         create_node_requests=[
             ("type-1", 5),
@@ -248,14 +249,16 @@ def test_batching_node_provider_basic():
         safe_to_scale_flag=True,
     )
     tester.assert_worker_counts({"type-1": 5})
+
     tester.update(
-        create_node_requests=[("type-2", 10)],
+        create_node_requests=[("type-2", 5), ("type-2", 5)],
         terminate_nodes_requests=[("type-1", 2)],
         safe_to_scale_flag=True,
     )
     tester.assert_worker_counts({"type-1": 3, "type-2": 10})
+
     tester.update(
-        create_node_requests=[("type-1", 10)],
+        create_node_requests=[("type-1", 3)],
         terminate_nodes_requests=[("type-1", 2)],
         safe_to_scale_flag=False,
     )
@@ -263,17 +266,72 @@ def test_batching_node_provider_basic():
     # Same result as above.
     tester.assert_worker_counts({"type-1": 3, "type-2": 10})
 
+    tester.update(
+        create_node_requests=[],
+        terminate_nodes_requests=[("type-1", 2), ("type-2", 1), ("type-2", 1)],
+        safe_to_scale_flag=True,
+    )
+    tester.assert_worker_counts({"type-1": 1, "type-2": 8})
+
 
 def test_batching_node_provider_many_requests():
     """Simulate 10 autoscaler updates with randomly generated create/terminate
     requests.
     """
-    random.seed(0)
     tester = BatchingNodeProviderTester()
     for _ in range(2):
         tester.update_with_random_requests()
     # Final check.
     tester.validate_non_terminated_nodes()
+
+
+def test_terminate_safeguards():
+    """Tests the following behaviors:
+        - the node provider ignores requests to terminate a node twice.
+        - the node provider ignores requests to terminate an unknown node.
+    """
+    node_provider = MockBatchingNodeProvider(
+        provider_config={
+            DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+            DISABLE_NODE_UPDATERS_KEY: True,
+            FOREGROUND_NODE_LAUNCH_KEY: True,
+        },
+        cluster_name="test-cluster",
+        _allow_multiple=True,
+    )
+    nodes = node_provider.non_terminated_nodes({})
+    assert len(nodes) == 1
+    head_node = nodes[0]
+    node_provider.create_node(node_config={}, tags={TAG_RAY_USER_NODE_TYPE: "type"}, count=1)
+    node_provider.post_process()
+    nodes = node_provider.non_terminated_nodes({})
+    assert len(nodes) == 2
+
+    worker_node = ""
+    for node in nodes:
+        if node == head_node:
+            continue
+        else:
+            worker_node = node
+
+    # This node is not in our list.
+    unknown_node = node + worker_node
+    node_provider.terminate_node(unknown_node)
+    node_provider.post_process()
+    nodes = node_provider.non_terminated_nodes({})
+    # Terminate request was ignored because the node is unknown.
+    assert len(nodes) == 2
+
+    node_provider.terminate_node(worker_node)
+    node_provider.terminate_node(worker_node)
+    node_provider.post_process()
+    nodes = node_provider.non_terminated_nodes({})
+    # Second terminate request was ignored.
+    assert len(nodes) == 1
+
+
+def test_no_nodes_to_terminate():
+    pass
 
 
 if __name__ == "__main__":

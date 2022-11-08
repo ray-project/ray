@@ -201,11 +201,6 @@ class BatchingNodeProvider(NodeProvider):
         self.scale_change_needed = True
 
     def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Terminates the specified node.
-
-        Optionally return a mapping from deleted node ids to node
-        metadata.
-        """
         # Sanity check: We should never try to delete the same node twice.
         if node_id in self.scale_request.workers_to_delete:
             logger.warning(
@@ -214,16 +209,23 @@ class BatchingNodeProvider(NodeProvider):
             )
             return
 
+        # Sanity check: We should never try to delete a node we haven't seen.
+        if node_id not in self.node_data_dict:
+            logger.warning(
+                f"Autoscaler tried to terminate unkown node {node_id}"
+                ". Skipping termination request."
+            )
+            return
+
         node_type = self.node_data_dict[node_id].type
 
         # Sanity check: Don't request less than 0 nodes.
         if self.scale_request.desired_num_workers[node_type] <= 0:
-            logger.warning(
+            # This is logically impossible.
+            raise AssertionError(
                 "NodeProvider attempted to request less than 0 workers of type "
                 f"{node_type}. Skipping termination request."
             )
-            self.scale_request.desired_num_workers[node_type] = 0
-            return
 
         self.scale_request.desired_num_workers[node_type] -= 1
         self.scale_request.workers_to_delete.add(node_id)
