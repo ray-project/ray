@@ -80,7 +80,7 @@ if __name__ == "__main__":
             print("FAILED")
             exit(1)
 
-    time.sleep(SLEEP_TIME_PER_BATCH_S)
+        time.sleep(SLEEP_TIME_PER_BATCH_S)
 
     time_taken = time.time() - start
     result = {
