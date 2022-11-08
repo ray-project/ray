@@ -8,6 +8,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
+    check_off_policyness,
     check_train_results,
     framework_iterator,
 )
@@ -18,7 +19,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -35,14 +36,13 @@ class TestIMPALA(unittest.TestCase):
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
                 },
-                num_aggregation_workers=1,#TODO
             )
         )
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             for lstm in [False, True]:
-                #config.num_aggregation_workers = 0 if not lstm else 1
+                config.num_aggregation_workers = 0 if not lstm else 1
                 config.model["use_lstm"] = lstm
                 print(
                     "lstm={} aggregation-workers={}".format(
@@ -54,8 +54,12 @@ class TestIMPALA(unittest.TestCase):
                 algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
-                    check_train_results(results)
                     print(results)
+                    check_train_results(results)
+                    # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
+                    # 1 rollout worker.
+                    off_policy_ness = check_off_policyness(results, 1.0)
+                    print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
                     algo,

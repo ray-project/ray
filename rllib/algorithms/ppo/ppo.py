@@ -326,8 +326,14 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        policies_to_update = list(train_results.keys())
+
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
         }
 
         # Update weights - after learning on the local worker - on all remote
@@ -335,7 +341,7 @@ class PPO(Algorithm):
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
-                    policies=list(train_results.keys()),
+                    policies=policies_to_update,
                     global_vars=global_vars,
                 )
 

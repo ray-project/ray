@@ -239,7 +239,13 @@ class SampleBatch(dict):
             ),
             copy_,
         )
-        copy_ = SampleBatch(data)
+        copy_ = SampleBatch(
+            data,
+            _time_major=self.time_major,
+            _zero_padded=self.zero_padded,
+            _max_seq_len=self.max_seq_len,
+            _num_grad_updates=self.num_grad_updates,
+        )
         copy_.set_get_interceptor(self.get_interceptor)
         copy_.added_keys = self.added_keys
         copy_.deleted_keys = self.deleted_keys
@@ -520,12 +526,14 @@ class SampleBatch(dict):
                 seq_lens=seq_lens,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
         else:
             return SampleBatch(
                 tree.map_structure(lambda value: value[start:end], self),
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
 
     @PublicAPI
@@ -940,6 +948,7 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
                 _zero_padded=self.zero_padded,
                 _max_seq_len=self.max_seq_len if self.zero_padded else None,
+                _num_grad_updates=self.num_grad_updates,
             )
         else:
             data = tree.map_structure(lambda value: value[start:stop], self)
@@ -947,6 +956,7 @@ class SampleBatch(dict):
                 data,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
 
     @Deprecated(error=False)

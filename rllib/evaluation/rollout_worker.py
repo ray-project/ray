@@ -535,13 +535,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = {
             # TODO(sven): Make this per-policy!
             "timesteps": 0,
-
             # Counter for performed gradient updates per policy in `self.policy_map`.
             # Allows for compiling metrics on the off-policy'ness of an update given
             # that the number of gradient updates of the sampling policies are known
             # to the learner (and can be compared to the learner version of the same
             # policy).
-            "gradient_updates_per_policy": defaultdict(int),
+            "num_grad_updates_per_policy": defaultdict(int),
         }
 
         # If seed is provided, add worker index to it and 10k iff evaluation worker.
@@ -1782,7 +1781,11 @@ class RolloutWorker(ParallelIteratorWorker):
         return self.global_vars
 
     @DeveloperAPI
-    def set_global_vars(self, global_vars: dict) -> None:
+    def set_global_vars(
+        self,
+        global_vars: dict,
+        policy_ids: Optional[List[PolicyID]] = None,
+    ) -> None:
         """Updates this worker's and all its policies' global vars.
 
         Updates are done using the dict's update method.
@@ -1790,24 +1793,38 @@ class RolloutWorker(ParallelIteratorWorker):
         Args:
             global_vars: The global_vars dict to update the `self.global_vars` dict
                 from.
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
 
         Examples:
             >>> worker = ... # doctest: +SKIP
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        # Only update policies that are being trained in order to avoid superfluous
-        # access of policies which might have been offloaded to disk. This is important
-        # here since global vars are constantly being updated.
-        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         # Handle per-policy values.
-        global_vars = global_vars.copy()
-        gradient_updates_per_policy = global_vars.pop("gradient_updates_per_policy", {})
-        self.global_vars["gradient_updates_per_policy"].update(
+        global_vars_copy = global_vars.copy()
+        gradient_updates_per_policy = global_vars_copy.pop(
+            "num_grad_updates_per_policy", {}
+        )
+        self.global_vars["num_grad_updates_per_policy"].update(
             gradient_updates_per_policy
         )
+        # Only update explicitly provided policies or those that that are being
+        # trained, in order to avoid superfluous access of policies, which might have
+        # been offloaded to the object store.
+        # Important b/c global vars are constantly being updated.
+        for pid in policy_ids if policy_ids is not None else self.policy_map.keys():
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
+                self.policy_map[pid].on_global_var_update(
+                    dict(
+                        global_vars_copy,
+                        # If count is None, Policy won't update the counter.
+                        **{"num_grad_updates": gradient_updates_per_policy.get(pid)},
+                    )
+                )
+
         # Update all other global vars.
-        self.global_vars.update(global_vars)
+        self.global_vars.update(global_vars_copy)
 
     @DeveloperAPI
     def stop(self) -> None:

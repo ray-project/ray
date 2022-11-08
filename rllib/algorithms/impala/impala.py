@@ -743,12 +743,14 @@ class Impala(Algorithm):
             return processed_batches
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
+
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
+
         return processed_batches
 
     def process_experiences_tree_aggregation(
@@ -790,16 +792,25 @@ class Impala(Algorithm):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
+        local_worker = self.workers.local_worker()
+
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
+            "num_grad_updates_per_policy": {
+                pid: local_worker.policy_map[pid].num_grad_updates
+                for pid in policy_ids or []
+            },
+        }
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.remote_workers()
+            policy_ids != []
+            and self.workers.remote_workers()
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config.broadcast_interval
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            weights = ray.put(local_worker.get_weights(policy_ids))
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
@@ -809,7 +820,7 @@ class Impala(Algorithm):
             self.workers_that_need_updates = set()
 
         # Update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(global_vars)
+        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
 
     @override(Algorithm)
     def on_worker_failures(
