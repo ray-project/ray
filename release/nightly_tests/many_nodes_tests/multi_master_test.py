@@ -6,8 +6,9 @@ import ray
 
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
-    num_masters = 250
-    num_slaves_per_master = 19
+    # There are 500 groups, each group has 1 master and 9 slaves.
+    num_masters = 500
+    num_slaves_per_master = 9
 
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
@@ -21,10 +22,12 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
             ]
 
     print("Start launch actors")
-    masters = [Actor.options(max_restarts=-1).remote() for _ in range(num_masters)]
-    actors = masters.copy()
-    for master in masters:
-        actors.extend(ray.get(master.create.remote()))
+    actors = [Actor.options(max_restarts=-1).remote() for _ in range(num_masters)]
+    slaves_per_master = []
+    for master in actors:
+        slaves_per_master.append(master.create.remote())
+    for slaves in slaves_per_master:
+        actors.extend(ray.get(slaves))
     return actors
 
 
