@@ -2,14 +2,18 @@
 Validates BatchingNodeProvider's book-keeping logic.
 """
 from uuid import uuid4
+import os
+import sys
 from typing import Any, Dict
+
+import pytest
 
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
     NodeData,
     ScaleRequest,
 )
-from ray.autoscaler._private.util import NodeID, NodeKind
+from ray.autoscaler._private.util import NodeID, NodeKind, NodeType
 from ray.autoscaler.tags import STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
@@ -50,7 +54,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
                 - cur_num_workers[node_type]
             )
             # The next assertion validates the node provider and the test structure.
-            # After removing nodes to terminate, there should be no more nodes to terminate!
+            # After removing nodes to terminate, there should be no more
+            # nodes to terminate!
             assert diff >= 0, diff
             for _ in range(diff):
                 self._add_node(node_type, NodeKind.WORKER)
@@ -63,6 +68,9 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
 
     def safe_to_scale(self) -> bool:
         return self._safe_to_scale_test_flag
+
+    def _assert_worker_counts(self, expected_worker_counts: Dict[NodeType, int]) -> None:
+        assert self._cur_num_workers(self._node_data_dict) == expected_worker_counts
 
 
 class BatchingNodeProviderTester:
@@ -78,7 +86,8 @@ class BatchingNodeProviderTester:
         )
         self.debug_print()
 
-    def update(self, create_node_requests, terminate_nodes_requests):
+    def update(self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag):
+        self.node_provider._safe_to_scale_test_flag = safe_to_scale_flag
         # Terminate some nodes.
         for node_type, count in terminate_nodes_requests:
             to_terminate_list = []
@@ -102,6 +111,9 @@ class BatchingNodeProviderTester:
         self.node_provider.post_process()
         self.debug_print()
 
+    def assert_worker_counts(self, expected_worker_counts):
+        self.node_provider._assert_worker_counts(expected_worker_counts)
+
     def debug_print(self):
         print("==========================================")
         for node in self.node_provider.non_terminated_nodes(tag_filters={}):
@@ -111,15 +123,53 @@ class BatchingNodeProviderTester:
             )
 
 
-if __name__ == "__main__":
+def test_batching_node_provider_basic():
     tester = BatchingNodeProviderTester()
     tester.update(
         create_node_requests=[
-            ("blah", 5),
+            ("type-1", 5),
         ],
         terminate_nodes_requests=[],
+        safe_to_scale_flag=True,
+    )
+    tester.assert_worker_counts(
+        {"type-1": 5}
     )
     tester.update(
-        create_node_requests=[],
-        terminate_nodes_requests=[("blah", 1)],
+        create_node_requests=[
+            ("type-2", 10)
+        ],
+        terminate_nodes_requests=[("type-1", 2)],
+        safe_to_scale_flag=True,
     )
+    tester.assert_worker_counts(
+        {"type-1": 3, "type-2": 10}
+    )
+    tester.update(
+        create_node_requests=[
+            ("type-1", 10)
+        ],
+        terminate_nodes_requests=[("type-1", 2)],
+        safe_to_scale_flag=False,
+    )
+    # Scale request was not processed because safe_to_scale returned false.
+    # Same result as above.
+    tester.assert_worker_counts(
+        {"type-1": 3, "type-2": 10}
+    )
+
+
+def test_batching_node_provider_many_inputs():
+    pass
+
+
+def test_batching_node_provider_other_methods():
+    pass
+
+
+if __name__ == "__main__":
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
