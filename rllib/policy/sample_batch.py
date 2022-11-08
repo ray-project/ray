@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import itertools
 import tree  # pip install dm_tree
-from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 from ray.util import log_once
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
@@ -1347,7 +1347,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                                               "b": np.array([10, 11, 12])}}
     """
 
-    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+    if any(isinstance(s, MultiAgentBatch) for s in samples):
         return concat_samples_into_ma_batch(samples)
 
     # the output is a SampleBatch type

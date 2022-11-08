@@ -2,7 +2,7 @@ import copy
 import logging
 import platform
 import queue
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
