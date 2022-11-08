@@ -429,7 +429,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --strict-pack False
+    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --disable-strict-pack
 
     wait_for_nodes:
       num_nodes: 8
@@ -629,7 +629,7 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -1823,7 +1823,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1855,7 +1855,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
   cluster:
     cluster_env: app_config_np.yaml
@@ -2146,6 +2146,37 @@
 
   alert: long_running_tests
 
+- name: long_running_many_jobs
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: true
+
+  legacy:
+    test_name: long_running_many_jobs
+    test_suite: long_running_tests
+
+  frequency: weekly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/long_running_many_jobs.py --num-clients=1
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 1800
+
+  alert: long_running_tests
+
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
   working_dir: long_running_distributed_tests
@@ -2230,6 +2261,7 @@
     file_manager: job
 
   alert: default
+
 
 ########################
 # Runtime env tests
@@ -2677,7 +2709,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2701,7 +2733,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2725,7 +2757,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2749,7 +2781,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2773,7 +2805,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2797,7 +2829,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2821,7 +2853,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2845,7 +2877,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2869,7 +2901,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2893,7 +2925,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2917,7 +2949,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2941,7 +2973,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2966,7 +2998,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -2990,7 +3022,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3015,7 +3047,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3040,7 +3072,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3064,7 +3096,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3088,7 +3120,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3112,7 +3144,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: ml
+  team: rl
   env: staging
 
   cluster:
@@ -3161,8 +3193,8 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
-    type: sdk_command
-    file_manager: sdk
+    type: job
+    file_manager: job
 
 - name: shuffle_50gb
   group: core-multi-test
@@ -4449,7 +4481,8 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    # re-enable once https://github.com/ray-project/ray/issues/29294 is fixed
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -4724,7 +4757,8 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    # leave oom disabled as test is marked unstable at the moment.
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -4748,7 +4782,8 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    # leave oom disabled as test is marked unstable at the moment.
+    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:

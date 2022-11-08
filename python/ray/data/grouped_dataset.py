@@ -130,6 +130,11 @@ class GroupedDataset(Generic[T]):
         self._dataset = dataset
         self._key = key
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
+        )
+
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 
@@ -330,7 +335,7 @@ class GroupedDataset(Generic[T]):
             builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end, False)
+                group = block_accessor.slice(start, end)
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end

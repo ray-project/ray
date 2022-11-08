@@ -29,7 +29,7 @@ import ray
 from ray import train
 from ray.air import session, Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def make_and_upload_dataset(dir_path):

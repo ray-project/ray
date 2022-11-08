@@ -63,6 +63,9 @@ TFRecords
 
 .. autofunction:: ray.data.read_tfrecords
 
+.. autofunction:: ray.data.Dataset.write_tfrecords
+    :noindex:
+
 
 Pandas
 ------
@@ -134,6 +137,11 @@ Mars
 .. automethod:: ray.data.Dataset.to_mars
     :noindex:
 
+Torch
+-----
+
+.. autofunction:: ray.data.from_torch
+
 HuggingFace
 ------------
 
@@ -188,9 +196,6 @@ Built-in Datasources
     :members:
 
 .. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.TFRecordDatasource

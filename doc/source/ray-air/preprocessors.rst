@@ -332,8 +332,9 @@ If you want to implement a custom preprocessor that needs to be fit, extend the
     :end-before: __custom_stateful_end__
 
 If your preprocessor doesn't need to be fit, construct a
-:class:`~ray.data.preprocessors.BatchMapper`.
-:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns.
+:class:`~ray.data.preprocessors.BatchMapper` to apply a UDF in parallel over your data.
+:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns, and you
+can specify a `batch_size` to control the size of the data batches provided to your UDF.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
