@@ -1,19 +1,20 @@
 import copy
-import math
 import os
+import math
+import warnings
 import shutil
 import tempfile
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
 
 import ray
+from ray import tune
 import ray.cloudpickle as pickle
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
-from ray.tune import Experiment, ExperimentAnalysis, TuneError
+from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.trial_runner import _ResumeConfig
-from ray.tune.registry import TRAINABLE_PARAMETER, _Registry, is_function_trainable
+from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -206,21 +207,19 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
             trainable = pickle.load(fp)
 
-        # If the Trainable was wrapped with objects via `tune.with_parameters`,
-        # these objects need to be registered again
-        if hasattr(trainable, "_prefix_and_param_names"):
-            prefix, param_names = trainable._prefix_and_param_names
-            if not parameters or set(parameters.keys()) != set(param_names):
+        if hasattr(trainable, "_unwrapped_trainable_and_params"):
+            (
+                unwrapped_trainable,
+                attached_params,
+            ) = trainable._unwrapped_trainable_and_params
+            if not parameters or set(parameters.keys()) != set(attached_params):
                 raise ValueError(
-                    f"All the objects {param_names} passed in through "
+                    f"All the objects {attached_params} passed in through "
                     "`tune.with_parameters` must be re-specified in "
                     "`Tuner.restore(..., with_parameters=dict(...))` "
-                    "for them to be registered again in the object store."
+                    "for Tune to be able to continue training with `Tuner.fit()`."
                 )
-            parameter_registry = _Registry(prefix=prefix)
-            ray._private.worker._post_init_hooks.append(parameter_registry.flush_values)
-            for k, v in parameters.items():
-                parameter_registry.register(TRAINABLE_PARAMETER, k, v)
+            trainable = tune.with_parameters(unwrapped_trainable, **parameters)
 
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
             tuner = pickle.load(fp)

@@ -5,7 +5,6 @@ import os
 import shutil
 import types
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
-import uuid
 
 import pandas as pd
 
@@ -15,7 +14,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.registry import _Registry, TRAINABLE_PARAMETER
+from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
@@ -319,14 +318,13 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             f"{type(trainable)}."
         )
 
+    parameter_registry = _ParameterRegistry()
+    ray._private.worker._post_init_hooks.append(parameter_registry.flush)
+
     # Objects are moved into the object store
-    prefix = f"{str(trainable)}_{uuid.uuid4().hex[:8]}"
-
-    parameter_registry = _Registry(prefix=prefix)
-    ray._private.worker._post_init_hooks.append(parameter_registry.flush_values)
-
+    prefix = f"{str(trainable)}_"
     for k, v in kwargs.items():
-        parameter_registry.register(TRAINABLE_PARAMETER, k, v)
+        parameter_registry.put(prefix + k, v)
 
     trainable_name = getattr(trainable, "__name__", "tune_with_parameters")
     keys = list(kwargs.keys())
@@ -337,7 +335,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             def setup(self, config):
                 setup_kwargs = {}
                 for k in keys:
-                    setup_kwargs[k] = parameter_registry.get(TRAINABLE_PARAMETER, k)
+                    setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
         trainable_with_params = _Inner
@@ -355,12 +353,13 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                 fn_kwargs["checkpoint_dir"] = default
 
             for k in keys:
-                fn_kwargs[k] = parameter_registry.get(TRAINABLE_PARAMETER, k)
+                fn_kwargs[k] = parameter_registry.get(prefix + k)
             return trainable(config, **fn_kwargs)
 
         trainable_with_params = inner
 
-        # Use correct function signature if no `checkpoint_dir` parameter is set
+        # Use correct function signature if no `checkpoint_dir` parameter
+        # is set
         if not use_checkpoint:
 
             def _inner(config):
@@ -380,9 +379,9 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             trainable_with_params._resources = trainable._resources
 
     trainable_with_params.__name__ = trainable_name
-    # Keep the parameter registry prefix and the extra param names have been attached
-    # This allows the parameters to be registered again on restore
-    trainable_with_params._prefix_and_param_names = (prefix, keys)
+    # Keep the original trainable and the extra param names have been attached
+    # This allows the parameters to be re-attached to the original trainable on restore
+    trainable_with_params._unwrapped_trainable_and_params = (trainable, keys)
     return trainable_with_params
 
 
