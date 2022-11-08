@@ -88,6 +88,8 @@ class TunerInternal:
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
+        self._missing_trainable_parameters = None
+
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
@@ -207,23 +209,21 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
             trainable = pickle.load(fp)
 
+        with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
+            tuner = pickle.load(fp)
+            self.__dict__.update(tuner.__dict__)
+
+        # Re-wrap the trainable with newly-specified parameters, if provided
+        # If not, throw an error when trying to fit
         if hasattr(trainable, "_unwrapped_trainable_and_params"):
             (
                 unwrapped_trainable,
                 attached_params,
             ) = trainable._unwrapped_trainable_and_params
             if not parameters or set(parameters.keys()) != set(attached_params):
-                raise ValueError(
-                    f"All the objects {attached_params} passed in through "
-                    "`tune.with_parameters` must be re-specified in "
-                    "`Tuner.restore(..., with_parameters=dict(...))` "
-                    "for Tune to be able to continue training with `Tuner.fit()`."
-                )
-            trainable = tune.with_parameters(unwrapped_trainable, **parameters)
-
-        with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-            tuner = pickle.load(fp)
-            self.__dict__.update(tuner.__dict__)
+                self._missing_trainable_parameters = attached_params
+            else:
+                trainable = tune.with_parameters(unwrapped_trainable, **parameters)
 
         self._is_restored = True
         self._trainable = trainable
@@ -429,6 +429,14 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        if self._missing_trainable_parameters:
+            raise ValueError(
+                f"All the objects {self._missing_trainable_parameters} attached "
+                "using `tune.with_parameters` must be re-specified in "
+                "`Tuner.restore(..., with_parameters=dict(...))` "
+                "for Tune to be able to continue training with `Tuner.fit()`."
+            )
+
         resume = "AUTO"
 
         if self._resume_config:

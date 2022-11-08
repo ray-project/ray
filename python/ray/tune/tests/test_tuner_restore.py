@@ -572,14 +572,19 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     ray.init(num_cpus=4, configure_logging=False)
     fail_marker.unlink()
 
-    # Restoring should fail if we don't re-specify all the attached objects
-    with pytest.raises(ValueError):
-        tuner = Tuner.restore(
-            str(tmp_path / exp_name),
-            with_parameters=dict(data_str="data"),
-            resume_errored=True,
-        )
+    tuner = Tuner.restore(
+        str(tmp_path / exp_name),
+        with_parameters=dict(data_str="data"),
+        resume_errored=True,
+    )
+    # Should still be able to access results
+    assert len(tuner.get_results().errors) == 1
 
+    # Continuing to fit should fail if we didn't re-specify all the attached objects
+    with pytest.raises(tune.TuneError):
+        tuner.fit()
+
+    del tuner
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
         with_parameters=dict(data_str="data", data_obj=data),
