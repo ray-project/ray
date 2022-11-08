@@ -45,7 +45,7 @@ class TestSimpleQ(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             rw = algo.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
@@ -66,7 +66,7 @@ class TestSimpleQ(unittest.TestCase):
                 "fcnet_activation": "linear",
             },
             num_steps_sampled_before_learning_starts=0,
-        ).environment("CartPole-v0")
+        ).environment("CartPole-v1")
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
@@ -180,7 +180,7 @@ class TestSimpleQ(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             lr = _step_n_times(algo, 1)  # 50 timesteps
             # Close to 0.2

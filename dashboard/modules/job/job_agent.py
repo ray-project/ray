@@ -46,6 +46,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
+                entrypoint_num_cpus=submit_request.entrypoint_num_cpus,
+                entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
+                entrypoint_resources=submit_request.entrypoint_resources,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
@@ -154,9 +157,13 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
+        return ws
+
     def get_job_manager(self):
         if not self._job_manager:
-            self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)
+            self._job_manager = JobManager(
+                self._dashboard_agent.gcs_aio_client, self._dashboard_agent.log_dir
+            )
         return self._job_manager
 
     async def run(self, server):

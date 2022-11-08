@@ -1,9 +1,12 @@
 from collections import defaultdict
 import copy
+from gym.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
+import numpy as np
 import os
 import platform
+import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -18,10 +21,6 @@ from typing import (
     Type,
     Union,
 )
-
-from gym.spaces import Discrete, MultiDiscrete, Space
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -164,7 +163,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+        ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
         ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
@@ -487,9 +486,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if (
             tf1
-            and (
-                config.framework_str in ["tf2", "tfe"] or config.enable_tf1_exec_eagerly
-            )
+            and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
             and not tf1.executing_eagerly()
@@ -526,8 +523,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
+        # Resolve possible auto-fragment length.
+        configured_rollout_fragment_length = self.config.get_rollout_fragment_length(
+            worker_index=self.worker_index
+        )
         self.total_rollout_fragment_length: int = (
-            self.config.rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -667,7 +668,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ):
 
             devices = []
-            if self.config.framework_str in ["tf2", "tf", "tfe"]:
+            if self.config.framework_str in ["tf2", "tf"]:
                 devices = get_tf_gpu_devices()
             elif self.config.framework_str == "torch":
                 devices = list(range(torch.cuda.device_count()))
@@ -749,7 +750,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
         # long.
-        rollout_fragment_length_for_sampler = self.config.rollout_fragment_length
+        rollout_fragment_length_for_sampler = configured_rollout_fragment_length
         if self.config.batch_mode == "truncate_episodes":
             pack = True
         # `complete_episodes`: Never cut episodes and sampler will return
@@ -858,7 +859,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
             ...   config=AlgorithmConfig(), # doctest: +SKIP
             ... )
@@ -939,7 +940,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTFPolicy) # doctest: +SKIP
             >>> print(worker.sample_with_count()) # doctest: +SKIP
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
@@ -965,7 +966,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
@@ -1086,7 +1087,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
@@ -1159,7 +1160,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
             ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
@@ -1914,15 +1915,15 @@ class RolloutWorker(ParallelIteratorWorker):
         # Loop through given policy-dict and add each entry to our map.
         for name, policy_spec in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            # Update the general config with the specific config
-            # for this particular policy.
-            merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
-            update_dict = (
-                policy_spec.config.to_dict()
-                if isinstance(policy_spec.config, AlgorithmConfig)
-                else policy_spec.config
-            )
-            merged_conf.update_from_dict(update_dict or {})
+
+            # Policy brings its own complete AlgorithmConfig -> Use it for this policy.
+            if isinstance(policy_spec.config, AlgorithmConfig):
+                merged_conf = policy_spec.config
+            else:
+                # Update the general config with the specific config
+                # for this particular policy.
+                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
             merged_conf.worker_index = self.worker_index

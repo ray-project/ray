@@ -6,7 +6,6 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-import ray
 from ray.air.config import ScalingConfig
 import ray.train as train
 from ray.air import session
@@ -22,10 +21,9 @@ def trainer_init_per_worker(config):
     import composer.optim
 
     BATCH_SIZE = 32
-    # prepare the model for distributed training and wrap with ComposerClassifier for
-    # Composer Trainer compatibility
-    model = config.pop("model", torchvision.models.resnet18(num_classes=10))
-    model = ComposerClassifier(ray.train.torch.prepare_model(model))
+    model = ComposerClassifier(
+        config.pop("model", torchvision.models.resnet18(num_classes=10))
+    )
 
     # prepare train/test dataset
     mean = (0.507, 0.487, 0.441)
@@ -71,7 +69,7 @@ def trainer_init_per_worker(config):
         weight_decay=2.0e-3,
     )
 
-    if config.pop("eval", False):
+    if config.pop("should_eval", False):
         config["eval_dataloader"] = evaluator
 
     return composer.trainer.Trainer(
@@ -85,9 +83,17 @@ trainer_init_per_worker.__test__ = False
 def test_mosaic_cifar10(ray_start_4_cpus):
     from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
 
-    _ = train_mosaic_cifar10()
+    result = train_mosaic_cifar10(max_duration="5ep").metrics_dataframe
 
-    # TODO : add asserts once reporting has been integrated
+    # check the max epoch value
+    assert result["epoch"][result.index[-1]] == 4
+
+    # check train_iterations
+    assert result["_training_iteration"][result.index[-1]] == 5
+
+    # check metrics/train/Accuracy has increased
+    acc = list(result["metrics/train/Accuracy"])
+    assert acc[-1] > acc[0]
 
 
 def test_init_errors(ray_start_4_cpus):
@@ -149,6 +155,10 @@ def test_loggers(ray_start_4_cpus):
         def fit_start(self, state: State, logger: Logger) -> None:
             raise ValueError("Composer Callback object exists.")
 
+    class DummyMonitorCallback(Callback):
+        def fit_start(self, state: State, logger: Logger) -> None:
+            logger.log_metrics({"dummy_callback": "test"})
+
     # DummyLogger should not throw an error since it should be removed before `fit` call
     trainer_init_config = {
         "max_duration": "1ep",
@@ -174,6 +184,117 @@ def test_loggers(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         trainer.fit()
         assert e == "Composer Callback object exists."
+
+    trainer_init_config["callbacks"] = DummyMonitorCallback()
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert "dummy_callback" in result.metrics
+    assert result.metrics["dummy_callback"] == "test"
+
+
+def test_log_count(ray_start_4_cpus):
+    from ray.train.mosaic import MosaicTrainer
+
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": False,
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert len(result.metrics_dataframe) == 1
+
+    trainer_init_config["max_duration"] = "1ba"
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert len(result.metrics_dataframe) == 1
+
+
+def test_metrics_key(ray_start_4_cpus):
+    from ray.train.mosaic import MosaicTrainer
+
+    """Tests if `log_keys` defined in `trianer_init_config` appears in result
+    metrics_dataframe.
+    """
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": True,
+        "log_keys": ["metrics/my_evaluator/Accuracy"],
+    }
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    # check if the passed in log key exists
+    assert "metrics/my_evaluator/Accuracy" in result.metrics_dataframe.columns
+
+
+def test_monitor_callbacks(ray_start_4_cpus):
+    from ray.train.mosaic import MosaicTrainer
+
+    # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
+    from composer.callbacks import SpeedMonitor, LRMonitor, GradMonitor
+
+    trainer_init_config = {
+        "max_duration": "1ep",
+        "should_eval": True,
+    }
+    trainer_init_config["log_keys"] = [
+        "grad_l2_norm/step",
+    ]
+    trainer_init_config["callbacks"] = [
+        SpeedMonitor(window_size=3),
+        LRMonitor(),
+        GradMonitor(),
+    ]
+
+    trainer = MosaicTrainer(
+        trainer_init_per_worker=trainer_init_per_worker,
+        trainer_init_config=trainer_init_config,
+        scaling_config=scaling_config,
+    )
+
+    result = trainer.fit()
+
+    assert len(result.metrics_dataframe) == 1
+
+    metrics_columns = result.metrics_dataframe.columns
+    columns_to_check = [
+        "wall_clock/train",
+        "wall_clock/val",
+        "wall_clock/total",
+        "lr-DecoupledSGDW/group0",
+        "grad_l2_norm/step",
+    ]
+    for column in columns_to_check:
+        assert column in metrics_columns, column + " is not found"
+        assert result.metrics_dataframe[column].isnull().sum() == 0, (
+            column + " column has a null value"
+        )
 
 
 if __name__ == "__main__":

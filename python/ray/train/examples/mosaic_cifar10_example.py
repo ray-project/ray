@@ -19,11 +19,10 @@ def trainer_init_per_worker(config):
     from composer.models.tasks import ComposerClassifier
     import composer.optim
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
-    model = torchvision.models.resnet18(num_classes=10)
-    model = ComposerClassifier(ray.train.torch.prepare_model(model))
+    model = ComposerClassifier(torchvision.models.resnet18(num_classes=10))
 
     # prepare train/test dataset
     mean = (0.507, 0.487, 0.441)
@@ -37,13 +36,13 @@ def trainer_init_per_worker(config):
         datasets.CIFAR10(
             data_directory, train=True, download=True, transform=cifar10_transforms
         ),
-        list(range(64)),
+        list(range(BATCH_SIZE * 10)),
     )
     test_dataset = torch.utils.data.Subset(
         datasets.CIFAR10(
             data_directory, train=False, download=True, transform=cifar10_transforms
         ),
-        list(range(64)),
+        list(range(BATCH_SIZE * 10)),
     )
 
     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
@@ -77,12 +76,12 @@ def trainer_init_per_worker(config):
     )
 
 
-def train_mosaic_cifar10(num_workers=2, use_gpu=False):
+def train_mosaic_cifar10(num_workers=2, use_gpu=False, max_duration="5ep"):
     from composer.algorithms import LabelSmoothing
     from ray.train.mosaic import MosaicTrainer
 
     trainer_init_config = {
-        "max_duration": "1ep",
+        "max_duration": max_duration,
         "algorithms": [LabelSmoothing()],
         "should_eval": False,
     }

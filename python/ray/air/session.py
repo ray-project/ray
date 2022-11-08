@@ -141,6 +141,12 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
 
 @_warn_session_misuse()
+def get_experiment_name() -> str:
+    """Experiment name for the corresponding trial."""
+    return _get_session().experiment_name
+
+
+@_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
     return _get_session().trial_name
@@ -275,14 +281,74 @@ def get_local_rank() -> int:
     return session.local_rank
 
 
+@_warn_session_misuse(default_value=0)
+def get_local_world_size() -> int:
+    """Get the local rank of this worker (rank of the worker on its node).
+
+    Example:
+        >>> import ray
+        >>> from ray.air import session
+        >>> from ray.air.config import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>>
+        >>> def train_loop_per_worker():
+        ...     return session.get_local_world_size()
+        >>>
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> trainer.fit() # doctest: +SKIP
+    """
+    session = _get_session()
+    if not isinstance(session, _TrainSessionImpl):
+        raise RuntimeError(
+            "`get_local_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.local_world_size
+
+
+@_warn_session_misuse(default_value=0)
+def get_node_rank() -> int:
+    """Get the local rank of this worker (rank of the worker on its node).
+
+    Example:
+        >>> import ray
+        >>> from ray.air import session
+        >>> from ray.air.config import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>>
+        >>> def train_loop_per_worker():
+        ...     return session.get_node_rank()
+        >>>
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> trainer.fit() # doctest: +SKIP
+    """
+    session = _get_session()
+    if not isinstance(session, _TrainSessionImpl):
+        raise RuntimeError(
+            "`get_node_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.node_rank
+
+
 @_warn_session_misuse()
 def get_dataset_shard(
     dataset_name: Optional[str] = None,
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    You should call ``iter_torch_batches()`` or ``iter_tf_batches()``
-    on this shard to convert it to the appropriate
+    Call :meth:`~ray.data.Dataset.iter_torch_batches` or
+    :meth:`~ray.data.Dataset.to_tf` on this shard to convert it to the appropriate
     framework-specific data type.
 
     .. code-block:: python

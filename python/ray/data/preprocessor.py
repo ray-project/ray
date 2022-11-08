@@ -1,7 +1,7 @@
 import abc
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union, Dict
+from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
 from ray.data import Dataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -148,7 +148,7 @@ class Preprocessor(abc.ABC):
         """Transform a single batch of data.
 
         The data will be converted to the format supported by the Preprocessor,
-        based on which ``_transform_*`` method(s) are implemented.
+        based on which ``_transform_*`` methods are implemented.
 
         Args:
             data: Input data batch.
@@ -156,7 +156,7 @@ class Preprocessor(abc.ABC):
         Returns:
             DataBatchType:
                 The transformed data batch. This may differ
-                from the input type depending on which ``_transform_*`` method(s)
+                from the input type depending on which ``_transform_*`` methods
                 are implemented.
         """
         fit_status = self.fit_status()
@@ -245,17 +245,29 @@ class Preprocessor(abc.ABC):
 
         transform_type = self._determine_transform_to_use(dataset_format)
 
-        # Our user facing batch format should only be pandas or numpy, other
+        # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
+        kwargs = self._get_transform_config()
         if transform_type == "pandas":
-            return dataset.map_batches(self._transform_pandas, batch_format="pandas")
+            return dataset.map_batches(
+                self._transform_pandas, batch_format="pandas", **kwargs
+            )
         elif transform_type == "numpy":
-            return dataset.map_batches(self._transform_numpy, batch_format="numpy")
+            return dataset.map_batches(
+                self._transform_numpy, batch_format="numpy", **kwargs
+            )
         else:
             raise ValueError(
                 "Invalid transform type returned from _determine_transform_to_use; "
                 f'"pandas" and "numpy" allowed, but got: {transform_type}'
             )
+
+    def _get_transform_config(self) -> Dict[str, Any]:
+        """Returns kwargs to be passed to :meth:`ray.data.Dataset.map_batches`.
+
+        This can be implemented by subclassing preprocessors.
+        """
+        return {}
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules

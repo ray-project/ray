@@ -1,5 +1,5 @@
 cartpole_dt:
-    env: 'CartPole-v0'
+    env: 'CartPole-v1'
     run: DT
     stop:
       evaluation/episode_reward_mean: 200

@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy
@@ -20,7 +20,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
 )
@@ -78,6 +77,7 @@ class A3CConfig(AlgorithmConfig):
         self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
@@ -92,15 +92,15 @@ class A3CConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-        sample_async: Optional[bool] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        sample_async: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "A3CConfig":
         """Sets the training related configuration.
@@ -129,33 +129,43 @@ class A3CConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if use_critic is not None:
+        if use_critic is not NotProvided:
             self.lr_schedule = use_critic
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if vf_loss_coeff is not None:
+        if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
+        if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not None:
+        if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-        if sample_async is not None:
+        if sample_async is not NotProvided:
             self.sample_async = sample_async
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
+        if self.num_rollout_workers <= 0 and self.sample_async:
+            raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return A3CConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A3CConfig()
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -164,18 +174,11 @@ class A3C(Algorithm):
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
-        if config["num_workers"] <= 0 and config["sample_async"]:
-            raise ValueError("`num_workers` for A3C must be >= 1!")
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
@@ -244,9 +247,12 @@ class A3C(Algorithm):
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
 
-            # Synch updated weights back to the particular worker.
+            # Synch updated weights back to the particular worker
+            # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                weights = local_worker.get_weights(local_worker.get_policies_to_train())
+                weights = local_worker.get_weights(
+                    policies=local_worker.get_policies_to_train()
+                )
                 worker.set_weights.remote(weights, global_vars)
 
         # Update global vars of the local worker.
@@ -265,6 +271,7 @@ class A3C(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        super().on_worker_failures(removed_workers, new_workers)
         self._worker_manager.remove_workers(
             removed_workers, remove_in_flight_requests=True
         )

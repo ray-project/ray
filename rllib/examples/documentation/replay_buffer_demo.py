@@ -76,7 +76,7 @@ class LessSampledReplayBuffer(ReplayBuffer):
 config = (
     DQNConfig()
     .training(replay_buffer_config={"type": LessSampledReplayBuffer})
-    .environment(env="CartPole-v0")
+    .environment(env="CartPole-v1")
 )
 
 tune.Tuner(

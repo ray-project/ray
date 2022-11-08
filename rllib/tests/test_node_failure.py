@@ -56,7 +56,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -87,7 +87,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -121,7 +121,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()
@@ -165,7 +165,7 @@ class NodeFailureTests(unittest.TestCase):
             )
             .training()
         )
-        ppo = PPO(config=config, env="CartPole-v0")
+        ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.step()

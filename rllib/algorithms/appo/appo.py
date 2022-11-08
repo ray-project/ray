@@ -12,6 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
@@ -28,7 +29,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,10 +86,10 @@ class APPOConfig(ImpalaConfig):
         self.kl_target = 0.01
 
         # Override some of ImpalaConfig's default values with APPO-specific values.
+        self.num_rollout_workers = 2
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
-        self.num_workers = 2
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
@@ -117,14 +117,14 @@ class APPOConfig(ImpalaConfig):
     def training(
         self,
         *,
-        vtrace: Optional[bool] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        use_kl_loss: Optional[bool] = None,
-        kl_coeff: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        vtrace: Optional[bool] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        use_kl_loss: Optional[bool] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -150,21 +150,21 @@ class APPOConfig(ImpalaConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if vtrace is not None:
+        if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if use_critic is not None:
+        if use_critic is not NotProvided:
             self.use_critic = use_critic
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if use_kl_loss is not None:
+        if use_kl_loss is not NotProvided:
             self.use_kl_loss = use_kl_loss
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
 
         return self
@@ -207,16 +207,9 @@ class APPO(Impala):
 
     @override(Impala)
     def setup(self, config: PartialAlgorithmConfigDict):
-        # Before init: Add the update target and kl hook.
-        # This hook is called explicitly after each learner step in the
-        # execution setup for IMPALA.
-        if config.get("_disable_execution_plan_api", True) is False:
-            config["after_train_step"] = UpdateTargetAndKL
-
         super().setup(config)
 
-        if self.config["_disable_execution_plan_api"] is True:
-            self.update_kl = UpdateKL(self.workers)
+        self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
@@ -232,7 +225,9 @@ class APPO(Impala):
                 training step.
         """
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (
@@ -280,12 +275,13 @@ class APPO(Impala):
 
     @classmethod
     @override(Impala)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return APPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return APPOConfig()
 
+    @classmethod
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

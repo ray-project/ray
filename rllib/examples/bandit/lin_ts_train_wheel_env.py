@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ray.rllib.algorithms.bandit.bandit import BanditLinTS
+from ray.rllib.algorithms.bandit.bandit import BanditLinTSConfig
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
@@ -43,11 +43,12 @@ if __name__ == "__main__":
 
     num_iter = 10
     print("Running training for %s time steps" % num_iter)
-    config = {
-        "framework": args.framework,
-        "eager_tracing": (args.framework == "tf2"),
-    }
-    algo = BanditLinTS(env=WheelBanditEnv, config=config)
+    config = (
+        BanditLinTSConfig()
+        .environment(WheelBanditEnv)
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+    )
+    algo = config.build()
 
     policy = algo.get_policy()
     model = policy.model
@@ -67,3 +68,5 @@ if __name__ == "__main__":
 
     # Plot weight distributions for different arms
     plot_model_weights(means, covs)
+
+    algo.stop()

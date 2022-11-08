@@ -50,7 +50,7 @@ class TestBC(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             learnt = False
             for i in range(num_iterations):
                 results = algo.train()

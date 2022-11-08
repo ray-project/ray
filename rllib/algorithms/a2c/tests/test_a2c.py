@@ -26,7 +26,7 @@ class TestA2C(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            for env in ["CartPole-v0", "Pendulum-v1", "PongDeterministic-v0"]:
+            for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
                 config.environment(env)
                 algo = config.build()
                 for i in range(num_iterations):
@@ -39,7 +39,7 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl(self):
         config = (
             a2c.A2CConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
         )
 
@@ -54,7 +54,7 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl_microbatch(self):
         config = (
             a2c.A2CConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
             .training(microbatch_size=10)
         )

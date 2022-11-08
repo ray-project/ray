@@ -358,8 +358,11 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
   fi
 
+  SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
@@ -396,6 +399,13 @@ install_pip_packages() {
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    if [ -n "${ARROW_VERSION-}" ]; then
+      if [ "${ARROW_VERSION-}" = nightly ]; then
+        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+      else
+        pip install -U pyarrow=="${ARROW_VERSION}"
+      fi
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
@@ -413,14 +423,8 @@ install_pip_packages() {
     fi
   fi
 
-  # RLlib testing with TF 1.x.
-  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
-  fi
-
   # Inject our own mirror for the CIFAR10 dataset
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
     TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
     TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
 
