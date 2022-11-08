@@ -424,9 +424,7 @@ class Trainable:
     def _checkpoint_save_restore_delete_retry_args(self) -> dict:
         return dict(
             num_retries=int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3")),
-            sleep_time=float(
-                os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_SLEEP_TIME_S", "1")
-            ),
+            sleep_time=float(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")),
             timeout=self.sync_timeout,
         )
 
