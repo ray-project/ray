@@ -3,13 +3,12 @@ import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.callbacks.keras import Callback
+from ray.air.integrations.keras import Callback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (
     TensorflowCheckpoint,
     TensorflowTrainer,
-    prepare_dataset_shard,
     TensorflowPredictor,
 )
 
@@ -46,24 +45,8 @@ def train_func(config: dict):
 
     dataset = session.get_dataset_shard("train")
 
-    def to_tf_dataset(dataset, batch_size):
-        def to_tensor_iterator():
-            for batch in dataset.iter_tf_batches(
-                batch_size=batch_size, dtypes=tf.float32
-            ):
-                yield batch["x"], batch["y"]
-
-        output_signature = (
-            tf.TensorSpec(shape=(None), dtype=tf.float32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32),
-        )
-        tf_dataset = tf.data.Dataset.from_generator(
-            to_tensor_iterator, output_signature=output_signature
-        )
-        return prepare_dataset_shard(tf_dataset)
-
     for _ in range(config.get("epoch", 3)):
-        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=32)
+        tf_dataset = dataset.to_tf("x", "y", batch_size=32)
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 
