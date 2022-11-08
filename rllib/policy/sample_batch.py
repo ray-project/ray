@@ -140,39 +140,32 @@ class SampleBatch(dict):
         for k, v in copy_.items():
             assert isinstance(k, str), self
 
-            # If this is a nested dict (for example a nested observation),
-            # try to flatten it, assert that all elements have the same length (batch
-            # dimension)
-            if isinstance(v, (dict, tuple)):
-                if k == SampleBatch.INFOS:
-                    # Don't attempt to count on infos since we make no assumptions
-                    # about its content
-                    continue
-                v_flat = tree.flatten(v)
-                try:
-                    # Add one of the elements length, since they are all the same
-                    len_ = len(v_flat[0])
-                    if len_:
-                        lengths.append(len_)
-                except Exception:
-                    pass
-                else:
-                    # If we were able to figure out a length, all lengths of
-                    # elements of nested structure must be the same
-                    assert all(len(sub_space) == len(v_flat[0]) for sub_space in v_flat)
+            if k == SampleBatch.INFOS:
+                # Don't attempt to count on infos since we make no assumptions
+                # about its content
                 continue
+
             # TODO: Drop support for lists as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            elif isinstance(v, list):
+            if isinstance(v, list):
                 self[k] = np.array(v)
 
+            # If this is a nested dict (for example a nested observation),
+            # try to flatten it, assert that all elements have the same length (batch
+            # dimension)
+            v_list = tree.flatten(v) if isinstance(v, (dict, tuple)) else [v]
             try:
-                len_ = len(v)
+                # Add one of the elements' length, since they are all the same
+                len_ = len(v_list[0])
                 if len_:
                     lengths.append(len_)
             except Exception:
                 pass
+            else:
+                # If we were able to figure out a length, all lengths of
+                # elements of nested structure must be the same
+                assert all(len(sub_space) == len(v_list[0]) for sub_space in v_list)
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
