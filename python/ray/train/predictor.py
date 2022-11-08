@@ -128,10 +128,11 @@ class Predictor(abc.ABC):
         """Batch format hint for upstream producers to try yielding best block format.
         Can be overriden by predictor classes depending on the framework type.
 
-        - In case for DLPredictor that requires Numpy for neural network inference,
+        1. In case for DLPredictor that requires Numpy for neural network inference,
         this method should return BatchFormat.NUMPY.
-        - In case XGBoostPredictor that primarily works with tabular data, this
+        2. In case XGBoostPredictor that primarily works with tabular data, this
         method can return BatchFormat.PANDAS.
+
         """
         return BatchFormat.PANDAS
 

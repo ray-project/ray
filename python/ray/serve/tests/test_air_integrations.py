@@ -75,73 +75,52 @@ class TestBatchingFunctionFunctions:
         for i, j in zip(unpacked_list, list_of_dfs):
             assert i.equals(j)
 
-    def test_dataframe_with_tensorarray(self):
-        batched_df = pd.DataFrame(
-            {
-                "a": TensorArray([1, 2, 3, 4]),
-                "b": TensorArray([5, 6, 7, 8]),
-            }
-        )
-        split_df = pd.DataFrame(
-            {
-                "a": [1, 2, 3, 4],
-                "b": [5, 6, 7, 8],
-            }
-        )
-
-        unpacked_list = _BatchingManager.split_dataframe(batched_df, 1)
-        assert len(unpacked_list) == 1
-        # On windows, conversion dtype is not preserved.
-        check_dtype = not os.name == "nt"
-        pd.testing.assert_frame_equal(
-            unpacked_list[0].reset_index(drop=True),
-            split_df.reset_index(drop=True),
-            check_dtype=check_dtype,
-        )
-
     @pytest.mark.parametrize(
-        "batched_df",
+        "batched_df,expected",
         [
-            pd.DataFrame(
-                {
-                    "a": TensorArray([1, 2, 3, 4]),
-                    "b": TensorArray([5, 6, 7, 8]),
-                }
+            (
+                pd.DataFrame(
+                    {
+                        "a": TensorArray(np.arange(12).reshape((3, 2, 2))),
+                        "b": TensorArray(np.arange(12, 24).reshape((3, 2, 2))),
+                    }
+                ),
+                pd.DataFrame(
+                    {
+                        "a": [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]]],
+                        "b": [
+                            [[12, 13], [14, 15]],
+                            [[16, 17], [18, 19]],
+                            [[20, 21], [22, 23]],
+                        ],
+                    }
+                ),
             ),
-            pd.DataFrame(
-                {
-                    "a": TensorArray(
-                        [np.array(1), np.array(2), np.array(3), np.array(4)]
-                    ),
-                    "b": TensorArray(
-                        [np.array(5), np.array(6), np.array(7), np.array(8)]
-                    ),
-                }
-            ),
-            pd.DataFrame(
-                {
-                    "a": [np.array(1), np.array(2), np.array(3), np.array(4)],
-                    "b": [np.array(5), np.array(6), np.array(7), np.array(8)],
-                }
+            (
+                pd.DataFrame(
+                    {
+                        "a": [np.ones((2, 2)), np.ones((3, 3))],
+                        "b": [np.zeros((2, 2)), np.zeros((3, 3))],
+                    }
+                ),
+                pd.DataFrame(
+                    {
+                        "a": [[[1, 1], [1, 1]], [[1, 1, 1], [1, 1, 1], [1, 1, 1]]],
+                        "b": [[[0, 0], [0, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
+                    }
+                ),
             ),
         ],
     )
-    def test_unpack_dataframe_with_tensorarray(self, batched_df):
-        """Test _unpack_dataframe_to_serializable with TensorArray and python object."""
-        split_df = pd.DataFrame(
-            {
-                "a": [1, 2, 3, 4],
-                "b": [5, 6, 7, 8],
-            }
-        )
-
+    def test_unpack_dataframe(self, batched_df, expected):
+        """Test _unpack_dataframe_to_serializable with TensorArray and list of ndarray."""
         unpacked_list = _BatchingManager.split_dataframe(batched_df, 1)
         assert len(unpacked_list) == 1
         # On windows, conversion dtype is not preserved.
         check_dtype = not os.name == "nt"
         pd.testing.assert_frame_equal(
             unpacked_list[0].reset_index(drop=True),
-            split_df.reset_index(drop=True),
+            expected.reset_index(drop=True),
             check_dtype=check_dtype,
         )
 

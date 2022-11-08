@@ -23,6 +23,7 @@ class BatchFormat(str, Enum):
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
 
 
+@DeveloperAPI
 class BlockFormat(str, Enum):
     """Internal Dataset block format enum."""
 
