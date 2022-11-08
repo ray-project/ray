@@ -14,9 +14,10 @@
 
 #include "ray/rpc/grpc_server.h"
 
-#include <grpcpp/impl/service_type.h>
-#include <boost/asio/detail/socket_holder.hpp>
 #include <grpcpp/ext/channelz_service_plugin.h>
+#include <grpcpp/impl/service_type.h>
+
+#include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
