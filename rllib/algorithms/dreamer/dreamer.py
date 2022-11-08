@@ -41,7 +41,7 @@ class DreamerConfig(AlgorithmConfig):
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray import air

@@ -55,10 +55,10 @@ class MADDPGConfig(AlgorithmConfig):
         >>> config.training(n_step=tune.grid_search([3, 5]))
         >>> config.environment(env="CartPole-v1")
         >>> tune.Tuner(  # doctest: +SKIP
-        >>>     "MADDPG",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        ...     "MADDPG",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

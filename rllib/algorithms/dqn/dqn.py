@@ -81,10 +81,10 @@ class DQNConfig(SimpleQConfig):
         >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
         >>> config.environment(env="CartPole-v1")
         >>> tune.Tuner(  # doctest: +SKIP
-        >>>     "DQN",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        ...     "DQN",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig

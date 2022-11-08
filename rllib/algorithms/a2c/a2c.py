@@ -41,7 +41,7 @@ class A2CConfig(A3CConfig):
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> import ray.air as air

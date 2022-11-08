@@ -22,7 +22,7 @@ class ApexDDPGConfig(DDPGConfig):
         >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Trainer object from the config and run one training iteration.
         >>> algo = config.build(env="Pendulum-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig

@@ -42,10 +42,10 @@ class R2D2Config(DQNConfig):
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
         >>> config.environment(env="CartPole-v1")
         >>> tune.Tuner(  # doctest: +SKIP
-        >>>     "R2D2",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        ...     "R2D2",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config

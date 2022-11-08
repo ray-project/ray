@@ -30,7 +30,7 @@ class SACConfig(AlgorithmConfig):
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
