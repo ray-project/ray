@@ -434,7 +434,9 @@ def _sample_piece(
 
     # Only sample the first row group.
     piece = piece.subset(row_group_ids=[0])
-    batch_size = min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS)
+    batch_size = max(
+        min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+    )
     batches = piece.to_batches(
         columns=columns,
         schema=schema,
@@ -444,15 +446,19 @@ def _sample_piece(
     # Use first batch in-memory size as ratio estimation.
     try:
         batch = next(batches)
-        in_memory_size = batch.nbytes / batch.num_rows
-        metadata = piece.metadata
-        total_size = 0
-        for idx in range(metadata.num_row_groups):
-            total_size += metadata.row_group(idx).total_byte_size
-        file_size = total_size / metadata.num_rows
-        ratio = in_memory_size / file_size
     except StopIteration:
         ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    else:
+        if batch.num_rows > 0:
+            in_memory_size = batch.nbytes / batch.num_rows
+            metadata = piece.metadata
+            total_size = 0
+            for idx in range(metadata.num_row_groups):
+                total_size += metadata.row_group(idx).total_byte_size
+            file_size = total_size / metadata.num_rows
+            ratio = in_memory_size / file_size
+        else:
+            ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
     logger.debug(
         f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
         f"with batch size {batch_size}."

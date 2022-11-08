@@ -470,12 +470,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         # unfortunately overriding Cython cdef methods with normal Python methods isn't
         # allowed.
         if isinstance(key, slice):
-            sliced = super().__getitem__(key).to_numpy()
-            if sliced.dtype.type is not np.object_:
-                # Force ths slice to match NumPy semantics for unit (single-element)
-                # slices.
-                sliced = sliced[0:1]
-            return sliced
+            return super().__getitem__(key)
         return self._to_numpy(key)
 
     def __iter__(self):

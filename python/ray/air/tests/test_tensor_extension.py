@@ -331,7 +331,8 @@ def test_tensor_array_reductions():
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-def test_arrow_tensor_array_getitem():
+@pytest.mark.parametrize("chunked", [False, True])
+def test_arrow_tensor_array_getitem(chunked):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -339,6 +340,8 @@ def test_arrow_tensor_array_getitem():
     arr = np.arange(num_items).reshape(shape)
 
     t_arr = ArrowTensorArray.from_numpy(arr)
+    if chunked:
+        t_arr = pa.chunked_array(t_arr)
 
     for idx in range(outer_dim):
         np.testing.assert_array_equal(t_arr[idx], arr[idx])
@@ -352,8 +355,64 @@ def test_arrow_tensor_array_getitem():
 
     # Test slicing and indexing.
     t_arr2 = t_arr[1:]
+    if chunked:
+        # For extension arrays, ChunkedArray.to_numpy() concatenates chunk storage
+        # arrays and calls to_numpy() on the resulting array, which returns the wrong
+        # ndarray.
+        # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
+        # concatenation, and (2) using that + a to_numpy() call on the resulting
+        # ExtensionArray.
+        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+    else:
+        t_arr2_npy = t_arr2.to_numpy()
 
-    np.testing.assert_array_equal(t_arr2.to_numpy(), arr[1:])
+    np.testing.assert_array_equal(t_arr2_npy, arr[1:])
+
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_arrow_variable_shaped_tensor_array_getitem(chunked):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    outer_dim = len(shapes)
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    t_arr = ArrowVariableShapedTensorArray.from_numpy(arr)
+
+    if chunked:
+        t_arr = pa.chunked_array(t_arr)
+
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
+
+    # Test __iter__.
+    for t_subarr, subarr in zip(t_arr, arr):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test to_pylist.
+    for t_subarr, subarr in zip(t_arr.to_pylist(), list(arr)):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test slicing and indexing.
+    t_arr2 = t_arr[1:]
+    if chunked:
+        # For extension arrays, ChunkedArray.to_numpy() concatenates chunk storage
+        # arrays and calls to_numpy() on the resulting array, which returns the wrong
+        # ndarray.
+        # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
+        # concatenation, and (2) using that + a to_numpy() call on the resulting
+        # ExtensionArray.
+        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+    else:
+        t_arr2_npy = t_arr2.to_numpy()
+
+    for t_subarr, subarr in zip(t_arr2_npy, arr[1:]):
+        np.testing.assert_array_equal(t_subarr, subarr)
 
     for idx in range(1, outer_dim):
         np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])

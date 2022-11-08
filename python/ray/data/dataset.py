@@ -95,7 +95,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_and_register_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
@@ -2498,7 +2498,7 @@ class Dataset(Generic[T]):
                     blocks,
                     metadata,
                     ray_remote_args,
-                    _wrap_and_register_arrow_serialization_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 

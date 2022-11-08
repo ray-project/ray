@@ -57,7 +57,8 @@ aiorwlock
 opentelemetry-exporter-otlp==1.1.0
 starlette
 typer
-pyarrow<7.0.0,>=6.0.1
+pyarrow >= 6.0.1, < 8.0.0; python_version >= '3.7' and platform_system != "Windows"
+pyarrow >= 6.0.1, < 7.0.0; python_version < '3.7' or platform_system == "Windows"
 aiohttp_cors
 opentelemetry-api==1.1.0
 pyyaml

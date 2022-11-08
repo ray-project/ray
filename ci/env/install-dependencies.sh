@@ -399,6 +399,13 @@ install_pip_packages() {
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    if [ -n "${ARROW_VERSION-}" ]; then
+      if [ "${ARROW_VERSION-}" = nightly ]; then
+        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+      else
+        pip install -U pyarrow=="${ARROW_VERSION}"
+      fi
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
