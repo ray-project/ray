@@ -245,7 +245,7 @@ class Worker:
         self.min_task_runtime = min_task_runtime
         self.config = config.to_dict()
         self.config.update(policy_params)
-        self.config["single_threaded"] = True
+        self.config.single_threaded = True
         self.noise = SharedNoiseTable(noise)
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
@@ -303,7 +303,7 @@ class Worker:
             len(noise_indices) == 0 or time.time() - task_tstart < self.min_task_runtime
         ):
 
-            if np.random.uniform() < self.config["eval_prob"]:
+            if np.random.uniform() < self.config.eval_prob:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
@@ -313,7 +313,7 @@ class Worker:
                 # Do a regular run with parameter perturbations.
                 noise_index = self.noise.sample_index(self.policy.num_params)
 
-                perturbation = self.config["noise_stdev"] * self.noise.get(
+                perturbation = self.config.noise_stdev * self.noise.get(
                     noise_index, self.policy.num_params
                 )
 
@@ -371,10 +371,10 @@ class ES(Algorithm):
         self.config.validate()
 
         # Generate the local env.
-        env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
+        env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config["callbacks"]()
+        self.callbacks = self.config.callbacks()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
@@ -382,19 +382,19 @@ class ES(Algorithm):
             action_space=env.action_space,
             config=self.config,
         )
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
-        self.report_length = self.config["report_length"]
+        self.optimizer = optimizers.Adam(self.policy, self.config.stepsize)
+        self.report_length = self.config.report_length
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(self.config.noise_size)
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
             Worker.remote(self.config, {}, self.env_creator, noise_id, idx + 1)
-            for idx in range(self.config["num_workers"])
+            for idx in range(self.config.num_rollout_workers)
         ]
 
         self.episodes_so_far = 0

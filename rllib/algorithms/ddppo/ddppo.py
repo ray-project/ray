@@ -237,8 +237,8 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        self.config["train_batch_size"] = (
-            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
+        self.config.train_batch_size = (
+            self.config.rollout_fragment_length * self.config.num_envs_per_worker
         )
 
     @classmethod
@@ -264,7 +264,7 @@ class DDPPO(PPO):
                     url=address,
                     world_rank=i,
                     world_size=len(self.workers.remote_workers()),
-                    backend=self.config["torch_distributed_backend"],
+                    backend=self.config.torch_distributed_backend,
                 )
                 for i, worker in enumerate(self.workers.remote_workers())
             ]
@@ -312,7 +312,7 @@ class DDPPO(PPO):
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
         if (
-            self.config["keep_local_weights_in_sync"]
+            self.config.keep_local_weights_in_sync
             and first_worker in sample_and_update_results
         ):
             self.workers.local_worker().set_weights(

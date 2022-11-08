@@ -308,11 +308,11 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -321,7 +321,7 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config["simple_optimizer"]:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -348,7 +348,7 @@ class PPO(Algorithm):
 
             # Warn about excessively high value function loss
             scaled_vf_loss = (
-                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+                self.config.vf_loss_coeff * policy_info[LEARNER_STATS_KEY]["vf_loss"]
             )
             policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
             if (
@@ -368,7 +368,7 @@ class PPO(Algorithm):
             mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
-                and mean_reward > self.config["vf_clip_param"]
+                and mean_reward > self.config.vf_clip_param
             ):
                 self.warned_vf_clip = True
                 logger.warning(
