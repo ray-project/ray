@@ -113,7 +113,9 @@ class TestBatchingFunctionFunctions:
         ],
     )
     def test_unpack_dataframe(self, batched_df, expected):
-        """Test _unpack_dataframe_to_serializable with TensorArray and list of ndarray."""
+        """Test _unpack_dataframe_to_serializable with TensorArray and
+        list of ndarrays.
+        """
         unpacked_list = _BatchingManager.split_dataframe(batched_df, 1)
         assert len(unpacked_list) == 1
         # On windows, conversion dtype is not preserved.
