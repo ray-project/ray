@@ -420,6 +420,16 @@ class Trainable:
 
         return result
 
+    @property
+    def _checkpoint_save_restore_delete_retry_args(self) -> dict:
+        return dict(
+            num_retries=int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3")),
+            sleep_time=float(
+                os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_SLEEP_TIME_S", "1")
+            ),
+            timeout=self.sync_timeout,
+        )
+
     def get_state(self):
         return {
             "experiment_id": self._experiment_id,
@@ -573,15 +583,15 @@ class Trainable:
 
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
         checkpoint_uri = self._storage_path(checkpoint_dir)
+        retry_args = self._checkpoint_save_restore_delete_retry_args()
         if not retry_fn(
             lambda: checkpoint.to_uri(checkpoint_uri),
             subprocess.CalledProcessError,
-            num_retries=3,
-            sleep_time=1,
-            timeout=self.sync_timeout,
+            **retry_args,
         ):
+            num_retries = retry_args["num_retries"]
             logger.error(
-                f"Could not upload checkpoint even after 3 retries."
+                f"Could not upload checkpoint even after {num_retries} retries."
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported.. For large checkpoints, consider "
                 f"increasing `SyncConfig(sync_timeout)` "
@@ -617,16 +627,16 @@ class Trainable:
             return True
 
         checkpoint = Checkpoint.from_uri(external_uri)
+        retry_args = self._checkpoint_save_restore_delete_retry_args()
         if not retry_fn(
             lambda: checkpoint.to_directory(local_dir),
             (subprocess.CalledProcessError, FileNotFoundError),
-            num_retries=3,
-            sleep_time=1,
-            timeout=self.sync_timeout,
+            **retry_args,
         ):
+            num_retries = retry_args["num_retries"]
             logger.error(
-                f"Could not download checkpoint even after 3 retries: "
-                f"{external_uri}"
+                f"Could not download checkpoint even after {num_retries} "
+                f"retries: {external_uri}"
             )
             # We may have created this dir when we tried to sync, so clean up
             if not path_existed_before and os.path.exists(local_dir):
@@ -818,16 +828,16 @@ class Trainable:
                     self.custom_syncer.wait_or_retry()
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
+                    retry_args = self._checkpoint_save_restore_delete_retry_args()
                     if not retry_fn(
                         lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
-                        num_retries=3,
-                        sleep_time=1,
-                        timeout=self.sync_timeout,
+                        **retry_args,
                     ):
+                        num_retries = retry_args["num_retries"]
                         logger.error(
-                            f"Could not delete checkpoint even after 3 retries: "
-                            f"{checkpoint_uri}"
+                            f"Could not delete checkpoint even after {num_retries} "
+                            f"retries: {checkpoint_uri}"
                         )
 
         if os.path.exists(checkpoint_dir):
