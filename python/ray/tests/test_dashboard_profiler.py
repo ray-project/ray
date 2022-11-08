@@ -96,12 +96,20 @@ def test_profiler_failure_message(ray_start_with_dashboard):
         def getpid(self):
             return os.getpid()
 
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
 
     def get_actor_stack():
         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
         response.raise_for_status()
+        content = response.content.decode("utf-8")
+        print("CONTENT", content)
+        assert "do_stuff_infinite" in content, content
 
     # First ensure dashboard is up, before we test for failure cases.
     assert wait_until_succeeded_without_exception(
