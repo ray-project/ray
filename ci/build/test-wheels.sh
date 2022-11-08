@@ -122,7 +122,7 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
+      PY_IGNORE_IMPORTMISMATCH=1 PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
     done
   done
 elif [ "${platform}" = windows ]; then
