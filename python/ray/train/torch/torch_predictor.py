@@ -139,8 +139,7 @@ class TorchPredictor(DLPredictor):
 
             .. testoutput::
 
-                Custom results: {'0': array([1., 2.], dtype=float32),
-                                '1': array([1., 2.], dtype=float32)}
+                Custom results: {'0': array([1., 2.], dtype=float32), '1': array([1., 2.], dtype=float32)}
         """
         with torch.no_grad():
             output = self.model(tensor)
@@ -214,13 +213,12 @@ class TorchPredictor(DLPredictor):
 
             .. testoutput::
 
-                Standard model predictions: [[1.5487633][3.8037925]]
-
+                Standard model predictions: [[1.5487633]
+                 [3.8037925]]
                 ---
-
-                Custom model predictions: predictions
+                Custom model predictions:     predictions
                 0  [0.61623406]
-                1  [2.857038]
+                1  [  2.857038]
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 
