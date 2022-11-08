@@ -120,10 +120,12 @@ elif [[ "$platform" == "macosx" ]]; then
     # Install the dependencies to run the tests.
     "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
 
+    # /Users/ec2-user/.buildkite-agent/builds/bk-mac1-experimental-queue-i-0c5ef83c801225a87-1/ray-project/oss-ci-build-pr/ci/build/../../.whl/ray-3.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
+    # /Users/ec2-user/.buildkite-agent/builds/bk-mac1-experimental-queue-i-0c5ef83c801225a87-1/ray-project/oss-ci-build-pr/ci/build/../../python/ray/tests/test_microbenchmarks.py
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
-    done
+      PYTHONPATH="$ROOT_DIR/../../" PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
+      done
   done
 elif [ "${platform}" = windows ]; then
   echo "WARNING: Wheel testing not yet implemented for Windows."
