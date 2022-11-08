@@ -36,7 +36,7 @@ class TestAPPO(unittest.TestCase):
                 check_train_results(results)
                 # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
                 # 1 rollout worker.
-                off_policy_ness = check_off_policyness(results, 0.6)
+                off_policy_ness = check_off_policyness(results, upper_limit=0.6)
                 print(f"off-policy'ness={off_policy_ness}")
 
             check_compute_single_action(algo)
@@ -51,7 +51,7 @@ class TestAPPO(unittest.TestCase):
                 check_train_results(results)
                 # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
                 # 1 rollout worker.
-                off_policy_ness = check_off_policyness(results, 0.6)
+                off_policy_ness = check_off_policyness(results, upper_limit=0.6)
                 print(f"off-policy'ness={off_policy_ness}")
             check_compute_single_action(algo)
             algo.stop()

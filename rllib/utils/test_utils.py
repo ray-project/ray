@@ -31,7 +31,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
 
@@ -502,7 +502,11 @@ def check_learning_achieved(
     print(f"`stop-reward` of {min_reward} reached! ok")
 
 
-def check_off_policyness(results, upper_limit, lower_limit=0.0):
+def check_off_policyness(
+    results: ResultDict,
+    upper_limit: float,
+    lower_limit: float = 0.0,
+) -> Optional[float]:
     """Verifies that the off-policy'ness of some update is within some range.
 
     Off-policy'ness is defined as the average (across n workers) diff
@@ -532,7 +536,10 @@ def check_off_policyness(results, upper_limit, lower_limit=0.0):
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
     # Assert that the off-policy'ness is within the given bounds.
-    off_policy_ness = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+    learner_info = results["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID not in learner_info:
+        return None
+    off_policy_ness = learner_info[DEFAULT_POLICY_ID][
         DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY
     ]
     # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for

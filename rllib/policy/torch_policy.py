@@ -625,10 +625,15 @@ class TorchPolicy(Policy):
                 {
                     LEARNER_STATS_KEY: self.extra_grad_info(batch),
                     "model": model.metrics(),
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates - (batch.num_grad_updates or 0)
+                    ),
                 }
             )
-
         batch_fetches.update(self.extra_compute_grad_fetches())
+
+        self.num_grad_updates += 1
 
         return batch_fetches
 
