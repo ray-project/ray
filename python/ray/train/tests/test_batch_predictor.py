@@ -10,6 +10,7 @@ from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 
 import ray
 from ray.air.checkpoint import Checkpoint
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
@@ -83,6 +84,10 @@ class DummyWithNumpyPredictor(DummyPredictor):
             return {k: v * self.factor for k, v in data.items()}
         else:
             return data * self.factor
+
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY
 
 
 class DummyPredictorFS(DummyPredictor):

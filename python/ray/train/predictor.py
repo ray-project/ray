@@ -123,6 +123,18 @@ class Predictor(abc.ABC):
         """Set the preprocessor to use prior to executing predictions."""
         self._preprocessor = preprocessor
 
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        """Batch format hint for upstream producers to try yielding best block format.
+        Can be overriden by predictor classes depending on the framework type.
+
+        - In case for DLPredictor that requires Numpy for neural network inference,
+        this method should return BatchFormat.NUMPY.
+        - In case XGBoostPredictor that primarily works with tabular data, this
+        method can return BatchFormat.PANDAS.
+        """
+        return BatchFormat.PANDAS
+
     def _set_cast_tensor_columns(self):
         """Enable automatic tensor column casting.
 

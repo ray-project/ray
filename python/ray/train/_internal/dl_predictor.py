@@ -64,6 +64,10 @@ class DLPredictor(Predictor):
         """
         raise NotImplementedError
 
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY
+
     def _predict_pandas(
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
