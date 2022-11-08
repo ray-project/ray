@@ -918,8 +918,7 @@ class Trial:
         for checkpoint in self.get_trial_checkpoints():
             checkpoint_state = checkpoint.__dict__.copy()
             checkpoint_dir = checkpoint.dir_or_data
-            if isinstance(checkpoint_dir, ray.ObjectRef):
-                checkpoint_dir = ray.get(checkpoint_dir)
+            assert isinstance(checkpoint_dir, str)
             checkpoint_state["__relative_dir"] = os.path.relpath(
                 checkpoint_dir, self.logdir
             )
