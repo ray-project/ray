@@ -114,7 +114,7 @@ class TorchPredictor(DLPredictor):
 
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
                 # List outputs are not supported by default TorchPredictor.
                 # So let's define a custom TorchPredictor and override call_model
@@ -137,7 +137,7 @@ class TorchPredictor(DLPredictor):
                 predictions = predictor.predict(data_batch)
                 print(f"Custom results: {predictions}")
 
-            .. code-block:: text
+            .. testoutput::
 
                 Custom results: {'0': array([1., 2.], dtype=float32),
                                 '1': array([1., 2.], dtype=float32)}
@@ -173,7 +173,7 @@ class TorchPredictor(DLPredictor):
 
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
                     import numpy as np
                     import pandas as pd
@@ -212,7 +212,7 @@ class TorchPredictor(DLPredictor):
                     predictions = predictor.predict(data, dtype=torch.float)
                     print(f"Custom model predictions: {predictions}")
 
-            .. code-block:: text
+            .. testoutput::
 
                 Standard model predictions: [[1.5487633][3.8037925]]
 
