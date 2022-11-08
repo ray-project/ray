@@ -519,6 +519,7 @@ def test_tuner_restore_from_moved_experiment_path(
     new_exp_name = "new_exp_dir"
 
     # Initial training run (that errors out in the middle)
+    num_to_keep = 2
     tuner = Tuner(
         _train_fn_sometimes_failing,
         tune_config=TuneConfig(
@@ -527,12 +528,12 @@ def test_tuner_restore_from_moved_experiment_path(
         run_config=RunConfig(
             name=old_exp_name,
             local_dir=str(old_local_dir),
+            checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
         ),
         param_space={
             "failing_hanging": (fail_marker, None),
         },
     )
-
     results = tuner.fit()
     assert len(results.errors) == 1
     training_iteration = results[0].metrics["training_iteration"]
@@ -570,7 +571,14 @@ def test_tuner_restore_from_moved_experiment_path(
     assert training_iteration == 3, training_iteration
 
     # Make sure that checkpoints are loaded properly
-    assert results[0].checkpoint and isinstance(results[0].checkpoint, Checkpoint)
+    assert results[0].checkpoint
+    assert len(results[0].best_checkpoints) == num_to_keep
+    checkpoint_dirs = [
+        path
+        for path in os.listdir(results[0].log_dir)
+        if path.startswith("checkpoint_")
+    ]
+    assert sorted(checkpoint_dirs) == ["checkpoint_000001", "checkpoint_000002"]
 
     # Make sure that we did not create a logdir in the old location
     assert not old_local_dir.exists()
