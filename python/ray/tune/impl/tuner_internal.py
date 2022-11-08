@@ -450,8 +450,9 @@ class TunerInternal:
         return analysis
 
     def __getstate__(self):
-        self.clear_remote_string_queue()
         state = self.__dict__.copy()
+        state["_tuner_kwargs"] = state["_tuner_kwargs"].copy()
+        state["_tuner_kwargs"].pop("_remote_string_queue", None)
         state.pop(_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
