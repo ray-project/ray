@@ -31,6 +31,7 @@ werkzeug
 wandb
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
 tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-datasets
 torch
 torchvision
 transformers
