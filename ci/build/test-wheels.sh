@@ -108,13 +108,14 @@ elif [[ "$platform" == "macosx" ]]; then
     PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
+    PYTHON_SITE_PACKAGE_PATH="$MACPYTHON_PY_PREFIX/$PY_MM/lib/python$PY_MM/site-packages/"
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
-    "$PIP_CMD" uninstall -y ray
+    PYTHONPATH="${PYTHONPATH}:${PYTHON_SITE_PACKAGE_PATH}" "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
