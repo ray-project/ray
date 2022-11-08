@@ -1,7 +1,17 @@
+from typing import Dict, Any, List, Optional, Union
+import os
+
+from ray.air.checkpoint import Checkpoint
+from ray.data import Dataset
+
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+from ray.rllib.offline.offline_evalution_utils import (
+    remove_time_dim, compute_is_weights
+)
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from typing import Dict, List
+
 
 
 @DeveloperAPI
@@ -65,3 +75,40 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode["v_target"] = v_target
 
         return estimates_per_epsiode
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(
+        self, 
+        dataset: Dataset, 
+        checkpoint: Union[str, Checkpoint] = None,
+        policy_state: Optional[Dict[str, Any]] = None,
+        *, 
+        n_parallelism: int = os.cpu_count(),
+    ):        
+        dsize = dataset.count()
+        batch_size = max(dsize // n_parallelism, 1)
+        # step 1: clean the dataset and remove the time dimension from bandits
+        updated_ds = dataset.map_batches(remove_time_dim, batch_size=batch_size)
+        # step 2: compute the weights and weighted rewards
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(
+            compute_is_weights, 
+            batch_size=batch_size, 
+            fn_kwargs={
+                "checkpoint": checkpoint, 
+                "policy_state": policy_state, 
+                "estimator_class": self.__class__
+            }
+        )
+        v_target = updated_ds.mean("weighted_rewards")
+        v_behavior = updated_ds.mean("rewards")
+        v_gain = v_target / v_behavior
+        # TODO (Kourosh): Fix the STD
+        v_std = updated_ds.std("weighted_rewards")
+        
+        return {
+            "v_target": v_target,
+            "v_behavior": v_behavior,
+            "v_gain": v_gain,
+            "v_std": v_std,
+        }

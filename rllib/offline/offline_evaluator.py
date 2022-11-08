@@ -7,7 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.data import Dataset
 
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class OfflineEvaluator(abc.ABC):
         """
         self.policy = policy
 
-    @abstractmethod
+    @abc.abstractmethod
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Returns the evaluation results for the given batch of episodes.
@@ -56,9 +56,9 @@ class OfflineEvaluator(abc.ABC):
         """
         return {}
 
-    @abstractclassmethod
+    @ExperimentalAPI
     def estimate_on_dataset(
-        cls, 
+        self, 
         dataset: Dataset, 
         checkpoint: Union[str, Checkpoint] = None,
         policy_state: Optional[Dict[str, Any]] = None,
