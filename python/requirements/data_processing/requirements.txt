@@ -15,5 +15,5 @@ pytest-repeat
 # - Makes MLDataset an optional dependency.
 # - Removes pyarrow < 7.0.0 upperbound.
 # raydp-nightly==2022.6.30.dev1
-responses==0.13.4
+responses==0.22.0
 pymars>=0.8.3
