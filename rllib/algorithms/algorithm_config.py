@@ -6,6 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
+from ray.tune.result import TRIAL_INFO
 from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -420,6 +421,11 @@ class AlgorithmConfig:
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
+
+            # Ray Tune saves additional data under this magic keyword.
+            # This should not get treated as AlgorithmConfig field.
+            if key == TRIAL_INFO:
+                continue
 
             # Set our multi-agent settings.
             if key == "multiagent":
