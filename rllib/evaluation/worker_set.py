@@ -701,9 +701,9 @@ class WorkerSet:
         Returns:
              The list of return values of all calls to `func([worker])`.
         """
-        assert (not return_objref or not local_worker), (
-            "Can not return ObjectRef from local worker."
-        )
+        assert (
+            not return_objref or not local_worker
+        ), "Can not return ObjectRef from local worker."
 
         local_result = []
         if local_worker and self.local_worker() is not None:

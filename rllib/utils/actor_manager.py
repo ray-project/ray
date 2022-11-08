@@ -436,9 +436,9 @@ class FaultTolerantActorManager:
             A tuple of (filtered func, filtered remote worker ids).
         """
         if isinstance(func, list):
-            assert len(remote_actor_ids) == len(func), (
-                "Func must have the same number of callables as remote actor ids."
-            )
+            assert len(remote_actor_ids) == len(
+                func
+            ), "Func must have the same number of callables as remote actor ids."
             # We are given a list of functions to apply.
             # Need to filter the functions together with worker IDs.
             temp_func = []

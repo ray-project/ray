@@ -137,7 +137,9 @@ class TestActorManager(unittest.TestCase):
 
         results = list(
             manager.foreach_actor(
-                lambda w: w.call(), healthy_only=False, return_objref=True,
+                lambda w: w.call(),
+                healthy_only=False,
+                return_objref=True,
             )
         )
 
