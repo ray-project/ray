@@ -340,6 +340,11 @@ void ReferenceCounter::ReleaseAllLocalReferences() {
   }
 }
 
+void ReferenceCounter::ClearAll() {
+  absl::MutexLock lock(&mutex_);
+  object_id_refs_.clear();
+}
+
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
   if (object_id.IsNil()) {

@@ -523,10 +523,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
-  void ClearAll() {
-    absl::MutexLock lock(&mutex_);
-    object_id_refs_.clear();
-  }
+  /// Clear ReferenceTable. This is a tmp solution of this problem: Currently, somewhere
+  /// exists a reference leak problem, i.e. some processes still hold the reference table
+  /// instance after Ray shutdown, which prevents the references being freed. In some UT, 
+  /// since the driver process won't exit but restart a new Ray cluster, the UT may fail
+  /// because the flyweight still holds the information of old Ray cluster and pass it to
+  /// the new cluster.
+  void ClearAll();
 
  private:
   /// Contains information related to nested object refs only.
