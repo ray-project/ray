@@ -264,6 +264,9 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_initial_delay_ms": 0,
+        "health_check_period_ms": 100,
+        "health_check_failure_threshold": 10,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
