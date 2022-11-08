@@ -1,7 +1,6 @@
 import os
 import threading
 from typing import Optional
-from ray.data._internal.block_batching import DefaultBatchSize
 
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -83,7 +82,7 @@ WARN_PREFIX = "⚠️ "
 OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = DefaultBatchSize(4096)
+DEFAULT_BATCH_SIZE = "4096"
 
 
 @DeveloperAPI

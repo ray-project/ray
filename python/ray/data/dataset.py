@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.data._internal.batcher import Batcher
-from ray.data._internal.block_batching import BatchType, DefaultBatchSize, batch_blocks
+from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -491,8 +491,8 @@ class Dataset(Generic[T]):
             )
 
         target_block_size = None
-        if isinstance(batch_size, DefaultBatchSize):
-            batch_size = batch_size.value
+        if batch_size is DEFAULT_BATCH_SIZE:
+            batch_size = int(batch_size)
         elif batch_size is not None:
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
