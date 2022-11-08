@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=["tests"])
         else:
             return []
 
@@ -200,6 +200,7 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
 
 # html templates for notebook integration
 ray_files += [
@@ -216,13 +217,19 @@ if setup_spec.type == SetupType.RAY:
     else:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
-        # Numpy dropped python 3.6 support in 1.20.
+        # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
+    if sys.version_info >= (3, 7) and sys.platform != "win32":
+        pyarrow_dep = "pyarrow >= 6.0.1, < 8.0.0"
+    else:
+        # pyarrow dropped python 3.6 support in 7.0.0.
+        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
+        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
         "data": [
             numpy_dep,
             pandas_dep,
-            "pyarrow >= 6.0.1, < 7.0.0",
+            pyarrow_dep,
             "fsspec",
         ],
         "default": [

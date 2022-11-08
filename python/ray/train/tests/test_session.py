@@ -32,7 +32,14 @@ def session():
     def f():
         return 1
 
-    init_session(training_func=f, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=f,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     yield get_session()
     shutdown_session()
 
@@ -80,6 +87,8 @@ def test_get_dataset_shard(shutdown_only):
         training_func=lambda: 1,
         world_rank=0,
         local_rank=0,
+        node_rank=0,
+        local_world_size=1,
         world_size=1,
         dataset_shard=dataset,
     )
@@ -92,7 +101,14 @@ def test_report():
         for i in range(2):
             report(dict(loss=i))
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     assert session.get_next().data["loss"] == 0
@@ -106,7 +122,14 @@ def test_report_fail():
             report(i)
         return 1
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     with pytest.raises(StartTraceback):
@@ -139,9 +162,16 @@ def test_checkpoint():
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data["epoch"] == expected
+        assert next.data.to_dict()["epoch"] == expected
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     validate_zero(0)
@@ -155,9 +185,16 @@ def test_checkpoint():
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data == {}
+        assert not next.data
 
-    init_session(training_func=train_func, world_rank=1, local_rank=1, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=1,
+        local_rank=1,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     validate_nonzero()
@@ -173,18 +210,24 @@ def test_encode_data():
         report(dict(epoch=0), checkpoint=Checkpoint.from_dict(dict(epoch=0)))
 
     def encode_checkpoint(checkpoint):
-        checkpoint.update({"encoded": True})
-        return checkpoint
+        data = checkpoint.to_dict()
+        data["encoded"] = True
+        return checkpoint.from_dict(data)
 
     def validate_encoded(result_type: TrainingResultType):
         next = session.get_next()
         assert next.type is result_type
-        assert next.data["encoded"] is True
+        data = next.data
+        if isinstance(data, Checkpoint):
+            data = data.to_dict()
+        assert data["encoded"] is True
 
     init_session(
         training_func=train_func,
         world_rank=0,
         local_rank=0,
+        node_rank=0,
+        local_world_size=1,
         world_size=1,
         encode_data_fn=encode_checkpoint,
     )
@@ -193,8 +236,7 @@ def test_encode_data():
     session.start()
     # Validate checkpoint is encoded.
     validate_encoded(TrainingResultType.CHECKPOINT)
-    # Validate report is encoded.
-    validate_encoded(TrainingResultType.REPORT)
+    session.get_next()
     session.finish()
     shutdown_session()
 
@@ -206,10 +248,18 @@ def test_load_checkpoint_after_save():
             checkpoint = get_checkpoint()
             assert checkpoint.to_dict()["epoch"] == i
 
-    init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     for i in range(2):
+        session.get_next()
         session.get_next()
     session.finish()
     shutdown_session()
@@ -223,7 +273,14 @@ def test_locking():
 
         _thread.interrupt_main()
 
-    init_session(training_func=train_1, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_1,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     with pytest.raises(KeyboardInterrupt):
         session.start()
@@ -234,7 +291,14 @@ def test_locking():
             report(dict(loss=i))
         train_1()
 
-    init_session(training_func=train_2, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=train_2,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     time.sleep(3)
@@ -337,7 +401,14 @@ def test_application_error_raised():
     def f():
         raise ValueError
 
-    init_session(training_func=f, world_rank=0, local_rank=0, world_size=1)
+    init_session(
+        training_func=f,
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        local_world_size=1,
+        world_size=1,
+    )
     session = get_session()
     session.start()
     with pytest.raises(StartTraceback):

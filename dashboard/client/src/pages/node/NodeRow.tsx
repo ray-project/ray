@@ -79,7 +79,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>
+          {ip} {raylet.isHeadNode && "(Head)"}
+        </Box>
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -102,13 +104,15 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
-        {raylet && raylet.objectStoreUsedMemory && (
+        {raylet && objectStoreTotalMemory && (
           <PercentageBar
             num={raylet.objectStoreUsedMemory}
             total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
+            {memoryConverter(objectStoreTotalMemory)}(
+            {(raylet.objectStoreUsedMemory / objectStoreTotalMemory).toFixed(2)}
+            %)
           </PercentageBar>
         )}
       </TableCell>
@@ -146,7 +150,7 @@ type WorkerRowProps = {
 const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { mem, logUrl } = node;
+  const { ip, mem, logUrl } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -203,8 +207,27 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell align="center">N/A</TableCell>
       <TableCell>
         <Link to={workerLogUrl} target="_blank">
-          Log
+          Logs
         </Link>
+        <br />
+        <a
+          href={`/worker/traceback?pid=${pid}&ip=${ip}`}
+          target="_blank"
+          title="Sample the current Python stack trace for this worker."
+          rel="noreferrer"
+        >
+          Stack&nbsp;Trace
+        </a>
+        <br />
+        <a
+          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`}
+          target="_blank"
+          title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+          rel="noreferrer"
+        >
+          Flame&nbsp;Graph
+        </a>
+        <br />
       </TableCell>
     </TableRow>
   );

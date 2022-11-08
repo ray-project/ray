@@ -6,7 +6,7 @@ import ray
 from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import (
@@ -155,22 +155,22 @@ class MBMPOConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        use_gae: Optional[float] = None,
-        lambda_: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        vf_clip_param: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        kl_target: Optional[float] = None,
-        inner_adaptation_steps: Optional[int] = None,
-        maml_optimizer_steps: Optional[int] = None,
-        inner_lr: Optional[float] = None,
-        horizon: Optional[int] = None,
-        dynamics_model: Optional[dict] = None,
-        custom_vector_env: Optional[type] = None,
-        num_maml_steps: Optional[int] = None,
+        use_gae: Optional[float] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
+        inner_adaptation_steps: Optional[int] = NotProvided,
+        maml_optimizer_steps: Optional[int] = NotProvided,
+        inner_lr: Optional[float] = NotProvided,
+        horizon: Optional[int] = NotProvided,
+        dynamics_model: Optional[dict] = NotProvided,
+        custom_vector_env: Optional[type] = NotProvided,
+        num_maml_steps: Optional[int] = NotProvided,
         **kwargs,
     ) -> "MBMPOConfig":
         """Sets the training related configuration.
@@ -205,40 +205,69 @@ class MBMPOConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if vf_loss_coeff is not None:
+        if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
+        if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if vf_clip_param is not None:
+        if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if inner_adaptation_steps is not None:
+        if inner_adaptation_steps is not NotProvided:
             self.inner_adaptation_steps = inner_adaptation_steps
-        if maml_optimizer_steps is not None:
+        if maml_optimizer_steps is not NotProvided:
             self.maml_optimizer_steps = maml_optimizer_steps
-        if inner_lr is not None:
+        if inner_lr is not NotProvided:
             self.inner_lr = inner_lr
-        if horizon is not None:
+        if horizon is not NotProvided:
             self.horizon = horizon
-        if dynamics_model is not None:
+        if dynamics_model is not NotProvided:
             self.dynamics_model.update(dynamics_model)
-        if custom_vector_env is not None:
+        if custom_vector_env is not NotProvided:
             self.custom_vector_env = custom_vector_env
-        if num_maml_steps is not None:
+        if num_maml_steps is not NotProvided:
             self.num_maml_steps = num_maml_steps
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
+        if self.framework_str != "torch":
+            raise ValueError(
+                "MB-MPO only supported in PyTorch so far! Try setting config. "
+                "framework('torch')."
+            )
+        if self.inner_adaptation_steps <= 0:
+            raise ValueError("Inner adaptation steps must be >=1!")
+        if self.maml_optimizer_steps <= 0:
+            raise ValueError("PPO steps for meta-update needs to be >=0!")
+        if self.entropy_coeff < 0:
+            raise ValueError("`entropy_coeff` must be >=0.0!")
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("`batch_mode=truncate_episodes` not supported!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("Must have at least 1 worker/task.")
+        if self.create_env_on_local_worker is False:
+            raise ValueError(
+                "Must have an actual Env created on the local worker process!"
+                "Try setting `config.environment("
+                "create_env_on_local_worker=True)`."
+            )
 
 
 # Select Metric Keys for MAML Stats Tracing
@@ -464,37 +493,11 @@ class MBMPO(Algorithm):
     def get_default_config(cls) -> AlgorithmConfig:
         return MBMPOConfig()
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
-        if config["framework"] != "torch":
-            logger.warning(
-                "MB-MPO only supported in PyTorch so far! Switching to "
-                "`framework=torch`."
-            )
-            config["framework"] = "torch"
-        if config["inner_adaptation_steps"] <= 0:
-            raise ValueError("Inner adaptation steps must be >=1!")
-        if config["maml_optimizer_steps"] <= 0:
-            raise ValueError("PPO steps for meta-update needs to be >=0!")
-        if config["entropy_coeff"] < 0:
-            raise ValueError("`entropy_coeff` must be >=0.0!")
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("`batch_mode=truncate_episodes` not supported!")
-        if config["num_workers"] <= 0:
-            raise ValueError("Must have at least 1 worker/task.")
-        if config["create_env_on_driver"] is False:
-            raise ValueError(
-                "Must have an actual Env created on the driver "
-                "(local) worker! Set `create_env_on_driver` to True."
-            )
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 
         return MBMPOTorchPolicy
