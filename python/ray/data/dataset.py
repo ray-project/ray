@@ -3086,16 +3086,11 @@ class Dataset(Generic[T]):
             type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
             if isinstance(columns, str):
-                is_ragged = isinstance(type_spec, tf.RaggedTensorSpec)
-                return convert_ndarray_to_tf_tensor(batch[columns], ragged=is_ragged)
-
-            tensors = {}
-            for column in columns:
-                is_ragged = isinstance(type_spec[column], tf.RaggedTensorSpec)
-                tensor = convert_ndarray_to_tf_tensor(batch[column], ragged=is_ragged)
-                tensors[column] = tensor
-
-            return tensors
+                return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
+            return {
+                convert_ndarray_to_tf_tensor(batch[column], type_spec=type_spec[column])
+                for column in columns
+            }
 
         def generator():
             for batch in self.iter_batches(

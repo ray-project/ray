@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 def convert_ndarray_to_tf_tensor(
     ndarray: np.ndarray,
     dtype: Optional[tf.dtypes.DType] = None,
-    ragged: bool = False,
+    tensor_spec: Optional[tf.TensorSpec] = None,
 ) -> tf.Tensor:
     """Convert a NumPy ndarray to a TensorFlow Tensor.
 
@@ -21,12 +21,17 @@ def convert_ndarray_to_tf_tensor(
         ndarray: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
         dtype: A TensorFlow dtype for the created tensor; if None, the dtype will be
             inferred from the NumPy ndarray data.
-        ragged: If ``True``, return a ragged tensor instead of a normal tensor.
+        tensor_spec: A type spec that specifies the shape and dtype of the returned
+            tensor. If you specify ``dtype``, the type spec dtype is ignored.
 
     Returns: A TensorFlow Tensor.
     """
+    if dtype is None and tensor_spec is not None:
+        dtype = tensor_spec.dtype
+
+    is_ragged = isinstance(tensor_spec, tf.RaggedTensorSpec)
     ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
-    if ragged:
+    if is_ragged:
         return tf.ragged.constant(ndarray, dtype=dtype)
     else:
         return tf.convert_to_tensor(ndarray, dtype=dtype)
