@@ -1,10 +1,17 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Union
 import numpy as np
 
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.data import Dataset
+from ray.air.checkpoint import Checkpoint
+import os
+from ray.rllib.offline.ray_dataset_utils import (
+    get_policy_from_checkpoint_or_state, remove_time_dim
+)
 
 
 @DeveloperAPI
@@ -76,6 +83,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target
+        estimates_per_epsiode["weights"] = weights
+        estimates_per_epsiode["new_prob"] = new_prob
+        estimates_per_epsiode["old_prob"] = old_prob
 
         return estimates_per_epsiode
 
@@ -118,3 +128,55 @@ class WeightedImportanceSampling(OffPolicyEstimator):
                 f"Make sure dataset contains only unique episodes with unique ids."
             )
         self.p[eps_id] = episode_p
+
+
+    @override(OfflineEvaluator)
+    @classmethod
+    def estimate_on_dataset(
+        cls, 
+        dataset: Dataset, 
+        checkpoint: Union[str, Checkpoint] = None,
+        policy_state: Optional[Dict[str, Any]] = None,
+        *, 
+        n_parallelism: int = os.cpu_count(),
+    ):        
+        dsize = dataset.count()
+        batch_size = max(dsize // n_parallelism, 1)
+        # step 1: clean the dataset and remove the time dimension from bandits
+        updated_ds = dataset.map_batches(remove_time_dim, batch_size=batch_size)
+        # step 2: compute the weights and weighted rewards
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(compute_weights, batch_size=batch_size, fn_kwargs={"checkpoint": checkpoint, "policy_state": policy_state})
+        v_target = updated_ds.mean("weighted_rewards") / updated_ds.mean("weights")
+        v_behavior = updated_ds.mean("rewards")
+        v_gain = v_target / v_behavior
+        v_std = updated_ds.std("weighted_rewards") / updated_ds.mean("weights")
+        
+        return {
+            "v_target": v_target,
+            "v_behavior": v_behavior,
+            "v_gain": v_gain,
+            "v_std": v_std,
+        }
+
+def compute_weights(batch, checkpoint = None, policy_state = None):
+    policy = get_policy_from_checkpoint_or_state(checkpoint, policy_state)
+    estimator = WeightedImportanceSampling(policy=policy, gamma=0, epsilon_greedy=0)
+    sample_batch = SampleBatch({
+        SampleBatch.OBS: np.vstack(batch["obs"].values),
+        SampleBatch.ACTIONS: np.vstack(batch["actions"].values).squeeze(-1),
+        SampleBatch.ACTION_PROB: np.vstack(batch["action_prob"].values).squeeze(-1),
+        SampleBatch.REWARDS: np.vstack(batch["rewards"].values).squeeze(-1),
+    })
+    new_prob = estimator.compute_action_probs(sample_batch)
+    old_prob = sample_batch[SampleBatch.ACTION_PROB]
+    rewards = sample_batch[SampleBatch.REWARDS]
+    weights = new_prob / old_prob
+    weighted_rewards = weights * rewards
+    
+    batch["weights"] = weights
+    batch["weighted_rewards"] = weighted_rewards
+    batch["new_prob"] = new_prob
+    batch["old_prob"] = old_prob
+
+    return batch

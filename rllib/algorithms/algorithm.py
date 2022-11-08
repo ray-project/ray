@@ -52,7 +52,7 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline import get_offline_io_resource_bundles
+from ray.rllib.offline import get_offline_io_resource_bundles, get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
     ImportanceSampling,
@@ -616,7 +616,8 @@ class Algorithm(Trainable):
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
-        if self.config.evaluation_num_workers > 0 or self.config.evaluation_interval:
+        # Note: We skipp workerset creation if we need to do offline evaluation
+        if not self.config.get("off_policy_estimation_methods") and (self.config.evaluation_num_workers > 0 or self.config.evaluation_interval) :
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
             )
@@ -643,6 +644,17 @@ class Algorithm(Trainable):
                     return_object_refs=True,
                 )
                 self._evaluation_weights_seq_number = 0
+
+
+        self.evaluation_dataset = None
+        if self.evaluation_config.get("off_policy_estimation_methods"):
+            # the num worker is set to 0 to avoid creating shards since there is no 
+            # worker anymore
+            logger.info("Creating evaluation dataset ...")
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
+            )
+            logger.info("Evaluation dataset created")
 
         self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
         ope_types = {
@@ -678,7 +690,7 @@ class Algorithm(Trainable):
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
                     "either a class path or a sub-class of ray.rllib."
-                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
+                    "offline.offline_evaluator::OfflineEvaluator"
                 )
 
         # Run `on_algorithm_init` callback after initialization is done.
@@ -2734,6 +2746,12 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
+
+        if self.config["off_policy_estimation_methods"]:
+            eval_results = {}
+            eval_results["evaluation"] = self._run_offline_evaluation(train_future)
+            return eval_results
+
         eval_results = {
             "evaluation": {
                 "episode_reward_max": np.nan,
@@ -2816,6 +2834,21 @@ class Algorithm(Trainable):
             results.update(train_results)
 
         return results, train_iter_ctx
+
+    
+    def _run_offline_evaluation(self, train_future = None):
+        # TODO (Kourosh): Figure out how to this in parallel with training.
+        # Note: we can only run offline evaluation in single agent case for now.
+        assert len(self.workers.local_worker().policy_map) == 1
+        policy_state = self.get_policy().get_state()
+        offline_eval_results = {}
+        for evaluator_name, offline_evaluator in self.reward_estimators.items():
+            offline_eval_results[evaluator_name] = offline_evaluator.estimate_on_dataset(
+                self.evaluation_dataset, 
+                policy_state=policy_state, 
+                n_parallelism=self.evaluation_config.evaluation_num_workers
+            )
+        return offline_eval_results
 
     @staticmethod
     def _automatic_evaluation_duration_fn(
