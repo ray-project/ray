@@ -32,9 +32,6 @@ parser.add_argument(
 parser.add_argument(
     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
 )
-parser.add_argument(
-    "--stop-reward", type=float, default=100.0, help="Reward at which we stop training."
-)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -66,7 +63,6 @@ if __name__ == "__main__":
     )
 
     stop_config = {
-        "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
