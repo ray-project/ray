@@ -135,11 +135,11 @@ class TorchPredictor(DLPredictor):
                 # create custom predictor and predict
                 predictor = CustomPredictor(model=MyModel())
                 predictions = predictor.predict(data_batch)
-                print(f"Custom results: {predictions}")
+                print(f"{predictions}")
 
             .. testoutput::
 
-                Custom results: {'0': array([1., 2.], dtype=float32), '1': array([1., 2.], dtype=float32)}
+                {'0': array([1., 2.], dtype=float32), '1': array([1., 2.], dtype=float32)}
         """
         with torch.no_grad():
             output = self.model(tensor)
