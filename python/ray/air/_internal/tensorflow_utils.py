@@ -24,10 +24,7 @@ def convert_ndarray_batch_to_tf_tensor(
     Returns: A TensorFlow Tensor.
     """
     batch = _unwrap_ndarray_object_type_if_needed(batch)
-    if batch.dtype == object:
-        return tf.ragged.constant(batch)
-    else:
-        return tf.convert_to_tensor(batch, dtype=dtype)
+    return tf.convert_to_tensor(batch, dtype=dtype)
 
 
 def convert_ndarray_batch_to_tf_tensor_batch(

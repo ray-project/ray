@@ -3036,6 +3036,9 @@ class Dataset(Generic[T]):
 
         """  # noqa: E501
         from ray.air._internal.tensorflow_utils import get_type_spec
+        from ray.air.util.data_batch_conversion import (
+            _unwrap_ndarray_object_type_if_needed,
+        )
 
         try:
             import tensorflow as tf
@@ -3076,24 +3079,45 @@ class Dataset(Generic[T]):
         validate_columns(feature_columns)
         validate_columns(label_columns)
 
-        def get_columns_from_batch(
-            batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
+        def convert_ndarray_to_tensor(
+            ndarray: np.ndarray, type_spec: tf.TypeSpec
+        ) -> tf.Tensor:
+            ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
+            is_ragged = isinstance(type_spec, tf.RaggedTensorSpec)
+            if is_ragged:
+                return tf.ragged.constant(ndarray)
+            else:
+                return tf.convert_to_tensor(ndarray)
+
+        def convert_batch_to_tensors(
+            batch: Dict[str, np.ndarray],
+            *,
+            columns: Union[str, List[str]],
+            type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
             if isinstance(columns, str):
-                return batch[columns]
-            return {column: batch[column] for column in columns}
+                return convert_ndarray_to_tensor(batch[columns], type_spec)
+            return {
+                column: convert_ndarray_to_tensor(batch[column], type_spec[column])
+                for column in columns
+            }
 
         def generator():
-            for batch in self.iter_tf_batches(
+            for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
+                batch_format="numpy",
             ):
                 assert isinstance(batch, dict)
-                features = get_columns_from_batch(batch, columns=feature_columns)
-                labels = get_columns_from_batch(batch, columns=label_columns)
+                features = convert_batch_to_tensors(
+                    batch, columns=feature_columns, type_spec=feature_type_spec
+                )
+                labels = convert_batch_to_tensors(
+                    batch, columns=label_columns, type_spec=label_type_spec
+                )
                 yield features, labels
 
         feature_type_spec = get_type_spec(schema, columns=feature_columns)

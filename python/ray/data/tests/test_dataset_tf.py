@@ -99,7 +99,8 @@ class TestToTF:
         assert tuple(features.shape) == (4, 3, 32, 32)
         assert tuple(labels.shape) == (4,)
 
-    def test_element_spec_shape_with_ragged_tensors(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_element_spec_shape_with_ragged_tensors(self, batch_size):
         df = pd.DataFrame(
             {
                 "spam": TensorArray([np.zeros([32, 32, 3]), np.zeros([64, 64, 3])]),
@@ -108,14 +109,16 @@ class TestToTF:
         )
         ds = ray.data.from_pandas(df)
 
-        dataset = ds.to_tf(feature_columns="spam", label_columns="ham", batch_size=2)
+        dataset = ds.to_tf(
+            feature_columns="spam", label_columns="ham", batch_size=batch_size
+        )
 
         feature_spec, _ = dataset.element_spec
         assert tuple(feature_spec.shape) == (None, None, None, None)
 
         features, labels = next(iter(dataset))
-        assert tuple(features.shape) == (2, None, None, None)
-        assert tuple(labels.shape) == (2,)
+        assert tuple(features.shape) == (batch_size, None, None, None)
+        assert tuple(labels.shape) == (batch_size,)
 
     def test_training(self):
         def build_model() -> tf.keras.Model:
