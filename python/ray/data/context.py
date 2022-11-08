@@ -82,7 +82,7 @@ WARN_PREFIX = "⚠️ "
 OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = "4096"
+DEFAULT_BATCH_SIZE = 4096
 
 
 @DeveloperAPI

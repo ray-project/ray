@@ -323,7 +323,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -491,8 +491,8 @@ class Dataset(Generic[T]):
             )
 
         target_block_size = None
-        if batch_size is DEFAULT_BATCH_SIZE:
-            batch_size = int(batch_size)
+        if batch_size == "default":
+            batch_size = DEFAULT_BATCH_SIZE
         elif batch_size is not None:
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
