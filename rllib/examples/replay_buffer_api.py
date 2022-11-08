@@ -14,7 +14,6 @@ from ray import air, tune
 from ray.rllib.algorithms.r2d2 import R2D2Config
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
-from ray.rllib.utils.test_utils import check_learning_achieved
 
 tf1, tf, tfv = try_import_tf()
 
@@ -35,12 +34,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--stop-reward", type=float, default=100.0, help="Reward at which we stop training."
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
 )
 
 if __name__ == "__main__":
@@ -82,8 +75,6 @@ if __name__ == "__main__":
         "R2D2", param_space=config.to_dict(), run_config=air.RunConfig(stop=stop_config)
     ).fit()
 
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
     ray.shutdown()
 
 # __sphinx_doc_replay_buffer_api_example_script_end__
