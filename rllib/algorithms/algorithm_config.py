@@ -1973,7 +1973,8 @@ class AlgorithmConfig:
             ...   .framework("torch")
             ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
             ... )
-            >>> policy_dict, is_policy_to_train =  config.get_multi_agent_setup()  # doctest: +SKIP
+            >>> policy_dict, is_policy_to_train = \  # doctest: +SKIP
+            ...     config.get_multi_agent_setup()
             >>> is_policy_to_train("pol1") # doctest: +SKIP
             True
             >>> is_policy_to_train("pol2") # doctest: +SKIP
