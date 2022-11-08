@@ -17,7 +17,12 @@ from ray.autoscaler.batching_node_provider import (
     ScaleRequest,
 )
 from ray.autoscaler._private.util import NodeID, NodeKind, NodeType
-from ray.autoscaler.tags import STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS
+from ray.autoscaler.tags import (
+    STATUS_UP_TO_DATE,
+    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+)
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -74,7 +79,9 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
     def safe_to_scale(self) -> bool:
         return self._safe_to_scale_test_flag
 
-    def _assert_worker_counts(self, expected_worker_counts: Dict[NodeType, int]) -> None:
+    def _assert_worker_counts(
+        self, expected_worker_counts: Dict[NodeType, int]
+    ) -> None:
         assert self._cur_num_workers(self._node_data_dict) == expected_worker_counts
 
 
@@ -93,7 +100,9 @@ class BatchingNodeProviderTester:
         self.expected_node_counts["head-group"] = 1
         self.expected_scale_request_submitted_count = 0
 
-    def update(self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag):
+    def update(
+        self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag
+    ):
         """Simulates an autoscaler update with multiple terminate and create calls.
 
         Calls non_terminated_nodes, then create/terminate nodes, then post_process.
@@ -140,7 +149,9 @@ class BatchingNodeProviderTester:
             # else: the scale request will not be submitted.
 
         # Scale change is needed exactly when there's something to create or terminate.
-        assert self.node_provider.scale_change_needed is bool(create_node_requests or terminate_nodes_requests)
+        assert self.node_provider.scale_change_needed is bool(
+            create_node_requests or terminate_nodes_requests
+        )
 
         # Submit the scale request.
         self.node_provider.post_process()
@@ -163,7 +174,11 @@ class BatchingNodeProviderTester:
 
             # Check tag structure.
             tags = self.node_provider.node_tags(node)
-            assert set(tags.keys()) == {TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND}
+            assert set(tags.keys()) == {
+                TAG_RAY_USER_NODE_TYPE,
+                TAG_RAY_NODE_STATUS,
+                TAG_RAY_NODE_KIND,
+            }
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             node_kind = tags[TAG_RAY_NODE_KIND]
             node_status = tags[TAG_RAY_NODE_STATUS]
@@ -180,9 +195,15 @@ class BatchingNodeProviderTester:
         # Make some assertions about internal structure of the node provider.
         expected_node_counts_without_head = copy(self.expected_node_counts)
         del expected_node_counts_without_head["head-group"]
-        assert self.node_provider.scale_request.desired_num_workers == expected_node_counts_without_head
+        assert (
+            self.node_provider.scale_request.desired_num_workers
+            == expected_node_counts_without_head
+        )
         assert self.node_provider.scale_change_needed is False
-        assert self.node_provider._scale_request_submitted_count == self.expected_scale_request_submitted_count
+        assert (
+            self.node_provider._scale_request_submitted_count
+            == self.expected_scale_request_submitted_count
+        )
 
     def update_with_random_requests(self):
         random_requests = self.generate_random_requests()
@@ -213,8 +234,7 @@ class BatchingNodeProviderTester:
         return create_node_requests, terminate_nodes_requests, safe_to_scale_flag
 
     def assert_worker_counts(self, expected_worker_counts):
-        """Validates worker counts against internal node_provider state.
-        """
+        """Validates worker counts against internal node_provider state."""
         self.node_provider._assert_worker_counts(expected_worker_counts)
 
 
@@ -227,31 +247,21 @@ def test_batching_node_provider_basic():
         terminate_nodes_requests=[],
         safe_to_scale_flag=True,
     )
-    tester.assert_worker_counts(
-        {"type-1": 5}
-    )
+    tester.assert_worker_counts({"type-1": 5})
     tester.update(
-        create_node_requests=[
-            ("type-2", 10)
-        ],
+        create_node_requests=[("type-2", 10)],
         terminate_nodes_requests=[("type-1", 2)],
         safe_to_scale_flag=True,
     )
-    tester.assert_worker_counts(
-        {"type-1": 3, "type-2": 10}
-    )
+    tester.assert_worker_counts({"type-1": 3, "type-2": 10})
     tester.update(
-        create_node_requests=[
-            ("type-1", 10)
-        ],
+        create_node_requests=[("type-1", 10)],
         terminate_nodes_requests=[("type-1", 2)],
         safe_to_scale_flag=False,
     )
     # Scale request was not processed because safe_to_scale returned false.
     # Same result as above.
-    tester.assert_worker_counts(
-        {"type-1": 3, "type-2": 10}
-    )
+    tester.assert_worker_counts({"type-1": 3, "type-2": 10})
 
 
 def test_batching_node_provider_many_requests():
