@@ -41,6 +41,9 @@ SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
 
+# Each image is about 600KB after preprocessing.
+APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
+
 
 def build_model():
     return tf.keras.applications.resnet50.ResNet50(
@@ -463,7 +466,10 @@ if __name__ == "__main__":
     # We'll use this to check whether the job should throw an OutOfDiskError.
     statvfs = os.statvfs("/home")
     available_disk_space = statvfs.f_bavail * statvfs.f_frsize
+    expected_disk_usage = args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
     print(f"Available disk space: {available_disk_space / 1e9}GB")
+    print(f"Expected disk usage: {expected_disk_usage/ 1e9}GB")
+    disk_error_expected = expected_disk_usage > available_disk_space * 0.8
 
     datasets = {}
     train_loop_config = {
@@ -549,20 +555,21 @@ if __name__ == "__main__":
         )
     )
 
-    write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    try:
+        write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    except OSError:
+        if not disk_error_expected:
+            raise
 
     if exc is not None:
-        if isinstance(exc.as_instanceof_cause(), ray.exceptions.OutOfDiskError):
-            # Each image is about 600KB after preprocessing.
-            APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
-            expected_disk_usage = (
-                args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
+        if (
+            isinstance(exc.as_instanceof_cause(), ray.exceptions.OutOfDiskError)
+            and disk_error_expected
+        ):
+            print(
+                f"Job required {expected_disk_usage}GB disk space, "
+                f"{available_disk_space}GB available. "
+                "OutOfDiskError raised, as expected."
             )
-            if expected_disk_usage > available_disk_space * 0.8:
-                print(
-                    f"Job required {expected_disk_usage}GB disk space, "
-                    f"{available_disk_space}GB available. "
-                    "OutOfDiskError raised, as expected."
-                )
         else:
             raise exc
