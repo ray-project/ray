@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 from ray.util.annotations import DeveloperAPI
 
 
@@ -400,16 +400,20 @@ class FaultTolerantActorManager:
                 remote_results.add_result(actor_id, ResultOrError(result=result))
                 # Able to fetch return value. Mark this actor healthy if necessary.
                 if not self.is_actor_healthy(actor_id):
+                    print(f"bring {actor_id} back man!!")
                     logger.info(f"brining actor {actor_id} back into service.")
                 self.set_actor_state(actor_id, healthy=True)
             except Exception as e:
                 # Return error to the user.
                 remote_results.add_result(actor_id, ResultOrError(error=e))
 
-                if isinstance(e, RayActorError):
+                # TODO(jungong): Using RayError here to preserve historical behavior.
+                # It may very likely be better to use RayActorError here.
+                if isinstance(e, RayError):
                     # Take this actor out of service and wait for Ray Core to
                     # restore it.
                     if self.is_actor_healthy(actor_id):
+                        print(f"kill {actor_id} man!!")
                         logger.error(
                             f"Ray error, taking actor {actor_id} out of service. "
                             f"{str(e)}"

@@ -201,10 +201,18 @@ class MAMLConfig(AlgorithmConfig):
 # @mluo: TODO
 def set_worker_tasks(workers, use_meta_env):
     if use_meta_env:
-        n_tasks = len(workers.remote_workers())
-        tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(n_tasks)
-        for i, worker in enumerate(workers.remote_workers()):
-            worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
+        worker_ids = workers.remote_worker_ids()
+        tasks = (
+            workers.local_worker()
+            .foreach_env(lambda x: x)[0]
+            .sample_tasks(len(worker_ids))
+        )
+        funcs = [lambda env: env.set_task(tasks[i]) for i in worker_ids]
+        workers.foreach_worker(
+            func=funcs,
+            remote_worker_ids=worker_ids,
+            local_worker=False,
+        )
 
 
 class MetaUpdate:

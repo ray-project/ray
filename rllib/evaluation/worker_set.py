@@ -18,8 +18,9 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError, RayActorError
+from ray.exceptions import RayActorError
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import get_dataset_and_shards
@@ -53,6 +54,24 @@ logger = logging.getLogger(__name__)
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
+
+
+def handle_remote_call_result_errors(
+    results: RemoteCallResults,
+    ignore_worker_failures: bool,
+) -> None:
+    """Checks given results for application errors and raises them if necessary.
+
+    Args:
+        results: The results to check.
+    """
+    for r in results.ignore_ray_errors():
+        if r.ok:
+            continue
+        if ignore_worker_failures:
+            logger.exception(r.get())
+        else:
+            raise r.get()
 
 
 @DeveloperAPI
@@ -130,11 +149,17 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
+        self._ignore_worker_failures = config["ignore_worker_failures"]
 
         # Create remote worker manager.
         # Note(jungong) : ID 0 is used by the local worker.
         # Starting remote workers from ID 1 to avoid conflicts.
-        self.__worker_manager = FaultTolerantActorManager(init_id=1)
+        self.__worker_manager = FaultTolerantActorManager(
+            max_remote_requests_in_flight_per_actor=(
+                config["max_requests_in_flight_per_sampler_worker"]
+            ),
+            init_id=1,
+        )
 
         if _setup:
             try:
@@ -252,7 +277,7 @@ class WorkerSet:
             lambda worker: worker.foreach_policy(
                 lambda p, pid: (pid, p.observation_space, p.action_space)
             ),
-            remote_worker_indices=[worker_id],
+            remote_worker_ids=[worker_id],
             local_worker=False,
         )
         if not remote_spaces:
@@ -270,7 +295,7 @@ class WorkerSet:
             lambda worker: worker.foreach_env(
                 lambda env: (env.observation_space, env.action_space)
             ),
-            remote_worker_indices=[worker_id],
+            remote_worker_ids=[worker_id],
             local_worker=False,
         )
         if env_spaces:
@@ -320,16 +345,29 @@ class WorkerSet:
         return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
+    def healthy_worker_ids(self) -> List[int]:
+        """Returns the list of remote worker IDs."""
+        return self.__worker_manager.healthy_actor_ids()
+
+    @DeveloperAPI
     def num_remote_workers(self) -> int:
         """Returns the number of remote rollout workers."""
         return self.__worker_manager.num_actors()
 
     @DeveloperAPI
+    def num_healthy_remote_workers(self) -> int:
+        """Returns the number of healthy workers, including local and remote workers."""
+        return self.__worker_manager.num_healthy_actors()
+
+    @DeveloperAPI
     def num_healthy_workers(self) -> int:
         """Returns the number of healthy workers, including local and remote workers."""
-        return (
-            int(bool(self._local_worker)) + self.__worker_manager.num_healthy_actors()
-        )
+        return int(bool(self._local_worker)) + self.num_healthy_remote_workers()
+
+    @DeveloperAPI
+    def num_in_flight_async_reqs(self) -> int:
+        """Returns the number of in-flight async requests."""
+        return self.__worker_manager.num_outstanding_async_reqs()
 
     @DeveloperAPI
     def sync_weights(
@@ -382,7 +420,7 @@ class WorkerSet:
             self.foreach_worker(
                 func=set_weight,
                 healthy_only=False,
-                remote_worker_indices=to_worker_indices,
+                remote_worker_ids=to_worker_indices,
             )
 
         # If `from_worker` is provided, also sync to this WorkerSet's
@@ -579,78 +617,6 @@ class WorkerSet:
         self.__worker_manager.clear()
         self.__worker_manager.add_actors(new_remote_workers)
 
-    # TODO(jungong) : to be deleted after we stop algorithms from
-    # managing remote workers directly.
-    def remove_failed_workers(self):
-        faulty_indices = self._worker_health_check()
-        removed_workers = []
-        # Terminate faulty workers.
-        for worker_index in faulty_indices:
-            worker = self.__worker_manager.remove_actor(worker_index)
-            logger.info(f"Trying to terminate faulty worker {worker_index}.")
-            try:
-                worker.__ray_terminate__.remote()
-                removed_workers.append(worker)
-            except Exception:
-                logger.exception("Error terminating faulty worker.")
-
-        if self.num_remote_workers() == 0:
-            raise RuntimeError(
-                f"No healthy workers remaining (worker indices {faulty_indices} have "
-                f"died)! Can't continue training."
-            )
-        return removed_workers
-
-    # TODO(jungong) : to be deleted after we stop algorithms from
-    # managing remote workers directly.
-    def recreate_failed_workers(
-        self, local_worker_for_synching: RolloutWorker
-    ) -> Tuple[List[ActorHandle], List[ActorHandle]]:
-        """Recreates any failed workers (after health check).
-
-        Args:
-            local_worker_for_synching: RolloutWorker to use to synchronize the weights
-                after recreation.
-
-        Returns:
-            A tuple consisting of two items: The list of removed workers and the list of
-            newly added ones.
-        """
-        faulty_indices = self._worker_health_check()
-        removed_workers = []
-        new_workers = []
-        for worker_index in faulty_indices:
-            worker = self.__worker_manager.remove_actor(worker_index)
-            removed_workers.append(worker)
-            logger.info(f"Trying to recreate faulty worker {worker_index}")
-            try:
-                worker.__ray_terminate__.remote()
-            except Exception:
-                logger.exception("Error terminating faulty worker.")
-
-            # Try to recreate the failed worker (start a new one).
-            new_worker = self._make_worker(
-                cls=self._cls,
-                env_creator=self._env_creator,
-                validate_env=None,
-                worker_index=worker_index + 1,
-                num_workers=len(self._remote_workers),
-                recreated_worker=True,
-                config=self._remote_config,
-            )
-
-            # Sync new worker from provided one (or local one).
-            # Restore weights and global variables.
-            new_worker.set_state.remote(
-                state=local_worker_for_synching.get_state(),
-            )
-
-            # Add new worker to list of remote workers.
-            self.__worker_manager.add_actors([new_worker])
-            new_workers.append(new_worker)
-
-        return removed_workers, new_workers
-
     @DeveloperAPI
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
@@ -686,7 +652,7 @@ class WorkerSet:
         local_worker=True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
-        remote_worker_indices: List[int] = None,
+        remote_worker_ids: List[int] = None,
         timeout_seconds=None,
         return_objref: bool = False,
     ) -> List[T]:
@@ -697,7 +663,7 @@ class WorkerSet:
             local_worker: Whether apply func on local worker too. Default is True.
             healthy_only: Apply func on known active workers only. By default
                 this will apply func on all workers regardless of their states.
-            remote_worker_indices: Apply func on a selected set of remote workers.
+            remote_worker_ids: Apply func on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
             return_objref: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
@@ -717,11 +683,15 @@ class WorkerSet:
         remote_results = self.__worker_manager.foreach_actor(
             func,
             healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_indices,
+            remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
             return_objref=return_objref,
         )
-        remote_results = [r.get() for r in remote_results.ignore_ray_errors()]
+
+        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+
+        # With application errors handled, return good results.
+        remote_results = [r.get() for r in remote_results.ignore_errors()]
 
         return local_result + remote_results
 
@@ -733,7 +703,7 @@ class WorkerSet:
         local_worker=True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
-        remote_worker_indices: List[int] = None,
+        remote_worker_ids: List[int] = None,
         timeout_seconds=None,
     ) -> List[T]:
         """Similar to foreach_worker(), but calls the function with id of the worker too.
@@ -743,7 +713,7 @@ class WorkerSet:
             local_worker: Whether apply func on local worker too. Default is True.
             healthy_only: Apply func on known active workers only. By default
                 this will apply func on all workers regardless of their states.
-            remote_worker_indices: Apply func on a selected set of remote workers.
+            remote_worker_ids: Apply func on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
 
         Returns:
@@ -753,18 +723,21 @@ class WorkerSet:
         if local_worker and self.local_worker() is not None:
             local_result = [func(0, self.local_worker())]
 
-        if not remote_worker_indices:
-            remote_worker_indices = list(self.__worker_manager.actors().keys())
+        if not remote_worker_ids:
+            remote_worker_ids = list(self.__worker_manager.actors().keys())
 
-        funcs = [functools.partial(func, i) for i in remote_worker_indices]
+        funcs = [functools.partial(func, i) for i in remote_worker_ids]
 
         remote_results = self.__worker_manager.foreach_actor(
             funcs,
             healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_indices,
+            remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
         )
-        remote_results = [r.get() for r in remote_results.ignore_ray_errors()]
+
+        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+
+        remote_results = [r.get() for r in remote_results.ignore_errors()]
 
         return local_result + remote_results
 
@@ -775,7 +748,7 @@ class WorkerSet:
         *,
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only=False,
-        remote_worker_indices: List[int] = None,
+        remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
 
@@ -787,7 +760,7 @@ class WorkerSet:
             func: The function to call for each worker (as only arg).
             healthy_only: Apply func on known active workers only. By default
                 this will apply func on all workers regardless of their states.
-            remote_worker_indices: Apply func on a selected set of remote workers.
+            remote_worker_ids: Apply func on a selected set of remote workers.
 
         Returns:
              The number of async requests that are currently in-flight.
@@ -795,7 +768,7 @@ class WorkerSet:
         return self.__worker_manager.foreach_actor_async(
             func,
             healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_indices,
+            remote_actor_ids=remote_worker_ids,
         )
 
     @DeveloperAPI
@@ -803,6 +776,7 @@ class WorkerSet:
         self,
         *,
         timeout_seconds=0,
+        return_objref: bool = False,
     ) -> Tuple[List[int], List[T]]:
         """Get results from outstanding asynchronous requests that are ready.
 
@@ -814,10 +788,14 @@ class WorkerSet:
             A list of results successfully returned from outstanding remote calls,
             paired with the indices of the callee workers.
         """
-        remote_result = self.__worker_manager.fetch_ready_async_reqs(
-            timeout_seconds=timeout_seconds
+        remote_results = self.__worker_manager.fetch_ready_async_reqs(
+            timeout_seconds=timeout_seconds,
+            return_objref=return_objref,
         )
-        return [(r.actor_id, r.get()) for r in remote_result.ignore_ray_errors()]
+
+        handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+
+        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
     @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
@@ -961,28 +939,6 @@ class WorkerSet:
         )
 
         return worker
-
-    # TODO(jungong) : to be deleted after we stop algorithms from
-    # managing remote workers directly.
-    def _worker_health_check(self) -> List[int]:
-        """Performs a health-check on each remote worker.
-
-        Returns:
-            List of indices (into `self._remote_workers` list) of faulty workers.
-            Note that index=1 is the 0th item in `self._remote_workers`.
-        """
-        logger.info("Health checking all workers ...")
-
-        remote_results = self.__worker_manager.foreach_actor(
-            lambda w: w.sample_with_count(),
-            healthy_only=False,
-        )
-
-        return [
-            r.actor_id
-            for r in remote_results
-            if not r.ok and isinstance(r.get(), RayError)
-        ]
 
     @classmethod
     def _valid_module(cls, class_path):

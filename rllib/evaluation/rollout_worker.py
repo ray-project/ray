@@ -6,6 +6,8 @@ import logging
 import numpy as np
 import os
 import platform
+import sys
+import time
 import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
@@ -228,6 +230,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus=num_gpus,
             memory=memory,
             resources=resources,
+            # Automatically restart failed workers.
+            max_restarts=-1,
         )(cls)
 
     @DeveloperAPI
@@ -1862,7 +1866,17 @@ class RolloutWorker(ParallelIteratorWorker):
         Returns:
             The return value of the function call.
         """
-        return func(self, *args, **kwargs)
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            if self.config.get("recreate_failed_workers"):
+                logger.exception("Worker exception, recreating: {}".format(e))
+                # Allow logs messages to propagate.
+                time.sleep(0.5)
+                # Kill this worker so Ray Core can restart it.
+                sys.exit(1)
+            else:
+                raise e
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str

@@ -248,6 +248,7 @@ class AlgorithmConfig:
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
+        self.max_requests_in_flight_per_sampler_worker = 2
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -1192,6 +1193,7 @@ class AlgorithmConfig:
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1203,6 +1205,18 @@ class AlgorithmConfig:
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1225,6 +1239,10 @@ class AlgorithmConfig:
             self.model.update(model)
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
 
         return self
 

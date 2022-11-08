@@ -171,7 +171,9 @@ class TestWorkerFailures(unittest.TestCase):
         config.ignore_worker_failures = True
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
-        config.env_config = {"bad_indices": [1]}
+        config.env_config = {
+            "bad_indices": [1],
+        }
         if fail_eval:
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
@@ -189,10 +191,10 @@ class TestWorkerFailures(unittest.TestCase):
             result = algo.train()
 
             # One of the rollout workers failed.
-            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertEqual(result["num_healthy_workers"], 1)
             if fail_eval:
                 # One of the eval workers failed.
-                self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
+                self.assertEqual(result["evaluation"]["num_healthy_workers"], 1)
 
             algo.stop()
 
@@ -239,13 +241,11 @@ class TestWorkerFailures(unittest.TestCase):
             # Expect this to go well and all faulty workers are recovered.
             self.assertTrue(
                 not any(
-                    ray.get(
-                        worker.apply.remote(
-                            lambda w: w.recreated_worker
-                            or w.env_context.recreated_worker
-                        )
+                    a.workers.foreach_worker(
+                        func=lambda w: w.recreated_worker
+                        or w.env_context.recreated_worker,
+                        local_worker=False,
                     )
-                    for worker in a.workers.remote_workers()
                 )
             )
             result = a.train()

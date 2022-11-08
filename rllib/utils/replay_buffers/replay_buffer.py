@@ -1,10 +1,11 @@
-import logging
-import platform
-from typing import Any, Dict, List, Optional, Callable, Union
-
-import numpy as np
-import random
 from enum import Enum
+import logging
+import numpy as np
+import platform
+import random
+import sys
+import time
+from typing import Any, Dict, List, Optional, Callable, Union
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -411,7 +412,17 @@ class ReplayBuffer(ParallelIteratorWorker):
         Returns:
             Return value of the induced function call
         """
-        return func(self, *args, **kwargs)
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            if self.config.get("recreate_failed_workers"):
+                logger.exception("Replay actor exception, recreating: {}".format(e))
+                # Allow logs messages to propagate.
+                time.sleep(0.5)
+                # Kill this worker so Ray Core can restart it.
+                sys.exit(1)
+            else:
+                raise e
 
     @Deprecated(new="ReplayBuffer.add()", error=True)
     def add_batch(self, *args, **kwargs):

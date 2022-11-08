@@ -541,12 +541,12 @@ class ARS(Algorithm):
         return action[0]
 
     @override(Algorithm)
-    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
+    def _sync_weights_to_workers(self, *, worker_set=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        worker_set.foreach_policy(lambda p, pid: p.set_flat_weights(ray.get(weights)))
+        worker_set.foreach_policy(lambda p, _: p.set_flat_weights(ray.get(weights)))
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0
