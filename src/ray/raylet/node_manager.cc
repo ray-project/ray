@@ -1019,24 +1019,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
-
-  // Fetch resource info for the remote node and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-      node_id,
-      [this, node_id](
-          Status status,
-          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
-        if (data) {
-          ResourceRequest resources;
-          for (auto &resource_entry : *data) {
-            resources.Set(scheduling::ResourceID(resource_entry.first),
-                          FixedPoint(resource_entry.second->resource_capacity()));
-          }
-          if (ResourceCreateUpdated(node_id, resources)) {
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          }
-        }
-      }));
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
