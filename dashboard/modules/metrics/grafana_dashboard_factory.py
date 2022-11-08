@@ -162,7 +162,7 @@ GRAFANA_PANELS = [
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_cpu_count{{{global_filters}}})',
+                expr="sum(ray_node_cpu_count{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -178,7 +178,7 @@ GRAFANA_PANELS = [
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_gpus_available{{{global_filters}}})',
+                expr="sum(ray_node_gpus_available{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -194,7 +194,7 @@ GRAFANA_PANELS = [
                 legend="Disk Used: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})',
+                expr="sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -226,7 +226,7 @@ GRAFANA_PANELS = [
                 legend="Memory Used: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_mem_total{{{global_filters}}})',
+                expr="sum(ray_node_mem_total{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -254,7 +254,7 @@ GRAFANA_PANELS = [
                 legend="Used GRAM: {{instance}}",
             ),
             Target(
-                expr='(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024',
+                expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
                 legend="MAX",
             ),
         ],
@@ -282,15 +282,15 @@ GRAFANA_PANELS = [
         unit="nodes",
         targets=[
             Target(
-                expr='ray_cluster_active_nodes{{{global_filters}}}',
+                expr="ray_cluster_active_nodes{{{global_filters}}}",
                 legend="Active Nodes: {{node_type}}",
             ),
             Target(
-                expr='ray_cluster_failed_nodes{{{global_filters}}}',
+                expr="ray_cluster_failed_nodes{{{global_filters}}}",
                 legend="Failed Nodes: {{node_type}}",
             ),
             Target(
-                expr='ray_cluster_pending_nodes{{{global_filters}}}',
+                expr="ray_cluster_pending_nodes{{{global_filters}}}",
                 legend="Pending Nodes: {{node_type}}",
             ),
         ],
@@ -423,9 +423,9 @@ def _generate_grafana_panels() -> List[dict]:
         panels.append(template)
     return panels
 
-GLOBAL_FILTERS = [
-    'SessionName="$SessionName"'
-]
+
+GLOBAL_FILTERS = ['SessionName="$SessionName"']
+
 
 def _generate_targets(panel: Panel) -> List[dict]:
     global_filters = ",".join(GLOBAL_FILTERS)

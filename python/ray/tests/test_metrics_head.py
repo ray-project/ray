@@ -239,6 +239,7 @@ def test_format_prometheus_output_by_task_names():
         ]
     )
 
+
 def test_default_dashboard_utilizes_global_filters():
     for panel in GRAFANA_PANELS:
         for target in panel.targets:

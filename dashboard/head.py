@@ -6,8 +6,6 @@ import threading
 from concurrent.futures import Future
 from queue import Queue
 
-from pathlib import Path
-
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
