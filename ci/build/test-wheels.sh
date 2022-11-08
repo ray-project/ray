@@ -123,7 +123,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PYTHON_SITE_PACKAGE_PATH="$MACPYTHON_PY_PREFIX/$PY_MM/lib/python$PY_MM/site-packages/"
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PYTHONPATH="${PYTHON_SITE_PACKAGE_PATH}:${ROOT_DIR}/../../" PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
+      PYTHONPATH="${PYTHON_SITE_PACKAGE_PATH}:${ROOT_DIR}/../../python" PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
     done
   done
 elif [ "${platform}" = windows ]; then
