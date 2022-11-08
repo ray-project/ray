@@ -124,7 +124,9 @@ class AgentCollector:
         """Raises an AssertionError if data does not fit all view requirements that
         have a view on data_col."""
         vr = self.view_requirements[vr_name]
-        assert vr.space.contains(data), (
+        # We only check for the shape here, because conflicting dtypes are often
+        # because of float conversion
+        assert vr.space.shape == np.shape(data), (
             f"Provided tensor {data} does not match space of view requirements {vr}. "
             f"Make sure dimensions and dtype match to resolve this error."
         )
@@ -228,7 +230,7 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            if k in self.view_requirements.keys():
+            if k in self.view_requirements.keys() and not isinstance(v, (dict, tuple)):
                 self._check_view_requirement(k, v)
 
             if k not in self.buffers:
