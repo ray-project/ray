@@ -911,19 +911,17 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
-        # Save persistent trial checkpoint data (with relative paths)
-        # Upon load, the path should be constructed again relative to the
-        # `logdir`, which might be updated.
-        checkpoint_states = []
+        # Save the relative paths of persistent trial checkpoints
+        # When loading this trial state, the paths should be constructed again
+        # relative to the trial `logdir`, which may have been updated.
+        relative_checkpoint_dirs = []
         for checkpoint in self.get_trial_checkpoints():
-            checkpoint_state = checkpoint.__dict__.copy()
             checkpoint_dir = checkpoint.dir_or_data
             assert isinstance(checkpoint_dir, str)
-            checkpoint_state["__relative_dir"] = os.path.relpath(
-                checkpoint_dir, self.logdir
+            relative_checkpoint_dirs.append(
+                os.path.relpath(checkpoint_dir, self.logdir)
             )
-            checkpoint_states.append(checkpoint_state)
-        state["__checkpoints"] = checkpoint_states
+        state["__relative_checkpoint_dirs"] = relative_checkpoint_dirs
 
         return copy.deepcopy(state)
 
@@ -935,24 +933,23 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Load the checkpoint states
-        checkpoint_states = state.pop("__checkpoints", None)
+        # Retrieve the relative checkpoint dirs
+        relative_checkpoint_dirs = state.pop("__relative_checkpoint_dirs", None)
 
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
 
-        if checkpoint_states:
-            for checkpoint, checkpoint_state in zip(
-                self.get_trial_checkpoints(), checkpoint_states
+        if relative_checkpoint_dirs:
+            for checkpoint, relative_checkpoint_dir in zip(
+                self.get_trial_checkpoints(), relative_checkpoint_dirs
             ):
                 # Reconstruct the checkpoint dir using the (possibly updated)
                 # trial logdir and the relative checkpoint directory.
-                checkpoint_state["dir_or_data"] = os.path.join(
-                    self.logdir, checkpoint_state.pop("__relative_dir")
+                checkpoint.dir_or_data = os.path.join(
+                    self.logdir, relative_checkpoint_dir
                 )
-                checkpoint.__dict__.update(checkpoint_state)
 
         if not self.stub:
             validate_trainable(self.trainable_name)
