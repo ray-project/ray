@@ -399,11 +399,7 @@ PANEL_TEMPLATE = {
 
 def generate_grafana_dashboard() -> str:
     base_json = json.load(
-        open(
-            os.path.join(
-                GRAFANA_CONFIG_INPUT_PATH, "dashboards", "grafana_dashboard_base.json"
-            )
-        )
+        open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
     return json.dumps(base_json, indent=4)

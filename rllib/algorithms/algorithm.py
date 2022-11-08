@@ -33,7 +33,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
-from ray.exceptions import GetTimeoutError, RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -79,7 +79,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -478,9 +478,6 @@ class Algorithm(Trainable):
             config_obj.env = self._env_id
             self.config = config_obj
 
-        # Validate the framework settings in config.
-        self.validate_framework(self.config)
-
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
@@ -555,36 +552,15 @@ class Algorithm(Trainable):
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            try:
-                self.workers = WorkerSet(
-                    env_creator=self.env_creator,
-                    validate_env=self.validate_env,
-                    default_policy_class=self.get_default_policy_class(self.config),
-                    config=self.config,
-                    num_workers=self.config["num_workers"],
-                    local_worker=True,
-                    logdir=self.logdir,
-                )
-            # WorkerSet creation possibly fails, if some (remote) workers cannot
-            # be initialized properly (due to some errors in the RolloutWorker's
-            # constructor).
-            except RayActorError as e:
-                # In case of an actor (remote worker) init failure, the remote worker
-                # may still exist and will be accessible, however, e.g. calling
-                # its `sample.remote()` would result in strange "property not found"
-                # errors.
-                if e.actor_init_failed:
-                    # Raise the original error here that the RolloutWorker raised
-                    # during its construction process. This is to enforce transparency
-                    # for the user (better to understand the real reason behind the
-                    # failure).
-                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
-                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
-                    # to a config mismatch) thrown inside the actor.
-                    raise e.args[0].args[2]
-                # In any other case, raise the RayActorError as-is.
-                else:
-                    raise e
+            self.workers = WorkerSet(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.config,
+                num_workers=self.config["num_workers"],
+                local_worker=True,
+                logdir=self.logdir,
+            )
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -1674,7 +1650,8 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
+        # Deprecated.
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1719,49 +1696,41 @@ class Algorithm(Trainable):
         """
         validate_policy_id(policy_id, error=True)
 
-        # Worker list is explicitly provided -> Use only those workers (local or remote)
-        # specified.
-        if workers is not None:
-            # Call static utility method.
-            WorkerSet.add_policy_to_workers(
-                workers,
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
-            )
-        # Add to all our regular RolloutWorkers and maybe also all evaluation workers.
-        else:
-            self.workers.add_policy(
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
+        if workers is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="workers",
+                help=(
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
+                    "and no-op now. Please do not use it anymore."
+                ),
+                error=False,
             )
 
-            # Add to evaluation workers, if necessary.
-            if evaluation_workers is True and self.evaluation_workers is not None:
-                self.evaluation_workers.add_policy(
-                    policy_id,
-                    policy_cls,
-                    policy,
-                    observation_space=observation_space,
-                    action_space=action_space,
-                    config=config,
-                    policy_state=policy_state,
-                    policy_mapping_fn=policy_mapping_fn,
-                    policies_to_train=policies_to_train,
-                )
+        self.workers.add_policy(
+            policy_id,
+            policy_cls,
+            policy,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+        # Add to evaluation workers, if necessary.
+        if evaluation_workers is True and self.evaluation_workers is not None:
+            self.evaluation_workers.add_policy(
+                policy_id,
+                policy_cls,
+                policy,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
@@ -2235,84 +2204,6 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
-    ) -> None:
-        """Validates the config object (or dictionary) wrt. the framework settings.
-
-        Args:
-            config: The config object (or dictionary) to be validated.
-        """
-        _tf1, _tf, _tfv = None, None, None
-        _torch = None
-        framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2"}
-        if framework not in tf_valid_frameworks and framework != "torch":
-            return
-        elif framework in tf_valid_frameworks:
-            _tf1, _tf, _tfv = try_import_tf()
-        else:
-            _torch, _ = try_import_torch()
-
-        def check_if_correct_nn_framework_installed():
-            """Check if tf/torch experiment is running and tf/torch installed."""
-            if framework in tf_valid_frameworks:
-                if not (_tf1 or _tf):
-                    raise ImportError(
-                        (
-                            "TensorFlow was specified as the 'framework' "
-                            "inside of your config dictionary. However, there was "
-                            "no installation found. You can install TensorFlow "
-                            "via `pip install tensorflow`"
-                        )
-                    )
-            elif framework == "torch":
-                if not _torch:
-                    raise ImportError(
-                        (
-                            "PyTorch was specified as the 'framework' inside "
-                            "of your config dictionary. However, there was no "
-                            "installation found. You can install PyTorch via "
-                            "`pip install torch`"
-                        )
-                    )
-
-        def resolve_tf_settings():
-            """Check and resolve tf settings."""
-
-            if _tf1 and config["framework"] == "tf2":
-                if config["framework"] == "tf2" and _tfv < 2:
-                    raise ValueError(
-                        "You configured `framework`=tf2, but your installed "
-                        "pip tf-version is < 2.0! Make sure your TensorFlow "
-                        "version is >= 2.x."
-                    )
-                if not _tf1.executing_eagerly():
-                    _tf1.enable_eager_execution()
-                # Recommend setting tracing to True for speedups.
-                logger.info(
-                    f"Executing eagerly (framework='{config['framework']}'),"
-                    f" with eager_tracing={config['eager_tracing']}. For "
-                    "production workloads, make sure to set eager_tracing=True"
-                    "  in order to match the speed of tf-static-graph "
-                    "(framework='tf'). For debugging purposes, "
-                    "`eager_tracing=False` is the best choice."
-                )
-            # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
-            # enabling eager tracing for similar speed.
-            elif _tf1 and config["framework"] == "tf":
-                logger.info(
-                    "Your framework setting is 'tf', meaning you are using "
-                    "static-graph mode. Set framework='tf2' to enable eager "
-                    "execution with tf2.x. You may also then want to set "
-                    "eager_tracing=True in order to reach similar execution "
-                    "speed as with static-graph mode."
-                )
-
-        check_if_correct_nn_framework_installed()
-        resolve_tf_settings()
-
-    @staticmethod
     @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Env validator function for this Algorithm class.
@@ -2395,6 +2286,8 @@ class Algorithm(Trainable):
 
         return len(new_workers)
 
+    # TODO(jungong) : remove this callback once we get rid of all the worker
+    # failure handling logics from Algorithms.
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -2404,7 +2297,12 @@ class Algorithm(Trainable):
             removed_workers: List of removed workers.
             new_workers: List of new workers.
         """
-        pass
+        for actor in removed_workers:
+            # The list of workers for metrics may not be the
+            # same as the full list of workers.
+            if actor in self._remote_workers_for_metrics:
+                self._remote_workers_for_metrics.remove(actor)
+        self._remote_workers_for_metrics += new_workers
 
     @override(Trainable)
     def _export_model(

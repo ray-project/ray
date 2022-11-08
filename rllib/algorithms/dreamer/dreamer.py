@@ -4,7 +4,7 @@ import random
 from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.policy import Policy
@@ -122,21 +122,21 @@ class DreamerConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        td_model_lr: Optional[float] = None,
-        actor_lr: Optional[float] = None,
-        critic_lr: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        lambda_: Optional[float] = None,
-        dreamer_train_iters: Optional[int] = None,
-        batch_size: Optional[int] = None,
-        batch_length: Optional[int] = None,
-        imagine_horizon: Optional[int] = None,
-        free_nats: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        prefill_timesteps: Optional[int] = None,
-        explore_noise: Optional[float] = None,
-        dreamer_model: Optional[dict] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
+        td_model_lr: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        dreamer_train_iters: Optional[int] = NotProvided,
+        batch_size: Optional[int] = NotProvided,
+        batch_length: Optional[int] = NotProvided,
+        imagine_horizon: Optional[int] = NotProvided,
+        free_nats: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        prefill_timesteps: Optional[int] = NotProvided,
+        explore_noise: Optional[float] = NotProvided,
+        dreamer_model: Optional[dict] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
     ) -> "DreamerConfig":
         """
@@ -168,35 +168,35 @@ class DreamerConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if td_model_lr is not None:
+        if td_model_lr is not NotProvided:
             self.td_model_lr = td_model_lr
-        if actor_lr is not None:
+        if actor_lr is not NotProvided:
             self.actor_lr = actor_lr
-        if critic_lr is not None:
+        if critic_lr is not NotProvided:
             self.critic_lr = critic_lr
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if dreamer_train_iters is not None:
+        if dreamer_train_iters is not NotProvided:
             self.dreamer_train_iters = dreamer_train_iters
-        if batch_size is not None:
+        if batch_size is not NotProvided:
             self.batch_size = batch_size
-        if batch_length is not None:
+        if batch_length is not NotProvided:
             self.batch_length = batch_length
-        if imagine_horizon is not None:
+        if imagine_horizon is not NotProvided:
             self.imagine_horizon = imagine_horizon
-        if free_nats is not None:
+        if free_nats is not NotProvided:
             self.free_nats = free_nats
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if prefill_timesteps is not None:
+        if prefill_timesteps is not NotProvided:
             self.prefill_timesteps = prefill_timesteps
-        if explore_noise is not None:
+        if explore_noise is not NotProvided:
             self.explore_noise = explore_noise
-        if dreamer_model is not None:
+        if dreamer_model is not NotProvided:
             self.dreamer_model = dreamer_model
-        if num_steps_sampled_before_learning_starts is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )

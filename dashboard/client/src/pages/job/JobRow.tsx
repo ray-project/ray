@@ -50,6 +50,13 @@ export const JobRow = ({
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
+      <TableCell align="center">
+        {start_time && start_time > 0 ? (
+          <DurationText startTime={start_time} endTime={end_time} />
+        ) : (
+          "-"
+        )}
+      </TableCell>
       <TableCell align="center">{progressBar}</TableCell>
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
@@ -76,13 +83,6 @@ export const JobRow = ({
         {end_time && end_time > 0
           ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
           : "-"}
-      </TableCell>
-      <TableCell align="center">
-        {start_time && start_time > 0 ? (
-          <DurationText startTime={start_time} endTime={end_time} />
-        ) : (
-          "-"
-        )}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>
