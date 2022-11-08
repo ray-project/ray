@@ -1778,6 +1778,8 @@
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 
