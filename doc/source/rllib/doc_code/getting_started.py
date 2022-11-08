@@ -23,13 +23,13 @@ for i in range(10):
 # __rllib-first-config-end__
 
 import ray
+
 ray.shutdown()
 
 if False:
     # __rllib-tune-config-begin__
     import ray
     from ray import air, tune
-
 
     ray.init()
 
