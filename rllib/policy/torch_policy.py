@@ -1131,7 +1131,7 @@ class TorchPolicy(Policy):
                     results[shard_idx] = (
                         ValueError(
                             f"Error In tower {shard_idx} on device "
-                            f"{device} in during multi GPU parallel gradient "
+                            f"{device} during multi GPU parallel gradient "
                             f"calculation:"
                             f": {e}\n"
                             f"Traceback: \n"
