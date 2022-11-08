@@ -1130,7 +1130,7 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (
                         ValueError(
-                            e.args[0]
+                            e.args
                             + "\n traceback"
                             + traceback.format_exc()
                             + "\n"
