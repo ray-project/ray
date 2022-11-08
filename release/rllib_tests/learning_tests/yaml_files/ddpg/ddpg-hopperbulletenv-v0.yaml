@@ -10,7 +10,7 @@ ddpg-hopperbulletenv-v0:
     config:
         actor_hiddens: [256, 256]
         critic_hiddens: [256, 256]
-        n_step: 3
+        n_step: 1
         model: {}
         gamma: 0.99
         env_config: {}
