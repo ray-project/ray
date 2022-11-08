@@ -110,7 +110,9 @@ def _load_trials_from_experiment_checkpoint(
     for trial_cp in checkpoints:
         trials.append(
             _load_trial_from_checkpoint(
-                trial_cp, stub=stub, new_local_dir=new_local_dir,
+                trial_cp,
+                stub=stub,
+                new_local_dir=new_local_dir,
             )
         )
 
@@ -782,7 +784,7 @@ class TrialRunner:
         # directory, if the experiment directory has changed.
         trial_runner_data.pop("_local_checkpoint_dir", None)
 
-        self.__setstate__(runner_state["runner_data"])
+        self.__setstate__(trial_runner_data)
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
