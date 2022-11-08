@@ -105,7 +105,10 @@ class _TrackedCheckpoint:
             return
 
         if isinstance(self.dir_or_data, Checkpoint):
-            self.dir_or_data = self.dir_or_data._move_directory(str(path))
+            if self.dir_or_data._local_path:
+                self.dir_or_data = self.dir_or_data._move_directory(str(path))
+            else:
+                self.dir_or_data = self.dir_or_data.to_directory(str(path))
             return
 
         if not isinstance(self.dir_or_data, dict):
