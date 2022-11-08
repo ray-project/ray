@@ -105,7 +105,7 @@ class _TrackedCheckpoint:
             return
 
         if isinstance(self.dir_or_data, Checkpoint):
-            if self.dir_or_data._local_path:
+            if self.dir_or_data._local_path and self.move_instead_of_copy:
                 self.dir_or_data = self.dir_or_data._move_directory(str(path))
             else:
                 self.dir_or_data = self.dir_or_data.to_directory(str(path))

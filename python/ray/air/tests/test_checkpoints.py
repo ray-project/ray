@@ -135,7 +135,7 @@ class TestCheckpointSerializedAttrs:
 
         path = checkpoint.to_directory()
         recovered_checkpoint = StubCheckpoint.from_directory(path)
-        tmpdir = tempfile.gettempdir()
+        tmpdir = tempfile.mkdtemp()
         new_path = recovered_checkpoint._move_directory(tmpdir)
         new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
 
