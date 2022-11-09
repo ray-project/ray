@@ -35,7 +35,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
-    AlgorithmConfigDict,
     EnvCreator,
     EnvType,
     EpisodeID,
@@ -69,7 +68,7 @@ class WorkerSet:
         env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
-        config: Optional[Union["AlgorithmConfig", AlgorithmConfigDict]] = None,
+        config: Optional["AlgorithmConfig"] = None,
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
@@ -170,7 +169,7 @@ class WorkerSet:
         self,
         *,
         validate_env: Optional[Callable[[EnvType], None]] = None,
-        config: Optional[AlgorithmConfigDict] = None,
+        config: Optional["AlgorithmConfig"] = None,
         num_workers: int = 0,
         local_worker: bool = True,
     ):
