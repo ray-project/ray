@@ -15,7 +15,9 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evalution_utils import remove_time_dim, compute_is_weights
+from ray.rllib.offline.offline_evalution_utils import (
+    remove_time_dim, compute_is_weights, compute_q_and_v_values
+)
 
 logger = logging.getLogger()
 
@@ -182,7 +184,7 @@ class DoublyRobust(OffPolicyEstimator):
         # step 3: compute q_values and v_values
         batch_size = max(updated_ds.count() // n_parallelism, 1)
         updated_ds = updated_ds.map_batches(
-            _compute_q_and_v_values,
+            compute_q_and_v_values,
             batch_size=batch_size,
             fn_kwargs={
                 "model_class": self.model.__class__,
@@ -218,26 +220,3 @@ class DoublyRobust(OffPolicyEstimator):
             "v_std": v_std,
         }
 
-
-def _compute_q_and_v_values(
-    batch: pd.DataFrame, 
-    model_class: Type[FQETorchModel], 
-    model_state: Dict[str, Any]
-):
-    model = model_class.from_state(model_state)
-
-    sample_batch = SampleBatch({
-        SampleBatch.OBS: np.vstack(batch[SampleBatch.OBS]),
-        SampleBatch.ACTIONS: np.vstack(batch[SampleBatch.ACTIONS]).squeeze(-1),
-    })
-
-    q_values = model.estimate_q(sample_batch)
-    v_values = model.estimate_v(sample_batch)
-
-    q_values = convert_to_numpy(q_values)
-    v_values = convert_to_numpy(v_values)
-
-    batch["q_values"] = q_values
-    batch["v_values"] = v_values
-
-    return batch

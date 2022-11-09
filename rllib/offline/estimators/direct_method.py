@@ -1,13 +1,21 @@
 import logging
 from typing import Dict, Any, Optional, List
+import numpy as np
+import pandas as pd
+
+from ray.data import Dataset
+
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.offline_evalution_utils import (
+    remove_time_dim, compute_is_weights, compute_q_and_v_values
+)
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
-import numpy as np
 
 logger = logging.getLogger()
 
@@ -115,3 +123,45 @@ class DirectMethod(OffPolicyEstimator):
         batch = self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+        
+        dsize = dataset.count()
+        batch_size = max(dsize // n_parallelism, 1)
+        # step 1: clean the dataset and remove the time dimension for bandits
+        updated_ds = dataset.map_batches(remove_time_dim, batch_size=batch_size)
+        # step 2: compute the weights and weighted rewards
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(
+            compute_is_weights, 
+            batch_size=batch_size, 
+            fn_kwargs={
+                "policy_state": self.policy.get_state(), 
+                "estimator_class": self.__class__
+            }
+        )
+
+        # step 3: compute v_values
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(
+            compute_q_and_v_values,
+            batch_size=batch_size,
+            fn_kwargs={
+                "model_class": self.model.__class__,
+                "model_state": self.model.get_state(),
+                "compute_q_values": False
+            }
+        )
+    
+        v_behavior = updated_ds.mean("rewards")
+        v_target = updated_ds.mean("v_values")
+        v_gain = v_target / v_behavior
+        v_std = updated_ds.std("v_values")
+
+        return {
+            "v_behavior": v_behavior,
+            "v_target": v_target,
+            "v_gain": v_gain,
+            "v_std": v_std,
+        }

@@ -1,12 +1,41 @@
 
 import pandas as pd
-from typing import Union, Any, Dict, Optional
+from typing import Any, Dict, Type, TYPE_CHECKING
 import numpy as np
 
-from ray.air.checkpoint import Checkpoint
+from ray.rllib.utils.numpy import convert_to_numpy
+
+if TYPE_CHECKING:
+    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
+
+
+def compute_q_and_v_values(
+    batch: pd.DataFrame, 
+    model_class: Type["FQETorchModel"], 
+    model_state: Dict[str, Any],
+    compute_q_values: bool = True,
+):
+    model = model_class.from_state(model_state)
+
+    sample_batch = SampleBatch({
+        SampleBatch.OBS: np.vstack(batch[SampleBatch.OBS]),
+        SampleBatch.ACTIONS: np.vstack(batch[SampleBatch.ACTIONS]).squeeze(-1),
+    })
+
+    v_values = model.estimate_v(sample_batch)
+    v_values = convert_to_numpy(v_values)
+    batch["v_values"] = v_values
+
+    if compute_q_values:
+        q_values = model.estimate_q(sample_batch)
+        q_values = convert_to_numpy(q_values)
+        batch["q_values"] = q_values
+
+    return batch
+
 
 def compute_is_weights(
     batch, 
