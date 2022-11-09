@@ -54,6 +54,9 @@ if [ -z "${NO_INSTALL}" ]; then
     done
 
     if [ -n "${PARSED_RAY_WHEELS}" ]; then
+      DEDUCED_COMMIT_FROM_WHEEL_URL=$(echo "${PARSED_RAY_WHEELS}" | \
+      grep -o "https:\/\/s3-us-west-2\.amazonaws\.com\/ray-wheels\/master\/[0-9a-z]\{40\}\/" | \
+      { var=$(cat); echo "${var: -41:40}"; })
       echo "Installing Ray wheels locally: ${PARSED_RAY_WHEELS}"
       pip install -U --force-reinstall "${PARSED_RAY_WHEELS}"
     else
@@ -65,7 +68,20 @@ fi
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
-  pushd "${TMPDIR}/release" || true
+  pushd "${TMPDIR}" || true
+  HEAD_COMMIT=$(git rev-parse HEAD)
+
+  # We only do this if RAY_TEST_REPO and RAY_TEST_BRANCH are pointing to ray master.
+  if [ "${RAY_TEST_REPO}" == "https://github.com/ray-project/ray.git" ] && \
+  [ "${RAY_TEST_BRANCH}" == "master" ] && [ "${DEDUCED_COMMIT_FROM_WHEEL_URL}" ] && \
+  [ "${HEAD_COMMIT}" != "${DEDUCED_COMMIT_FROM_WHEEL_URL}" ]; then
+    echo "The checked out test code doesn't match with the installed wheel. \
+    This is likely due to a racing condition when a PR is landed between \
+    a wheel is installed and test code is checked out."
+    echo "Hard resetting from ${HEAD_COMMIT} to ${DEDUCED_COMMIT_FROM_WHEEL_URL}."
+    git reset --hard "${DEDUCED_COMMIT_FROM_WHEEL_URL}"
+  fi
+  pushd "release" || true
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
