@@ -26,6 +26,7 @@ torch, _ = try_import_torch()
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
 
+
 @DeveloperAPI
 def attempt_count_timesteps(tensor_dict: dict):
     """Attempt to count timesteps based on dimensions of individual elements
