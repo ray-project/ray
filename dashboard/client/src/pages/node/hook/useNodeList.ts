@@ -60,7 +60,8 @@ export const useNodeList = () => {
 
   const sortedList = _.sortBy(nodeListWithState, [
     (obj) => !obj.raylet.isHeadNode,
-    (obj) => obj.raylet.state,
+    // sort by alive first, then alphabetically for other states
+    (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),
     (obj) => obj.raylet.nodeId,
   ]);
 
