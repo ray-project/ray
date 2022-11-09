@@ -233,7 +233,7 @@ class ParameterNoise(Exploration):
         # TODO(sven): Find out whether this can be scrapped by simply using
         #  the `sample_batch` to get the noisy/noise-free action dist.
         _, _, fetches = policy.compute_actions_from_input_dict(
-            input_dict=sample_batch, explore=self.weights_are_currently_noisy
+            input_dict=sample_batch.copy(), explore=self.weights_are_currently_noisy
         )
 
         # Categorical case (e.g. DQN).
@@ -251,7 +251,7 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         _, _, fetches = policy.compute_actions_from_input_dict(
-            input_dict=sample_batch, explore=not self.weights_are_currently_noisy
+            input_dict=sample_batch.copy(), explore=not self.weights_are_currently_noisy
         )
 
         # Categorical case (e.g. DQN).
