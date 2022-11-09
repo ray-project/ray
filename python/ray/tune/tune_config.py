@@ -47,6 +47,14 @@ class TuneConfig:
             Defaults to ``True`` for function trainables (including most
             Ray AIR trainers) and ``False`` for class and registered trainables
             (e.g. RLlib).
+        trial_name_creator: Optional function that takes in a Trial and returns
+            its name (i.e. its string representation). Be sure to include some unique
+            identifier (such as `Trial.trial_id`) in each trial's name.
+        trial_dirname_creator: Optional function that takes in a trial and
+            generates its trial directory name as a string. Be sure to include some
+            unique identifier (such as `Trial.trial_id`) is used in each trial's
+            directory name. Otherwise, trials could overwrite artifacts and checkpoints
+            of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Whether to change the working directory of each worker
             to its corresponding trial directory. Defaults to `True` to prevent
             contention between workers saving trial-level outputs.
