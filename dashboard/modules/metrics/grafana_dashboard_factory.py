@@ -62,7 +62,7 @@ GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(max_over_time(ray_tasks{State=~"FINISHED|FAILED"}[14d])) by (State) or clamp_min(sum(ray_tasks{State!~"FINISHED|FAILED"}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}}",
             )
         ],
@@ -74,7 +74,7 @@ GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(ray_tasks{State!~"FINISHED|FAILED"}) by (Name)',
+                expr='sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
             )
         ],
@@ -86,7 +86,7 @@ GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors) by (State)",
+                expr="sum(ray_actors{{{global_filters}}}) by (State)",
                 legend="{{State}}",
             )
         ],
@@ -98,7 +98,7 @@ GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors) by (Name)",
+                expr="sum(ray_actors{{{global_filters}}}) by (Name)",
                 legend="{{Name}}",
             )
         ],
@@ -110,11 +110,11 @@ GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr='sum(ray_resources{Name="CPU",State="USED"}) by (instance)',
+                expr='sum(ray_resources{{Name="CPU",State="USED",{global_filters}}}) by (instance)',
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{Name="CPU"})',
+                expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -126,11 +126,11 @@ GRAFANA_PANELS = [
         unit="gbytes",
         targets=[
             Target(
-                expr="sum(ray_object_store_memory / 1e9) by (Location)",
+                expr="sum(ray_object_store_memory{{{global_filters}}} / 1e9) by (Location)",
                 legend="{{Location}}",
             ),
             Target(
-                expr='sum(ray_resources{Name="object_store_memory"} / 1e9)',
+                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}} / 1e9)',
                 legend="MAX",
             ),
         ],
@@ -142,11 +142,11 @@ GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='ray_resources{Name="GPU",State="USED"}',
+                expr='ray_resources{{Name="GPU",State="USED",{global_filters}}}',
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_resources{Name="GPU"})',
+                expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -158,11 +158,11 @@ GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr='ray_node_cpu_utilization{instance=~"$Instance",cluster_id="$cluster_id"} * ray_node_cpu_count{instance=~"$Instance",cluster_id="$cluster_id"} / 100',
+                expr='ray_node_cpu_utilization{{instance=~"$Instance",{global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100',
                 legend="CPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_cpu_count{cluster_id="$cluster_id"})',
+                expr="sum(ray_node_cpu_count{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -174,11 +174,11 @@ GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='ray_node_gpus_utilization{instance=~"$Instance",cluster_id="$cluster_id"} / 100',
+                expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
                 legend="GPU Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_gpus_available{cluster_id="$cluster_id"})',
+                expr="sum(ray_node_gpus_available{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -190,11 +190,11 @@ GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_disk_usage{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}',
                 legend="Disk Used: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_disk_free{cluster_id="$cluster_id"}) + sum(ray_node_disk_usage{cluster_id="$cluster_id"})',
+                expr="sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -206,11 +206,11 @@ GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='ray_node_disk_io_write_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}',
                 legend="Write: {{instance}}",
             ),
             Target(
-                expr='ray_node_disk_io_read_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}',
                 legend="Read: {{instance}}",
             ),
         ],
@@ -222,11 +222,11 @@ GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_mem_used{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_mem_used{{instance=~"$Instance",{global_filters}}}',
                 legend="Memory Used: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_mem_total{cluster_id="$cluster_id"})',
+                expr="sum(ray_node_mem_total{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
@@ -238,7 +238,7 @@ GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_uss_mb * 1e6) by (Component)",
+                expr="sum(ray_component_uss_mb{{{global_filters}}} * 1e6) by (Component)",
                 legend="{{Component}}",
             )
         ],
@@ -250,11 +250,11 @@ GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_gram_used{instance=~"$Instance",cluster_id="$cluster_id"} * 1024 * 1024',
+                expr='ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024',
                 legend="Used GRAM: {{instance}}",
             ),
             Target(
-                expr='(sum(ray_node_gram_available{cluster_id="$cluster_id"}) + sum(ray_node_gram_used{cluster_id="$cluster_id"})) * 1024 * 1024',
+                expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
                 legend="MAX",
             ),
         ],
@@ -266,11 +266,11 @@ GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='ray_node_network_receive_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}',
                 legend="Recv: {{instance}}",
             ),
             Target(
-                expr='ray_node_network_send_speed{instance=~"$Instance",cluster_id="$cluster_id"}',
+                expr='ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}',
                 legend="Send: {{instance}}",
             ),
         ],
@@ -282,15 +282,15 @@ GRAFANA_PANELS = [
         unit="nodes",
         targets=[
             Target(
-                expr='ray_cluster_active_nodes{cluster_id="$cluster_id"}',
+                expr="ray_cluster_active_nodes{{{global_filters}}}",
                 legend="Active Nodes: {{node_type}}",
             ),
             Target(
-                expr='ray_cluster_failed_nodes{cluster_id="$cluster_id"}',
+                expr="ray_cluster_failed_nodes{{{global_filters}}}",
                 legend="Failed Nodes: {{node_type}}",
             ),
             Target(
-                expr='ray_cluster_pending_nodes{cluster_id="$cluster_id"}',
+                expr="ray_cluster_pending_nodes{{{global_filters}}}",
                 legend="Pending Nodes: {{node_type}}",
             ),
         ],
@@ -424,13 +424,17 @@ def _generate_grafana_panels() -> List[dict]:
     return panels
 
 
+GLOBAL_FILTERS = ['SessionName="$SessionName"']
+
+
 def _generate_targets(panel: Panel) -> List[dict]:
+    global_filters = ",".join(GLOBAL_FILTERS)
     targets = []
     for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {
-                "expr": target.expr,
+                "expr": target.expr.format(global_filters=global_filters),
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }
