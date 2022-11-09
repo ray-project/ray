@@ -17,6 +17,7 @@
 #include <google/protobuf/arena.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/alarm.h>
 
 #include <boost/asio.hpp>
 
@@ -47,6 +48,8 @@ enum class ServerCallState {
   PENDING,
   /// Request is received and being processed.
   PROCESSING,
+  /// Ready to be sent
+  STAGING,
   /// Request processing is done, and reply is being sent to client.
   SENDING_REPLY,
 };
@@ -92,6 +95,8 @@ class ServerCall {
 
   virtual const ServerCallFactory &GetServerCallFactory() = 0;
 
+  virtual void Send() = 0;
+  
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -232,6 +237,10 @@ class ServerCallImpl : public ServerCall {
     LogProcessTime();
   }
 
+  void Send() override {
+    SendReply(status_);
+  }
+  
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
@@ -250,7 +259,7 @@ class ServerCallImpl : public ServerCall {
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
-  grpc::ServerCompletionQueue *cq_;
+  grpc::ServerCompletionQueue* cq_;
 
   /// The memory pool for this request. It's used for reply.
   /// With arena, we'll be able to setup the reply without copying some field.

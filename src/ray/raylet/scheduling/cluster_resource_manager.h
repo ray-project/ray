@@ -69,6 +69,11 @@ class ClusterResourceManager {
   /// \param node_id ID of the node to be removed.
   bool RemoveNode(scheduling::NodeID node_id);
 
+  /// Add node to the cluster.
+  ///
+  /// \param node_id ID of the node to be removed.
+  bool AddNode(scheduling::NodeID node_id);
+
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
