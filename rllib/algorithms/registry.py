@@ -6,6 +6,7 @@ import traceback
 from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+from ray.rllib.utils.deprecation import Deprecated
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -247,6 +248,11 @@ ALGORITHMS = {
 }
 
 
+@Deprecated(
+    new="ray.tune.registry.get_trainable_cls([algo name], return_config=False) and cls="
+    "ray.tune.registry.get_trainable_cls([algo name]); cls.get_default_config();",
+    error=False,
+)
 def get_algorithm_class(
     alg: str,
     return_config=False,
@@ -269,36 +275,31 @@ def get_algorithm_class(
 get_trainer_class = get_algorithm_class
 
 
-def _get_algorithm_class(alg: str, return_config=False) -> type:
+def _get_algorithm_class(alg: str) -> type:
+    # This helps us get around a circular import (tune calls rllib._register_all when
+    # checking if a rllib Trainable is registered)
     if alg in ALGORITHMS:
-        class_, config = ALGORITHMS[alg]()
+        return ALGORITHMS[alg]()[0]
     elif alg in CONTRIBUTED_ALGORITHMS:
-        class_, config = CONTRIBUTED_ALGORITHMS[alg]()
+        return CONTRIBUTED_ALGORITHMS[alg]()[0]
     elif alg == "script":
         from ray.tune import script_runner
 
-        class_, config = script_runner.ScriptRunner, {}
+        return script_runner.ScriptRunner
     elif alg == "__fake":
         from ray.rllib.algorithms.mock import _MockTrainer
 
-        class_, config = _MockTrainer, _MockTrainer.get_default_config()
+        return _MockTrainer
     elif alg == "__sigmoid_fake_data":
         from ray.rllib.algorithms.mock import _SigmoidFakeData
 
-        class_, config = _SigmoidFakeData, _SigmoidFakeData.get_default_config()
+        return _SigmoidFakeData
     elif alg == "__parameter_tuning":
         from ray.rllib.algorithms.mock import _ParameterTuningTrainer
 
-        class_, config = (
-            _ParameterTuningTrainer,
-            _ParameterTuningTrainer.get_default_config(),
-        )
+        return _ParameterTuningTrainer
     else:
         raise Exception("Unknown algorithm {}.".format(alg))
-
-    if return_config:
-        return class_, config
-    return class_
 
 
 # Mapping from policy name to where it is located, relative to rllib.algorithms.

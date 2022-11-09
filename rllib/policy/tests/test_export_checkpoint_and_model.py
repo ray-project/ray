@@ -6,11 +6,11 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -69,7 +69,8 @@ def export_test(
     multi_agent=False,
     tf_expected_to_work=True,
 ):
-    cls, config = get_algorithm_class(alg_name, return_config=True)
+    cls = get_trainable_cls(alg_name)
+    config = cls.get_default_config().to_dict()
     config["framework"] = framework
     # Switch on saving native DL-framework (tf, torch) model files.
     config["export_native_model_files"] = True
@@ -192,7 +193,7 @@ def export_test(
 class TestExportCheckpointAndModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:

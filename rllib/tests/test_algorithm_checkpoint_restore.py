@@ -5,7 +5,6 @@ import unittest
 
 import ray
 
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
 from ray.rllib.algorithms.sac import SACConfig
@@ -16,6 +15,7 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.ars import ARSConfig
 from ray.rllib.algorithms.a3c import A3CConfig
+from ray.tune.registry import get_trainable_cls
 
 
 def get_mean_action(alg, obs):
@@ -89,7 +89,7 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True] if object_store else [False]:
             print("use_object_store={}".format(use_object_store))
-            cls = get_algorithm_class(algo_name)
+            cls = get_trainable_cls(algo_name)
             if "DDPG" in algo_name or "SAC" in algo_name:
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")
