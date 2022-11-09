@@ -353,20 +353,17 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env, tmpdir):
         trial_dir = Path(session.get_trial_dir())
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
-        # Make sure we didn't write to the working dir
-        assert not os.path.exists(orig_working_dir / "write.txt")
-        # Make sure that the file we wrote to isn't overwritten
-        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
 
     tuner = Tuner(
         train_func,
-        tune_config=TuneConfig(
-            chdir_to_trial_dir=False,
-        ),
+        tune_config=TuneConfig(chdir_to_trial_dir=False),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
     results = tuner.fit()
     assert not results.errors
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
 
     os.chdir(old_cwd)
     ray.shutdown()
@@ -407,20 +404,19 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
 
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
-        assert not os.path.exists(orig_working_dir / "write.txt")
-        assert open(trial_dir / "write.txt", "r").read() == f"{config['id']}"
 
     tuner = Tuner(
         train_func,
-        tune_config=TuneConfig(
-            chdir_to_trial_dir=True,
-        ),
+        tune_config=TuneConfig(chdir_to_trial_dir=True),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
     results = tuner.fit()
     assert not results.errors
-    ray.shutdown()
+    for result in results:
+        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        assert artifact_data == f"{result.config['id']}"
 
+    ray.shutdown()
     os.chdir(old_cwd)
 
 
