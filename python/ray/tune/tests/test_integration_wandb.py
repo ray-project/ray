@@ -19,14 +19,16 @@ from ray.tune.integration.wandb import (
     WandbTrainableMixin,
     wandb_mixin,
 )
-from ray.air.callbacks.wandb import (
+from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
+    _QueueItem,
+)
+from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
-    _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
@@ -41,7 +43,7 @@ class Trial(
             "config",
             "trial_id",
             "trial_name",
-            "trainable_name",
+            "experiment_dir_name",
             "placement_group_factory",
             "logdir",
         ],
@@ -152,7 +154,7 @@ def wandb_env():
 class TestWandbLogger:
     def test_wandb_logger_project_group(self, monkeypatch):
         monkeypatch.setenv(WANDB_PROJECT_ENV_VAR, "test_project_from_env_var")
-        monkeypatch.setenv(WANDB_GROUP_ENV_VAR, "test_group_env_var")
+        monkeypatch.setenv(WANDB_GROUP_ENV_VAR, "test_group_from_env_var")
         # Read project and group name from environment variable
         logger = WandbTestExperimentLogger(api_key="1234")
         logger.setup()
@@ -191,7 +193,7 @@ class TestWandbLogger:
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
 
-    def test_wandb_logger_start(self, monkeypatch):
+    def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
         # API Key in env
         logger = WandbTestExperimentLogger(project="test_project")
@@ -204,7 +206,9 @@ class TestWandbLogger:
         assert logger.trial_processes[trial].kwargs["project"] == "test_project"
         assert logger.trial_processes[trial].kwargs["id"] == trial.trial_id
         assert logger.trial_processes[trial].kwargs["name"] == trial.trial_name
-        assert logger.trial_processes[trial].kwargs["group"] == trial.trainable_name
+        assert (
+            logger.trial_processes[trial].kwargs["group"] == trial.experiment_dir_name
+        )
         assert "config" in logger.trial_processes[trial]._exclude
 
         del logger
@@ -225,7 +229,7 @@ class TestWandbLogger:
 
         del logger
 
-    def test_wandb_logger_reporting(trial):
+    def test_wandb_logger_reporting(self, trial):
         logger = WandbTestExperimentLogger(
             project="test_project", api_key="1234", excludes=["metric2"]
         )
@@ -326,10 +330,10 @@ class TestWandbClassMixin:
         config[TRIAL_INFO] = trial_info
 
         trainable = WandbTestTrainable(config)
-        assert trainable.run.kwargs["project"] == "test_project"
-        assert trainable.run.kwargs["id"] == trial.trial_id
-        assert trainable.run.kwargs["name"] == trial.trial_name
-        assert trainable.run.kwargs["group"] == "WandbTestTrainable"
+        assert trainable.wandb.kwargs["project"] == "test_project"
+        assert trainable.wandb.kwargs["id"] == trial.trial_id
+        assert trainable.wandb.kwargs["name"] == trial.trial_name
+        assert trainable.wandb.kwargs["group"] == "WandbTestTrainable"
 
     def test_wandb_mixin_rllib(self):
         """Test compatibility with RLlib configuration dicts"""
@@ -394,9 +398,9 @@ class TestWandbMixinDecorator:
         config[TRIAL_INFO] = trial_info
 
         wrapped = wrap_function(train_fn)(config)
-        assert wrapped.run.kwargs["project"] == "test_project"
-        assert wrapped.run.kwargs["id"] == trial.trial_id
-        assert wrapped.run.kwargs["name"] == trial.trial_name
+        assert wrapped.wandb.kwargs["project"] == "test_project"
+        assert wrapped.wandb.kwargs["id"] == trial.trial_id
+        assert wrapped.wandb.kwargs["name"] == trial.trial_name
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
@@ -410,7 +414,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.callbacks.wandb, "_load_class") as mock_load_class:
+    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
         logging_process = _WandbLoggingProcess(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )

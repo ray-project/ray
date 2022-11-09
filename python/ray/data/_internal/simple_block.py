@@ -67,7 +67,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> List[T]:
+    def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
@@ -333,7 +333,7 @@ class SimpleBlockAccessor(BlockAccessor):
                             has_next_row = False
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_key, self.slice(start, end)
                     start = end
                 except StopIteration:
                     break
