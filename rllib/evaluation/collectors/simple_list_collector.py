@@ -94,6 +94,9 @@ class _PolicyCollector:
         self.batches = []
         # Reset agent steps to 0.
         self.agent_steps = 0
+        # Add num_grad_updates counter to the policy's batch.
+        batch.num_grad_updates = self.policy.num_grad_updates
+
         return batch
 
 
@@ -588,6 +591,10 @@ class SimpleListCollector(SampleCollector):
         for pid, collector in episode.batch_builder.policy_collectors.items():
             if collector.agent_steps > 0:
                 ma_batch[pid] = collector.build()
+
+        # TODO(sven): We should always return the same type here (MultiAgentBatch),
+        #  no matter what. Just have to unify our `training_step` methods, then. This
+        #  will reduce a lot of confusion about what comes out of the sampling process.
         # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
             ma_batch, env_steps=episode.batch_builder.env_steps
