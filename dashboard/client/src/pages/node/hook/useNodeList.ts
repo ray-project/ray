@@ -59,7 +59,7 @@ export const useNodeList = () => {
     .sort(sorterFunc);
 
   const sortedList = _.sortBy(nodeListWithState, [
-    (obj) => (!obj.raylet.isHeadNode),
+    (obj) => !obj.raylet.isHeadNode,
     (obj) => obj.raylet.state,
     (obj) => obj.raylet.nodeId,
   ]);
