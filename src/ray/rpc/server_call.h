@@ -29,6 +29,8 @@
 namespace ray {
 namespace rpc {
 
+/// Get the thread pool for the gRPC server.
+/// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
@@ -48,7 +50,7 @@ enum class ServerCallState {
   /// Request is received and being processed.
   PROCESSING,
   /// Request processing is done, and reply is being sent to client.
-  SENDING_REPLY,
+  SENDING_REPLY
 };
 
 class ServerCallFactory;
@@ -249,8 +251,6 @@ class ServerCallImpl : public ServerCall {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
-
-  grpc::ServerCompletionQueue *cq_;
 
   /// The memory pool for this request. It's used for reply.
   /// With arena, we'll be able to setup the reply without copying some field.
