@@ -99,7 +99,7 @@ GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors) by (Name)",
+                expr="sum(ray_actors{State!=\"DEAD\") by (Name)",
                 legend="{{Name}}",
             )
         ],
