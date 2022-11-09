@@ -182,15 +182,6 @@ class TestSupportedSpacesPG(unittest.TestCase):
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
 
-    def test_pg(self):
-        check_support(
-            "PG",
-            PGConfig().rollouts(num_rollout_workers=1).training(optimizer={}),
-            train=False,
-            check_bounds=True,
-            tf2=True,
-        )
-
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):
     @classmethod
