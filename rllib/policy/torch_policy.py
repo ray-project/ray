@@ -481,7 +481,9 @@ class TorchPolicy(Policy):
                 NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                 # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - 1 - (postprocessed_batch.num_grad_updates or 0)
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
                 ),
             }
         )
@@ -630,7 +632,8 @@ class TorchPolicy(Policy):
                     LEARNER_STATS_KEY: self.extra_grad_info(batch),
                     "model": model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
-                    # -1, b/c we have to measure this diff before we do the update above.
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
                     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
                         self.num_grad_updates - 1 - (batch.num_grad_updates or 0)
                     ),

@@ -597,7 +597,9 @@ class EagerTFPolicyV2(Policy):
                 NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                 # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - 1 - (postprocessed_batch.num_grad_updates or 0)
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
                 ),
             }
         )
