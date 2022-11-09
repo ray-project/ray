@@ -57,6 +57,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
+    # TODO(sang): Remove it. Legacy code that's not working.
     @routes.get("/api/launch_profiling")
     async def launch_profiling(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
@@ -153,6 +154,57 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             autoscaling_error=error.decode() if error else None,
             cluster_status=formatted_status if formatted_status else None,
         )
+
+    @routes.get("/worker/traceback")
+    async def get_traceback(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        logger.info(
+            "Sending stack trace request to {}:{}".format(req.query.get("ip"), pid)
+        )
+        reply = await reporter_stub.GetTraceback(
+            reporter_pb2.GetTracebackRequest(pid=pid)
+        )
+        if reply.success:
+            logger.info("Returning stack trace, size {}".format(len(reply.output)))
+            return aiohttp.web.Response(text=reply.output)
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+    @routes.get("/worker/cpu_profile")
+    async def cpu_profile(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        duration = int(req.query.get("duration", 5))
+        if duration > 60:
+            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        format = req.query.get("format", "flamegraph")
+        logger.info(
+            "Sending CPU profiling request to {}:{}".format(req.query.get("ip"), pid)
+        )
+        reply = await reporter_stub.CpuProfiling(
+            reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
+        )
+        if reply.success:
+            logger.info(
+                "Returning profiling response, size {}".format(len(reply.output))
+            )
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "image/svg+xml"
+                    if format == "flamegraph"
+                    else "text/plain"
+                },
+            )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     async def run(self, server):
         # Need daemon True to avoid dashboard hangs at exit.
