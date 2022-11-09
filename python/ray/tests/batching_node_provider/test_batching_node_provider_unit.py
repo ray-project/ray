@@ -31,8 +31,8 @@ from ray.autoscaler._private.constants import (
 
 
 class MockBatchingNodeProvider(BatchingNodeProvider):
-    """Mock implementation of a BatchingNodeProvider.
-    """
+    """Mock implementation of a BatchingNodeProvider."""
+
     def __init__(
         self,
         provider_config: Dict[str, Any],
@@ -90,8 +90,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
 
 
 class BatchingNodeProviderTester:
-    """Utility to test BatchingNodeProvider.
-    """
+    """Utility to test BatchingNodeProvider."""
+
     def __init__(self):
         self.node_provider = MockBatchingNodeProvider(
             provider_config={

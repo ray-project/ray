@@ -125,7 +125,8 @@ class BatchingNodeProvider(NodeProvider):
 
         Consistency requirement:
         If a node id was present in ScaleRequest.workers_to_delete of a previously
-        submitted scale request, it should no longer be present as a key in get_node_data.
+        submitted scale request, it should no longer be present as a key in
+        get_node_data.
         (Node termination must be registered immediately when submit_scale_request
         returns.)
         """
