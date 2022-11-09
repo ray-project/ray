@@ -150,7 +150,7 @@ type WorkerRowProps = {
 const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { mem, logUrl } = node;
+  const { ip, mem, logUrl } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -207,8 +207,27 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell align="center">N/A</TableCell>
       <TableCell>
         <Link to={workerLogUrl} target="_blank">
-          Log
+          Logs
         </Link>
+        <br />
+        <a
+          href={`/worker/traceback?pid=${pid}&ip=${ip}`}
+          target="_blank"
+          title="Sample the current Python stack trace for this worker."
+          rel="noreferrer"
+        >
+          Stack&nbsp;Trace
+        </a>
+        <br />
+        <a
+          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5`}
+          target="_blank"
+          title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+          rel="noreferrer"
+        >
+          Flame&nbsp;Graph
+        </a>
+        <br />
       </TableCell>
     </TableRow>
   );
