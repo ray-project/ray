@@ -101,7 +101,7 @@ class LazyBlockList(BlockList):
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
             # Always return fetched metadata if we already have it.
-            metadata = self._cached_metadata.copy()
+            metadata = self._cached_metadata
         elif not fetch_if_missing:
             metadata = [
                 m if m is not None else t.get_metadata()
@@ -114,7 +114,7 @@ class LazyBlockList(BlockList):
     def stats(self) -> DatasetStats:
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
-            stages={"read": self.get_metadata(fetch_if_missing=False)},
+            stages={"read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
