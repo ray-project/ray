@@ -31,6 +31,8 @@ from ray.autoscaler._private.constants import (
 
 
 class MockBatchingNodeProvider(BatchingNodeProvider):
+    """Mock implementation of a BatchingNodeProvider.
+    """
     def __init__(
         self,
         provider_config: Dict[str, Any],
@@ -40,7 +42,9 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         BatchingNodeProvider.__init__(
             self, provider_config, cluster_name, _allow_multiple
         )
+        # Fake cluster manager state:
         self._node_data_dict: Dict[NodeID, NodeData] = {}
+
         self._add_node(node_type="head-group", node_kind=NodeKind.HEAD)
         # Allow unit test to the control output of safe_to_scale.
         self._safe_to_scale_test_flag = True
@@ -86,6 +90,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
 
 
 class BatchingNodeProviderTester:
+    """Utility to test BatchingNodeProvider.
+    """
     def __init__(self):
         self.node_provider = MockBatchingNodeProvider(
             provider_config={
@@ -96,8 +102,10 @@ class BatchingNodeProviderTester:
             cluster_name="test-cluster",
             _allow_multiple=True,
         )
+        # Maps node types to expected node counts.
         self.expected_node_counts = defaultdict(int)
         self.expected_node_counts["head-group"] = 1
+        # Tracks how many times we expect a scale request to have been submitted.
         self.expected_scale_request_submitted_count = 0
 
     def update(
@@ -106,6 +114,16 @@ class BatchingNodeProviderTester:
         """Simulates an autoscaler update with multiple terminate and create calls.
 
         Calls non_terminated_nodes, then create/terminate nodes, then post_process.
+
+        Args:
+            create_node_requests (List[Tuple(str, int)]): List of pairs
+                (node type, count). Each pair is used in a create_node call that
+                creates count nodes of the node type.
+            terminate_nodes_requests (List[Tuple(str, int)]): List of pairs
+                (node type, count). Each pair is used in a terminate_nodes call
+                that terminates up to count nodes of the node type.
+            safe_to_scale_flag (bool): Passed to the node provider to determine
+                where provider.safe_to_scale() evaluates to True or False.
         """
         self.node_provider._safe_to_scale_test_flag = safe_to_scale_flag
 
@@ -117,9 +135,10 @@ class BatchingNodeProviderTester:
         # Set to track nodes marked for termination during the update.
         to_terminate_this_update = set()
         for node_type, count in terminate_nodes_requests:
+            # Each iteration makes a provider.terminate_nodes call.
             # Terminate "count" nodes of the given node_type.
-            # If count is greater than the number of nodes of the type, terminate
-            # all of the nodes of the type.
+            # If count is greater than the number of remaining nodes of the type,
+            # terminate all of the nodes of the type.
             to_terminate_this_request = []
             for node in self.node_provider._node_data_dict:
                 if len(to_terminate_this_request) >= count:
@@ -166,6 +185,7 @@ class BatchingNodeProviderTester:
         """
         nodes = self.node_provider.non_terminated_nodes({})
 
+        # Get counts of nodes using provider.node_tags to extract node type.
         actual_node_counts = defaultdict(int)
         for node in nodes:
             # Trivial check. Just confirming we can call internal_ip with no issue.
@@ -209,6 +229,9 @@ class BatchingNodeProviderTester:
         self.update(*random_requests)
 
     def generate_random_requests(self):
+        """Generates random sequences of create_node and terminate_nodes requests
+        for the node provider. Generates random safe_to_scale_flag.
+        """
         num_creates = random.choice(range(100))
         num_terminates = random.choice(range(100))
 
@@ -233,7 +256,7 @@ class BatchingNodeProviderTester:
         return create_node_requests, terminate_nodes_requests, safe_to_scale_flag
 
     def assert_worker_counts(self, expected_worker_counts):
-        """Validates worker counts against internal node_provider state."""
+        """Validates worker counts against internal node provider state."""
         self.node_provider._assert_worker_counts(expected_worker_counts)
 
 
@@ -329,10 +352,6 @@ def test_terminate_safeguards():
     nodes = node_provider.non_terminated_nodes({})
     # Second terminate request was ignored.
     assert len(nodes) == 1
-
-
-def test_no_nodes_to_terminate():
-    pass
 
 
 if __name__ == "__main__":
