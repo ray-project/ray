@@ -105,10 +105,10 @@ class BatchingAutoscalingCluster(AutoscalingCluster):
         )
         # Load the node provider class above.
         config["provider"]["type"] = "external"
-        config["provider"][
-            "module"
-        ] = ("ray.tests.batching_node_provider."
-             "test_batching_node_provider_integration.FakeBatchingNodeProvider")
+        config["provider"]["module"] = (
+            "ray.tests.batching_node_provider."
+            "test_batching_node_provider_integration.FakeBatchingNodeProvider"
+        )
         # Need to run in single threaded mode to use BatchingNodeProvider.
         config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         return config
