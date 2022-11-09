@@ -6,7 +6,11 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.batching_node_provider import BatchingNodeProvider, NodeData, ScaleRequest
+from ray.autoscaler.batching_node_provider import (
+    BatchingNodeProvider,
+    NodeData,
+    ScaleRequest,
+)
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
 from ray.autoscaler.tags import (
@@ -20,6 +24,7 @@ from ray.cluster_utils import AutoscalingCluster
 
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +40,7 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
     See the create_node_with_resources call in submit_scale_request.
     See class BatchingAutoscaler below.
     """
+
     def __init__(self, provider_config, cluster_name):
         BatchingNodeProvider.__init__(self, provider_config, cluster_name)
         FakeMultiNodeProvider.__init__(self, provider_config, cluster_name)
@@ -55,7 +61,7 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
                 kind=tags[TAG_RAY_NODE_KIND],
                 type=tags[TAG_RAY_USER_NODE_TYPE],
                 status=tags[TAG_RAY_NODE_STATUS],
-                ip=node_id
+                ip=node_id,
             )
         return node_data_dict
 
@@ -66,29 +72,43 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
             FakeMultiNodeProvider.terminate_node(self, worker_to_delete)
             worker_counts[node_type] -= 1
         for node_type in scale_request.desired_num_workers:
-            diff = scale_request.desired_num_workers[node_type] - worker_counts[node_type]
-            # It is non-standard for "available_node_types" to be included in the provider
-            # config, but it is necessary for this node provider.
-            resources = self.provider_config["available_node_types"][node_type]["resources"]
+            diff = (
+                scale_request.desired_num_workers[node_type] - worker_counts[node_type]
+            )
+            # It is non-standard for "available_node_types" to be included in the
+            # provider config, but it is necessary for this node provider.
+            resources = self.provider_config["available_node_types"][node_type][
+                "resources"
+            ]
             tags = {
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                 TAG_RAY_USER_NODE_TYPE: node_type,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
-            FakeMultiNodeProvider.create_node_with_resources(self, node_config={}, tags=tags, count=diff, resources=resources)
+            FakeMultiNodeProvider.create_node_with_resources(
+                self, node_config={}, tags=tags, count=diff, resources=resources
+            )
 
 
 class BatchingAutoscalingCluster(AutoscalingCluster):
     """Class used for e2e testing of BatchingNodeProvider.
     Like AutoscalingCluster but uses a BatchingNodePorvider.
     """
+
     def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
-        config = AutoscalingCluster._generate_config(self, head_resources, worker_node_types)
+        config = AutoscalingCluster._generate_config(
+            self, head_resources, worker_node_types
+        )
         # Need this for resource data.
-        config["provider"]["available_node_types"] = deepcopy(config["available_node_types"])
+        config["provider"]["available_node_types"] = deepcopy(
+            config["available_node_types"]
+        )
         # Load the node provider class above.
         config["provider"]["type"] = "external"
-        config["provider"]["module"] = "ray.tests.batching_node_provider.test_batching_node_provider_integration.FakeBatchingNodeProvider"
+        config["provider"][
+            "module"
+        ] = ("ray.tests.batching_node_provider."
+             "test_batching_node_provider_integration.FakeBatchingNodeProvider")
         # Need to run in single threaded mode to use BatchingNodeProvider.
         config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         return config
