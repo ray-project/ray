@@ -16,6 +16,7 @@ from typing import (
 
 import numpy as np
 
+from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
@@ -181,7 +182,26 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow, col_name: str = VALUE_COL_NAME) -> np.ndarray:
+        from pkg_resources._vendor.packaging.version import parse as parse_version
+
         element = row[col_name][0]
+        # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
+        # 9.0.0+.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
+            assert isinstance(element, pyarrow.ExtensionScalar)
+            if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
+                # For Arrow 9.0.0+, accessing an element in a chunked tensor array
+                # produces an ArrowTensorScalar, which we convert to an ndarray using
+                # .as_py().
+                element = element.as_py()
+            else:
+                # For Arrow 8.*, accessing an element in a chunked tensor array produces
+                # an ExtensionScalar, which we convert to an ndarray using our custom
+                # method.
+                element = element.type._extension_scalar_to_ndarray(element)
         # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
         # ndarray, which we return directly.
         return element

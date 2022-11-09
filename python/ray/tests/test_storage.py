@@ -3,12 +3,17 @@ import subprocess
 import urllib
 from pathlib import Path
 
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
 
 import ray
 import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
+from ray._private.utils import (
+    _add_creatable_buckets_param_if_s3_uri,
+    _get_pyarrow_version,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -164,6 +169,39 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
             assert _storage_uri == storage_uri
         finally:
             subprocess.check_call(["ray", "stop"])
+
+
+def test_add_creatable_buckets_param_if_s3_uri():
+    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+        # Test that the allow_bucket_creation=true query arg is added to an S3 URI.
+        uri = "s3://bucket/foo"
+        assert (
+            _add_creatable_buckets_param_if_s3_uri(uri)
+            == "s3://bucket/foo?allow_bucket_creation=true"
+        )
+
+        # Test that query args are merged (i.e. existing query args aren't dropped).
+        uri = "s3://bucket/foo?bar=baz"
+        assert (
+            _add_creatable_buckets_param_if_s3_uri(uri)
+            == "s3://bucket/foo?allow_bucket_creation=true&bar=baz"
+        )
+
+        # Test that existing allow_bucket_creation=false query arg isn't overridden.
+        uri = "s3://bucket/foo?allow_bucket_creation=false"
+        assert (
+            _add_creatable_buckets_param_if_s3_uri(uri)
+            == "s3://bucket/foo?allow_bucket_creation=false"
+        )
+    else:
+        # Test that the allow_bucket_creation=true query arg is not added to an S3 URI,
+        # since we're using Arrow < 9.
+        uri = "s3://bucket/foo"
+        assert _add_creatable_buckets_param_if_s3_uri(uri) == uri
+
+    # Test that non-S3 URI is unchanged.
+    uri = "gcs://bucket/foo"
+    assert _add_creatable_buckets_param_if_s3_uri(uri) == "gcs://bucket/foo"
 
 
 if __name__ == "__main__":
