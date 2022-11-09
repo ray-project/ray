@@ -1,5 +1,4 @@
 import sys
-import time
 import threading
 
 import pytest
@@ -11,7 +10,7 @@ from ray.tests.test_memory_pressure import (
     Leaker,
     get_additional_bytes_to_reach_memory_usage_pct,
     memory_usage_threshold_fraction,
-    memory_monitor_interval_ms
+    memory_monitor_interval_ms,
 )
 
 
@@ -41,12 +40,15 @@ def alloc_mem(bytes):
         mem.append([0] * bytes_per_chunk)
     return mem
 
+
 @ray.remote
 def task_with_nested_actor(
     first_fraction, second_fraction, leaker, actor_allocation_first=True
 ):
     first_bytes = get_additional_bytes_to_reach_memory_usage_pct(first_fraction)
-    second_bytes = get_additional_bytes_to_reach_memory_usage_pct(second_fraction) - first_bytes
+    second_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(second_fraction) - first_bytes
+    )
     if actor_allocation_first:
         ray.get(leaker.allocate.remote(first_bytes))
         dummy = alloc_mem(second_bytes)
@@ -119,6 +121,7 @@ def test_deadlock_task_with_nested_actor_with_actor_first(
             )
         )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
@@ -137,6 +140,7 @@ def test_deadlock_task_with_nested_actor_with_actor_last(
             )
         )
 
+
 # Used for syncing allocations
 @ray.remote
 class BarrierActor:
@@ -145,6 +149,7 @@ class BarrierActor:
 
     def wait_all_done(self):
         self.barrier.wait()
+
 
 @ray.remote
 class ActorWithNestedTask:
@@ -170,9 +175,12 @@ def test_deadlock_actor_with_nested_task(
     actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(
         (memory_usage_threshold_fraction + 0.25) / 2
     )
-    nested_task_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 0.25
-    ) - actor_bytes
+    nested_task_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(
+            memory_usage_threshold_fraction + 0.25
+        )
+        - actor_bytes
+    )
     with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(leaker.perform_allocations.remote(actor_bytes, nested_task_bytes))
 
@@ -187,13 +195,17 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
     barrier = BarrierActor.options(
         max_restarts=0, max_task_retries=0, max_concurrency=2
     ).remote(2)
-    leaker1 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(barrier)
-    leaker2 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(barrier)
+    leaker1 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
+        barrier
+    )
+    leaker2 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
+        barrier
+    )
     bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.25)
     quarter_mem = get_additional_bytes_to_reach_memory_usage_pct(0.5) - bytes_first
     ref1 = leaker1.perform_allocations.remote(bytes_first, quarter_mem)
     ref2 = leaker2.perform_allocations.remote(quarter_mem, 0)
-    
+
     num_failed = 0
     try:
         ray.get(ref1)
@@ -221,8 +233,10 @@ def task_with_nested_task(task_bytes, nested_task_bytes, barrier=None):
 def test_deadlock_multiple_tasks_with_nested_task(
     ray_with_memory_monitor,
 ):
-    """task_with_nested_task allocates allocates memory then runs a nested task which also allocates memory.
-    This test runs two instances. We expect the second one to fail."""
+    """task_with_nested_task allocates a block of memor, then runs
+    a nested task which also allocates a block memory.
+    This test runs two instances of task_with_nested_task.
+    We expect the second one to fail."""
     bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.3)
     thirty_percent = get_additional_bytes_to_reach_memory_usage_pct(0.6) - bytes_first
 
@@ -232,7 +246,7 @@ def test_deadlock_multiple_tasks_with_nested_task(
 
     ref1 = task_with_nested_task.remote(bytes_first, thirty_percent, barrier)
     ref2 = task_with_nested_task.remote(thirty_percent, thirty_percent, barrier)
-    
+
     num_failed = 0
     try:
         ray.get(ref1)
