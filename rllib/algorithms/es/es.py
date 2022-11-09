@@ -47,12 +47,13 @@ class ESConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
-        >>> config = ESConfig().training(sgd_stepsize=0.02, report_length=20)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        >>> config = ESConfig()  # doctest: +SKIP
+        >>> config = config.training(sgd_stepsize=0.02, report_length=20)#doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:

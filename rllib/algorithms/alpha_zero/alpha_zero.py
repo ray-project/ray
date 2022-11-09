@@ -55,12 +55,13 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
-        >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
+        >>> config = AlphaZeroConfig()\   # doctest: +SKIP
+        ...             .training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train() # doctest: +SKIP
 
     Example:

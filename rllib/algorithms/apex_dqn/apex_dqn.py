@@ -64,13 +64,12 @@ class ApexDQNConfig(DQNConfig):
         >>>         "prioritized_replay_eps": 3e-6,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\ # doctest: +SKIP
-        >>>       .resources(num_gpus=1)\
-        >>>       .rollouts(num_rollout_workers=30)\
-        >>>       .environment("CartPole-v1")
+        >>> config = config.training(replay_buffer_config=replay_config) #doctest: +SKIP
+        >>> config = config..resources(num_gpus=1)  # doctest: +SKIP
+        >>> config = config..rollouts(num_rollout_workers=30)  # doctest: +SKIP
+        >>> config = config..environment("CartPole-v1")  # doctest: +SKIP
         >>> algo = config.build() # doctest: +SKIP
-        >>> while True: # doctest: +SKIP
-        >>>     algo.train()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig

@@ -48,13 +48,14 @@ class ARSConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
-        >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)\
-        ...     .environment("CartPole-v1")
+        >>> config = ARSConfig()  # doctest: +SKIP
+        >>> config = config.training(sgd_stepsize=0.02, report_length=20)
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
+        >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:

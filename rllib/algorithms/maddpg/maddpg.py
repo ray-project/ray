@@ -43,9 +43,8 @@ class MADDPGConfig(AlgorithmConfig):
         >>>       .resources(num_gpus=0)\
         >>>       .rollouts(num_rollout_workers=4)\
         >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:  # doctest: +SKIP
-        >>>     algo.train()  # doctest: +SKIP
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig

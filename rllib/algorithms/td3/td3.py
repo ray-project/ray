@@ -30,9 +30,9 @@ class TD3Config(DDPGConfig):
         >>> print(config.lr)
         0.0004
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))  # doctest: +SKIP
         >>> # Set the config object's env.
-        >>> config.environment(env="Pendulum-v1")
+        >>> config.environment(env="Pendulum-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

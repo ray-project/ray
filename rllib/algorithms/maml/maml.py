@@ -45,7 +45,7 @@ class MAMLConfig(AlgorithmConfig):
         >>> # Print out some default values.
         >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
+        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))  # doctest: +SKIP
         >>> # Set the config object's env.
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict

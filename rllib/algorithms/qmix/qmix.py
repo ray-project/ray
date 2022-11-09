@@ -38,7 +38,7 @@ class QMixConfig(SimpleQConfig):
         ...             .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=TwoStepGame)
+        >>> algo = config.build(env=TwoStepGame)  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:

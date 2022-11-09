@@ -24,12 +24,12 @@ class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
     Example:
-        >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        >>> config = SACConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
     """
 

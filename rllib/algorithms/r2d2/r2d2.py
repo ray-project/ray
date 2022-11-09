@@ -26,13 +26,12 @@ class R2D2Config(DQNConfig):
         >>>         "replay_burn_in": 20,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
+        >>> config.training(replay_buffer_config=replay_config)\  # doctest: +SKIP
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
         >>> algo = R2D2(config=config)  # doctest: +SKIP
-        >>> while True:  # doctest: +SKIP
-        >>>     algo.train()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
