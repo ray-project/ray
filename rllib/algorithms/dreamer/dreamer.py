@@ -22,7 +22,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -333,7 +332,7 @@ class Dreamer(Algorithm):
         return DreamerTorchPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Setup buffer.

@@ -41,7 +41,6 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
     SampleBatchType,
 )
@@ -330,7 +329,7 @@ class ApexDQNConfig(DQNConfig):
 
 class ApexDQN(DQN):
     @override(Trainable)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Tag those workers (top 1/3rd indices) that we should collect episodes from

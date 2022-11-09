@@ -27,7 +27,6 @@ import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
 
@@ -49,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
+    config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,

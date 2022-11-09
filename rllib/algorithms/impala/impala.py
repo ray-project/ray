@@ -37,8 +37,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
@@ -475,7 +473,7 @@ class Impala(Algorithm):
                 return A3CTFPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -845,7 +843,7 @@ class Impala(Algorithm):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: AlgorithmConfigDict):
+    def __init__(self, config: AlgorithmConfig):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(

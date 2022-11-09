@@ -20,7 +20,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 
@@ -168,7 +167,7 @@ class A3C(Algorithm):
         return A3CConfig()
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1

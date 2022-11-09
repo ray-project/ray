@@ -8,7 +8,6 @@ from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 
@@ -175,7 +174,7 @@ class ApexDDPG(DDPG, ApexDQN):
         return ApexDDPGConfig()
 
     @override(DDPG)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
