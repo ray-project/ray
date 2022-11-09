@@ -425,6 +425,7 @@ def read_images(
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
+    include_paths: bool = False,
 ):
     """Read images from the specified paths.
 
@@ -433,7 +434,15 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+
+        If you need image file paths, set ``include_paths=True``.
+
+        >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        >>> ds.take(1)[0]["path"]  # doctest: +SKIP
+        'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
         If your images are arranged like:
 
@@ -476,6 +485,8 @@ def read_images(
             describing the desired type and depth of pixels. If unspecified, image
             modes are inferred by
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
 
     Returns:
         A :class:`~ray.data.Dataset` containing tensors that represent the images at
@@ -495,6 +506,7 @@ def read_images(
         partitioning=partitioning,
         size=size,
         mode=mode,
+        include_paths=include_paths,
     )
 
 
@@ -1399,14 +1411,18 @@ def from_torch(
     dataset: "torch.utils.data.Dataset",
 ) -> Dataset:
     """Create a dataset from a Torch dataset.
+
     This function is inefficient. Use it to read small datasets or prototype.
+
     .. warning::
         If your dataset is large, this function may execute slowly or raise an
         out-of-memory error. To avoid issues, read the underyling data with a function
         like :meth:`~ray.data.read_images`.
+
     .. note::
         This function isn't paralellized. It loads the entire dataset into the head
         node's memory before moving the data to the distributed object store.
+
     Examples:
         >>> import ray
         >>> from torchvision import datasets
@@ -1416,8 +1432,10 @@ def from_torch(
         Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
         >>> dataset.take(1)  # doctest: +SKIP
         [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
+
     Args:
         dataset: A Torch dataset.
+
     Returns:
         A :class:`Dataset` that contains the samples stored in the Torch dataset.
     """
