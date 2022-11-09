@@ -83,10 +83,7 @@ class VectorEnv:
 
     @PublicAPI
     def vector_reset(
-        self,
-        *,
-        seeds: Optional[List[int]] = None,
-        options: Optional[List[dict]] = None
+        self, *, seeds: Optional[List[int]] = None, options: Optional[List[dict]] = None
     ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         """Resets all sub-environments.
 

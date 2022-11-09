@@ -608,7 +608,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         env,
                         dim=self.config.model.get("dim"),
                         framestack=use_framestack,
-                        noframeskip=self.config.env_config.get("frameskip", 0) == 1
+                        noframeskip=self.config.env_config.get("frameskip", 0) == 1,
                     )
                     return env
 

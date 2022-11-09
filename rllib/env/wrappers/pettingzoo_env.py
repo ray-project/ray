@@ -1,4 +1,3 @@
-import gymnasium as gym
 from typing import Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -108,19 +107,12 @@ class PettingZooEnv(MultiAgentEnv):
                 )
 
         # Convert from gym to gymnasium, if necessary.
-        self.observation_space = gym_space_from_dict(
-            gym_space_to_dict(first_obs_space)
-        )
-        self.action_space = gym_space_from_dict(
-            gym_space_to_dict(first_action_space)
-        )
+        self.observation_space = gym_space_from_dict(gym_space_to_dict(first_obs_space))
+        self.action_space = gym_space_from_dict(gym_space_to_dict(first_action_space))
 
         self._agent_ids = set(self.env.agents)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        if seed is not None:
-            self.env.seed(seed)
-
         info = self.env.reset(seed=seed, return_info=True, options=options)
         return (
             {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
@@ -139,11 +131,13 @@ class PettingZooEnv(MultiAgentEnv):
             agent_id = self.env.agent_selection
             obs_d[agent_id] = obs
             rew_d[agent_id] = rew
-            done_d[agent_id] = done
+            done_d[agent_id] = done or truncated
             truncated_d[agent_id] = truncated
             info_d[agent_id] = info
-            TODO: >???
-            if self.env.termination[self.env.agent_selection]:
+            if (
+                self.env.terminations[self.env.agent_selection]
+                or self.env.truncations[self.env.agent_selection]
+            ):
                 self.env.step(None)
             else:
                 break

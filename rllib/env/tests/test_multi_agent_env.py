@@ -139,11 +139,17 @@ class TestMultiAgentEnv(unittest.TestCase):
         env.send_actions({0: {0: 0}, 1: {0: 0}})
         obs, rew, dones, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
-        self.assertEqual(truncateds, {0: {"__all__": False, 1: False}, 1: {"__all__": False, 1: False}})
+        self.assertEqual(
+            truncateds,
+            {0: {"__all__": False, 1: False}, 1: {"__all__": False, 1: False}},
+        )
         env.send_actions({0: {1: 0}, 1: {1: 0}})
         obs, rew, dones, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
-        self.assertEqual(truncateds, {0: {"__all__": False, 0: False}, 1: {"__all__": False, 0: False}})
+        self.assertEqual(
+            truncateds,
+            {0: {"__all__": False, 0: False}, 1: {"__all__": False, 0: False}},
+        )
 
     def test_multi_agent_sample(self):
         def policy_mapping_fn(agent_id, episode, worker, **kwargs):

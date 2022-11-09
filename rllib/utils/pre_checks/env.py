@@ -540,8 +540,8 @@ def check_vector_env(env: "VectorEnv") -> None:
         reset_at = env.reset_at(index=0, seed=42, options={})
     except Exception as e:
         raise ValueError(
-            "Your Env's `reset_at()` method has some error! Make sure it expects a vector "
-            "index (int) and an optional seed (int) as args."
+            "Your Env's `reset_at()` method has some error! Make sure it expects a "
+            "vector index (int) and an optional seed (int) as args."
         ) from e
     if not isinstance(reset_at, tuple) or len(reset_at) != 2:
         raise ValueError(

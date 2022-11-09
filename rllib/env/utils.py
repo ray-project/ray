@@ -47,8 +47,8 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     # Try creating a gym env. If this fails we can output a
     # decent error message.
     try:
-        # Special case: Atari not supported by gymnasium yet -> Need to use their compat.
-        # wrapper class.
+        # Special case: Atari not supported by gymnasium yet -> Need to use their
+        # GymV26 compat. wrapper class.
         if env_descriptor.startswith("ALE/"):
             return gym.make(
                 "GymV26Environment-v0",

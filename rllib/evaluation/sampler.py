@@ -1134,7 +1134,8 @@ def _process_observations(
                 resetted_obs = resetted_obs[env_id]
                 resetted_infos = resetted_infos[env_id]
 
-                # Add init obs and infos (from the call to `reset/try_reset`) to episode.
+                # Add init obs and infos (from the call to `reset/try_reset`) to
+                # episode.
                 for aid, obs in resetted_obs.items():
                     new_episode._set_last_raw_obs(aid, obs)
                 common_infos = resetted_infos.get("__common__", {})

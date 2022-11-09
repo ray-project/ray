@@ -1,5 +1,4 @@
 from gymnasium import spaces
-from gymnasium.envs.registration import EnvSpec
 import gymnasium as gym
 import numpy as np
 import pickle

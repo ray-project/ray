@@ -1,6 +1,5 @@
 import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
-from gymnasium.envs.registration import EnvSpec
 import numpy as np
 import re
 import unittest
