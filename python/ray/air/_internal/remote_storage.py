@@ -247,7 +247,7 @@ def _upload_individual_files_to_uri(
                 return True
         return False
 
-    for root, _, files in os.walk(local_path):
+    for root, dirs, files in os.walk(local_path):
         rel_root = os.path.relpath(root, local_path)
         for file in files:
             candidate = os.path.join(rel_root, file)
@@ -262,9 +262,7 @@ def _upload_individual_files_to_uri(
                 full_target_path = urllib.parse.quote(full_target_path, safe="")
 
             pyarrow.fs.copy_files(
-                full_source_path,
-                full_target_path,
-                destination_filesystem=destination_fs,
+                full_source_path, full_target_path, destination_filesystem=destination_fs
             )
 
 
