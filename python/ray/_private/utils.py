@@ -15,7 +15,7 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import urlencode, unquote, urlparse, parse_qsl, ParseResult
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import uuid
 import warnings
 from inspect import signature
@@ -1600,32 +1600,26 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def _add_url_query_params(
-    url: str, params: Dict[str, str], override: bool = False
-) -> str:
+def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
     """Add params to the provided url as query parameters.
+
+    If url already contains query parameters, they will be merged with params, with the
+    existing query parameters overriding any in params with the same parameter name.
 
     Args:
         url: The URL to add query parameters to.
         params: The query parameters to add.
-        override: Whether the provided params should override existing query parameters
-            in url: if True, the existing query parameters will be overwritten; if
-            False, the existing query parameters will take precedent. Default is False.
 
     Returns:
         URL with params added as query parameters.
     """
-    # Unquoting URL first so we don't loose existing args.
+    # Unquote URL first so we don't lose existing args.
     url = unquote(url)
     # Parse URL.
     parsed_url = urlparse(url)
-    # Converting URL query string arguments to dict.
-    base_params = dict(parse_qsl(parsed_url.query))
-    if not override:
-        # If not overriding, treat params as base parameters and override with existing
-        # query string parameters.
-        base_params, params = params, base_params
-    # Merging URL query string arguments dict with new params.
+    # Merge URL query string arguments dict with new params.
+    base_params = params
+    params = dict(parse_qsl(parsed_url.query))
     base_params.update(params)
     # bool and dict values should be converted to json-friendly values.
     base_params.update(
@@ -1636,20 +1630,12 @@ def _add_url_query_params(
         }
     )
 
-    # Converting URL arguments to proper query string.
+    # Convert URL arguments to proper query string.
     encoded_params = urlencode(base_params, doseq=True)
-    # Creating new parsed result object based on provided with new
-    # URL arguments. Same thing happens inside of urlparse.
-    new_url = ParseResult(
-        parsed_url.scheme,
-        parsed_url.netloc,
-        parsed_url.path,
-        parsed_url.params,
-        encoded_params,
-        parsed_url.fragment,
-    ).geturl()
-
-    return new_url
+    # Replace query string in parsed URL with updated query string.
+    parsed_url = parsed_url._replace(query=encoded_params)
+    # Convert back to URL.
+    return urlunparse(parsed_url)
 
 
 def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
