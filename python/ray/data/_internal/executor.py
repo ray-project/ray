@@ -24,11 +24,13 @@ class AbstractExecutor:
         raise NotImplementedError
 
     def legacy_execute_to_block_list(
-        self, blocks: BlockList, stats: DatasetStats, stages: List["Stage"]
+        self, in_blocks: BlockList, stats: DatasetStats, stages: List["Stage"]
     ) -> (BlockList, DatasetStats):
-        stats, block_iter = self.execute(blocks, stages)
+        block_iter, stats = self.execute(in_blocks, stats, stages)
         blocks, metadata = zip(*block_iter)
-        block_list = BlockList(blocks, metadata)
+        blocks, metadata = list(blocks), list(metadata)
+        # TODO(ekl) set owned_by_consumer
+        block_list = BlockList(blocks, metadata, owned_by_consumer=False)
         return block_list, stats
 
 

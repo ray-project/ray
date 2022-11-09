@@ -322,7 +322,7 @@ class ExecutionPlan:
                 clear_input_blocks=clear_input_blocks,
                 run_by_consumer=self._run_by_consumer,
             )
-            out_stats, out_blocks = executor.legacy_execute_to_block_list(
+            out_blocks, out_stats = executor.legacy_execute_to_block_list(
                 in_blocks, in_stats, in_stages
             )
             self._snapshot_blocks = out_blocks
