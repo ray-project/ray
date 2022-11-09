@@ -48,7 +48,7 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
         BatchingNodeProvider.__init__(self, provider_config, cluster_name)
         FakeMultiNodeProvider.__init__(self, provider_config, cluster_name)
 
-    # Manually "inherit" internal utility function.
+    # Manually "inherit" internal utility functions.
     # I prefer this over attempting multiple inheritance.
     def _next_hex_node_id(self):
         return FakeMultiNodeProvider._next_hex_node_id(self)
