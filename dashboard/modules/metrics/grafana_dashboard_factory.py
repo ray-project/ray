@@ -358,7 +358,7 @@ PANEL_TEMPLATE = {
         {
             "$$hashKey": "object:78",
             "alias": "/FINISHED|FAILED|DEAD/",
-            "hiddenSeries": true,
+            "hiddenSeries": True,
         },
     ],
     "spaceLength": 10,
