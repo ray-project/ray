@@ -2934,7 +2934,8 @@ def remote(
             (this can be used to address memory leaks in third-party
             libraries or to reclaim resources that cannot easily be
             released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite.
+            By default this is infinite for CPU tasks and 1 for GPU tasks
+            (to force GPU tasks to release resources after finishing).
         max_restarts: Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
             unexpectedly. The minimum valid value is 0 (default),
