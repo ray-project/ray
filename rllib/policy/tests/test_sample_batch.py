@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import os
 import unittest
@@ -6,7 +8,7 @@ import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
@@ -516,6 +518,7 @@ class TestSampleBatch(unittest.TestCase):
 
         for input_dict, length in input_dicts_and_lengths:
             s = SampleBatch(input_dict)
+            self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
             self.assertEqual(s.count, length)
 
 
