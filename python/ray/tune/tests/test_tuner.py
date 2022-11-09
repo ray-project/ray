@@ -362,7 +362,8 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
         ),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
-    tuner.fit()
+    results = tuner.fit()
+    assert not results.errors
     ray.shutdown()
 
 
@@ -409,7 +410,8 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
         ),
         param_space={"id": tune.grid_search(list(range(4)))},
     )
-    tuner.fit()
+    results = tuner.fit()
+    assert not results.errors
     ray.shutdown()
 
 
