@@ -32,7 +32,7 @@ namespace stats {
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
 /// ===============================================================================
-/// =============== PUBLIC METRICS; keep in sync with metrics.rst =================
+/// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
 /// ===============================================================================
 
 /// Tracks tasks by state, including pending, running, and finished tasks.
