@@ -138,7 +138,8 @@ class TorchPredictor(DLPredictor):
                 print(f"Predictions: {predictions.get('0')}, {predictions.get('1')}")
 
             .. testoutput::
-                Predictions: [1. 2.], [1. 2.]
+
+                Predictions: [1 2], [1 2]
         """
         with torch.no_grad():
             output = self.model(tensor)
