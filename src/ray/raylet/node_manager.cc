@@ -1019,6 +1019,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
+  cluster_resource_scheduler_->GetClusterResourceManager().AddNode(scheduling::NodeID(node_id.Binary()));
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {

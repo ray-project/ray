@@ -79,6 +79,16 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
   return true;
 }
 
+bool ClusterResourceManager::AddNode(scheduling::NodeID node_id) {
+  auto it = nodes_.find(node_id);
+  if (it != nodes_.end()) {
+    return false;
+  }
+
+  nodes_.emplace(node_id, NodeResources());
+  return true;
+}
+
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
