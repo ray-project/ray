@@ -122,7 +122,7 @@ class BatchingNodeProviderTester:
             terminate_nodes_requests (List[Tuple(str, int)]): List of pairs
                 (node type, count). Each pair is used in a terminate_nodes call
                 that terminates up to count nodes of the node type.
-            safe_to_scale_flag (bool): Passed to the node provider to determine
+            safe_to_scale_flag (bool): Passed to the node provider to determine  # noqa
                 where provider.safe_to_scale() evaluates to True or False.
         """
         self.node_provider._safe_to_scale_test_flag = safe_to_scale_flag
