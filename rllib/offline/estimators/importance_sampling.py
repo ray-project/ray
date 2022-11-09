@@ -95,8 +95,7 @@ class ImportanceSampling(OffPolicyEstimator):
             compute_is_weights, 
             batch_size=batch_size, 
             fn_kwargs={
-                "checkpoint": checkpoint, 
-                "policy_state": policy_state, 
+                "policy_state": self.policy.get_state(), 
                 "estimator_class": self.__class__
             }
         )

@@ -60,8 +60,6 @@ class OfflineEvaluator(abc.ABC):
     def estimate_on_dataset(
         self, 
         dataset: Dataset, 
-        checkpoint: Union[str, Checkpoint] = None,
-        policy_state: Optional[Dict[str, Any]] = None,
         *, 
         n_parallelism: int = os.cpu_count(),
     ) -> Dict[str, Any]:
@@ -70,10 +68,6 @@ class OfflineEvaluator(abc.ABC):
 
         Args:
             dataset: The ray dataset object to do offline evaluation on.
-            checkpoint: The checkpoint to load the policy from. Only one of checkpoint 
-                and policy_state can be provided.
-            policy_state: The state of the policy to use for the evaluation. Only one 
-                of checkpoint and policy_state can be provided.
             n_parallelism: The number of parallelism to use for the computation.
 
         Returns:

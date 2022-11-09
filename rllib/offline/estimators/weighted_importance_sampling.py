@@ -2,7 +2,6 @@ from typing import Dict, Any, List, Optional, Union
 import numpy as np
 import os
 
-from ray.air.checkpoint import Checkpoint
 from ray.data import Dataset
 
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
@@ -135,8 +134,6 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     def estimate_on_dataset(
         self, 
         dataset: Dataset, 
-        checkpoint: Union[str, Checkpoint] = None,
-        policy_state: Optional[Dict[str, Any]] = None,
         *, 
         n_parallelism: int = os.cpu_count(),
     ):        
@@ -150,8 +147,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
             compute_is_weights, 
             batch_size=batch_size, 
             fn_kwargs={
-                "checkpoint": checkpoint, 
-                "policy_state": policy_state, 
+                "policy_state": self.policy.get_state(), 
                 "estimator_class": self.__class__
             }
         )

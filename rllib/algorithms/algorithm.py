@@ -2840,12 +2840,10 @@ class Algorithm(Trainable):
         # TODO (Kourosh): Figure out how to this in parallel with training.
         # Note: we can only run offline evaluation in single agent case for now.
         assert len(self.workers.local_worker().policy_map) == 1
-        policy_state = self.get_policy().get_state()
         offline_eval_results = {}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
             offline_eval_results[evaluator_name] = offline_evaluator.estimate_on_dataset(
                 self.evaluation_dataset, 
-                policy_state=policy_state, 
                 n_parallelism=self.evaluation_config.evaluation_num_workers
             )
         return offline_eval_results
