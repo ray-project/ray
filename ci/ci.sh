@@ -201,6 +201,7 @@ test_python() {
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests/batching_node_provider/... # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
