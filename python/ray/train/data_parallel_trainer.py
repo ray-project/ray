@@ -21,6 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
+from ray.widgets.util import ensure_notebook_deps
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -385,54 +386,38 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
+    @ensure_notebook_deps(
+        ["tabulate", None],
+        ["ipywidgets", "8"],
+    )
     def _ipython_display_(self):
-        try:
-            from ipywidgets import HTML, VBox, Tab, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
-
+        from ipywidgets import HTML, VBox, Tab, Layout
         from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
-        tab = Tab()
-        children = []
-
-        tab.set_title(0, "Datasets")
-        children.append(self._datasets_repr_() if self.datasets else None)
-
-        tab.set_title(1, "Dataset Config")
-        children.append(
-            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None
-        )
-
-        tab.set_title(2, "Train Loop Config")
-        children.append(
+        children = [
+            self._datasets_repr_() if self.datasets else None,
+            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None,
             HTML(self._train_loop_config_repr_html_())
             if self._train_loop_config
-            else None
-        )
+            else None,
+            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None,
+            HTML(self.run_config._repr_html_()) if self.run_config else None,
+            HTML(self._backend_config._repr_html_()) if self._backend_config else None,
+        ]
 
-        tab.set_title(3, "Scaling Config")
-        children.append(
-            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None
+        tab = Tab(
+            children,
+            titles=[
+                "Datasets",
+                "Dataset Config",
+                "Train Loop Config",
+                "Scaling Config",
+                "Run Config",
+                "Backend Config",
+            ],
         )
-
-        tab.set_title(4, "Run Config")
-        children.append(
-            HTML(self.run_config._repr_html_()) if self.run_config else None
-        )
-
-        tab.set_title(5, "Backend Config")
-        children.append(
-            HTML(self._backend_config._repr_html_()) if self._backend_config else None
-        )
-
-        tab.children = children
         display(VBox([title, tab], layout=Layout(width="100%")))
 
     def _train_loop_config_repr_html_(self) -> str:
@@ -471,26 +456,23 @@ class DataParallelTrainer(BaseTrainer):
 
         return Template("rendered_html_common.html.j2").render(content=content)
 
+    @ensure_notebook_deps(["ipywidgets", "8"])
     def _datasets_repr_(self) -> str:
-        try:
-            from ipywidgets import HTML, VBox, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
+        from ipywidgets import HTML, VBox, Layout
+
         content = []
         if self.datasets:
             for name, config in self.datasets.items():
-                content.append(
-                    HTML(
-                        Template("title_data.html.j2").render(
-                            title=f"Dataset - <code>{name}</code>", data=None
+                tab = config._tab_repr_()
+                if tab:
+                    content.append(
+                        HTML(
+                            Template("title_data.html.j2").render(
+                                title=f"Dataset - <code>{name}</code>", data=None
+                            )
                         )
                     )
-                )
-                content.append(config._tab_repr_())
+                    content.append(config._tab_repr_())
 
         return VBox(content, layout=Layout(width="100%"))
 
