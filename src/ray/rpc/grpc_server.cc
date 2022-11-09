@@ -187,9 +187,6 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         // track this request.
         server_call->HandleRequest();
         break;
-      case ServerCallState::STAGING:
-        server_call->Send();
-        break;
       case ServerCallState::SENDING_REPLY:
         // GRPC has sent reply successfully, invoking the callback.
         server_call->OnReplySent();
