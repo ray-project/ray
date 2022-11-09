@@ -1,11 +1,10 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 import threading
 from concurrent.futures import Future
 from queue import Queue
-
-from pathlib import Path
 
 import ray._private.services
 import ray._private.utils
