@@ -259,7 +259,7 @@ class ServerCallImpl : public ServerCall {
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
-  grpc::ServerCompletionQueue* cq_;
+  grpc::ServerCompletionQueue *cq_;
 
   /// The memory pool for this request. It's used for reply.
   /// With arena, we'll be able to setup the reply without copying some field.
