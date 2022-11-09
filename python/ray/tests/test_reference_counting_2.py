@@ -361,11 +361,11 @@ def test_object_unpin(ray_start_cluster):
         num_cpus=0,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
-            "num_heartbeats_timeout": 10,
+            "num_heartbeats_timeout": 5,
             "subscriber_timeout_ms": 100,
             "health_check_initial_delay_ms": 0,
             "health_check_period_ms": 1000,
-            "health_check_failure_threshold": 10,
+            "health_check_failure_threshold": 5,
         },
     )
     ray.init(address=cluster.address)
@@ -455,9 +455,7 @@ def test_object_unpin(ray_start_cluster):
 
     # The second node is dead, and actor 2 is dead.
     cluster.remove_node(nodes[1], allow_graceful=False)
-    # Increase timeout for node failure to address CI failure in
-    # https://github.com/ray-project/ray/issues/30149q
-    wait_for_condition(lambda: wait_until_node_dead(nodes[1]), timeout=20)
+    wait_for_condition(lambda: wait_until_node_dead(nodes[1]))
     wait_for_condition(lambda: check_memory(10))
 
     # The first actor is dead, so object should be GC'ed.
