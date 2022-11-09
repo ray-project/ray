@@ -323,8 +323,9 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
     }
   }
 
-  if(ptr != nullptr) {
-    reply->unsafe_arena_set_allocated_actor_table_data((*ptr)->GetMutableActorTableData());
+  if (ptr != nullptr) {
+    reply->unsafe_arena_set_allocated_actor_table_data(
+        (*ptr)->GetMutableActorTableData());
   }
 
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
