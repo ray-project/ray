@@ -355,10 +355,10 @@ PANEL_TEMPLATE = {
             "stack": False,
         },
         {
-          "$$hashKey": "object:78",
-          "alias": "FINISHED",
-          "hiddenSeries": true,
-        }
+            "$$hashKey": "object:78",
+            "alias": "FINISHED",
+            "hiddenSeries": true,
+        },
     ],
     "spaceLength": 10,
     "stack": True,
