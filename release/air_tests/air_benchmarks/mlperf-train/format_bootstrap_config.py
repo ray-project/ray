@@ -17,7 +17,9 @@ if __name__ == "__main__":
     worker_label = None
     for label in node_types:
         if "worker" in label:
-            assert worker_label is None, "More than one worker node type specified in config"
+            assert (
+                worker_label is None
+            ), "More than one worker node type specified in config"
             worker_label = label
 
     node_types[worker_label]["min_workers"] = args.num_cpu_nodes
