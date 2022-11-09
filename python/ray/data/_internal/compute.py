@@ -517,10 +517,10 @@ def _bundle_blocks_up_to_size(
         logger.warning(
             f"`batch_size` is set to {target_size}, which reduces parallelism from "
             f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
-            "expected, this may indicate that batch size is too large or input block "
-            "size is too small. To reduce batch size, consider to decrease "
-            "`batch_size` or use the default in map_batches. To increase input block "
-            "size, consider to decrease `parallelism` in read."
+            "expected, this may indicate that the batch size is too large or the "
+            "input block size is too small. To reduce batch size, consider decreasing "
+            "`batch_size` or use the default in `map_batches`. To increase input "
+            "block size, consider decreasing `parallelism` in read."
         )
     return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
 

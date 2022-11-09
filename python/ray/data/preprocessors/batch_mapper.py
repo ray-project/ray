@@ -1,10 +1,16 @@
-from typing import Dict, Callable, Literal, Optional, Union, Any, TYPE_CHECKING
+import sys
+from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
 import warnings
 
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas

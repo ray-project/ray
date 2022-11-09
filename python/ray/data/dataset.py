@@ -448,7 +448,7 @@ class Dataset(Generic[T]):
                 blocks as batches (blocks may contain different number of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Defaults to 4096.
+                to a given map task. Default batch_size is 4096 with "default".
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
