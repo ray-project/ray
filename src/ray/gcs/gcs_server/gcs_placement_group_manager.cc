@@ -150,7 +150,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
         int64_t num_pg = placement_group_state_counter_->Get(key);
         ray::stats::STATS_placement_groups.Record(
             num_pg,
-            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key.first)},
+            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
              {"Source", "gcs"}});
       });
   Tick();
@@ -393,8 +393,8 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::SendReplyCallback send_reply_callback) {
   const JobID &job_id =
       JobID::FromBinary(request.placement_group_spec().creator_job_id());
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(request, get_ray_namespace_(job_id));
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      request, get_ray_namespace_(job_id), placement_group_state_counter_);
   RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(placement_group,
                          [reply, send_reply_callback, placement_group](Status status) {
@@ -843,7 +843,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       group_to_bundles;
   for (auto &item : gcs_init_data.PlacementGroups()) {
-    auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
+    auto placement_group =
+        std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_);
     if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
       registered_placement_groups_.emplace(item.first, placement_group);
       if (!placement_group->GetName().empty()) {
