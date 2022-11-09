@@ -4,6 +4,7 @@ import sys
 import itertools
 import tree  # pip install dm_tree
 from typing import Dict, Iterator, List, Optional, Set, Union
+from numbers import Number
 
 from ray.util import log_once
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
@@ -140,40 +141,61 @@ class SampleBatch(dict):
         for k, v in copy_.items():
             assert isinstance(k, str), self
 
+            # TODO: Drop support for lists and Numbers as values.
+            # Convert lists of int|float into numpy arrays make sure all data
+            # has same length.
+            if isinstance(v, (Number, list)):
+                self[k] = np.array(v)
+
+            if k == SampleBatch.INFOS:
+                # Don't attempt to count on infos since we make no assumptions
+                # about its content
+                continue
+
             # If this is a nested dict (for example a nested observation),
             # try to flatten it, assert that all elements have the same length (batch
             # dimension)
-            if isinstance(v, (dict, tuple)):
-                if k == SampleBatch.INFOS:
-                    # Don't attempt to count on infos since we make no assumptions
-                    # about its content
-                    continue
-                v = tree.flatten(v)
-                try:
-                    # Add one of the elements length, since they are all the same
-                    len_ = len(v[0])
-                    if len_:
-                        lengths.append(len_)
-                except Exception:
-                    pass
-                else:
-                    # If we were able to figure out a length, all lengths of
-                    # elements of nested structure must be the same
-                    assert all(len(sub_space) == len(v[0]) for sub_space in v)
-                continue
-
-            # TODO: Drop support for lists as values.
-            # Convert lists of int|float into numpy arrays make sure all data
-            # has same length.
-            if isinstance(v, list):
-                self[k] = np.array(v)
-
+            v_list = tree.flatten(v) if isinstance(v, (dict, tuple)) else [v]
+            # TODO: Drop support for lists and Numbers as values.
+            # If v_list contains lists or Numbers, convert them to arrays, too.
+            v_list = [
+                np.array(_v) if isinstance(_v, (Number, list)) else _v for _v in v_list
+            ]
             try:
-                len_ = len(v)
+                # Add one of the elements' length, since they are all the same
+                len_ = len(v_list[0])
                 if len_:
                     lengths.append(len_)
             except Exception:
                 pass
+            else:
+                # If we were able to figure out a length, all lengths of
+                # elements of nested structure must be the same
+                try:
+                    same_lengths = all(
+                        len(sub_space) == len(v_list[0]) for sub_space in v_list
+                    )
+                except TypeError:
+                    # If input contains scalar arrays (that don't have a length),
+                    # they should all be scalar arrays
+                    same_lengths = all([sub_space.size == 0 for sub_space in v_list])
+                if not same_lengths:
+                    if log_once("flattened_elements_have_different_lengths"):
+                        deprecation_warning(
+                            old="Usage of nested elements in SampleBatch "
+                            "with different lengths",
+                            help="Found nested elements in SampleBatch with "
+                            "different lengths. This might be because one or "
+                            "more elements are lists or of different lengths. "
+                            "Construct SampleBatch only from Tensors of same length "
+                            "to avoid this warning.",
+                            error=False,
+                        )
+                    # Could not infer length
+                    # TODO(Artur): raise error instead of setting length to zero once
+                    #  we have deprecated non-tensor inputs
+                    lengths = [0]
+                    break
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None

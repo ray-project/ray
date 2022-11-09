@@ -372,14 +372,15 @@ class TestSampleBatch(unittest.TestCase):
         s = SampleBatch(
             {
                 "a": np.array([1, 2]),
-                "b": {"c": (np.array([4, 5]), np.array([5, 6])), "e": [{"f": None}]},
+                "b": {"c": (np.array([4, 5]), np.array([5, 6]))},
                 "c": {"d": torch.Tensor([1, 2]), "g": (torch.Tensor([3, 4]), 1)},
                 "d": torch.Tensor([1.0, 2.0]).double(),
                 "e": torch.Tensor([1.0, 2.0]).double().to(cuda_if_possible),
                 "f": RepeatedValues(np.array([[1, 2, 0, 0]]), lengths=[2], max_len=4),
                 SampleBatch.SEQ_LENS: np.array([2, 3, 1]),
                 "state_in_0": np.array([1.0, 3.0, 4.0]),
-                SampleBatch.INFOS: np.array([{"a": 1}, {"b": 2}, {"c": 3}]),
+                # INFO can have arbitrary elements, others need to conform in size
+                SampleBatch.INFOS: np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]),
             }
         )
 
@@ -412,13 +413,10 @@ class TestSampleBatch(unittest.TestCase):
         check(s["f"].values, torch.from_numpy(np.asarray([[1, 2, 0, 0]])))
 
         # check infos
-        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": 2}, {"c": 3}]))
+        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": [1, 2]}, {"c": None}]))
 
         # check c/g/1
         self.assertEqual(s["c"]["g"][1], torch.from_numpy(np.asarray(1)))
-
-        # check b/e/0/f
-        self.assertEqual(s["b"]["e"][0]["f"], np.asarray(None))
 
         with self.assertRaises(NotImplementedError):
             # should raise an error if framework is not torch
@@ -456,7 +454,7 @@ class TestSampleBatch(unittest.TestCase):
                         "c": np.array([[4], [5], [6]]),
                     }
                 },
-                0,  # This should have a length of zero, since we can not determine it
+                0,  # This should have a length of zero, since we can ignore INFO
             ),
             (
                 {
