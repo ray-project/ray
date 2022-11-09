@@ -64,6 +64,35 @@ def test_cancel_chain(ray_start_regular, use_force):
 
 
 @pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_during_arg_deser(ray_start_regular, use_force):
+    time_to_sleep = 5
+
+    class SlowToDeserialize:
+        def __reduce__(self):
+            def reconstruct():
+                import time
+
+                time.sleep(time_to_sleep)
+                return SlowToDeserialize()
+
+            return reconstruct, ()
+
+    @ray.remote
+    def dummy(a: SlowToDeserialize):
+        # Task should never execute.
+        assert False
+
+    arg = SlowToDeserialize()
+    obj = dummy.remote(arg)
+    # Check that task isn't done.
+    assert len(ray.wait([obj], timeout=0.1)[0]) == 0
+    # Cancel task.
+    ray.cancel(obj, force=use_force)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(obj)
+
+
+@pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_multiple_dependents(ray_start_regular, use_force):
     signaler = SignalActor.remote()
 
