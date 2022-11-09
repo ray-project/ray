@@ -28,7 +28,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
         if multi_agent:
-            config.multiagent(
+            config.multi_agent(
                 policies={"pol1", "pol2"},
                 policy_mapping_fn=(
                     lambda agent_id, episode, worker, **kwargs: "pol1"

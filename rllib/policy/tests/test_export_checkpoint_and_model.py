@@ -70,7 +70,7 @@ def export_test(
     tf_expected_to_work=True,
 ):
     cls = get_trainable_cls(alg_name)
-    config = cls.get_default_config()
+    config = cls.get_default_config().to_dict()
     config["framework"] = framework
     # Switch on saving native DL-framework (tf, torch) model files.
     config["export_native_model_files"] = True
@@ -193,7 +193,7 @@ def export_test(
 class TestExportCheckpointAndModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
