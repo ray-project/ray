@@ -2605,23 +2605,26 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
-        stats = self._plan.stats()
+        blocks = self._plan.execute_to_iterator()
+        for block in blocks:
+            yield block
 
-        time_start = time.perf_counter()
-
-        yield from batch_blocks(
-            blocks.iter_blocks(),
-            stats,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
-        )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
+    #        stats = self._plan.stats()
+    #
+    #        time_start = time.perf_counter()
+    #
+    #        yield from batch_blocks(
+    #            blocks.iter_blocks(),
+    #            stats,
+    #            prefetch_blocks=prefetch_blocks,
+    #            batch_size=batch_size,
+    #            batch_format=batch_format,
+    #            drop_last=drop_last,
+    #            shuffle_buffer_min_size=local_shuffle_buffer_size,
+    #            shuffle_seed=local_shuffle_seed,
+    #        )
+    #
+    #        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def iter_torch_batches(
         self,

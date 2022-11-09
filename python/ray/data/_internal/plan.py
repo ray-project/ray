@@ -27,7 +27,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
-from ray.data._internal.executor import BulkSyncExecutor
+from ray.data._internal.executor import BulkSyncExecutor, PipelinedExecutor
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -286,15 +286,12 @@ class ExecutionPlan:
         else:
             return None
 
-    #    def execute_to_iterator(self) -> Iterator[BlockTuple]:
-    #        in_blocks, in_stats, in_stages = self._optimize()
-    #        clear_input_blocks = (
-    #            allow_clear_input_blocks
-    #            and self._should_clear_input_blocks(in_blocks[0], 0)
-    #        )
-    #        executor = PipelinedExecutor()
-    #        block_iter, _ = executor.execute(in_blocks, in_stats, in_stages)
-    #        return block_iter
+    def execute_to_iterator(self):
+        in_blocks, in_stats, in_stages = self._optimize()
+        clear_input_blocks = self._should_clear_input_blocks(in_blocks, 0)
+        executor = PipelinedExecutor(clear_input_blocks)
+        block_iter, _ = executor.execute(in_blocks, in_stats, in_stages)
+        return block_iter
 
     def execute(
         self,
@@ -316,7 +313,7 @@ class ExecutionPlan:
             in_blocks, in_stats, in_stages = self._optimize()
             clear_input_blocks = (
                 allow_clear_input_blocks
-                and self._should_clear_input_blocks(in_blocks[0], 0)
+                and self._should_clear_input_blocks(in_blocks, 0)
             )
             executor = BulkSyncExecutor(
                 clear_input_blocks=clear_input_blocks,
@@ -665,6 +662,27 @@ class OneToOneStage(Stage):
             fn_constructor_args=self.fn_constructor_args,
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
+
+    def transform_one(self, block, metadata, clear_input_blocks):
+        compute = get_compute(self.compute)
+        singleton_output = list(
+            compute._apply(
+                self.block_fn,
+                self.ray_remote_args,
+                BlockList([block], [metadata], owned_by_consumer=False),
+                clear_input_blocks,
+                name=self.name,
+                target_block_size=self.target_block_size,
+                fn=self.fn,
+                fn_args=self.fn_args,
+                fn_kwargs=self.fn_kwargs,
+                fn_constructor_args=self.fn_constructor_args,
+                fn_constructor_kwargs=self.fn_constructor_kwargs,
+            ).iter_blocks_with_metadata()
+        )
+        assert len(singleton_output) == 1, singleton_output
+        block, metadata = singleton_output[0]
+        return block, metadata
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool

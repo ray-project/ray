@@ -21,6 +21,7 @@ class AbstractExecutor:
     def execute(
         self, blocks: BlockList, stats: DatasetStats, stages: List["Stage"]
     ) -> (Iterator[BlockTuple], DatasetStats):
+        # TODO: should stats be available only at end of iteration?
         raise NotImplementedError
 
     def legacy_execute_to_block_list(
@@ -32,6 +33,26 @@ class AbstractExecutor:
         # TODO(ekl) set owned_by_consumer
         block_list = BlockList(blocks, metadata, owned_by_consumer=False)
         return block_list, stats
+
+
+class PipelinedExecutor(AbstractExecutor):
+    def __init__(self, clear_input_blocks: bool):
+        self._clear_input_blocks = clear_input_blocks
+
+    def execute(
+        self, blocks: BlockList, stats: DatasetStats, stages: List["Stage"]
+    ) -> (Iterator[BlockTuple], DatasetStats):
+        # TODO: handle AllToAll stages
+
+        def gen():
+            for block, metadata in blocks.iter_blocks_with_metadata():
+                for stage in stages:
+                    block, metadata = stage.transform_one(
+                        block, metadata, self._clear_input_blocks
+                    )
+                yield block, metadata
+
+        return gen(), stats  # TODO: stats
 
 
 class BulkSyncExecutor(AbstractExecutor):
