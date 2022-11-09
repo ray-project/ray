@@ -86,10 +86,12 @@ class GcsPlacementGroup {
   }
 
   ~GcsPlacementGroup() {
-    if (last_metric_state_) {
-      RAY_LOG(ERROR) << "Decrementing state at "
+    if (last_metric_state_ &&
+        last_metric_state_.value() != rpc::PlacementGroupTableData::REMOVED) {
+      RAY_LOG(DEBUG) << "Decrementing state at "
                      << rpc::PlacementGroupTableData::PlacementGroupState_Name(
                             last_metric_state_.value());
+      // Retain groups in the REMOVED state so we have a history of past groups.
       counter_->Decrement(last_metric_state_.value());
     }
   }
@@ -177,14 +179,14 @@ class GcsPlacementGroup {
   void RefreshMetrics() {
     auto cur_state = GetState();
     if (last_metric_state_) {
-      RAY_LOG(ERROR) << "Swapping state from "
+      RAY_LOG(DEBUG) << "Swapping state from "
                      << rpc::PlacementGroupTableData::PlacementGroupState_Name(
                             last_metric_state_.value())
                      << " to "
                      << rpc::PlacementGroupTableData::PlacementGroupState_Name(cur_state);
       counter_->Swap(last_metric_state_.value(), cur_state);
     } else {
-      RAY_LOG(ERROR) << "Incrementing state at "
+      RAY_LOG(DEBUG) << "Incrementing state at "
                      << rpc::PlacementGroupTableData::PlacementGroupState_Name(cur_state);
       counter_->Increment(cur_state);
     }
