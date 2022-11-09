@@ -158,7 +158,7 @@ GRAFANA_PANELS = [
         unit="placement groups",
         targets=[
             Target(
-                expr="sum(ray_placement_groups) by (State)",
+                expr="sum(ray_placement_groups{{{global_filters}}}) by (State)",
                 legend="{{State}}",
             )
         ],
