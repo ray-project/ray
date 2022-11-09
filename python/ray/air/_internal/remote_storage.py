@@ -1,6 +1,6 @@
 import fnmatch
 import os
-import urllib.parse
+import urllib
 from pkg_resources import packaging
 from typing import List, Optional, Tuple
 
@@ -15,6 +15,7 @@ except ImportError:
 try:
     import pyarrow
     import pyarrow.fs
+    from pyarrow.fs import S3FileSystem
 
     # TODO(krfricke): Remove this once gcsfs > 2022.3.0 is released
     # (and make sure to pin)
@@ -205,26 +206,48 @@ def upload_to_uri(
             f"Hint: {fs_hint(uri)}"
         )
 
-    if not exclude:
+    # NOTE: If we're uploading to a server that emulates S3 APIs, we need to encode
+    # special characters like "=" in filenames. For context, see
+    # https://github.com/ray-project/ray/issues/29845#issuecomment-1297940496.
+    if _is_endpoint_overwritten(uri) and isinstance(fs, S3FileSystem):
+        _upload_individual_files_to_uri(
+            local_path, bucket_path, exclude=exclude, destination_fs=fs, url_encode=True
+        )
+    elif exclude is not None:
+        _upload_individual_files_to_uri(
+            local_path, bucket_path, exclude=exclude, destination_fs=fs
+        )
+    else:
         pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
-        return
-
-    # Else, walk and upload
-    return _upload_to_uri_with_exclude(
-        local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
-    )
 
 
-def _upload_to_uri_with_exclude(
-    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+def _is_endpoint_overwritten(uri: str) -> bool:
+    # NOTE: Users can upload to non-AWS/GCS filesystems by specifying
+    # `endpoint_override` in a query string. To learn more, read
+    # https://ursalabs.org/arrow-r-nightly/articles/fs.html#file-systems-that-emulate-s3  # noqa: E501
+    parsed = urllib.parse.urlparse(uri)
+    query_parameters = urllib.parse.parse_qs(parsed.query)
+    return "endpoint_override" in query_parameters
+
+
+def _upload_individual_files_to_uri(
+    local_path: str,
+    bucket_path: str,
+    *,
+    exclude: Optional[List[str]],
+    destination_fs: "pyarrow.fs",
+    url_encode: bool = False,
 ) -> None:
+    if exclude is None:
+        exclude = []
+
     def _should_exclude(candidate: str) -> bool:
         for excl in exclude:
             if fnmatch.fnmatch(candidate, excl):
                 return True
         return False
 
-    for root, dirs, files in os.walk(local_path):
+    for root, _, files in os.walk(local_path):
         rel_root = os.path.relpath(root, local_path)
         for file in files:
             candidate = os.path.join(rel_root, file)
@@ -235,8 +258,13 @@ def _upload_to_uri_with_exclude(
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
+            if url_encode:
+                full_target_path = urllib.parse.quote(full_target_path, safe="")
+
             pyarrow.fs.copy_files(
-                full_source_path, full_target_path, destination_filesystem=fs
+                full_source_path,
+                full_target_path,
+                destination_filesystem=destination_fs,
             )
 
 

@@ -1,6 +1,7 @@
 import os
 import threading
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 import shutil
@@ -63,6 +64,28 @@ def test_upload_no_exclude(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+# NOTE: Amazon recommends URL encoding special characters, including '/'. AWS handles
+# these special characters gracefully, but non-AWS APIs might not. For context, read
+# https://github.com/ray-project/ray/issues/29845.
+@pytest.mark.parametrize("exclude", [None, ["eggs_*"]])
+def test_upload_encodes_file_names_if_endpoint_overriden(exclude, tmp_path):
+    object_key = "spam/ham_&$@=;:+ ,?"
+
+    file_path = os.path.join(tmp_path, object_key)
+    os.makedirs(os.path.dirname(file_path))
+    open(file_path, "w").close()
+
+    with patch("pyarrow.fs.copy_files") as mock_copy_files:
+        upload_to_uri(
+            tmp_path,
+            "s3://?scheme=http&endpoint_override=localhost%3A9444",
+            exclude=exclude,
+        )
+
+    (_, destination), _ = mock_copy_files.call_args
+    assert destination == quote(object_key, safe="")
 
 
 def test_upload_exclude_files(temp_data_dirs):
