@@ -59,7 +59,7 @@ GRAFANA_PANELS = [
     Panel(
         id=26,
         title="Scheduler Task State",
-        description="Current number of tasks currently in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
         unit="tasks",
         targets=[
             Target(
@@ -83,7 +83,7 @@ GRAFANA_PANELS = [
     Panel(
         id=33,
         title="Scheduler Actor State",
-        description="Current number of actors currently in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+        description="Current number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
         unit="actors",
         targets=[
             Target(
@@ -99,7 +99,7 @@ GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors{State!=\"DEAD\") by (Name)",
+                expr='sum(ray_actors{State!="DEAD") by (Name)',
                 legend="{{Name}}",
             )
         ],
@@ -107,7 +107,7 @@ GRAFANA_PANELS = [
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
-        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. \n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
+        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
         targets=[
             Target(

@@ -31,7 +31,6 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
-
 /// ===============================================================================
 /// =============== PUBLIC METRICS; keep in sync with metrics.rst =================
 /// ===============================================================================
