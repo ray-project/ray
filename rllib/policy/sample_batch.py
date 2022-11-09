@@ -75,7 +75,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         # If this is a nested dict (for example a nested observation),
         # try to flatten it, assert that all elements have the same length (batch
         # dimension)
-        v_list = tree.flatten(v)
+        v_list = tree.flatten(v) if isinstance(v, (dict, tuple)) else [v]
         # TODO: Drop support for lists and Numbers as values.
         # If v_list contains lists or Numbers, convert them to arrays, too.
         v_list = [
