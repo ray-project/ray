@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04@sha256:1cfa79e60f22dc5567fd726e2b4e24f94e1936e98be69c25ecf8cc141907c1df
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST

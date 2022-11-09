@@ -40,7 +40,7 @@ PY_MATRIX = {
 BASE_IMAGES = {
     "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
     "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
+    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04@sha256:1cfa79e60f22dc5567fd726e2b4e24f94e1936e98be69c25ecf8cc141907c1df",
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
     "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
     "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
