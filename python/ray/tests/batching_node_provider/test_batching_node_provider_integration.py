@@ -1,3 +1,6 @@
+"""Integration/e2e test for BatchingNodeProvider.
+Adapts FakeMultiNodeProvider tests.
+"""
 from copy import deepcopy
 import platform
 
