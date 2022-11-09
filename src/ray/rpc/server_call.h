@@ -17,7 +17,6 @@
 #include <google/protobuf/arena.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
-#include <grpcpp/alarm.h>
 
 #include <boost/asio.hpp>
 
@@ -95,8 +94,6 @@ class ServerCall {
 
   virtual const ServerCallFactory &GetServerCallFactory() = 0;
 
-  virtual void Send() = 0;
-  
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -237,10 +234,6 @@ class ServerCallImpl : public ServerCall {
     LogProcessTime();
   }
 
-  void Send() override {
-    SendReply(status_);
-  }
-  
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
