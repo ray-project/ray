@@ -88,6 +88,7 @@ def test_deployment_init_error_logging(serve_instance, capsys):
 
 def test_connect_serve_start_logging(serve_instance, capsys):
     import logging
+
     logging.basicConfig(level=logging.INFO)
 
     @serve.deployment
@@ -99,7 +100,7 @@ def test_connect_serve_start_logging(serve_instance, capsys):
 
     expected_log = (
         'Connecting to existing Serve app in namespace "serve"'
-        '. New http options will not be applied.'
+        ". New http options will not be applied."
     )
 
     # wait long enough for the warning to be printed
