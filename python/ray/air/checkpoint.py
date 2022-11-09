@@ -11,7 +11,17 @@ import uuid
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    Callable,
+)
 
 import ray
 from ray import cloudpickle as pickle
@@ -217,6 +227,10 @@ class Checkpoint:
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
         self._uuid = uuid.uuid4()
+
+        # If set, Ray AIR manages the lifecycle. In the base case, data will be
+        # deleted from disk on checkpoint deconstruction.
+        self._managed = False
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -452,6 +466,34 @@ class Checkpoint:
         checkpoint = cls(local_path=path)
         checkpoint.__dict__.update(state)
 
+        return checkpoint
+
+    @classmethod
+    def from_directory_populator(cls, populator: Callable[[str], Any]):
+        """Create a checkpoint from a populator function.
+
+        The populator function receives one argument, a string pointing to a directory.
+        The function can proceed to write data into this directory.
+
+        This method will then return a Checkpoint created from this directory.
+
+        Args:
+            populator: Function taking a directory path as an input. The populator
+                function can write checkpoint data into this directory.
+
+        Returns:
+            Checkpoint object containing data written to the directory.
+
+        Examples:
+            >>> checkpoint = Checkpoint.from_directory_populator(  # doctest: +SKIP
+            ...     lambda dir: (Path(dir) / "data.txt").write_text("Data")
+            ... )
+
+        """
+        temp_directory = tempfile.mkdtemp()
+        populator(temp_directory)
+        checkpoint = cls.from_directory(temp_directory)
+        checkpoint._managed = True
         return checkpoint
 
     # TODO: Deprecate `from_checkpoint`. For context, see #29058.
@@ -757,6 +799,11 @@ class Checkpoint:
             "You cannot use `air.Checkpoint` objects directly as paths. "
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
+
+    def __del__(self):
+        if self._managed:
+            assert self._local_path
+            shutil.rmtree(self._local_path)
 
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""

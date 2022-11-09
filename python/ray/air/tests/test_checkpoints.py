@@ -4,8 +4,10 @@ import re
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
+import cloudpickle
 import pytest
 
 import ray
@@ -479,6 +481,39 @@ class CheckpointsConversionTest(unittest.TestCase):
             assert os.path.exists(checkpoint_dir)
 
         assert not os.path.exists(checkpoint_dir)
+
+    def test_fs_cp_from_populator(self):
+        # Create checkpoint from populator
+        checkpoint = Checkpoint.from_directory_populator(
+            lambda dir: (Path(dir) / "data.txt").write_text("Data")
+        )
+
+        # Assert data is correctly saved
+        with checkpoint.as_directory() as dir:
+            assert (Path(dir) / "data.txt").read_text() == "Data"
+
+        # Simulate pickling (e.g. sending via ray object store)
+        cp_blob = cloudpickle.dumps(checkpoint)
+
+        # Assert that local data is deleted when checkpoint is deleted
+        checkpoint_path = checkpoint._local_path
+        del checkpoint
+        assert not Path(checkpoint_path).exists()
+
+        # Restore checkpoint from pickled data
+        checkpoint = Checkpoint.from_directory(
+            cloudpickle.loads(cp_blob).to_directory()
+        )
+
+        # Assert content is the same
+        checkpoint_path = checkpoint._local_path
+        with checkpoint.as_directory() as dir:
+            assert (Path(dir) / "data.txt").read_text() == "Data"
+
+        # Assert that this checkpoint is not managed anymore, so that data remains
+        # on disk.
+        del checkpoint
+        assert Path(checkpoint_path).exists()
 
     def test_obj_store_cp_as_directory(self):
         checkpoint = self._prepare_dict_checkpoint()
