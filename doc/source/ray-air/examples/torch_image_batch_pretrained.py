@@ -12,8 +12,7 @@ from ray.data.preprocessors import BatchMapper
 
 def preprocess(batch: np.ndarray) -> pd.DataFrame:
     """
-    User Pytorch code to transform user image. Note we still use pandas as
-    intermediate format to hold images as shorthand of python dictionary.
+    User Pytorch code to transform user image.
     """
     preprocess = transforms.Compose(
         [
@@ -23,7 +22,8 @@ def preprocess(batch: np.ndarray) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
+    transformed_images = np.array([preprocess(image).numpy() for image in batch])
+    return transformed_images
 
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
