@@ -16,6 +16,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 
+provider_exists = False
+
 logger = logging.getLogger(__name__)
 
 NodeStatus = str
@@ -141,7 +143,7 @@ class BatchingNodeProvider(NodeProvider):
         """
         raise NotImplementedError
 
-    def safe_to_scale() -> bool:
+    def safe_to_scale(self) -> bool:
         """Optional condition to determine if it's safe to submit a scale request.
         Can be used to wait for convergence of state managed by an external cluster
         manager.
