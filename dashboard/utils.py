@@ -117,6 +117,10 @@ def get_all_modules(module_type):
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
     ):
+        logger.error("name: %s", name)
+        if name.startswith("ray.dashboard.modules.metrics"):
+            logger.error("Skip loading metrics module for debugging.")
+            continue
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as e:
