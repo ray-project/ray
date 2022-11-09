@@ -3,7 +3,7 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -34,12 +34,15 @@ from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
+    TaskStateEventEntry,
+    TaskStateEvents,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
+    GetAllTaskStateEventReply,
     GetAllWorkerInfoReply,
 )
 from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
@@ -129,9 +132,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     else:
         state_fields_columns = state.base_columns()
 
+    print(result_dict)
     for k in state_fields_columns:
         assert k in result_dict
-
     for k in result_dict:
         assert k in state_fields_columns
 
@@ -180,44 +183,30 @@ def generate_worker_data(id, pid=1234):
     )
 
 
-def generate_task_entry(
-    id,
-    name="class",
-    func_or_class="class",
-    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-    type=TaskType.NORMAL_TASK,
-    node_id=NodeID.from_random().binary(),
-):
-    return TaskInfoEntry(
-        task_id=id,
-        name=name,
-        func_or_class_name=func_or_class,
-        scheduling_state=state,
-        type=type,
-        node_id=node_id,
-    )
-
-
 def generate_task_data(
     id,
     name="class",
     func_or_class="class",
-    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
+    state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
+    type=TaskType.NORMAL_TASK,
     node_id=NodeID.from_random(),
 ):
-    if node_id is not None:
-        node_id = node_id.binary()
-    return GetTasksInfoReply(
-        owned_task_info_entries=[
-            generate_task_entry(
-                id=id,
-                name=name,
-                func_or_class=func_or_class,
-                state=state,
-                node_id=node_id,
-            )
-        ],
-        total=1,
+    task_info = TaskInfoEntry(
+        task_id=id,
+        name=name,
+        func_or_class_name=func_or_class,
+        scheduling_state=TaskStatus.NIL,
+        type=type,
+        node_id=node_id.binary(),
+    )
+    task_id = id
+    task_events = [
+        TaskStateEventEntry(task_status=state, event_time=event_time)
+        for state, event_time in state_events
+    ]
+
+    return TaskStateEvents(
+        task_id=task_id, task_info=task_info, task_events=task_events
     )
 
 
@@ -778,26 +767,21 @@ async def test_api_manager_list_workers(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
     node_id = NodeID.from_random()
     first_task_name = "1"
     second_task_name = "2"
     data_source_client.get_task_info = AsyncMock()
     id = b"1234"
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name, node_id=node_id),
-        generate_task_data(b"2345", second_task_name, node_id=None),
-    ]
+    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+        total=2,
+        events_by_task=[
+            generate_task_data(id, first_task_name, node_id=node_id),
+            generate_task_data(b"2345", second_task_name),
+        ],
+    )
     result = await state_api_manager.list_tasks(option=create_api_options())
-    data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
-    data_source_client.get_task_info.assert_any_await("2", timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result
-    data = data
-    assert len(data) == 2
-    assert result.total == 2
-
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
@@ -806,10 +790,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test detail
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
-    ]
+    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+        total=2,
+        events_by_task=[
+            generate_task_data(id, first_task_name),
+            generate_task_data(b"2345", second_task_name),
+        ],
+    )
     result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
     data = result.result
     data = data
@@ -819,10 +806,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test limit
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
-    ]
+    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+        total=2,
+        events_by_task=[
+            generate_task_data(id, first_task_name),
+            generate_task_data(b"2345", second_task_name),
+        ],
+    )
     result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
@@ -831,10 +821,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test filters
     """
-    data_source_client.get_task_info.side_effect = [
-        generate_task_data(id, first_task_name),
-        generate_task_data(b"2345", second_task_name),
-    ]
+    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+        total=2,
+        events_by_task=[
+            generate_task_data(id, first_task_name),
+            generate_task_data(b"2345", second_task_name),
+        ],
+    )
     result = await state_api_manager.list_tasks(
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )

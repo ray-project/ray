@@ -359,19 +359,38 @@ class StateAPIManager:
             )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
-
-        # Parsing the result from grpc protobuf to Dict
         result = []
         for message in reply.events_by_task:
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["task_id", "job_id", "node_id", "actor_id"],
+                fields_to_decode=[
+                    "task_id",
+                    "job_id",
+                    "node_id",
+                    "actor_id",
+                    "parent_task_id",
+                ],
             )
 
             def _to_task_state(data):
-                print(data)
+                # TODO(rickyx): Maybe we should autogenerate this?
+                task_info = data.get("task_info", None)
+                if not task_info:
+                    # TODO(rickyx): some tasks don't have the spec, the driver script?
+                    return None
+                task_state = task_info
+                task_state_events = data.get("task_events", None)
+                if task_state_events:
+                    most_recent_state = max(
+                        task_state_events, key=lambda e: e["event_time"]
+                    )
+                    task_state["scheduling_state"] = most_recent_state["task_status"]
+                return task_state
 
-            _to_task_state(data)
+            state = _to_task_state(data)
+
+            if state:
+                result.append(state)
 
         return ListApiResponse(
             result=result,

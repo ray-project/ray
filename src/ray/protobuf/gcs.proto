@@ -201,20 +201,16 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
-message TaskStateEventList {
-  // Represents a single task event entry
-  message TaskStateEventEntry {
-    // The task status name.
-    // TODO(rickyx): This for now overrides the scheduling_state  in TaskInfoEntry
-    // We should deprecate that field after the refactoring of task backend.
-    TaskStatus task_status = 1;
-    // The event time.
-    int64 event_time = 2;
-    // Fine-grained event name.
-    string event_name = 3;
-  }
-  // List of task events.
-  repeated TaskStateEventEntry events = 1;
+// Represents a single task event entry
+message TaskStateEventEntry {
+  // The task status name.
+  // TODO(rickyx): This for now overrides the scheduling_state  in TaskInfoEntry
+  // We should deprecate that field after the refactoring of task backend.
+  TaskStatus task_status = 1;
+  // The event time.
+  int64 event_time = 2;
+  // Fine-grained event name.
+  string event_name = 3;
 }
 
 // Represents state envents for a single task.
@@ -224,7 +220,7 @@ message TaskStateEvents {
   // Task metadata info
   TaskInfoEntry task_info = 2;
   // Task events
-  TaskStateEventList task_event_list = 3;
+  repeated TaskStateEventEntry task_events = 3;
 }
 
 // Represents a compact list of task state events by different tasks,

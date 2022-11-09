@@ -58,7 +58,7 @@ TaskIdEventMap::iterator TaskStateBuffer::AddTaskEventInternal(
                 << "][task_status=" << task_status << "]";
   auto task_events_itr = GetOrInitTaskEvents(task_id, task_status);
 
-  auto event = task_events_itr->second.mutable_task_event_list()->add_events();
+  auto event = task_events_itr->second.add_task_events();
   event->set_task_status(task_status);
   event->set_event_time(absl::GetCurrentTimeNanos());
 
@@ -124,7 +124,7 @@ TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(
   // No existing entry, init a new TaskStateEvents.
   rpc::TaskStateEvents task_state_events;
 
-  // Set uid for this event.
+  // Set id for this task
   task_state_events.set_task_id(task_id.Binary());
 
   // Add the newly task events to the buffer

@@ -80,6 +80,7 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
   auto on_done = [reply, send_reply_callback](
                      const absl::flat_hash_map<TaskID, rpc::TaskStateEvents> &result) {
     for (const auto &data : result) {
+      RAY_LOG(INFO) << data.second.DebugString();
       reply->add_events_by_task()->CopyFrom(data.second);
     }
     reply->set_total(result.size());
@@ -109,22 +110,10 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
           return;
         }
 
-        auto new_events_list = events_by_task.task_event_list();
         // Merge events
         rpc::TaskStateEvents empty_task_state_events;
-        auto cur_task_state_events =
-            result.has_value() ? result.value() : empty_task_state_events;
-        auto target_events_list = cur_task_state_events.mutable_task_event_list();
-        for (auto const &event : new_events_list.events()) {
-          auto add_event = target_events_list->add_events();
-          add_event->CopyFrom(event);
-        }
-
-        // Overwrite task info if present in incoming updates and missing in current
-        // table.
-        if (events_by_task.has_task_info() && !cur_task_state_events.has_task_info()) {
-          cur_task_state_events.mutable_task_info()->CopyFrom(events_by_task.task_info());
-        }
+        auto cur_task_state_events = result.value_or(empty_task_state_events);
+        cur_task_state_events.MergeFrom(events_by_task);
 
         // Callback on async put done
         auto cb_on_put_done = [task_id, cb_on_done](Status status) {

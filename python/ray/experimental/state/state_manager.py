@@ -259,6 +259,8 @@ class StateDataSourceClient:
         reply = await self._gcs_task_info_stub.GetAllTaskStateEvent(
             request, timeout=timeout
         )
+        logger.info("hi")
+        logger.info(reply)
         return reply
 
     @handle_grpc_network_errors
