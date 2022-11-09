@@ -61,6 +61,14 @@ DEFINE_stats(actors,
              (),
              ray::stats::GAUGE);
 
+/// Placement group metrics from the GCS.
+DEFINE_stats(placement_groups,
+             "Number of placement groups broken down by state in {Registered, Pending, "
+             "Infeasible}",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(

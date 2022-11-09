@@ -27,6 +27,7 @@ namespace gcs {
 void GcsPlacementGroup::UpdateState(
     rpc::PlacementGroupTableData::PlacementGroupState state) {
   placement_group_table_data_.set_state(state);
+  RefreshMetrics();
 }
 
 rpc::PlacementGroupTableData::PlacementGroupState GcsPlacementGroup::GetState() const {
@@ -142,6 +143,16 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),
       get_ray_namespace_(get_ray_namespace) {
+  placement_group_state_counter_.reset(
+      new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
+  placement_group_state_counter_->SetOnChangeCallback(
+      [this](const rpc::PlacementGroupTableData::PlacementGroupState key) mutable {
+        int64_t num_pg = placement_group_state_counter_->Get(key);
+        ray::stats::STATS_placement_groups.Record(
+            num_pg,
+            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key.first)},
+             {"Source", "gcs"}});
+      });
   Tick();
 }
 
@@ -904,6 +915,7 @@ void GcsPlacementGroupManager::RecordMetrics() const {
                                                      "Registered");
   ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
                                                      "Infeasible");
+  placement_group_state_counter_->FlushOnChangeCallbacks();
 }
 
 }  // namespace gcs
