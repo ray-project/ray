@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import os
 import unittest
@@ -6,7 +8,7 @@ import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
@@ -458,6 +460,41 @@ class TestSampleBatch(unittest.TestCase):
             ),
             (
                 {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    SampleBatch.OBS: {
+                        "a": np.array([1, 2, 3]),
+                        "b": np.array([0, 0, 1]),
+                        "c": np.array([4, 5, 6]),
+                    },
+                },
+                3,  # This should have a length of three - we count from OBS
+            ),
+            (
+                {
+                    "state_in_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                    "state_out_0": {
+                        "a": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "b": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                        "c": [[[1], [2], [3]], [[1], [2], [3]], [[1], [2], [3]]],
+                    },
+                },
+                0,  # This should have a length of zero, we don't attempt to count
+            ),
+            (
+                {
                     SampleBatch.OBS: {
                         "a": np.array([[1], [2], [3]]),
                         "b": np.array([[0], [0], [1]]),
@@ -480,6 +517,7 @@ class TestSampleBatch(unittest.TestCase):
         ]
 
         for input_dict, length in input_dicts_and_lengths:
+            self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
             s = SampleBatch(input_dict)
             self.assertEqual(s.count, length)
 
