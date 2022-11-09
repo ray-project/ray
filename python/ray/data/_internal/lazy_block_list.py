@@ -114,6 +114,7 @@ class LazyBlockList(BlockList):
     def stats(self) -> DatasetStats:
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
+            # Make a copy of metadata, as the DatasetStats may mutate it in-place.
             stages={"read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
