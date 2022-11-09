@@ -39,10 +39,10 @@ class MADDPGConfig(AlgorithmConfig):
         >>>         "prioritized_replay_eps": 2e-6,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=0)\
-        >>>       .rollouts(num_rollout_workers=4)\
-        >>>       .environment("CartPole-v1")
+        >>> config.training(replay_buffer_config=replay_config)   # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")   # doctest: +SKIP
         >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
@@ -51,8 +51,8 @@ class MADDPGConfig(AlgorithmConfig):
         >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
-        >>> config.training(n_step=tune.grid_search([3, 5]))
-        >>> config.environment(env="CartPole-v1")
+        >>> config.training(n_step=tune.grid_search([3, 5]))  # doctest: +SKIP
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "MADDPG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),

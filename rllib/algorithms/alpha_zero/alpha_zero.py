@@ -55,10 +55,10 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
-        >>> config = AlphaZeroConfig()\   # doctest: +SKIP
-        ...             .training(sgd_minibatch_size=256)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
+        >>> config = AlphaZeroConfig()   # doctest: +SKIP
+        >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
+        >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config..rollouts(num_rollout_workers=4)   # doctest: +SKIP
         >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
@@ -72,9 +72,9 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> # Print out some default values.
         >>> print(config.shuffle_sequences) # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))  # doctest: +SKIP
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP

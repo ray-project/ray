@@ -33,9 +33,10 @@ class QMixConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.algorithms.qmix import QMixConfig
-        >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
+        >>> config = QMixConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env=TwoStepGame)  # doctest: +SKIP
@@ -50,9 +51,11 @@ class QMixConfig(SimpleQConfig):
         >>> # Print out some default values.
         >>> print(config.optim_alpha)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), optim_alpha=0.97)
+        >>> config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), optim_alpha=0.97
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env=TwoStepGame)
+        >>> config.environment(env=TwoStepGame)  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

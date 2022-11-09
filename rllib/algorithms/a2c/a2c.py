@@ -34,13 +34,14 @@ class A2CConfig(A3CConfig):
     Example:
         >>> from ray import tune
         >>> from ray.rllib.algorithms.a2c import A2CConfig
-        >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=2)\
-        ...     .environment("CartPole-v1")
+        >>> config = A2CConfig()
+        >>> config = config.training(lr=0.01, grad_clip=30.0)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=2)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
+        >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:
@@ -51,10 +52,10 @@ class A2CConfig(A3CConfig):
         >>> # Print out some default values.
         >>> print(config.sample_async)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search(  # doctest: +SKIP
+        >>> config = config.training(lr=tune.grid_search(  # doctest: +SKIP
         ...     [0.001, 0.0001]), use_critic=False)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

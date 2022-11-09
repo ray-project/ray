@@ -65,9 +65,9 @@ class ApexDQNConfig(DQNConfig):
         >>>     }
         >>> )
         >>> config = config.training(replay_buffer_config=replay_config) #doctest: +SKIP
-        >>> config = config..resources(num_gpus=1)  # doctest: +SKIP
-        >>> config = config..rollouts(num_rollout_workers=30)  # doctest: +SKIP
-        >>> config = config..environment("CartPole-v1")  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=30)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
         >>> algo = config.build() # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
@@ -76,8 +76,9 @@ class ApexDQNConfig(DQNConfig):
         >>> from ray import air
         >>> from ray import tune
         >>> config = ApexDQNConfig()
-        >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
-        >>> config.environment(env="CartPole-v1")
+        >>> config.training(  # doctest: +SKIP
+        ...     num_atoms=tune.grid_search(list(range(1, 11)))
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> tune.Tuner( # doctest: +SKIP
         ...     "APEX",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
@@ -96,8 +97,12 @@ class ApexDQNConfig(DQNConfig):
         >>>         "epsilone_timesteps": 5000,
         >>>     }
         >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\  # doctest: +SKIP
-        >>>       .exploration(exploration_config=explore_config)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
+        ... )
+        >>> config = config.exploration(  # doctest: +SKIP
+        ...     exploration_config=explore_config
+        ... )
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -109,8 +114,12 @@ class ApexDQNConfig(DQNConfig):
         >>>         "temperature": [1.0],
         >>>     }
         >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\  # doctest: +SKIP
-        >>>       .exploration(exploration_config=explore_config)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
+        ... )
+        >>> config = config.exploration(  # doctest: +SKIP
+        ...     exploration_config=explore_config
+        ... )
     """
 
     def __init__(self, algo_class=None):
