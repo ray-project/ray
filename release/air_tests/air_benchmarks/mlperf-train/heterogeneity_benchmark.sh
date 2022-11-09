@@ -5,7 +5,9 @@
 set -x -e pipeline
 
 NUM_FILES="128"
-NUM_CPU_NODES="0 2"
+# NOTE: Start with larger cluster and downscale so that
+# cluster setup will sync all code files to all worker nodes.
+NUM_CPU_NODES="2 0"
 
 NUM_EPOCHS=1
 BATCH_SIZE=64
