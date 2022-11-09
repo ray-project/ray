@@ -2819,9 +2819,9 @@ def remote(
     ... def f(a, b, c):
     ...     return a + b + c
     >>>
-    >>> object_ref = f.remote(1, 2, 3)  # doctest: +SKIP
-    >>> result = ray.get(object_ref)  # doctest: +SKIP
-    >>> assert result == (1 + 2 + 3)  # doctest: +SKIP
+    >>> object_ref = f.remote(1, 2, 3)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (1 + 2 + 3)
     >>>
     >>> @ray.remote
     ... class Foo:
@@ -2831,10 +2831,10 @@ def remote(
     ...     def method(self, a):
     ...         return self.x + a
     >>>
-    >>> actor_handle = Foo.remote(123)  # doctest: +SKIP
-    >>> object_ref = actor_handle.method.remote(321)  # doctest: +SKIP
-    >>> result = ray.get(object_ref)  # doctest: +SKIP
-    >>> assert result == (123 + 321)  # doctest: +SKIP
+    >>> actor_handle = Foo.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
     Equivalently, use a function call to create a remote function or actor.
 
@@ -2852,11 +2852,11 @@ def remote(
     ...     def method(self, a):
     ...         return self.x + a
     >>>
-    >>> RemoteBar = ray.remote(Bar)  # doctest: +SKIP
-    >>> actor_handle = RemoteBar.remote(123)  # doctest: +SKIP
-    >>> object_ref = actor_handle.method.remote(321)  # doctest: +SKIP
-    >>> result = ray.get(object_ref)  # doctest: +SKIP
-    >>> assert result == (123 + 321)  # doctest: +SKIP
+    >>> RemoteBar = ray.remote(Bar)
+    >>> actor_handle = RemoteBar.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
 
     It can also be used with specific keyword arguments as follows:
@@ -2888,8 +2888,8 @@ def remote(
     ...         return 1
     >>>
     >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-    >>> foo_actor = Foo_with_no_resources.remote()  # doctest: +SKIP
-    >>> assert ray.get(foo_actor.method.remote()) == 1  # doctest: +SKIP
+    >>> foo_actor = Foo_with_no_resources.remote()
+    >>> assert ray.get(foo_actor.method.remote()) == 1
 
 
     A remote actor will be terminated when all actor handle to it

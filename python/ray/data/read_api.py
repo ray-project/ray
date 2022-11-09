@@ -366,7 +366,7 @@ def read_parquet(
         ...           ("petal.length", pa.float64()),
         ...           ("petal.width", pa.float64()),
         ...           ("variety", pa.string())]
-        >>> ray.data.read_parquet("example://iris.parquet",  # doctest: +SKIP
+        >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
         Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
 
@@ -935,7 +935,7 @@ def read_tfrecords(
         :class:`~ray.data.Dataset`.
 
         >>> import ray
-        >>> ds = ray.data.read_tfrecords(path)  # doctest: +SKIP
+        >>> ds = ray.data.read_tfrecords(path)
         >>> ds.to_pandas()  # doctest: +SKIP
            length  width    species
         0     5.1    3.5  b'setosa'

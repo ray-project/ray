@@ -125,7 +125,7 @@ class TensorflowCheckpoint(Checkpoint):
             ...     checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
             ...     session.report({"my_metric": 1}, checkpoint=checkpoint)
 
-            >>> trainer = TensorflowTrainer( # doctest: +SKIP
+            >>> trainer = TensorflowTrainer(
             ...     train_loop_per_worker=train_func,
             ...     scaling_config=ScalingConfig(num_workers=2))
 

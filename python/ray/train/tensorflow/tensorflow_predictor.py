@@ -191,7 +191,7 @@ class TensorflowPredictor(DLPredictor):
             ...     )
             >>>
             >>> weights = [np.array([[2.0]]), np.array([0.0])]
-            >>> predictor = TensorflowPredictor(model=build_model())  # doctest: +SKIP
+            >>> predictor = TensorflowPredictor(model=build_model())
             >>>
             >>> data = np.asarray([1, 2, 3])
             >>> predictions = predictor.predict(data) # doctest: +SKIP
