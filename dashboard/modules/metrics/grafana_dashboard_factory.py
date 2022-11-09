@@ -152,6 +152,18 @@ GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=40,
+        title="Scheduler Placement Groups",
+        description="Current number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.",
+        unit="placement groups",
+        targets=[
+            Target(
+                expr="sum(ray_placement_groups) by (State)",
+                legend="{{State}}",
+            )
+        ],
+    ),
+    Panel(
         id=2,
         title="Node CPU (hardware utilization)",
         description="",
