@@ -12,6 +12,7 @@ from ray.dashboard.modules.metrics.metrics_head import (
     TaskProgressWithTaskName,
     TaskProgress,
 )
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import GRAFANA_PANELS
 from ray.tests.conftest import _ray_start
 
 
@@ -237,6 +238,12 @@ def test_format_prometheus_output_by_task_names():
             ),
         ]
     )
+
+
+def test_default_dashboard_utilizes_global_filters():
+    for panel in GRAFANA_PANELS:
+        for target in panel.targets:
+            assert "{global_filters}" in target.expr
 
 
 if __name__ == "__main__":

@@ -133,7 +133,7 @@ const METRICS_CONFIG = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const { grafanaHost } = useContext(GlobalContext);
+  const { grafanaHost, sessionName } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.THIRTY_MINS,
@@ -204,7 +204,7 @@ export const Metrics = () => {
                 key={title}
                 className={classes.grafanaEmbed}
                 title={title}
-                src={`${grafanaHost}${path}&refresh${timeRangeParams}`}
+                src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
                 width="450"
                 height="400"
                 frameBorder="0"

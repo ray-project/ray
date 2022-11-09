@@ -28,6 +28,35 @@
       {
         "allValue": null,
         "current": {
+          "selected": false
+        },
+        "datasource": "Prometheus",
+        "definition": "label_values(SessionName)",
+        "description": "Filter queries to specific ray sessions.",
+        "error": null,
+        "hide": 0,
+        "includeAll": false,
+        "label": null,
+        "multi": false,
+        "name": "SessionName",
+        "options": [],
+        "query": {
+          "query": "label_values(SessionName)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": null,
+        "current": {
           "selected": true,
           "text": [
             "All"
@@ -59,28 +88,6 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
-        },
-        "description": "Optional id that identifies the ray cluster. Useful if this dashboard is used in a grafana instance that is monitoring multiple ray clusters.",
-        "error": null,
-        "hide": 0,
-        "label": "ClusterId",
-        "name": "cluster_id",
-        "options": [
-          {
-            "selected": true,
-            "text": "",
-            "value": ""
-          }
-        ],
-        "query": "",
-        "skipUrlSync": false,
-        "type": "textbox"
       }
     ]
   },

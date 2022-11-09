@@ -8,7 +8,7 @@ import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { Metrics } from "./pages/metrics";
-import { getGrafanaHost } from "./pages/metrics/utils";
+import { getMetricsInfo } from "./pages/metrics/utils";
 import { getNodeList } from "./service/node";
 import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
@@ -41,6 +41,10 @@ type GlobalContextType = {
    * running as detected by the grafana healthcheck endpoint.
    */
   grafanaHost: string | undefined;
+  /**
+   * The name of the currently running ray session.
+   */
+  sessionName: string | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -48,6 +52,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   ipLogMap: {},
   namespaceMap: {},
   grafanaHost: undefined,
+  sessionName: undefined,
 });
 
 export const getDefaultTheme = () =>
@@ -63,6 +68,7 @@ const App = () => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
+    sessionName: undefined,
   });
   const getTheme = (name: string) => {
     switch (name) {
@@ -102,10 +108,11 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const grafanaHost = await getGrafanaHost();
+      const { grafanaHost, sessionName } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         grafanaHost,
+        sessionName,
       }));
     };
     doEffect();
