@@ -454,8 +454,8 @@ def test_object_unpin(ray_start_cluster):
     wait_for_condition(lambda: check_memory(11))
 
     # The second node is dead, and actor 2 is dead.
-    # Increase timeout for node failure to address CI failure in https://github.com/ray-project/ray/issues/30149
     cluster.remove_node(nodes[1], allow_graceful=False)
+    # Increase timeout for node failure to address CI failure in https://github.com/ray-project/ray/issues/30149q
     wait_for_condition(lambda: wait_until_node_dead(nodes[1]), timeout=20)
     wait_for_condition(lambda: check_memory(10))
 
