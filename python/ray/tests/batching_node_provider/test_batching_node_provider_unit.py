@@ -120,7 +120,6 @@ class BatchingNodeProviderTester:
             # Terminate "count" nodes of the given node_type.
             # If count is greater than the number of nodes of the type, terminate
             # all of the nodes of the type.
-            # or just all of the nodes of the node_type if count is too big.
             to_terminate_this_request = []
             for node in self.node_provider._node_data_dict:
                 if len(to_terminate_this_request) >= count:
