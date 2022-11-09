@@ -29,6 +29,8 @@
 namespace ray {
 namespace rpc {
 
+/// Get the thread pool for the gRPC server.
+/// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
@@ -50,7 +52,7 @@ enum class ServerCallState {
   /// Ready to be sent
   STAGING,
   /// Request processing is done, and reply is being sent to client.
-  SENDING_REPLY,
+  SENDING_REPLY
 };
 
 class ServerCallFactory;
@@ -141,14 +143,12 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   ServerCallImpl(
       const ServerCallFactory &factory,
-      grpc::ServerCompletionQueue *cq,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
       bool record_metrics)
-      : cq_(cq),
-        state_(ServerCallState::PENDING),
+      : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
@@ -165,7 +165,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  ~ServerCallImpl() override {}
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
@@ -251,8 +251,6 @@ class ServerCallImpl : public ServerCall {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
-
-  grpc::ServerCompletionQueue *cq_;
 
   /// The memory pool for this request. It's used for reply.
   /// With arena, we'll be able to setup the reply without copying some field.
@@ -370,7 +368,6 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call =
         new ServerCallImpl<ServiceHandler, Request, Reply>(*this,
-                                                           cq_.get(),
                                                            service_handler_,
                                                            handle_request_function_,
                                                            io_service_,
