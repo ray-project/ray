@@ -95,17 +95,19 @@ Workers not Releasing GPU Resources
 **Note:** Currently, when a worker executes a task that uses a GPU (e.g.,
 through TensorFlow), the task may allocate memory on the GPU and may not release
 it when the task finishes executing. This can lead to problems the next time a
-task tries to use the same GPU. You can address this by setting ``max_calls=1``
-in the remote decorator so that the worker automatically exits after executing
-the task (thereby releasing the GPU resources).
+task tries to use the same GPU. To address the problem, Ray disables the worker
+process reuse between tasks by default, where the GPU resources is released after
+the task process exists. Since this adds overhead to GPU task scheduling,
+you can re-enable worker reuse by setting ``max_calls=0``
+in the ``ray.remote`` decorator.
 
 .. code-block:: python
 
   import tensorflow as tf
 
-  @ray.remote(num_gpus=1, max_calls=1)
+  # By default, ray will not reuse workers for GPU tasks to prevent
+  # GPU resource leakage.
+  @ray.remote(num_gpus=1)
   def leak_gpus():
-      # This task will allocate memory on the GPU and then never release it, so
-      # we include the max_calls argument to kill the worker and release the
-      # resources.
+      # This task will allocate memory on the GPU and then never release it.
       sess = tf.Session()
