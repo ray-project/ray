@@ -36,14 +36,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
-    PolicyID,
-    ResultDict,
-    SampleBatchType,
-    T,
-)
+from ray.rllib.utils.typing import PolicyID, ResultDict, SampleBatchType, T
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
@@ -475,14 +468,14 @@ class Impala(Algorithm):
                 return A3CTFPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
         self.batches_to_place_on_learner = []
         self.batch_being_built = []
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
             # experiences coming from RolloutWorkers in parallel. We force
             # colocation on the same node (localhost) to maximize data bandwidth
@@ -501,7 +494,7 @@ class Impala(Algorithm):
                             self.config,
                         ],
                         {},
-                        self.config["num_aggregation_workers"],
+                        self.config.num_aggregation_workers,
                     )
                 ],
                 node=localhost,
@@ -511,31 +504,31 @@ class Impala(Algorithm):
             ]
             self._aggregator_actor_manager = AsyncRequestsManager(
                 self._aggregator_workers,
-                max_remote_requests_in_flight_per_worker=self.config[
-                    "max_requests_in_flight_per_aggregator_worker"
-                ],
-                ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
+                max_remote_requests_in_flight_per_worker=(
+                    self.config.max_requests_in_flight_per_aggregator_worker
+                ),
+                ray_wait_timeout_s=self.config.timeout_s_aggregator_manager,
             )
 
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
             self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                 capacity=(
-                    self.config["replay_buffer_num_slots"]
-                    if self.config["replay_buffer_num_slots"] > 0
+                    self.config.replay_buffer_num_slots
+                    if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config["replay_ratio"],
+                replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
 
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_sampler_worker"
-            ],
+            max_remote_requests_in_flight_per_worker=(
+                self.config.max_requests_in_flight_per_sampler_worker
+            ),
             return_object_refs=True,
-            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
         )
 
         # Create and start the learner thread.
@@ -558,7 +551,7 @@ class Impala(Algorithm):
         self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
 
         # Send the collected batches (still object refs) to our aggregation workers.
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             batches = self.process_experiences_tree_aggregation(
                 unprocessed_sample_batches_refs
             )
@@ -653,7 +646,7 @@ class Impala(Algorithm):
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
-                >= self.config["train_batch_size"]
+                >= self.config.train_batch_size
             ):
                 batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
@@ -668,7 +661,9 @@ class Impala(Algorithm):
     ) -> Dict[
         Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
+        """Perform asynchronous sampling on all (remote) rollout workers."""
+
+        # Sample on all remote workers.
         if self.workers.remote_workers():
             self._sampling_actor_manager.call_on_all_available(
                 lambda worker: worker.sample()
@@ -676,8 +671,8 @@ class Impala(Algorithm):
             sample_batches: Dict[
                 ActorHandle, List[ObjectRef]
             ] = self._sampling_actor_manager.get_ready()
+        # Only sampling on the local worker.
         else:
-            # only sampling on the local worker
             sample_batches = {
                 self.workers.local_worker(): [self.workers.local_worker().sample()]
             }
@@ -748,12 +743,14 @@ class Impala(Algorithm):
             return processed_batches
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
+
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
+
         return processed_batches
 
     def process_experiences_tree_aggregation(
@@ -795,16 +792,25 @@ class Impala(Algorithm):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
+        local_worker = self.workers.local_worker()
+
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
+            "num_grad_updates_per_policy": {
+                pid: local_worker.policy_map[pid].num_grad_updates
+                for pid in policy_ids or []
+            },
+        }
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.remote_workers()
+            policy_ids != []
+            and self.workers.remote_workers()
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
-            >= self.config["broadcast_interval"]
+            >= self.config.broadcast_interval
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            weights = ray.put(local_worker.get_weights(policy_ids))
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
@@ -814,7 +820,7 @@ class Impala(Algorithm):
             self.workers_that_need_updates = set()
 
         # Update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(global_vars)
+        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
 
     @override(Algorithm)
     def on_worker_failures(
@@ -845,15 +851,15 @@ class Impala(Algorithm):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: AlgorithmConfigDict):
+    def __init__(self, config: AlgorithmConfig):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
-                self.config["replay_buffer_num_slots"]
-                if self.config["replay_buffer_num_slots"] > 0
+                self.config.replay_buffer_num_slots
+                if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config["replay_ratio"],
+            replay_ratio=self.config.replay_ratio,
             replay_mode=ReplayMode.LOCKSTEP,
         )
 

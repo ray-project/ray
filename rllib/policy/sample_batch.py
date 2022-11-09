@@ -103,6 +103,16 @@ class SampleBatch(dict):
         self.zero_padded = kwargs.pop("_zero_padded", False)
         # Whether this batch is used for training (vs inference).
         self._is_training = kwargs.pop("_is_training", None)
+        # Weighted average number of grad updates that have been performed on the
+        # policy/ies that were used to collect this batch.
+        # E.g.: Two rollout workers collect samples of 50ts each
+        # (rollout_fragment_length=50). One of them has a policy that has undergone
+        # 2 updates thus far, the other worker uses a policy that has undergone 3
+        # updates thus far. The train batch size is 100, so we concatenate these 2
+        # batches to a new one that's 100ts long. This new 100ts batch will have its
+        # `num_gradient_updates` property set to 2.5 as it's the weighted average
+        # (both original batches contribute 50%).
+        self.num_grad_updates: Optional[float] = kwargs.pop("_num_grad_updates", None)
 
         # Call super constructor. This will make the actual data accessible
         # by column name (str) via e.g. self["some-col"].
@@ -236,7 +246,13 @@ class SampleBatch(dict):
             ),
             copy_,
         )
-        copy_ = SampleBatch(data)
+        copy_ = SampleBatch(
+            data,
+            _time_major=self.time_major,
+            _zero_padded=self.zero_padded,
+            _max_seq_len=self.max_seq_len,
+            _num_grad_updates=self.num_grad_updates,
+        )
         copy_.set_get_interceptor(self.get_interceptor)
         copy_.added_keys = self.added_keys
         copy_.deleted_keys = self.deleted_keys
@@ -517,12 +533,14 @@ class SampleBatch(dict):
                 seq_lens=seq_lens,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
         else:
             return SampleBatch(
                 tree.map_structure(lambda value: value[start:end], self),
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
 
     @PublicAPI
@@ -937,6 +955,7 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
                 _zero_padded=self.zero_padded,
                 _max_seq_len=self.max_seq_len if self.zero_padded else None,
+                _num_grad_updates=self.num_grad_updates,
             )
         else:
             data = tree.map_structure(lambda value: value[start:stop], self)
@@ -944,6 +963,7 @@ class SampleBatch(dict):
                 data,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
             )
 
     @Deprecated(error=False)
@@ -1334,11 +1354,12 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                                               "b": np.array([10, 11, 12])}}
     """
 
-    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+    if any(isinstance(s, MultiAgentBatch) for s in samples):
         return concat_samples_into_ma_batch(samples)
 
     # the output is a SampleBatch type
     concatd_seq_lens = []
+    concatd_num_grad_updates = [0, 0.0]  # [0]=count; [1]=weighted sum values
     concated_samples = []
     # Make sure these settings are consistent amongst all batches.
     zero_padded = max_seq_len = time_major = None
@@ -1369,9 +1390,13 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 
             if max_seq_len is not None:
                 max_seq_len = max(max_seq_len, s.max_seq_len)
-            concated_samples.append(s)
             if s.get(SampleBatch.SEQ_LENS) is not None:
                 concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
+            if s.num_grad_updates is not None:
+                concatd_num_grad_updates[0] += s.count
+                concatd_num_grad_updates[1] += s.num_grad_updates * s.count
+
+            concated_samples.append(s)
 
     # If we don't have any samples (0 or only empty SampleBatches),
     # return an empty SampleBatch here.
@@ -1405,6 +1430,11 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         _time_major=time_major,
         _zero_padded=zero_padded,
         _max_seq_len=max_seq_len,
+        # Compute weighted average of the num_grad_updates for the batches
+        # (assuming they all come from the same policy).
+        _num_grad_updates=(
+            concatd_num_grad_updates[1] / (concatd_num_grad_updates[0] or 1.0)
+        ),
     )
 
 
