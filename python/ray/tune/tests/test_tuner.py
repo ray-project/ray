@@ -341,7 +341,7 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env, tmpdir):
 
     def train_func(config):
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
-        assert orig_working_dir == os.getcwd(), (
+        assert str(orig_working_dir) == os.getcwd(), (
             "Working directory should not have changed from "
             f"{orig_working_dir} to {os.getcwd()}"
         )
