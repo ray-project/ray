@@ -15,6 +15,7 @@
 #pragma once
 
 #include <google/protobuf/arena.h>
+#include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
@@ -27,6 +28,8 @@
 
 namespace ray {
 namespace rpc {
+
+boost::asio::thread_pool &GetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
@@ -45,7 +48,7 @@ enum class ServerCallState {
   /// Request is received and being processed.
   PROCESSING,
   /// Request processing is done, and reply is being sent to client.
-  SENDING_REPLY
+  SENDING_REPLY,
 };
 
 class ServerCallFactory;
@@ -136,12 +139,14 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   ServerCallImpl(
       const ServerCallFactory &factory,
+      grpc::ServerCompletionQueue *cq,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
       bool record_metrics)
-      : state_(ServerCallState::PENDING),
+      : cq_(cq),
+        state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
@@ -158,7 +163,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  ~ServerCallImpl() override = default;
+  ~ServerCallImpl() override {}
 
   ServerCallState GetState() const override { return state_; }
 
@@ -200,11 +205,8 @@ class ServerCallImpl : public ServerCall {
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
-
-          // When the handler is done with the request, tell gRPC to finish this request.
-          // Must send reply at the bottom of this callback, once we invoke this funciton,
-          // this server call might be deleted
-          SendReply(status);
+          boost::asio::post(GetServerCallExecutor(),
+                            [this, status]() { SendReply(status); });
         });
   }
 
@@ -241,11 +243,14 @@ class ServerCallImpl : public ServerCall {
           (end_time - start_time_) / 1000000.0, call_name_);
     }
   }
+
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  grpc::ServerCompletionQueue *cq_;
 
   /// The memory pool for this request. It's used for reply.
   /// With arena, we'll be able to setup the reply without copying some field.
@@ -363,6 +368,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call =
         new ServerCallImpl<ServiceHandler, Request, Reply>(*this,
+                                                           cq_.get(),
                                                            service_handler_,
                                                            handle_request_function_,
                                                            io_service_,

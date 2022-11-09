@@ -710,3 +710,5 @@ RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
+
+RAY_CONFIG(int64_t, num_server_call_thread, std::thread::hardware_concurrency() / 4);
