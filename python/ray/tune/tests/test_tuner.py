@@ -322,19 +322,22 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_no_chdir_to_trial_dir(runtime_env):
+def test_tuner_no_chdir_to_trial_dir(runtime_env, tmpdir):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
     reading relatives paths to the original working directory.
     Also tests that `session.get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=1, runtime_env=runtime_env)
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
 
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
+
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=1, runtime_env=runtime_env)
 
     def train_func(config):
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
@@ -364,24 +367,28 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
     )
     results = tuner.fit()
     assert not results.errors
+
+    os.chdir(old_cwd)
     ray.shutdown()
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(runtime_env):
+def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    # Write a data file that we want to read in our training loop
+    with open("./read.txt", "w") as f:
+        f.write("data")
+
     # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
     # Tune should still chdir to the trial directory, since we didn't disable the
     # `chdir_to_trial_dir` flag.
     if ray.is_initialized():
         ray.shutdown()
     ray.init(num_cpus=1, runtime_env=runtime_env)
-
-    # Write a data file that we want to read in our training loop
-    with open("./read.txt", "w") as f:
-        f.write("data")
 
     def train_func(config):
         orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
@@ -413,6 +420,8 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env):
     results = tuner.fit()
     assert not results.errors
     ray.shutdown()
+
+    os.chdir(old_cwd)
 
 
 if __name__ == "__main__":
