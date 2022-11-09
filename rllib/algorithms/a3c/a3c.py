@@ -32,7 +32,7 @@ class A3CConfig(AlgorithmConfig):
 
     Example:
         >>> from ray import tune
-        >>> from ray.rllib.algorithms.a2c import A3CConfig
+        >>> from ray.rllib.algorithms.a3c import A3CConfig
         >>> config = A3CConfig() # doctest: +SKIP
         >>> config = config.training(lr=0.01, grad_clip=30.0) # doctest: +SKIP
         >>> config = config.resources(num_gpus=0) # doctest: +SKIP
@@ -40,11 +40,11 @@ class A3CConfig(AlgorithmConfig):
         >>> config = config.environment("CartPole-v1") # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
+        >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:
-        >>> from ray.rllib.algorithms.a2c import A3CConfig
+        >>> from ray.rllib.algorithms.a3c import A3CConfig
         >>> config = A3CConfig()
         >>> # Print out some default values.
         >>> print(config.sample_async)  # doctest: +SKIP

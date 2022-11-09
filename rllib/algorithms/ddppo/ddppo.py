@@ -58,7 +58,7 @@ class DDPPOConfig(PPOConfig):
         >>> config = config.rollouts(num_rollout_workers=10)
         >>> print(config.to_dict())   # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:

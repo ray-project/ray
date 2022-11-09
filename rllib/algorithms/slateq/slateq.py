@@ -43,12 +43,12 @@ class SlateQConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-        0.0004
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

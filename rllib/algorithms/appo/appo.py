@@ -45,7 +45,7 @@ class APPOConfig(ImpalaConfig):
         >>> config = config.environment("CartPole-v1")
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
+        >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
     Example:

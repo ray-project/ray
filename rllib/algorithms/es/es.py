@@ -63,9 +63,10 @@ class ESConfig(AlgorithmConfig):
         >>> # Print out some default values.
         >>> print(config.action_noise_std)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

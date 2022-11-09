@@ -51,9 +51,10 @@ class DreamerConfig(AlgorithmConfig):
         >>> # Print out some default values.
         >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP

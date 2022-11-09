@@ -56,14 +56,14 @@ class ApexDQNConfig(DQNConfig):
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
         >>> print(config.replay_buffer_config) # doctest: +SKIP
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 100000,
-        >>>         "prioritized_replay_alpha": 0.45,
-        >>>         "prioritized_replay_beta": 0.55,
-        >>>         "prioritized_replay_eps": 3e-6,
-        >>>     }
-        >>> )
+        >>> replay_config = config.replay_buffer_config.update( # doctest: +SKIP
+        ...     {
+        ...         "capacity": 100000,
+        ...         "prioritized_replay_alpha": 0.45,
+        ...         "prioritized_replay_beta": 0.55,
+        ...         "prioritized_replay_eps": 3e-6,
+        ...     }
+        ... )
         >>> config = config.training(replay_buffer_config=replay_config) #doctest: +SKIP
         >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
         >>> config = config.rollouts(num_rollout_workers=30)  # doctest: +SKIP
@@ -90,13 +90,13 @@ class ApexDQNConfig(DQNConfig):
         >>> config = ApexDQNConfig()
         >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
-        >>>     {
-        >>>         "type": "EpsilonGreedy",
-        >>>         "initial_epsilon": 0.96,
-        >>>         "final_epsilon": 0.01,
-        >>>         "epsilone_timesteps": 5000,
-        >>>     }
-        >>> )
+        ...     {
+        ...         "type": "EpsilonGreedy",
+        ...         "initial_epsilon": 0.96,
+        ...         "final_epsilon": 0.01,
+        ...         "epsilone_timesteps": 5000,
+        ...     }
+        ... )
         >>> config = config.training(  # doctest: +SKIP
         ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
         ... )
@@ -109,11 +109,11 @@ class ApexDQNConfig(DQNConfig):
         >>> config = ApexDQNConfig()
         >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
-        >>>     {
-        >>>         "type": "SoftQ",
-        >>>         "temperature": [1.0],
-        >>>     }
-        >>> )
+        ...     {
+        ...         "type": "SoftQ",
+        ...         "temperature": [1.0],
+        ...     }
+        ... )
         >>> config = config.training(  # doctest: +SKIP
         ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
         ... )
