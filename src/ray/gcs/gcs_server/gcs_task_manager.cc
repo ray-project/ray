@@ -39,8 +39,8 @@ void GcsTaskManager::HandleAddTaskStateEventData(
   }
 
   // Context to keep track async operations across events from multiple tasks.
-  // In fact, since the current underlying event loop on GCS table, non atomic fields are
-  // also fine.
+  // In fact, since the current underlying event loop on GCS table is single-threaded, non
+  // atomic fields should also be fine.
   auto num_success = std::make_shared<std::atomic<uint>>(0);
   auto num_failure = std::make_shared<std::atomic<uint>>(0);
 
@@ -56,7 +56,7 @@ void GcsTaskManager::HandleAddTaskStateEventData(
           ++(*num_success);
         }
         RAY_CHECK(*num_success + *num_failure <= num_to_process)
-            << "Processed more task events than available. Too many callbacks called";
+            << "Processed more task events than available. Too many callbacks called.";
 
         // Processed all the task events
         if (*num_success + *num_failure == num_to_process) {
@@ -70,6 +70,27 @@ void GcsTaskManager::HandleAddTaskStateEventData(
       };
 
   AddTaskStateEvents(std::move(*request.release_data()), std::move(cb_on_done));
+}
+
+void GcsTaskManager::HandleGetAllTaskStateEvent(
+    rpc::GetAllTaskStateEventRequest request,
+    rpc::GetAllTaskStateEventReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all task state events.";
+  auto on_done = [reply, send_reply_callback](
+                     const absl::flat_hash_map<TaskID, rpc::TaskStateEvents> &result) {
+    for (const auto &data : result) {
+      reply->add_events_by_task()->CopyFrom(data.second);
+    }
+    reply->set_total(result.size());
+    RAY_LOG(DEBUG) << "Finished getting all task states info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  Status status = gcs_table_storage_->TaskStateEventTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(absl::flat_hash_map<TaskID, rpc::TaskStateEvents>());
+  }
 }
 
 void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
@@ -91,8 +112,6 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
         auto new_events_list = events_by_task.task_event_list();
         // Merge events
         rpc::TaskStateEvents empty_task_state_events;
-
-        RAY_LOG(INFO) << "New_eventslist:" << new_events_list.DebugString();
         auto cur_task_state_events =
             result.has_value() ? result.value() : empty_task_state_events;
         auto target_events_list = cur_task_state_events.mutable_task_event_list();
@@ -106,7 +125,6 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
         if (events_by_task.has_task_info() && !cur_task_state_events.has_task_info()) {
           cur_task_state_events.mutable_task_info()->CopyFrom(events_by_task.task_info());
         }
-        RAY_LOG(INFO) << "Cur_eventslist:" << cur_task_state_events.DebugString();
 
         // Callback on async put done
         auto cb_on_put_done = [task_id, cb_on_done](Status status) {
@@ -121,7 +139,6 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
         auto put_status = gcs_table_storage_->TaskStateEventTable().Put(
             task_id, std::move(cur_task_state_events), cb_on_put_done);
 
-        RAY_LOG(INFO) << "async put";
         if (!put_status.ok()) {
           cb_on_done(put_status, task_id);
         }

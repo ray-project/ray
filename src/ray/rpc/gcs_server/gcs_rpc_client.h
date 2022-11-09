@@ -386,6 +386,12 @@ class GcsRpcClient {
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Get task events info from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             GetAllTaskStateEvent,
+                             task_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Report a worker failure to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
                              ReportWorkerFailure,

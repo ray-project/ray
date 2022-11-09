@@ -353,6 +353,35 @@ class StateAPIManager:
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
+        try:
+            reply = await self._client.get_all_task_info(
+                timeout=option.timeout, limit=option.limit
+            )
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
+
+        # Parsing the result from grpc protobuf to Dict
+        result = []
+        for message in reply.events_by_task:
+            data = self._message_to_dict(
+                message=message,
+                fields_to_decode=["task_id", "job_id", "node_id", "actor_id"],
+            )
+
+            def _to_task_state(data):
+                print(data)
+
+            _to_task_state(data)
+
+        return ListApiResponse(
+            result=result,
+            partial_failure_warning="",
+            total=reply.total,
+            num_after_truncation=reply.total,
+            num_filtered=reply.total,
+        )
+
+    async def list_tasks_v1(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all task information from the cluster.
 
         Returns:

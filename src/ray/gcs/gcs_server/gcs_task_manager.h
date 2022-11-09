@@ -40,6 +40,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                                    rpc::AddTaskStateEventDataReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllTaskStateEvent(rpc::GetAllTaskStateEventRequest request,
+                                  rpc::GetAllTaskStateEventReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   void AddTaskStateEvents(rpc::TaskStateEventData &&data,
                           AddTaskStateEventCallback cb_on_done);

@@ -813,6 +813,21 @@ Status StatsInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status TaskInfoAccessor::AsyncGetAllTaskStateEvent(
+    const MultiItemCallback<rpc::TaskStateEvents> &callback) {
+  RAY_LOG(DEBUG) << "Getting all task state events.";
+  RAY_CHECK(callback);
+  rpc::GetAllTaskStateEventRequest request;
+  RAY_CHECK(!request.has_limit()) << "Should be querying all entries w/o truncation";
+  client_impl_->GetGcsRpcClient().GetAllTaskStateEvent(
+      request,
+      [callback](const Status &status, const rpc::GetAllTaskStateEventReply &reply) {
+        callback(status, VectorFromProtobuf(reply.events_by_task()));
+        RAY_LOG(DEBUG) << "Finished getting all state events.";
+      });
+  return Status::OK();
+}
+
 Status TaskInfoAccessor::AsyncAddTaskStateEventData(
     std::unique_ptr<rpc::TaskStateEventData> data_ptr, const StatusCallback &callback) {
   RAY_LOG(INFO) << "Adding task events." << data_ptr->DebugString();

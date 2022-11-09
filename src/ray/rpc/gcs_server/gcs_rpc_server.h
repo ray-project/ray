@@ -590,6 +590,10 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAddTaskStateEventData(AddTaskStateEventDataRequest request,
                                            AddTaskStateEventDataReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllTaskStateEvent(GetAllTaskStateEventRequest request,
+                                          GetAllTaskStateEventReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 // TODO(rickyx): Use an independent io service for the task info handling.
@@ -610,6 +614,7 @@ class TaskInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskStateEventData);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetAllTaskStateEvent);
   }
 
  private:

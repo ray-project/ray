@@ -255,7 +255,11 @@ class StateDataSourceClient:
     async def get_all_task_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllTaskStateEventReply]:
-        pass
+        request = GetAllTaskStateEventRequest()
+        reply = await self._gcs_task_info_stub.GetAllTaskStateEvent(
+            request, timeout=timeout
+        )
+        return reply
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
