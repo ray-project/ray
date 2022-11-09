@@ -141,14 +141,12 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   ServerCallImpl(
       const ServerCallFactory &factory,
-      grpc::ServerCompletionQueue *cq,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
       bool record_metrics)
-      : cq_(cq),
-        state_(ServerCallState::PENDING),
+      : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
@@ -165,7 +163,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  ~ServerCallImpl() override {}
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
@@ -368,7 +366,6 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call =
         new ServerCallImpl<ServiceHandler, Request, Reply>(*this,
-                                                           cq_.get(),
                                                            service_handler_,
                                                            handle_request_function_,
                                                            io_service_,
