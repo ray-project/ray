@@ -2605,7 +2605,7 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
+        blocks = self._plan.execute(max_parallelism=max(1, prefetch_blocks))
         stats = self._plan.stats()
 
         time_start = time.perf_counter()

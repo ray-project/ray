@@ -27,6 +27,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
+from ray.data._internal.executor import BulkSyncExecutor
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -285,6 +286,16 @@ class ExecutionPlan:
         else:
             return None
 
+    #    def execute_to_iterator(self) -> Iterator[BlockTuple]:
+    #        in_blocks, in_stats, in_stages = self._optimize()
+    #        clear_input_blocks = (
+    #            allow_clear_input_blocks
+    #            and self._should_clear_input_blocks(in_blocks[0], 0)
+    #        )
+    #        executor = PipelinedExecutor()
+    #        block_iter, _ = executor.execute(in_blocks, in_stats, in_stages)
+    #        return block_iter
+
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
@@ -300,33 +311,26 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+
         if not self.has_computed_output():
-            blocks, stats, stages = self._optimize()
-            context = DatasetContext.get_current()
-            for stage_idx, stage in enumerate(stages):
-                if allow_clear_input_blocks:
-                    clear_input_blocks = self._should_clear_input_blocks(
-                        blocks, stage_idx
-                    )
-                else:
-                    clear_input_blocks = False
-                stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(
-                    blocks, clear_input_blocks, self._run_by_consumer
-                )
-                if stage_info:
-                    stats = stats_builder.build_multistage(stage_info)
-                else:
-                    stats = stats_builder.build(blocks)
-                stats.dataset_uuid = uuid.uuid4().hex
-                if context.enable_auto_log_stats:
-                    logger.info(stats.summary_string(include_parent=False))
-            # Set the snapshot to the output of the final stage.
-            self._snapshot_blocks = blocks
-            self._snapshot_stats = stats
+            in_blocks, in_stats, in_stages = self._optimize()
+            clear_input_blocks = (
+                allow_clear_input_blocks
+                and self._should_clear_input_blocks(in_blocks[0], 0)
+            )
+            executor = BulkSyncExecutor(
+                clear_input_blocks=clear_input_blocks,
+                run_by_consumer=self._run_by_consumer,
+            )
+            out_stats, out_blocks = executor.legacy_execute_to_block_list(
+                in_blocks, in_stats, in_stages
+            )
+            self._snapshot_blocks = out_blocks
+            self._snapshot_stats = out_stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
+
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
