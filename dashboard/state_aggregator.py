@@ -392,12 +392,18 @@ class StateAPIManager:
             if state:
                 result.append(state)
 
+        num_after_truncation = len(result)
+        result = self._filter(result, option.filters, TaskState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["task_id"])
+        result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            partial_failure_warning="",
+            partial_failure_warning=None,
             total=reply.total,
-            num_after_truncation=reply.total,
-            num_filtered=reply.total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def list_tasks_v1(self, *, option: ListApiOptions) -> ListApiResponse:

@@ -132,7 +132,6 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     else:
         state_fields_columns = state.base_columns()
 
-    print(result_dict)
     for k in state_fields_columns:
         assert k in result_dict
     for k in result_dict:
@@ -189,7 +188,7 @@ def generate_task_data(
     func_or_class="class",
     state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
     type=TaskType.NORMAL_TASK,
-    node_id=NodeID.from_random(),
+    node_id=None,
 ):
     task_info = TaskInfoEntry(
         task_id=id,
@@ -197,7 +196,7 @@ def generate_task_data(
         func_or_class_name=func_or_class,
         scheduling_state=TaskStatus.NIL,
         type=type,
-        node_id=node_id.binary(),
+        node_id=node_id.binary() if node_id is not None else None,
     )
     task_id = id
     task_events = [
@@ -777,7 +776,7 @@ async def test_api_manager_list_tasks(state_api_manager):
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name, node_id=node_id),
-            generate_task_data(b"2345", second_task_name),
+            generate_task_data(b"2345", second_task_name, node_id=None),
         ],
     )
     result = await state_api_manager.list_tasks(option=create_api_options())
@@ -833,26 +832,8 @@ async def test_api_manager_list_tasks(state_api_manager):
     )
     assert len(result.result) == 1
 
-    """
-    Test error handling
-    """
-    data_source_client.get_task_info.side_effect = [
-        DataSourceUnavailable(),
-        generate_task_data(b"2345", second_task_name),
-    ]
-    result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
-    # Make sure warnings are returned.
-    warning = result.partial_failure_warning
-    assert (
-        NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet", total=2, network_failures=1, log_command="raylet.out"
-        )
-        in warning
-    )
-
     # Test if all RPCs fail, it will raise an exception.
-    data_source_client.get_task_info.side_effect = [
-        DataSourceUnavailable(),
+    data_source_client.get_all_task_info.side_effect = [
         DataSourceUnavailable(),
     ]
     with pytest.raises(DataSourceUnavailable):
