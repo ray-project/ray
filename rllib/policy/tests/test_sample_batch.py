@@ -517,8 +517,8 @@ class TestSampleBatch(unittest.TestCase):
         ]
 
         for input_dict, length in input_dicts_and_lengths:
-            s = SampleBatch(input_dict)
             self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
+            s = SampleBatch(input_dict)
             self.assertEqual(s.count, length)
 
 
