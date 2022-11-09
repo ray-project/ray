@@ -96,14 +96,14 @@ if __name__ == "__main__":
 
     ray.init()
 
-    @ray.remote
+    @ray.remote(runtime_env={"env_vars": {"TEST_ENV_VAR": "TEST_ENV_VAL"}})
     class Foo:
         def __init__(self):
             self.x = 1
         def bar(self):
             return self.x
     
-    # Instantiate 4 actors every 4 seconds
+    # Instantiate 4 actors every 4 seconds using runtime env
     while time.time() - start < timeout:
         print("Instantiating actors...")
         actors = [Foo.remote() for i in range(4)]
