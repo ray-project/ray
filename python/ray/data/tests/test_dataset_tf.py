@@ -1,13 +1,15 @@
+import pandas as pd
 import pytest
 import tensorflow as tf
 import numpy as np
 
 import ray
-from ray.data.preprocessors import Concatenator
 from ray.air import session
-from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data.extensions import TensorArray
+from ray.data.preprocessors import Concatenator
+from ray.train.tensorflow import TensorflowTrainer
 
 
 class TestToTF:
@@ -96,6 +98,27 @@ class TestToTF:
         features, labels = next(iter(dataset))
         assert tuple(features.shape) == (4, 3, 32, 32)
         assert tuple(labels.shape) == (4,)
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_element_spec_shape_with_ragged_tensors(self, batch_size):
+        df = pd.DataFrame(
+            {
+                "spam": TensorArray([np.zeros([32, 32, 3]), np.zeros([64, 64, 3])]),
+                "ham": [0, 0],
+            }
+        )
+        ds = ray.data.from_pandas(df)
+
+        dataset = ds.to_tf(
+            feature_columns="spam", label_columns="ham", batch_size=batch_size
+        )
+
+        feature_spec, _ = dataset.element_spec
+        assert tuple(feature_spec.shape) == (None, None, None, None)
+
+        features, labels = next(iter(dataset))
+        assert tuple(features.shape) == (batch_size, None, None, None)
+        assert tuple(labels.shape) == (batch_size,)
 
     def test_training(self):
         def build_model() -> tf.keras.Model:
