@@ -1,7 +1,11 @@
 import logging
 import numpy as np
+import pandas as pd
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type
+
+from ray.data import Dataset
+
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -10,6 +14,8 @@ from ray.rllib.utils.numpy import convert_to_numpy
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+from ray.rllib.offline.offline_evalution_utils import remove_time_dim, compute_is_weights
 
 logger = logging.getLogger()
 
@@ -46,6 +52,7 @@ class DoublyRobust(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         epsilon_greedy: float = 0.0,
+        normalize_weights: bool = True,
         q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Doubly Robust OPE Estimator.
@@ -56,6 +63,7 @@ class DoublyRobust(OffPolicyEstimator):
             epsilon_greedy: The probability by which we act acording to a fully random
                 policy during deployment. With 1-epsilon_greedy we act
                 according the target policy.
+            normalize_weights: Whether to normalize the importance sampling
             q_model_config: Arguments to specify the Q-model. Must specify
                 a `type` key pointing to the Q-model class.
                 This Q-model is trained in the train() method and is used
@@ -67,11 +75,14 @@ class DoublyRobust(OffPolicyEstimator):
 
         super().__init__(policy, gamma, epsilon_greedy)
         q_model_config = q_model_config or {}
-        model_cls = q_model_config.pop("type", FQETorchModel)
+        q_model_config["gamma"] = gamma
 
-        self.model = model_cls(
+        self._model_cls = q_model_config.pop("type", FQETorchModel)
+        self._model_configs = q_model_config
+        self._normalize_weights = normalize_weights
+
+        self.model = self._model_cls(
             policy=policy,
-            gamma=gamma,
             **q_model_config,
         )
         assert hasattr(
@@ -125,6 +136,10 @@ class DoublyRobust(OffPolicyEstimator):
         v_behavior = rewards
 
         weight = new_prob / old_prob
+
+        if self._normalize_weights:
+            weight = weight / np.mean(weight)
+
         v_target = v_values + weight * (rewards - q_values)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
@@ -145,3 +160,84 @@ class DoublyRobust(OffPolicyEstimator):
         batch = self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+
+        dsize = dataset.count()
+        batch_size = max(dsize // n_parallelism, 1)
+        # step 1: clean the dataset and remove the time dimension for bandits
+        updated_ds = dataset.map_batches(remove_time_dim, batch_size=batch_size)
+        # step 2: compute the weights and weighted rewards
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(
+            compute_is_weights, 
+            batch_size=batch_size, 
+            fn_kwargs={
+                "policy_state": self.policy.get_state(), 
+                "estimator_class": self.__class__
+            }
+        )
+
+        # step 3: compute q_values and v_values
+        batch_size = max(updated_ds.count() // n_parallelism, 1)
+        updated_ds = updated_ds.map_batches(
+            _compute_q_and_v_values,
+            batch_size=batch_size,
+            fn_kwargs={
+                "model_class": self.model.__class__,
+                "model_state": self.model.get_state(),
+            }
+        )
+
+        # step 4: compute the v_target
+        def compute_v_target(batch: pd.DataFrame, normalizer: float = 1.0):
+            weights = batch["weights"] / normalizer
+            batch["v_target"] = batch["v_values"] + weights * (batch["rewards"] - batch["q_values"])
+            batch["v_behavior"] = batch["rewards"]
+            return batch
+
+        normamizer = updated_ds.mean("weights") if self._normalize_weights else 1.0
+        updated_ds = updated_ds.map_batches(
+            compute_v_target,
+            batch_size=batch_size,
+            fn_kwargs={
+                "normalizer": normamizer
+            }
+        )
+    
+        v_behavior = updated_ds.mean("v_behavior")
+        v_target = updated_ds.mean("v_target")
+        v_gain = v_target / v_behavior
+        v_std = updated_ds.std("v_target")
+
+        return {
+            "v_behavior": v_behavior,
+            "v_target": v_target,
+            "v_gain": v_gain,
+            "v_std": v_std,
+        }
+
+
+def _compute_q_and_v_values(
+    batch: pd.DataFrame, 
+    model_class: Type[FQETorchModel], 
+    model_state: Dict[str, Any]
+):
+    model = model_class.from_state(model_state)
+
+    sample_batch = SampleBatch({
+        SampleBatch.OBS: np.vstack(batch[SampleBatch.OBS]),
+        SampleBatch.ACTIONS: np.vstack(batch[SampleBatch.ACTIONS]).squeeze(-1),
+    })
+
+    q_values = model.estimate_q(sample_batch)
+    v_values = model.estimate_v(sample_batch)
+
+    q_values = convert_to_numpy(q_values)
+    v_values = convert_to_numpy(v_values)
+
+    batch["q_values"] = q_values
+    batch["v_values"] = v_values
+
+    return batch

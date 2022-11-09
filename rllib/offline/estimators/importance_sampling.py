@@ -80,8 +80,6 @@ class ImportanceSampling(OffPolicyEstimator):
     def estimate_on_dataset(
         self, 
         dataset: Dataset, 
-        checkpoint: Union[str, Checkpoint] = None,
-        policy_state: Optional[Dict[str, Any]] = None,
         *, 
         n_parallelism: int = os.cpu_count(),
     ):        
