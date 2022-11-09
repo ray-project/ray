@@ -309,7 +309,7 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   const auto &registered_actor_iter = registered_actors_.find(actor_id);
-  std::shared_ptr<GcsActor> *ptr;
+  std::shared_ptr<GcsActor> *ptr = nullptr;
   auto arena = reply->GetArena();
   RAY_CHECK(arena != nullptr);
   if (registered_actor_iter != registered_actors_.end()) {
@@ -323,7 +323,10 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
     }
   }
 
-  reply->unsafe_arena_set_allocated_actor_table_data((*ptr)->GetMutableActorTableData());
+  if (ptr != nullptr) {
+    reply->unsafe_arena_set_allocated_actor_table_data(
+        (*ptr)->GetMutableActorTableData());
+  }
 
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
