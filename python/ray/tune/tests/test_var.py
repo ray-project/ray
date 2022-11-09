@@ -324,7 +324,7 @@ class VariantGeneratorTest(unittest.TestCase):
         assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
         assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
 
-        sampler_e = tune.loguniform(np.e ** -4, np.e, base=np.e)
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e)
         results_e = sampler_e.sample(None, 1000)
         assert abs(np.log(min(results_e)) - -4) < 0.1
         assert abs(np.log(max(results_e)) - 1) < 0.1

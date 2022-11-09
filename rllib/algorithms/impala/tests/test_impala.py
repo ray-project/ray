@@ -36,7 +36,7 @@ class TestIMPALA(unittest.TestCase):
                 }
             )
         )
-        env = "CartPole-v0"
+        env = "CartPole-v1"
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -50,18 +50,18 @@ class TestIMPALA(unittest.TestCase):
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                trainer = config.build(env=env)
+                algo = config.build(env=env)
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
 
                 check_compute_single_action(
-                    trainer,
+                    algo,
                     include_state=lstm,
                     include_prev_action_reward=lstm,
                 )
-                trainer.stop()
+                algo.stop()
 
     def test_impala_lr_schedule(self):
         # Test whether we correctly ignore the "lr" setting.
@@ -78,7 +78,7 @@ class TestIMPALA(unittest.TestCase):
                 train_batch_size=100,
             )
             .rollouts(num_envs_per_worker=2)
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
         )
 
         def get_lr(result):
@@ -87,8 +87,8 @@ class TestIMPALA(unittest.TestCase):
             ]
 
         for fw in framework_iterator(config):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             try:
                 if fw == "tf":
@@ -96,11 +96,11 @@ class TestIMPALA(unittest.TestCase):
                 else:
                     check(policy.cur_lr, 0.05)
                 for _ in range(1):
-                    r1 = trainer.train()
+                    r1 = algo.train()
                 for _ in range(2):
-                    r2 = trainer.train()
+                    r2 = algo.train()
                 for _ in range(2):
-                    r3 = trainer.train()
+                    r3 = algo.train()
                 # Due to the asynch'ness of IMPALA, learner-stats metrics
                 # could be delayed by one iteration. Do 3 train() calls here
                 # and measure guaranteed decrease in lr between 1st and 3rd.
@@ -111,7 +111,7 @@ class TestIMPALA(unittest.TestCase):
                 assert lr3 <= lr2, (lr2, lr3)
                 assert lr3 < lr1, (lr1, lr3)
             finally:
-                trainer.stop()
+                algo.stop()
 
 
 if __name__ == "__main__":

@@ -190,17 +190,18 @@ if __name__ == "__main__":
     space = {
         "epochs": 1,
         "batch_size": 64,
-        "lr": tune.grid_search([10 ** -4, 10 ** -5]),
+        "lr": tune.grid_search([10**-4, 10**-5]),
         "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
         "dropout": tune.grid_search([0.25, 0.5]),
     }
     if args.smoke_test:
-        space["lr"] = 10 ** -4
+        space["lr"] = 10**-4
         space["dropout"] = 0.5
 
+    perturbation_interval = 10
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        perturbation_interval=10,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
         },
@@ -217,6 +218,11 @@ if __name__ == "__main__":
                 "mean_accuracy": 0.80,
                 "training_iteration": 30,
             },
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
+            ),
         ),
         tune_config=tune.TuneConfig(
             scheduler=pbt,

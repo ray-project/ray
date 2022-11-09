@@ -171,6 +171,8 @@ spec:
                   value: "120"
                 - name: RAY_gcs_failover_worker_reconnect_timeout
                   value: "600"
+                - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
+                  value: "1"
               resources:
                 limits:
                   cpu: 2
@@ -289,6 +291,8 @@ spec:
                     value: "600"
                   - name: RAY_gcs_server_request_timeout_seconds
                     value: "5"
+                  - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
+                    value: "1"
                 ports:
                   - containerPort: 80
                     name: client

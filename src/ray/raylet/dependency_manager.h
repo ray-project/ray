@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/util/counter_map.h"
 // clang-format on
 
 namespace ray {
@@ -31,7 +32,8 @@ class TaskDependencyManagerInterface {
  public:
   virtual bool RequestTaskDependencies(
       const TaskID &task_id,
-      const std::vector<rpc::ObjectReference> &required_objects) = 0;
+      const std::vector<rpc::ObjectReference> &required_objects,
+      const std::string &task_name) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
@@ -50,7 +52,32 @@ class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface &object_manager)
-      : object_manager_(object_manager) {}
+      : object_manager_(object_manager) {
+    waiting_tasks_counter_.SetOnChangeCallback([this](std::string task_name) mutable {
+      int64_t num_total = waiting_tasks_counter_.Get(task_name);
+      // Of the waiting tasks of this name, some fraction may be inactive (blocked on
+      // object store memory availability). Get this breakdown by querying the pull
+      // manager.
+      int64_t num_inactive = std::min(
+          num_total, object_manager_.PullManagerNumInactivePullsByTaskName(task_name));
+      // Offset the metric values recorded from the owner process.
+      ray::stats::STATS_tasks.Record(
+          -num_total,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+           {"Name", task_name},
+           {"Source", "dependency_manager"}});
+      ray::stats::STATS_tasks.Record(
+          num_total - num_inactive,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+           {"Name", task_name},
+           {"Source", "dependency_manager"}});
+      ray::stats::STATS_tasks.Record(
+          num_inactive,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
+           {"Name", task_name},
+           {"Source", "dependency_manager"}});
+    });
+  }
 
   /// Check whether an object is locally available.
   ///
@@ -124,7 +151,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \param required_objects The objects required by the task.
   /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
-                               const std::vector<rpc::ObjectReference> &required_objects);
+                               const std::vector<rpc::ObjectReference> &required_objects,
+                               const std::string &task_name);
 
   /// Cancel a task's dependencies. We will no longer attempt to fetch any
   /// remote dependencies, if no other task or worker requires them.
@@ -162,6 +190,9 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record time-series metrics.
+  void RecordMetrics();
+
  private:
   /// Metadata for an object that is needed by at least one executing worker
   /// and/or one queued task.
@@ -191,8 +222,17 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
-    TaskDependencies(const absl::flat_hash_set<ObjectID> &deps)
-        : dependencies(std::move(deps)), num_missing_dependencies(dependencies.size()) {}
+    TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
+                     CounterMap<std::string> &counter_map,
+                     const std::string &task_name)
+        : dependencies(std::move(deps)),
+          num_missing_dependencies(dependencies.size()),
+          waiting_task_counter_map(counter_map),
+          task_name(task_name) {
+      if (num_missing_dependencies > 0) {
+        waiting_task_counter_map.Increment(task_name);
+      }
+    }
     /// The objects that the task depends on. These are the arguments to the
     /// task. These must all be simultaneously local before the task is ready
     /// to execute. Objects are removed from this set once
@@ -204,6 +244,24 @@ class DependencyManager : public TaskDependencyManagerInterface {
     /// Used to identify the pull request for the dependencies to the object
     /// manager.
     uint64_t pull_request_id = 0;
+    /// Reference to the counter map for metrics tracking.
+    CounterMap<std::string> &waiting_task_counter_map;
+    /// The task name used for metrics tracking.
+    const std::string task_name;
+
+    void IncrementMissingDependencies() {
+      if (num_missing_dependencies == 0) {
+        waiting_task_counter_map.Increment(task_name);
+      }
+      num_missing_dependencies++;
+    }
+
+    void DecrementMissingDependencies() {
+      num_missing_dependencies--;
+      if (num_missing_dependencies == 0) {
+        waiting_task_counter_map.Decrement(task_name);
+      }
+    }
   };
 
   /// Stop tracking this object, if it is no longer needed by any worker or
@@ -220,7 +278,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// A map from the ID of a queued task to metadata about whether the task's
   /// dependencies are all local or not.
-  absl::flat_hash_map<TaskID, TaskDependencies> queued_task_requests_;
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskDependencies>> queued_task_requests_;
 
   /// A map from worker ID to the set of objects that the worker called
   /// `ray.get` on and a pull request ID for these objects. The pull request ID
@@ -242,6 +300,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// The set of locally available objects. This is used to determine which
   /// tasks are ready to run and which `ray.wait` requests can be finished.
   std::unordered_set<ray::ObjectID> local_objects_;
+
+  /// Counts the number of active task dependency fetches by task name. The counter
+  /// total will be less than or equal to the size of queued_task_requests_.
+  CounterMap<std::string> waiting_tasks_counter_;
 
   friend class DependencyManagerTest;
 };

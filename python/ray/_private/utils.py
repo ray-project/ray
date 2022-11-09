@@ -4,6 +4,7 @@ import functools
 import hashlib
 import importlib
 import inspect
+import json
 import logging
 import multiprocessing
 import os
@@ -19,7 +20,6 @@ import warnings
 from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
-
 import grpc
 import numpy as np
 
@@ -61,6 +61,7 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
 
 
 def get_user_temp_dir():
@@ -618,6 +619,48 @@ def get_num_cpus(
     return cpu_count
 
 
+# TODO(clarng): merge code with c++
+def get_cgroupv1_used_memory(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+        cache_bytes = -1
+        rss_bytes = -1
+        inactive_file_bytes = -1
+        working_set = -1
+        for line in lines:
+            if "total_rss " in line:
+                rss_bytes = int(line.split()[1])
+            elif "cache " in line:
+                cache_bytes = int(line.split()[1])
+            elif "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
+            working_set = rss_bytes + cache_bytes - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
+def get_cgroupv2_used_memory(stat_file, usage_file):
+    # Uses same calculation as libcontainer, that is:
+    # memory.current - memory.stat[inactive_file]
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+    inactive_file_bytes = -1
+    current_usage = -1
+    with open(usage_file, "r") as f:
+        current_usage = int(f.read().strip())
+    with open(stat_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if current_usage >= 0 and inactive_file_bytes >= 0:
+            working_set = current_usage - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
 def get_used_memory():
     """Return the currently used system memory in bytes
 
@@ -628,25 +671,22 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
+    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
-        with open(memory_usage_filename, "r") as f:
-            docker_usage = int(f.read())
-    elif os.path.exists(memory_usage_filename_v2):
-        with open(memory_usage_filename_v2, "r") as f:
-            docker_usage = int(f.read())
-
-    # Use psutil if it is available.
-    psutil_memory_in_bytes = psutil.virtual_memory().used
+        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_usage, psutil_memory_in_bytes)
-
-    return psutil_memory_in_bytes
+        return docker_usage
+    return psutil.virtual_memory().used
 
 
 def estimate_available_memory():
@@ -1350,6 +1390,24 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
+def parse_resources_json(
+    resources: str, cli_logger, cf, command_arg="--resources"
+) -> Dict[str, float]:
+    try:
+        resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(
+                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+            ),
+        )
+    return resources
+
+
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
@@ -1512,3 +1570,47 @@ def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
         # if runtime_env is None to know whether or not to fall back to the
         # runtime_env specified in the @ray.remote decorator.
         return None
+
+
+def split_address(address: str) -> Tuple[str, str]:
+    """Splits address into a module string (scheme) and an inner_address.
+
+    We use a custom splitting function instead of urllib because
+    PEP allows "underscores" in a module names, while URL schemes do not
+    allow them.
+
+    Args:
+        address: The address to split.
+
+    Returns:
+        A tuple of (scheme, inner_address).
+
+    Raises:
+        ValueError: If the address does not contain '://'.
+
+    Examples:
+        >>> split_address("ray://my_cluster")
+        ("ray", "my_cluster")
+    """
+    if "://" not in address:
+        raise ValueError("Address must contain '://'")
+
+    module_string, inner_address = address.split("://", maxsplit=1)
+    return (module_string, inner_address)
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION

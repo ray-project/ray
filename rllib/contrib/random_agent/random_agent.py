@@ -1,8 +1,7 @@
 import numpy as np
 
-from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 # fmt: off
@@ -12,11 +11,10 @@ class RandomAgent(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return with_common_config({
-            "rollouts_per_iteration": 10,
-            "framework": "tf",  # not used
-        })
+    def get_default_config(cls) -> AlgorithmConfig:
+        config = AlgorithmConfig()
+        config.rollouts_per_iteration = 10
+        return config
 
     @override(Algorithm)
     def _init(self, config, env_creator):
@@ -26,7 +24,7 @@ class RandomAgent(Algorithm):
     def step(self):
         rewards = []
         steps = 0
-        for _ in range(self.config["rollouts_per_iteration"]):
+        for _ in range(self.config.rollouts_per_iteration):
             obs = self.env.reset()
             done = False
             reward = 0.0
@@ -47,8 +45,19 @@ class RandomAgent(Algorithm):
 
 
 if __name__ == "__main__":
-    algo = RandomAgent(
-        env="CartPole-v0", config={"rollouts_per_iteration": 10})
+    # New way of configuring Algorithms.
+    config = AlgorithmConfig().environment("CartPole-v1")
+    config.rollouts_per_iteration = 10
+    algo = RandomAgent(config=config)
     result = algo.train()
     assert result["episode_reward_mean"] > 10, result
+    algo.stop()
+
+    # Old style via config dict.
+    config = {"rollouts_per_iteration": 10}
+    algo = RandomAgent(config=config, env="CartPole-v1")
+    result = algo.train()
+    assert result["episode_reward_mean"] > 10, result
+    algo.stop()
+
     print("Test: OK")

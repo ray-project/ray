@@ -13,5 +13,5 @@ __all__ = [
 ]
 
 deprecation_warning(
-    "ray.rllib.agents.impala", "ray.rllib.algorithms.impala", error=False
+    "ray.rllib.agents.impala", "ray.rllib.algorithms.impala", error=True
 )

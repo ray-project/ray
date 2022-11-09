@@ -25,6 +25,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     resource_to_schema,
 )
+from ray.experimental.state.exception import RayStateApiException
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -385,12 +386,15 @@ def ray_get(
     options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
-    data = client.get(
-        resource=resource,
-        id=id,
-        options=options,
-        _explain=_should_explain(AvailableFormat.YAML),
-    )
+    try:
+        data = client.get(
+            resource=resource,
+            id=id,
+            options=options,
+            _explain=_should_explain(AvailableFormat.YAML),
+        )
+    except RayStateApiException as e:
+        raise click.UsageError(str(e))
 
     # Print data to console.
     print(
@@ -529,12 +533,15 @@ def ray_list(
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
-    data = client.list(
-        resource,
-        options=options,
-        raise_on_missing_output=False,
-        _explain=_should_explain(format),
-    )
+    try:
+        data = client.list(
+            resource,
+            options=options,
+            raise_on_missing_output=False,
+            _explain=_should_explain(format),
+        )
+    except RayStateApiException as e:
+        raise click.UsageError(str(e))
 
     # If --detail is given, the default formatting is yaml.
     if detail and format == AvailableFormat.DEFAULT:
