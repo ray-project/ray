@@ -14,10 +14,12 @@ ray.init(num_cpus=10)
 
 
 def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
-    cls, config = get_trainable_cls(algo_name)
+    cls = get_trainable_cls(algo_name)
+    config = cls.get_default_config()
     # Set exporting native (DL-framework) model files to True.
-    config["export_native_model_files"] = True
-    alg = cls(config=config, env="CartPole-v1")
+    config.export_native_model_files = True
+    config.env = "CartPole-v1"
+    alg = config.build()
     for _ in range(num_steps):
         alg.train()
 
