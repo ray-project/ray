@@ -429,10 +429,11 @@ class TuneReporterBase(ProgressReporter):
         for t in trials:
             if not t.last_result:
                 continue
-            if metric not in t.last_result:
+            metric_value = unflattened_lookup(metric, t.last_result, default=None)
+            if metric_value is None:
                 continue
-            if not best_trial or t.last_result[metric] * metric_op > best_metric:
-                best_metric = t.last_result[metric] * metric_op
+            if not best_trial or metric_value * metric_op > best_metric:
+                best_metric = metric_value * metric_op
                 best_trial = t
         return best_trial, metric
 
@@ -982,7 +983,7 @@ def _get_progress_table_data(
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: t.last_result[metric],
+            key=lambda t: unflattened_lookup(metric, t.last_result, default=None)
         )
 
     state_tbl_order = [
