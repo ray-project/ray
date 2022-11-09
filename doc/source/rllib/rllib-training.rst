@@ -714,12 +714,10 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     from ray.tune.logger import pretty_print
 
     ray.init()
-    config = (
-        ppo.PPOConfig()
-        .environment("CartPole-v1)
-        .rollouts(num_rollout_workers=1)
-    )
-    algo = config.build()
+    config = ppo.DEFAULT_CONFIG.copy()
+    config["num_gpus"] = 0
+    config["num_workers"] = 1
+    algo = ppo.PPO(config=config, env="CartPole-v0")
 
     # Can optionally call algo.restore(path) to load a checkpoint.
 
