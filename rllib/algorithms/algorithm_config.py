@@ -6,9 +6,9 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
+from ray.tune.result import TRIAL_INFO
 from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -39,6 +39,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.logger import Logger
+from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -421,6 +422,11 @@ class AlgorithmConfig:
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
 
+            # Ray Tune saves additional data under this magic keyword.
+            # This should not get treated as AlgorithmConfig field.
+            if key == TRIAL_INFO:
+                continue
+
             # Set our multi-agent settings.
             if key == "multiagent":
                 kwargs = {
@@ -685,7 +691,7 @@ class AlgorithmConfig:
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
-            algo_class = get_algorithm_class(self.algo_class)
+            algo_class = get_trainable_cls(self.algo_class)
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),

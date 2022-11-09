@@ -71,6 +71,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   },
             },
             {
+              label: "Duration",
+              content: job.start_time ? (
+                <DurationText
+                  startTime={job.start_time}
+                  endTime={job.end_time}
+                />
+              ) : (
+                <React.Fragment>-</React.Fragment>
+              ),
+            },
+            {
               label: "Started at",
               content: {
                 value: job.start_time
@@ -85,17 +96,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
                   : "-",
               },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
             },
           ]}
         />
