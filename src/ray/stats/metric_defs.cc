@@ -63,8 +63,8 @@ DEFINE_stats(actors,
 
 /// Placement group metrics from the GCS.
 DEFINE_stats(placement_groups,
-             "Number of placement groups broken down by state in {Registered, Pending, "
-             "Infeasible}",
+             "Number of placement groups broken down by state.",
+             // State: from rpc::PlacementGroupData::PlacementGroupState.
              ("State"),
              (),
              ray::stats::GAUGE);

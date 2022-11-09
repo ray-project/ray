@@ -205,13 +205,13 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   ASSERT_EQ(registered_placement_group_count, 1);
   WaitForExpectedPgCount(1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 1);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 0);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
@@ -230,8 +230,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 1);
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), true);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 1);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
 
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
@@ -241,8 +241,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   // Check that the placement_group is in state `CREATED`.
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 0);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
@@ -318,9 +318,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), true);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::PENDING);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 1);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 0);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::REMOVED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 0);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
                                                      [](const Status &status) {});
@@ -336,9 +336,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
   // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
       placement_group_id, [](const Status &status) { ASSERT_TRUE(status.ok()); });
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::PENDING), 0);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::CREATED), 0);
-  ASSERT_EQ(counter_.Get(rpc::PlacementGroupTableData::REMOVED), 1);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
@@ -375,6 +375,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
   // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
       placement_group_id, [](const Status &status) { ASSERT_TRUE(status.ok()); });
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
@@ -410,6 +413,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
       placement_group_id, [](const Status &status) { ASSERT_TRUE(status.ok()); });
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
