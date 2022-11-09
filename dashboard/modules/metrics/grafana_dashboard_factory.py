@@ -353,6 +353,11 @@ PANEL_TEMPLATE = {
             "color": "#1F60C4",
             "fill": 0,
             "stack": False,
+        },
+        {
+          "$$hashKey": "object:78",
+          "alias": "FINISHED",
+          "hiddenSeries": true,
         }
     ],
     "spaceLength": 10,
