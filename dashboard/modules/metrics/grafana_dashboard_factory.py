@@ -14,7 +14,8 @@ class Target:
 
     A panel will have one or more targets. By default, all targets are rendered as
     stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line.
+    a blue dotted line. The legend="FINISHED" series will also be rendered hidden
+    by default.
 
     Attributes:
         expr: The prometheus query to evaluate.
