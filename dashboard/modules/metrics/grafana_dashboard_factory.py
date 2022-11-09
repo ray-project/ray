@@ -14,8 +14,8 @@ class Target:
 
     A panel will have one or more targets. By default, all targets are rendered as
     stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line. The legend="FINISHED|FAILED" series will also be rendered hidden
-    by default.
+    a blue dotted line. Any legend="FINISHED|FAILED|DEAD" series will also be rendered
+    hidden by default.
 
     Attributes:
         expr: The prometheus query to evaluate.
@@ -357,7 +357,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED/",
+            "alias": "/FINISHED|FAILED|DEAD/",
             "hiddenSeries": true,
         },
     ],
