@@ -1,8 +1,6 @@
 import unittest
 import threading
 
-import pytest
-
 import ray
 from ray.rllib import _register_all
 from ray.tune import register_trainable, SyncConfig
@@ -89,6 +87,7 @@ class ValidateUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
