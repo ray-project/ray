@@ -147,21 +147,11 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def return_resources(
-        self,
-        allocated_resources: PlacementGroupAllocatedResource,
-        cancel_request: bool = True,
-    ):
+    def return_resources(self, allocated_resources: PlacementGroupAllocatedResource):
         pg = allocated_resources.placement_group
-        request = self._pg_to_request[pg]
 
         self._acquired_pgs.remove(pg)
-        self._request_to_ready_pgs[request].add(pg)
-
-        if cancel_request:
-            self.cancel_resource_request(
-                resource_request=allocated_resources.resource_request
-            )
+        remove_placement_group(pg)
 
     def clear(self):
         for staged_pgs in self._request_to_staged_pgs.values():

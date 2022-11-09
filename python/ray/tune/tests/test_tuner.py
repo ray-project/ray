@@ -367,10 +367,11 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env):
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(runtime_env):
+def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
+    os.chdir(tmpdir)
     # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
     # Tune should still chdir to the trial directory, since we didn't disable the
     # `chdir_to_trial_dir` flag.
