@@ -231,24 +231,31 @@ class SharedNoiseTable:
 
 @ray.remote
 class Worker:
-    def __init__(self, config, env_creator, noise, worker_index, min_task_runtime=0.2):
+    def __init__(
+        self,
+        config: AlgorithmConfig,
+        env_creator,
+        noise,
+        worker_index,
+        min_task_runtime=0.2,
+    ):
 
         # Set Python random, numpy, env, and torch/tf seeds.
-        seed = config.get("seed")
+        seed = config.seed
         if seed is not None:
             # Python random module.
             random.seed(seed)
             # Numpy.
             np.random.seed(seed)
             # Torch.
-            if config.get("framework") == "torch":
+            if config.framework_str == "torch":
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
         self.config = config
         self.noise = SharedNoiseTable(noise)
 
-        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        env_context = EnvContext(self.config.env_config, worker_index)
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
@@ -261,9 +268,9 @@ class Worker:
 
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
-        policy_cls = get_policy_class(config)
+        policy_cls = get_policy_class(self.config)
         self.policy = policy_cls(
-            self.env.observation_space, self.env.action_space, config
+            self.env.observation_space, self.env.action_space, config.to_dict()
         )
 
     @property
@@ -340,8 +347,8 @@ class Worker:
         )
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
+def get_policy_class(config: AlgorithmConfig):
+    if config.framework_str == "torch":
         from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 
         policy_cls = ARSTorchPolicy
@@ -359,7 +366,7 @@ class ARS(Algorithm):
         return ARSConfig()
 
     @override(Algorithm)
-    def setup(self, config):
+    def setup(self, config: AlgorithmConfig):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
@@ -376,7 +383,7 @@ class ARS(Algorithm):
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
-            env.observation_space, env.action_space, self.config
+            env.observation_space, env.action_space, self.config.to_dict()
         )
         self.optimizer = optimizers.SGD(self.policy, self.config.sgd_stepsize)
 

@@ -223,7 +223,7 @@ class PPOConfig(PGConfig):
         # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size > 0:
+        if self.sgd_minibatch_size > self.train_batch_size:
             raise ValueError(
                 "`sgd_minibatch_size` ({}) must be <= "
                 "`train_batch_size` ({}).".format(

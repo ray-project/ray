@@ -229,7 +229,7 @@ class SharedNoiseTable:
 class Worker:
     def __init__(
         self,
-        config,
+        config: AlgorithmConfig,
         policy_params,
         env_creator,
         noise,
@@ -238,22 +238,22 @@ class Worker:
     ):
 
         # Set Python random, numpy, env, and torch/tf seeds.
-        seed = config.get("seed")
+        seed = config.seed
         if seed is not None:
             # Python random module.
             random.seed(seed)
             # Numpy.
             np.random.seed(seed)
             # Torch.
-            if config.get("framework") == "torch":
+            if config.framework_str == "torch":
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
-        self.config = config.to_dict()
-        self.config.update(policy_params)
+        self.config = config
+        self.config.update_from_dict(policy_params)
         self.noise = SharedNoiseTable(noise)
 
-        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        env_context = EnvContext(config.env_config, worker_index)
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
@@ -264,13 +264,11 @@ class Worker:
 
         from ray.rllib import models
 
-        self.preprocessor = models.ModelCatalog.get_preprocessor(
-            self.env, config["model"]
-        )
+        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env, config.model)
 
         _policy_class = get_policy_class(config)
         self.policy = _policy_class(
-            self.env.observation_space, self.env.action_space, config
+            self.env.observation_space, self.env.action_space, config.to_dict()
         )
 
     @property
@@ -347,8 +345,8 @@ class Worker:
         )
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
+def get_policy_class(config: AlgorithmConfig):
+    if config.framework_str == "torch":
         from ray.rllib.algorithms.es.es_torch_policy import ESTorchPolicy
 
         policy_cls = ESTorchPolicy
