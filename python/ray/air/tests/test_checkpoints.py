@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-import cloudpickle
 import pytest
 
 import ray
+import ray.cloudpickle as cloudpickle
 from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
 from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
