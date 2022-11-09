@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     Optional,
     Tuple,
     Type,
     Union,
-    Callable,
 )
 
 import ray
