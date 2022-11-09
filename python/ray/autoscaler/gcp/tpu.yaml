@@ -28,7 +28,7 @@ available_node_types:
         min_workers: 7
         resources: {"TPU": 1}  # use TPU custom resource in your code
         node_config:
-            # Only v2-8 and v3-8 accelerator types are currently supported.
+            # Only v2-8, v3-8 and v4-8 accelerator types are currently supported.
             # Support for TPU pods will be added in the future.
             acceleratorType: v2-8
             runtimeVersion: v2-alpha
