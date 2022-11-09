@@ -147,9 +147,15 @@ class SampleBatch(dict):
             if isinstance(v, (Number, list)):
                 self[k] = np.array(v)
 
-            if k == SampleBatch.INFOS:
+            if (
+                k == SampleBatch.INFOS
+                or k.startswith("state_in_")
+                or k.startswith("state_out_")
+            ):
                 # Don't attempt to count on infos since we make no assumptions
                 # about its content
+                # Don't attempt to count on state since nesting can potentially mess
+                # things up
                 continue
 
             # If this is a nested dict (for example a nested observation),
@@ -163,9 +169,9 @@ class SampleBatch(dict):
             ]
             try:
                 # Add one of the elements' length, since they are all the same
-                len_ = len(v_list[0])
-                if len_:
-                    lengths.append(len_)
+                _len = len(v_list[0])
+                if _len:
+                    lengths.append(_len)
             except Exception:
                 pass
             else:
