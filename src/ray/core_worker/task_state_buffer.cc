@@ -54,9 +54,11 @@ void TaskStateBuffer::AddTaskEvent(TaskID task_id, rpc::TaskStatus task_status) 
 
 TaskIdEventMap::iterator TaskStateBuffer::AddTaskEventInternal(
     TaskID task_id, rpc::TaskStatus task_status) {
+  RAY_LOG(INFO) << "Adding task event. [task_id=" << task_id.Hex()
+                << "][task_status=" << task_status << "]";
   auto task_events_itr = GetOrInitTaskEvents(task_id, task_status);
 
-  auto event = task_events_itr->second.add_events();
+  auto event = task_events_itr->second.mutable_task_event_list()->add_events();
   event->set_task_status(task_status);
   event->set_event_time(absl::GetCurrentTimeNanos());
 

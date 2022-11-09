@@ -22,15 +22,18 @@
 namespace ray {
 namespace gcs {
 
+using AddTaskStateEventCallback =
+    std::function<void(Status status, const TaskID &task_id)>;
+
 /// GcsTaskManger is responsible for capturing task states change reported from other
 /// components, i.e. raylets/workers through grpc handles. This class is not thread-safe.
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
   ///
-  /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsTaskManager(std::shared_ptr<gcs::GcsTableStorage> gcs_task_info_storage)
-      : gcs_task_info_storage_(std::move(gcs_task_info_storage)){};
+  /// \param gcs_task_info_table GCS table external storage accessor.
+  explicit GcsTaskManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+      : gcs_table_storage_(std::move(gcs_table_storage)){};
 
   /// TODO(tb)
   void HandleAddTaskStateEventData(rpc::AddTaskStateEventDataRequest request,
@@ -38,7 +41,15 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                                    rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_task_info_storage_;
+  void AddTaskStateEvents(rpc::TaskStateEventData &&data,
+                          AddTaskStateEventCallback cb_on_done);
+
+  void AddTaskStateEventForTask(const TaskID &task_id,
+                                rpc::TaskStateEvents &&events_by_task,
+                                AddTaskStateEventCallback cb_on_done);
+
+ private:
+  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
 };
 
 }  // namespace gcs

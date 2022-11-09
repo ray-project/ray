@@ -46,6 +46,7 @@ enum TablePrefix {
   PLACEMENT_GROUP = 18;
   KV = 19;
   ACTOR_TASK_SPEC = 20;
+  TASK_STATE = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -200,8 +201,7 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
-// Represents state envents for a single task.
-message TaskStateEvents {
+message TaskStateEventList {
   // Represents a single task event entry
   message TaskStateEventEntry {
     // The task status name.
@@ -213,12 +213,18 @@ message TaskStateEvents {
     // Fine-grained event name.
     string event_name = 3;
   }
+  // List of task events.
+  repeated TaskStateEventEntry events = 1;
+}
+
+// Represents state envents for a single task.
+message TaskStateEvents {
   // Mirror info in task_info
   bytes task_id = 1;
   // Task metadata info
   TaskInfoEntry task_info = 2;
-  // List of task events.
-  repeated TaskStateEventEntry events = 3;
+  // Task events
+  TaskStateEventList task_event_list = 3;
 }
 
 // Represents a compact list of task state events by different tasks,

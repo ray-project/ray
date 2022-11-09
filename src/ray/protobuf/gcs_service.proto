@@ -642,10 +642,28 @@ message AddTaskStateEventDataReply {
   GcsStatus status = 1;
 }
 
+message GetAllTaskStateEventRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetAllTaskStateEventReply {
+  GcsStatus status = 1;
+  // Data of task state events
+  repeated TaskStateEvents events_by_task = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+}
+
 // Service for task info access
+// TODO: actually rename it to TaskStateInfoGcsService
 service TaskInfoGcsService {
   // TODO
   rpc AddTaskStateEventData(AddTaskStateEventDataRequest)
       returns (AddTaskStateEventDataReply);
+
+  rpc GetAllTaskStateEvent(GetAllTaskStateEventRequest)
+      returns (GetAllTaskStateEventReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

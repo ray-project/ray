@@ -21,6 +21,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupRequest,
     GetAllWorkerInfoReply,
     GetAllWorkerInfoRequest,
+    GetAllTaskStateEventRequest,
+    GetAllTaskStateEventReply,
 )
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
@@ -162,6 +164,9 @@ class StateDataSourceClient:
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
+        self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
+            gcs_channel
+        )
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
@@ -245,6 +250,12 @@ class StateDataSourceClient:
         request = GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
+
+    @handle_grpc_network_errors
+    async def get_all_task_info(
+        self, timeout: int = None, limit: int = None
+    ) -> Optional[GetAllTaskStateEventReply]:
+        pass
 
     @handle_grpc_network_errors
     async def get_all_worker_info(

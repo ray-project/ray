@@ -215,6 +215,7 @@ template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, TaskSpec>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
+template class GcsTable<TaskID, TaskStateEvents>;
 
 }  // namespace gcs
 }  // namespace ray
