@@ -22,8 +22,7 @@ if __name__ == "__main__":
 
     node_types[worker_label]["min_workers"] = args.num_cpu_nodes
     node_types[worker_label]["max_workers"] = args.num_cpu_nodes
-    # Cluster-level max workers includes 1 node for the head node.
-    yaml["max_workers"] = args.num_cpu_nodes + 1
+    yaml["max_workers"] = args.num_cpu_nodes
 
     with open(args.config_path, "w") as f:
         json.dump(yaml, f)
