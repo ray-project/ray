@@ -14,7 +14,7 @@ class Target:
 
     A panel will have one or more targets. By default, all targets are rendered as
     stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line. The legend="FINISHED" series will also be rendered hidden
+    a blue dotted line. The legend="FINISHED|FAILED" series will also be rendered hidden
     by default.
 
     Attributes:
@@ -357,7 +357,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "FINISHED",
+            "alias": "/FINISHED|FAILED/",
             "hiddenSeries": true,
         },
     ],
