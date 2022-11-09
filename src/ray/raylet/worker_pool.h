@@ -692,6 +692,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// pressure.
   void AdjustWorkerOomScore(pid_t pid) const;
 
+  std::pair<std::vector<std::string>, ProcessEnvironment> BuildProcessCommandArgs(
+      const Language &language,
+      rpc::JobConfig *job_config,
+      const rpc::WorkerType worker_type,
+      const JobID &job_id,
+      const std::vector<std::string> &dynamic_options,
+      const int runtime_env_hash,
+      const std::string &serialized_runtime_env_context,
+      const WorkerPool::State &state) const;
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.

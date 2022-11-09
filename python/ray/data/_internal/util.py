@@ -9,6 +9,7 @@ import numpy as np
 
 import ray
 from ray.data.context import DatasetContext
+from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Inclusive minimum pyarrow version.
 MIN_PYARROW_VERSION = "6.0.1"
 # Exclusive maximum pyarrow version.
-MAX_PYARROW_VERSION = "7.0.0"
+MAX_PYARROW_VERSION = "8.0.0"
 RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
@@ -53,31 +54,12 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        try:
-            import pyarrow
-        except ModuleNotFoundError:
-            # pyarrow not installed, short-circuit.
-            return
+        version = _get_pyarrow_version()
+        if version is not None:
+            from pkg_resources._vendor.packaging.version import parse as parse_version
 
-        import pkg_resources
-
-        if not hasattr(pyarrow, "__version__"):
-            logger.warning(
-                "You are using the 'pyarrow' module, but the exact version is unknown "
-                "(possibly carried as an internal component by another module). Please "
-                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION}, < "
-                f"{MAX_PYARROW_VERSION} to ensure compatibility with Ray Datasets. "
-                "If you want to disable this pyarrow version check, set the "
-                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-            )
-        else:
-            version = pyarrow.__version__
-            if (
-                pkg_resources.packaging.version.parse(version)
-                < pkg_resources.packaging.version.parse(MIN_PYARROW_VERSION)
-            ) or (
-                pkg_resources.packaging.version.parse(version)
-                >= pkg_resources.packaging.version.parse(MAX_PYARROW_VERSION)
+            if (parse_version(version) < parse_version(MIN_PYARROW_VERSION)) or (
+                parse_version(version) >= parse_version(MAX_PYARROW_VERSION)
             ):
                 raise ImportError(
                     f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, < "
@@ -86,6 +68,15 @@ def _check_pyarrow_version():
                     "If you want to disable this pyarrow version check, set the "
                     f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
                 )
+        else:
+            logger.warning(
+                "You are using the 'pyarrow' module, but the exact version is unknown "
+                "(possibly carried as an internal component by another module). Please "
+                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION}, < "
+                f"{MAX_PYARROW_VERSION} to ensure compatibility with Ray Datasets. "
+                "If you want to disable this pyarrow version check, set the "
+                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
+            )
         _VERSION_VALIDATED = True
 
 

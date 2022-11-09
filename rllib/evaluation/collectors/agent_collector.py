@@ -1,3 +1,6 @@
+import logging
+
+import logger
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -17,6 +20,9 @@ from ray.rllib.utils.typing import (
 )
 
 from ray.util.annotations import PublicAPI
+
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -120,6 +126,19 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
+    def _check_view_requirement(self, vr_name: str, data: TensorType):
+        """Raises an AssertionError if data does not fit all view requirements that
+        have a view on data_col."""
+        vr = self.view_requirements[vr_name]
+        # We only check for the shape here, because conflicting dtypes are often
+        # because of float conversion
+        # TODO (Kourosh/Artur): Turn this into an error
+        if not vr.space.contains(data):
+            logger.warning(
+                f"Provided tensor {data} does not match space of view requirements {vr}. "
+                f"Make sure dimensions and dtype match to resolve this error."
+            )
+
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -147,6 +166,16 @@ class AgentCollector:
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
+
+        for k, vr in self.view_requirements.items():
+            if vr.data_col == SampleBatch.OBS:
+                # Check this on the first view requirement we find that has a view on
+                # OBS because they should all be the same
+                # TODO(Artur): This assumption is not supported by proper checks ->
+                #  introduce a helper method that checks that view requirements
+                #  spaces don't contradict themselves
+                self._check_view_requirement(k, init_obs)
+                break
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -209,8 +238,12 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            if k in self.view_requirements.keys() and not isinstance(v, (dict, tuple)):
+                self._check_view_requirement(k, v)
+
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
+
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.

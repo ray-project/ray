@@ -311,7 +311,6 @@ def wrap_deepmind(env, dim=84, framestack=True):
         dim: Dimension to resize observations to (dim x dim).
         framestack: Whether to framestack observations.
     """
-    original_space = env.observation_space
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
     if env.spec is not None and "NoFrameskip" in env.spec.id:
@@ -325,5 +324,4 @@ def wrap_deepmind(env, dim=84, framestack=True):
     # 4x image framestacking.
     if framestack is True:
         env = FrameStack(env, 4)
-    env.observation_space.atari_wrapped_space = original_space
     return env

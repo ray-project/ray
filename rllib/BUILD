@@ -1716,8 +1716,15 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_worker_set",
+    tags = ["team:rllib", "evaluation", "exclusive"],
+    size = "small",
+    srcs = ["evaluation/tests/test_worker_set.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
-    tags = ["team:rllib", "evaluation"],
+    tags = ["team:rllib", "evaluation", "exclusive"],
     size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
@@ -3417,7 +3424,6 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
-    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(

@@ -501,52 +501,42 @@ From Torch and TensorFlow
 .. tabbed:: PyTorch
 
     If you already have a Torch dataset available, you can create a Ray Dataset using
-    :py:class:`~ray.data.datasource.SimpleTorchDatasource`.
+    :class:`~ray.data.from_torch`.
 
     .. warning::
-        :py:class:`~ray.data.datasource.SimpleTorchDatasource` doesn't support parallel
+        :py:class:`~ray.data.datasource.from_torch` doesn't support parallel
         reads. You should only use this datasource for small datasets like MNIST or
         CIFAR.
 
     .. code-block:: python
 
-        import ray.data
-        from ray.data.datasource import SimpleTorchDatasource
+        import ray
         import torchvision
 
-        dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
-        dataset = ray.data.read_datasource(
-            SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
-        )
+        dataset = torchvision.datasets.MNIST("data", download=True)
+        dataset = ray.data.from_torch(dataset)
         dataset.take(1)
         # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
 
 .. tabbed:: TensorFlow
 
     If you already have a TensorFlow dataset available, you can create a Ray Dataset
-    using :py:class:`SimpleTensorFlowDatasource`.
+    using :class:`~ray.data.from_tf`.
 
     .. warning::
-        :py:class:`SimpleTensorFlowDatasource` doesn't support parallel reads. You
-        should only use this datasource for small datasets like MNIST or CIFAR.
+        :class:`~ray.data.from_tf` doesn't support parallel reads. You
+        should only use this function with small datasets like MNIST or CIFAR.
 
     .. code-block:: python
 
-        import ray.data
-        from ray.data.datasource import SimpleTensorFlowDatasource
+        import ray
         import tensorflow_datasets as tfds
 
-        def dataset_factory():
-            return tfds.load("cifar10", split=["train"], as_supervised=True)[0]
+        dataset, _ = tfds.load("cifar10", split=["train", "test"])
+        dataset = ray.data.from_tf(dataset)
 
-        dataset = ray.data.read_datasource(
-            SimpleTensorFlowDatasource(),
-            parallelism=1,
-            dataset_factory=dataset_factory
-        )
-        features, label = dataset.take(1)[0]
-        features.shape  # TensorShape([32, 32, 3])
-        label  # <tf.Tensor: shape=(), dtype=int64, numpy=7>
+        dataset
+        # -> Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
 
 .. _dataset_from_huggingface:
 
