@@ -588,17 +588,19 @@ class EagerTFPolicyV2(Policy):
         postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
         postprocessed_batch.set_training(True)
         stats = self._learn_on_batch_helper(postprocessed_batch)
+        self.num_grad_updates += 1
+
         stats.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
-                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - (postprocessed_batch.num_grad_updates or 0)
+                    self.num_grad_updates - 1 - (postprocessed_batch.num_grad_updates or 0)
                 ),
             }
         )
-        self.num_grad_updates += 1
 
         return convert_to_numpy(stats)
 

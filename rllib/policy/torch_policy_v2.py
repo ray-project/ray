@@ -618,6 +618,8 @@ class TorchPolicyV2(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         if self.model:
             fetches["model"] = self.model.metrics()
 
@@ -625,13 +627,13 @@ class TorchPolicyV2(Policy):
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
-                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - (postprocessed_batch.num_grad_updates or 0)
+                    self.num_grad_updates - 1 - (postprocessed_batch.num_grad_updates or 0)
                 ),
             }
         )
-        self.num_grad_updates += 1
 
         return fetches
 
@@ -769,20 +771,21 @@ class TorchPolicyV2(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": model.metrics(),
-                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update above.
                     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                        self.num_grad_updates - (batch.num_grad_updates or 0)
+                        self.num_grad_updates - 1 - (batch.num_grad_updates or 0)
                     ),
                 }
             )
         batch_fetches.update(self.extra_compute_grad_fetches())
-
-        self.num_grad_updates += 1
 
         return batch_fetches
 

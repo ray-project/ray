@@ -1031,15 +1031,17 @@ class DynamicTFPolicyV2(TFPolicy):
 
         tower_stack = self.multi_gpu_tower_stacks[buffer_index]
         results = tower_stack.optimize(self.get_session(), offset)
+        self.num_grad_updates += 1
+
         results.update(
             {
-                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - (tower_stack.num_grad_updates or 0)
+                    self.num_grad_updates - 1 - (tower_stack.num_grad_updates or 0)
                 ),
             }
         )
-        self.num_grad_updates += 1
 
         return results
 

@@ -545,7 +545,10 @@ def check_off_policyness(
     # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
     # 1 rollout worker.
     if not (lower_limit <= off_policy_ness <= upper_limit):
-        raise AssertionError()
+        raise AssertionError(
+            f"`off_policy_ness` ({off_policy_ness}) is outside the given bounds "
+            f"({lower_limit} - {upper_limit})!"
+        )
 
     return off_policy_ness
 

@@ -103,8 +103,15 @@ class SampleBatch(dict):
         self.zero_padded = kwargs.pop("_zero_padded", False)
         # Whether this batch is used for training (vs inference).
         self._is_training = kwargs.pop("_is_training", None)
-        # Average number of grad updates that have been performed
-        # on the policy/ies that were used to collect this batch.
+        # Weighted average number of grad updates that have been performed on the
+        # policy/ies that were used to collect this batch.
+        # E.g.: Two rollout workers collect samples of 50ts each
+        # (rollout_fragment_length=50). One of them has a policy that has undergone
+        # 2 updates thus far, the other worker uses a policy that has undergone 3
+        # updates thus far. The train batch size is 100, so we concatenate these 2
+        # batches to a new one that's 100ts long. This new 100ts batch will have its
+        # `num_gradient_updates` property set to 2.5 as it's the weighted average
+        # (both original batches contribute 50%).
         self.num_grad_updates: Optional[float] = kwargs.pop("_num_grad_updates", None)
 
         # Call super constructor. This will make the actual data accessible

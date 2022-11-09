@@ -449,17 +449,19 @@ class TFPolicy(Policy):
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
+        self.num_grad_updates += 1
+
         stats.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
-                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates + 1,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
                 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
-                    self.num_grad_updates - (postprocessed_batch.num_grad_updates or 0)
+                    self.num_grad_updates - 1 - (postprocessed_batch.num_grad_updates or 0)
                 ),
             }
         )
-        self.num_grad_updates += 1
 
         return stats
 
