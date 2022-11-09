@@ -1184,7 +1184,7 @@ def _best_trial_str(
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
 ):
     """Returns a readable message stating the current best trial."""
-    val = trial.last_result[metric]
+    val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = parameter_columns or list(config.keys())
     if isinstance(parameter_columns, Mapping):
