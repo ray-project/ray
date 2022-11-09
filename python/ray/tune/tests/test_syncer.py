@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 from typing import List, Optional
+from unittest.mock import patch
 
 import pytest
 from freezegun import freeze_time
@@ -11,6 +12,7 @@ from freezegun import freeze_time
 import ray
 import ray.cloudpickle as pickle
 from ray import tune
+from ray.air import Checkpoint
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
@@ -438,6 +440,45 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+
+@pytest.mark.parametrize("num_retries", [None, 1, 2])
+def test_trainable_syncer_retry(ray_start_2_cpus, temp_data_dirs, num_retries):
+    """Check that Trainable.save() default syncing can retry"""
+    tmp_source, tmp_target = temp_data_dirs
+    num_retries = num_retries or 3
+
+    class FaultyCheckpoint(Checkpoint):
+        def to_uri(self, uri: str) -> str:
+            raise subprocess.CalledProcessError(-1, "dummy")
+
+    class TestTrainableRetry(TestTrainable):
+        _checkpoint_cls = FaultyCheckpoint
+
+        def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
+            from ray.tune.trainable.trainable import logger
+
+            output = []
+
+            def mock_error(x):
+                output.append(x)
+
+            with patch.object(logger, "error", mock_error), patch.dict(
+                os.environ,
+                {
+                    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S": "0",
+                    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM": str(num_retries),
+                },
+            ):
+                ret = super()._maybe_save_to_cloud(checkpoint_dir)
+            assert f"after {num_retries}" in output[0]
+            return ret
+
+    trainable = ray.remote(TestTrainableRetry).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}"
+    )
+
+    ray.get(trainable.save.remote())
 
 
 def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
