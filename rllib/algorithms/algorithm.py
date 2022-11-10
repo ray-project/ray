@@ -647,18 +647,21 @@ class Algorithm(Trainable):
                 self._evaluation_weights_seq_number = 0
 
         self.evaluation_dataset = None
-        if self.evaluation_config.off_policy_estimation_methods and not self.evaluation_config.ope_split_batch_by_episode:
+        if (
+            self.evaluation_config.off_policy_estimation_methods
+            and not self.evaluation_config.ope_split_batch_by_episode
+        ):
             # the num worker is set to 0 to avoid creating shards since there is no
             # worker anymore
             logger.info("Creating evaluation dataset ...")
-            ds, _ = get_dataset_and_shards(
-                self.evaluation_config, num_workers=0
-            )
+            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
 
-            # Dataset should be in form of one episode per row. in case of bandits each 
-            # row is just one time step. To make the computation easier later we remove 
+            # Dataset should be in form of one episode per row. in case of bandits each
+            # row is just one time step. To make the computation easier later we remove
             # the time dimension.
-            batch_size = max(ds.count() // self.evaluation_config.evaluation_num_workers, 1)
+            batch_size = max(
+                ds.count() // self.evaluation_config.evaluation_num_workers, 1
+            )
             self.evaluation_dataset = ds.map_batches(
                 remove_time_dim, batch_size=batch_size
             )
@@ -2027,10 +2030,7 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = (
-            cls.get_default_config()
-            .update_from_dict(config)
-        )
+        cf = cls.get_default_config().update_from_dict(config)
         cf.validate()
         cf.freeze()
 
@@ -2069,9 +2069,9 @@ class Algorithm(Trainable):
             ]
         else:
             # resources for offline dataset readers
-            # Note (Kourosh): we should not claim extra workers for the 
-            # training on offline 
-            # dataset since rollout workers have already claimed it. 
+            # Note (Kourosh): we should not claim extra workers for the
+            # training on offline
+            # dataset since rollout workers have already claimed it.
             # (The mysterious 1 extra worker was due to this.)
             evaluation_bundle = get_offline_io_resource_bundles(eval_cf)
 

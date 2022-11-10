@@ -1,9 +1,8 @@
 import abc
 import os
 import logging
-from typing import Dict, Any, Union, Optional
+from typing import Dict, Any
 
-from ray.air.checkpoint import Checkpoint
 from ray.data import Dataset
 
 from ray.rllib.policy import Policy

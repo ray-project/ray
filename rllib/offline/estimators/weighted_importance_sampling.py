@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List
 import numpy as np
 import os
 
@@ -6,10 +6,7 @@ from ray.data import Dataset
 
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.offline.offline_evalution_utils import (
-    remove_time_dim,
-    compute_is_weights,
-)
+from ray.rllib.offline.offline_evalution_utils import compute_is_weights
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI

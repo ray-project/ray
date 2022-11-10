@@ -88,7 +88,6 @@ class MARWILConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-
     @override(AlgorithmConfig)
     def training(
         self,
@@ -142,7 +141,6 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
-
 
     @override(AlgorithmConfig)
     def validate(self) -> None:

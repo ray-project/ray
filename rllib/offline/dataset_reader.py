@@ -19,7 +19,6 @@ DEFAULT_NUM_CPUS_PER_TASK = 0.5
 logger = logging.getLogger(__name__)
 
 
-
 def _unzip_this_path(fpath: Path, extract_path: str):
     with zipfile.ZipFile(str(fpath), "r") as zip_ref:
         zip_ref.extractall(extract_path)
@@ -141,7 +140,7 @@ def get_dataset_and_shards(
             raise ValueError("Paths must be a path string or a list of path strings.")
         paths = _unzip_if_needed(paths, format)
 
-    # TODO (Kourosh): num_workers is not necessary since we can use parallelism for 
+    # TODO (Kourosh): num_workers is not necessary since we can use parallelism for
     # everything. Having two parameters is confusing here.
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(

@@ -596,21 +596,19 @@ class AlgorithmConfig:
                     f"config.framework({self.framework_str})!"
                 )
 
-
         if self.input_ == "dataset":
             # This setup is solely for reading the dataset
             self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
             if self.in_evaluation:
-                # If using dataset for evaluation, the parallelism gets set to 
-                # evaluation_num_workers for backward compatibility and num_cpus gets 
-                # set to num_cpus_per_worker from rollout worker. 
+                # If using dataset for evaluation, the parallelism gets set to
+                # evaluation_num_workers for backward compatibility and num_cpus gets
+                # set to num_cpus_per_worker from rollout worker.
                 self.input_config["parallelism"] = self.evaluation_num_workers or 1
             else:
-                # If using dataset for training, the parallelism and num_cpus gets set 
-                # based on rollout worker parameters. This is for backwards 
+                # If using dataset for training, the parallelism and num_cpus gets set
+                # based on rollout worker parameters. This is for backwards
                 # compatibility for now.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
-        
 
     def build(
         self,
@@ -1404,7 +1402,8 @@ class AlgorithmConfig:
                ray.rllib.offline.InputReader.
              - A string key that indexes a callable with tune.registry.register_input
             input_config: Arguments that describe the settings for reading the input.
-                If input is `sample`, this will be env_config, `env_name` and `env_config`, etc. See `EnvContext` for more info.
+                If input is `sample`, this will be env_config, `env_name` and
+                `env_config`, etc. See `EnvContext` for more info.
                 If the input is `dataset`, this will be `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
@@ -1442,8 +1441,10 @@ class AlgorithmConfig:
             self.input_ = input_
         if input_config is not None:
             if not isinstance(input_config, dict):
-                raise ValueError(f"input_config must be a dict, got {type(input_config)}.")
-            # TODO (Kourosh) Once we use a complete sepration between rollout worker 
+                raise ValueError(
+                    f"input_config must be a dict, got {type(input_config)}."
+                )
+            # TODO (Kourosh) Once we use a complete sepration between rollout worker
             # and input reader we can remove this.
             msg = "{} should not be set in the input_config. RLlib will use {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
@@ -1453,7 +1454,7 @@ class AlgorithmConfig:
                     ValueError(msg.format("parallelism", "evaluation_num_workers"))
                 else:
                     ValueError(msg.format("parallelism", "num_rollout_workers"))
-                
+
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
