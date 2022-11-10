@@ -198,6 +198,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
                 continue
             pod_name = pod["metadata"]["name"]
             node_data_dict[pod_name] = node_data_from_pod(pod)
+        return node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest):
         payload = self.scale_request_to_patch_payload(scale_request, self._raycluster)
