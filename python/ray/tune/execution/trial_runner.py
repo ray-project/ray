@@ -249,6 +249,9 @@ class _ExperimentCheckpointManager:
         if synced:
             self._should_force_cloud_sync = False
             self._trial_num_checkpoints_since_last_sync.clear()
+
+            # syncing might have taken some time, so we grab the current timestamp again
+            now = time.time()
             if now - self._last_sync_time < self._excessive_sync_threshold:
                 logger.warning(
                     "Experiment checkpoint syncing has been triggered multiple "
@@ -262,8 +265,7 @@ class _ExperimentCheckpointManager:
                     "`TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S` "
                     "environment variable."
                 )
-            # syncing might have taken some time, so we grab the current timestamp again
-            self._last_sync_time = time.time()
+            self._last_sync_time = now
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
