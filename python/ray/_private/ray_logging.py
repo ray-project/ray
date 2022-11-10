@@ -25,8 +25,8 @@ def setup_logger(
         _default_handler = logging.StreamHandler()
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
-    # # Setting this will avoid the message
-    # # being propagated to the parent logger.
+    # Setting this will avoid the message
+    # being propagated to the parent logger.
     logger.propagate = False
 
 
