@@ -53,13 +53,13 @@ class DDPPOConfig(PPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
-        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
-        ...             .resources(num_gpus=1)\
-        ...             .rollouts(num_rollout_workers=10)
-        >>> print(config.to_dict())
+        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)
+        >>> config = config.resources(num_gpus=1)
+        >>> config = config.rollouts(num_rollout_workers=10)
+        >>> print(config.to_dict())   # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -67,14 +67,15 @@ class DDPPOConfig(PPOConfig):
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
-        >>> print(config.kl_coeff)
+        >>> print(config.kl_coeff)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
+        >>> config.training( # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1") # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "DDPPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),

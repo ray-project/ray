@@ -30,35 +30,34 @@ class MADDPGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> config = MADDPGConfig()
-        >>> print(config.replay_buffer_config)
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 100000,
-        >>>         "prioritized_replay_alpha": 0.8,
-        >>>         "prioritized_replay_beta": 0.45,
-        >>>         "prioritized_replay_eps": 2e-6,
-        >>>     }
-        >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=0)\
-        >>>       .rollouts(num_rollout_workers=4)\
-        >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update(  # doctest: +SKIP
+        ...     {
+        ...         "capacity": 100000,
+        ...         "prioritized_replay_alpha": 0.8,
+        ...         "prioritized_replay_beta": 0.45,
+        ...         "prioritized_replay_eps": 2e-6,
+        ...     }
+        ... )
+        >>> config.training(replay_buffer_config=replay_config)   # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")   # doctest: +SKIP
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
-        >>> config.training(n_step=tune.grid_search([3, 5]))
-        >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "MADDPG",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> config.training(n_step=tune.grid_search([3, 5]))  # doctest: +SKIP
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "MADDPG",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

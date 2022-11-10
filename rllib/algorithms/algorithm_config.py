@@ -41,6 +41,26 @@ from ray.rllib.utils.typing import (
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 
+"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
+under input and input_config keys. E.g.
+input: sample
+input_config {
+env: CartPole-v1
+}
+or:
+input: json_reader
+input_config {
+path: /tmp/
+}
+or:
+input: dataset
+input_config {
+format: parquet
+path: /tmp/
+}
+"""
+
+
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
 
@@ -96,23 +116,25 @@ class AlgorithmConfig:
         >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)
-        ...              .environment(env="CartPole-v1")
-        ...              .resources(num_gpus=0)
-        ...              .rollouts(num_rollout_workers=4)
-        ...              .callbacks(MemoryTrackingCallbacks)
+        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        ...     .environment(env="CartPole-v1")
+        ...     .resources(num_gpus=0)
+        ...     .rollouts(num_rollout_workers=4)
+        ...     .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
-        >>> rllib_algo = config.build()
+        >>> rllib_algo = config.build()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
         >>> config = AlgorithmConfig()
-        >>> config.training(lr=tune.grid_search([0.01, 0.001]))
+        >>> config.training(lr=tune.grid_search([0.01, 0.001])) # doctest: +SKIP
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.Tuner().fit()`.
-        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "[registered trainer class]", param_space=config.to_dict()
+        ...     ).fit()
     """
 
     @classmethod
@@ -767,7 +789,7 @@ class AlgorithmConfig:
                 "PACK": Packs bundles into as few nodes as possible.
                 "SPREAD": Places bundles across distinct nodes as even as possible.
                 "STRICT_PACK": Packs bundles into one node. The group is not allowed
-                    to span multiple nodes.
+                to span multiple nodes.
                 "STRICT_SPREAD": Packs bundles across distinct nodes.
 
         Returns:
@@ -1240,7 +1262,7 @@ class AlgorithmConfig:
         """Sets the config's exploration settings.
 
         Args:
-            explore: Default exploration behavior, iff `explore`=None is passed into
+            explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
             exploration_config: A dict specifying the Exploration object's config.
@@ -1427,35 +1449,17 @@ class AlgorithmConfig:
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
-        TODO(jungong, sven): we can potentially unify all input types
-          under input and input_config keys. E.g.
-          input: sample
-          input_config {
-            env: CartPole-v1
-          }
-          or:
-          input: json_reader
-          input_config {
-            path: /tmp/
-          }
-          or:
-          input: dataset
-          input_config {
-            format: parquet
-            path: /tmp/
-          }
-
         Args:
             input_: Specify how to generate experiences:
-             - "sampler": Generate experiences via online (env) simulation (default).
-             - A local directory or file glob expression (e.g., "/tmp/*.json").
-             - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-               "s3://bucket/2.json"]).
-             - A dict with string keys and sampling probabilities as values (e.g.,
-               {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-             - A callable that takes an `IOContext` object as only arg and returns a
-               ray.rllib.offline.InputReader.
-             - A string key that indexes a callable with tune.registry.register_input
+                - "sampler": Generate experiences via online (env) simulation (default).
+                - A local directory or file glob expression (e.g., "/tmp/*.json").
+                - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+                "s3://bucket/2.json"]).
+                - A dict with string keys and sampling probabilities as values (e.g.,
+                {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+                - A callable that takes an `IOContext` object as only arg and returns a
+                ray.rllib.offline.InputReader.
+                - A string key that indexes a callable with tune.registry.register_input
             input_config: Arguments accessible from the IOContext for configuring custom
                 input.
             actions_in_input_normalized: True, if the actions in a given offline "input"
@@ -1551,7 +1555,7 @@ class AlgorithmConfig:
                 Could be a directory (str) or an S3 location. None for using the
                 default output dir.
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: (agent_id, episode, worker, **kwargs) -> PolicyID.
+                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.
@@ -1975,26 +1979,27 @@ class AlgorithmConfig:
             ...   .framework("torch")
             ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
             ... )
-            >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup()
-            >>> is_policy_to_train("pol1")
-            ... True
-            >>> is_policy_to_train("pol2")
-            ... False
-            >>> print(policy_dict)
-            ... {
-            ...   "pol1": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ...   "pol2": PolicySpec(
-            ...     PPOTorchPolicyV2,  # infered from Algo's default policy class
-            ...     Box(-2.0, 2.0, (4,), np.float),  # infered from env
-            ...     Discrete(2),  # infered from env
-            ...     {},  # not provided -> empty dict
-            ...   ),
-            ... }
+            >>> policy_dict, is_policy_to_train = \  # doctest: +SKIP
+            ...     config.get_multi_agent_setup()
+            >>> is_policy_to_train("pol1") # doctest: +SKIP
+            True
+            >>> is_policy_to_train("pol2") # doctest: +SKIP
+            False
+            >>> print(policy_dict) # doctest: +SKIP
+            {
+              "pol1": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+              "pol2": PolicySpec(
+                PPOTorchPolicyV2,  # infered from Algo's default policy class
+                Box(-2.0, 2.0, (4,), np.float),  # infered from env
+                Discrete(2),  # infered from env
+                {},  # not provided -> empty dict
+              ),
+            }
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs

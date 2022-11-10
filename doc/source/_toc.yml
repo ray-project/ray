@@ -213,12 +213,13 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/core-concepts
           - file: rllib/rllib-training
+          - file: rllib/core-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
             sections:
+              - file: rllib/rllib-advanced-api
               - file: rllib/rllib-models
               - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts

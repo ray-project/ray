@@ -39,14 +39,14 @@ class APPOConfig(ImpalaConfig):
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)\
-        ...     .resources(num_gpus=1)\
-        ...     .rollouts(num_rollout_workers=16)\
-        ...     .environment("CartPole-v1")
-        >>> print(config.to_dict())
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)
+        >>> config = config.resources(num_gpus=1)
+        >>> config = config.rollouts(num_rollout_workers=16)
+        >>> config = config.environment("CartPole-v1")
+        >>> print(config.to_dict())  # doctest: +SKIP
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
@@ -54,14 +54,14 @@ class APPOConfig(ImpalaConfig):
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
-        >>> print(config.sample_async)
+        >>> print(config.sample_async)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "APPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
