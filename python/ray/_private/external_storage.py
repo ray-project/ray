@@ -7,6 +7,8 @@ import time
 import urllib
 from collections import namedtuple
 from typing import IO, List, Optional, Tuple
+import traceback
+import io
 
 import ray
 from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
@@ -99,6 +101,21 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         self, metadata, data_size, file_like, object_ref, owner_address, global_owner_id
     ):
         worker = ray._private.worker.global_worker
+        worker.core_worker.put_file_like_object(
+            metadata, data_size, file_like, object_ref, owner_address, global_owner_id
+        )
+
+    def _put_error_to_store(
+        self, object_ref, error, owner_address, global_owner_id
+    ):
+        worker = ray._private.worker.global_worker
+
+        context = worker.get_serialization_context()
+        serialized_object = context.serialize(error)
+
+        data_size = serialized_object.total_bytes
+        metadata = serialized_object.metadata
+        file_like = io.BytesIO(serialized_object.to_bytes())
         worker.core_worker.put_file_like_object(
             metadata, data_size, file_like, object_ref, owner_address, global_owner_id
         )
@@ -213,7 +230,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str],
+        owner_addresses: List[bytes], global_owner_ids: List[bytes],
     ) -> int:
         """Restore objects from the external storage.
 
@@ -251,7 +269,7 @@ class NullStorage(ExternalStorage):
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         raise NotImplementedError("External storage is not initialized")
 
-    def restore_spilled_objects(self, object_refs, url_with_offset_list):
+    def restore_spilled_objects(self, object_refs, url_with_offset_list, owner_addresses, global_owner_ids):
         raise NotImplementedError("External storage is not initialized")
 
     def delete_spilled_objects(self, urls: List[str]):
@@ -324,14 +342,16 @@ class FileSystemStorage(ExternalStorage):
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str],
+        owner_addresses: List[bytes], global_owner_ids: List[bytes],
     ):
         total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
             # Retrieve the information needed.
-            if url_with_offset == "PLACEMENT_HOLD":
+            caller_status = None
+            if url_with_offset.startswith("PLACEMENT_HOLD"):
                 # In the prototype, we assure len(_directory_paths)==1,
                 # so object_id can generate checkpoint_url and and offset always 0.
                 directory_path = self._directory_paths[self._current_directory_index]
@@ -340,33 +360,47 @@ class FileSystemStorage(ExternalStorage):
                 base_url = f"{os.path.join(directory_path, filename)}"
                 offset = 0
                 data_size = -1
+                caller_status = url_with_offset.rsplit("_", 1)[-1]
             else:
                 parsed_result = parse_url_with_offset(url_with_offset)
                 base_url = parsed_result.base_url
                 offset = parsed_result.offset
                 data_size = parsed_result.size
             # Read a part of the file and recover the object.
-            with open(base_url, "rb") as f:
-                f.seek(offset)
-                address_len = int.from_bytes(f.read(8), byteorder="little")
-                metadata_len = int.from_bytes(f.read(8), byteorder="little")
-                buf_len = int.from_bytes(f.read(8), byteorder="little")
-                global_owner_id_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(
-                    address_len,
-                    metadata_len,
-                    buf_len,
-                    global_owner_id_len,
-                    data_size,
-                )
-                total += buf_len
-                owner_address = f.read(address_len)
-                metadata = f.read(metadata_len)
-                global_owner_id = f.read(global_owner_id_len)
-                # read remaining data to our buffer
-                self._put_object_to_store(
-                    metadata, buf_len, f, object_ref, owner_address, global_owner_id
-                )
+            try:
+                with open(base_url, "rb") as f:
+                    f.seek(offset)
+                    address_len = int.from_bytes(f.read(8), byteorder="little")
+                    metadata_len = int.from_bytes(f.read(8), byteorder="little")
+                    buf_len = int.from_bytes(f.read(8), byteorder="little")
+                    global_owner_id_len = int.from_bytes(f.read(8), byteorder="little")
+                    self._size_check(
+                        address_len,
+                        metadata_len,
+                        buf_len,
+                        global_owner_id_len,
+                        data_size,
+                    )
+                    total += buf_len
+                    owner_address = f.read(address_len)
+                    metadata = f.read(metadata_len)
+                    global_owner_id = f.read(global_owner_id_len)
+                    # read remaining data to our buffer
+                    self._put_object_to_store(
+                        metadata, buf_len, f, object_ref, owner_address, global_owner_id
+                    )
+            except Exception as e:
+                if caller_status == "DEAD":
+                    # Store TaskError
+                    traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+                    error = ray.exceptions.RayTaskError("task_caller_dead", traceback_str, e)
+                    owner_address = owner_addresses[i]
+                    global_owner_id = global_owner_ids[i]
+                    self._put_error_to_store(
+                        object_ref, error, owner_address, global_owner_id
+                    )
+                else:
+                    continue
         return total
 
     def delete_spilled_objects(self, urls: List[str]):
@@ -436,7 +470,8 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str],
+        owner_addresses: List[bytes] = [], global_owner_ids: List[bytes] = [],
     ):
         total = 0
         for i in range(len(object_refs)):
@@ -591,7 +626,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             )
 
     def restore_spilled_objects(
-        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str],
+        owner_addresses: List[bytes] = [], global_owner_ids: List[bytes] = [],
     ):
         from smart_open import open
 
@@ -727,7 +763,8 @@ def spill_objects(object_refs, owner_addresses):
 
 
 def restore_spilled_objects(
-    object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    object_refs: List[ObjectRef], url_with_offset_list: List[str],
+    owner_addresses: List[bytes], global_owner_ids: List[bytes],
 ):
     """Restore objects from the external storage.
 
@@ -735,7 +772,7 @@ def restore_spilled_objects(
         object_refs: List of object IDs (note that it is not ref).
         url_with_offset_list: List of url_with_offset.
     """
-    return _external_storage.restore_spilled_objects(object_refs, url_with_offset_list)
+    return _external_storage.restore_spilled_objects(object_refs, url_with_offset_list, owner_addresses, global_owner_ids)
 
 
 def delete_spilled_objects(urls: List[str]):

@@ -86,10 +86,13 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithSpilledURL
         &owner_addresses,
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &spilled_urls,
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-        &global_owner_ids) {
-  RAY_CHECK(object_ids.size() == owner_addresses.size());
+        &global_owner_ids,
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+        &serialized_caller_addresses) {
+  RAY_CHECK(owner_addresses.size() == object_ids.size());
   RAY_CHECK(spilled_urls.size() == object_ids.size());
   RAY_CHECK(global_owner_ids.size() == object_ids.size());
+  RAY_CHECK(serialized_caller_addresses.size() == object_ids.size());
   std::vector<ray::rpc::ObjectReference> refs;
   for (int64_t i = 0; i < object_ids.size(); i++) {
     ray::rpc::ObjectReference ref;
@@ -101,6 +104,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithSpilledURL
     ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
     ref.set_spilled_url(spilled_urls.Get(i)->str());
     ref.set_global_owner_id(global_owner_ids.Get(i)->str());
+    ref.set_serialized_caller_address(serialized_caller_addresses.Get(i)->str());
     refs.emplace_back(std::move(ref));
   }
   return refs;
@@ -287,9 +291,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &object_id,
                  int64_t object_size,
                  const std::string &object_url,
-                 std::function<void(const ray::Status &)> callback) {
+                 std::function<void(const ray::Status &)> callback,
+                 const std::string &serialized_ha_returned_object_info) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_size, object_url, callback);
+                object_id, object_size, object_url, callback, serialized_ha_returned_object_info);
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
@@ -1661,7 +1666,8 @@ void NodeManager::ProcessFetchOrReconstructMessage(
       FlatbufferToObjectReferenceWithSpilledURLs(*message->object_ids(),
                                                  *message->owner_addresses(),
                                                  *message->spilled_urls(),
-                                                 *message->global_owner_ids());
+                                                 *message->global_owner_ids(),
+                                                 *message->serialized_caller_addresses());
   for (const auto &ref : refs) {
     RAY_LOG(INFO) << "ProcessFetchOrReconstructMessage "
                   << ObjectID::FromBinary(ref.object_id())

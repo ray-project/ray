@@ -60,6 +60,7 @@ def _object_ref_deserializer(
     spilled_node_id,
     object_status,
     global_owner_id,
+    serialized_caller_address,
 ):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
@@ -98,6 +99,7 @@ def _object_ref_deserializer(
             spilled_node_id,
             object_status,
             global_owner_id,
+            serialized_caller_address,
         )
     return obj_ref
 
@@ -141,6 +143,7 @@ class SerializationContext:
                 spilled_node_id,
                 object_status,
                 global_owner_id,
+                serialized_caller_address,
             ) = worker.core_worker.serialize_object_ref(obj)
             return _object_ref_deserializer, (
                 obj.binary(),
@@ -150,6 +153,7 @@ class SerializationContext:
                 spilled_node_id,
                 object_status,
                 global_owner_id,
+                serialized_caller_address,
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)

@@ -323,7 +323,8 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::Address> &owner_addresses,
       bool fetch_only,
       bool mark_worker_blocked,
-      const TaskID &current_task_id);
+      const TaskID &current_task_id,
+      const std::vector<std::string> &serialized_caller_address);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///

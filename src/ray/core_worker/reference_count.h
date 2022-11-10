@@ -89,6 +89,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   ~ReferenceCounter() {}
 
+  void SetCallerAddress(const ObjectID &object_id, const rpc::Address &caller_address)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
@@ -245,7 +248,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                 rpc::Address *owner_address = nullptr,
                 std::string *spilled_url = nullptr,
                 NodeID *spilled_node_id = nullptr,
-                ActorID *global_owner_id = nullptr) const LOCKS_EXCLUDED(mutex_);
+                ActorID *global_owner_id = nullptr,
+                std::string *serialized_caller_address = nullptr) const
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
@@ -253,6 +258,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_ids The IDs of the object to look up.
   /// \return The addresses of the objects' owners.
   std::vector<rpc::Address> GetOwnerAddresses(
+      const std::vector<ObjectID> object_ids) const;
+
+  std::vector<std::string> GetCallerAddresses(
       const std::vector<ObjectID> object_ids) const;
 
   /// Check whether an object value has been freed.
@@ -701,6 +709,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::optional<rpc::Address> owner_address;
 
     ActorID global_owner_id;
+
+    std::string returned_object_caller_address = "";
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
@@ -791,7 +801,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr,
                         std::string *spilled_url = nullptr,
                         NodeID *spilled_node_id = nullptr,
-                        ActorID *global_owner_id = nullptr) const
+                        ActorID *global_owner_id = nullptr,
+                        std::string *serialized_caller_address = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address

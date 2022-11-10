@@ -326,6 +326,14 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   }
 }
 
+void ReferenceCounter::SetCallerAddress(const ObjectID &object_id,
+                                        const rpc::Address &caller_address) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+  it->second.returned_object_caller_address = caller_address.SerializeAsString();
+}
+
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
                                          const std::string &call_site) {
   if (object_id.IsNil()) {
@@ -548,17 +556,23 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address,
                                 std::string *spilled_url,
                                 NodeID *spilled_node_id,
-                                ActorID *global_owner_id) const {
+                                ActorID *global_owner_id,
+                                std::string *serialized_caller_address) const {
   absl::MutexLock lock(&mutex_);
-  return GetOwnerInternal(
-      object_id, owner_address, spilled_url, spilled_node_id, global_owner_id);
+  return GetOwnerInternal(object_id,
+                          owner_address,
+                          spilled_url,
+                          spilled_node_id,
+                          global_owner_id,
+                          serialized_caller_address);
 }
 
 bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
                                         rpc::Address *owner_address,
                                         std::string *spilled_url,
                                         NodeID *spilled_node_id,
-                                        ActorID *global_owner_id) const {
+                                        ActorID *global_owner_id,
+                                        std::string *serialized_caller_address) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -575,12 +589,30 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
   if (global_owner_id) {
     *global_owner_id = it->second.global_owner_id;
   }
+  if (serialized_caller_address) {
+    *serialized_caller_address = it->second.returned_object_caller_address;
+  }
   if (it->second.owner_address) {
     *owner_address = *it->second.owner_address;
     return true;
   } else {
     return false;
   }
+}
+
+std::vector<std::string> ReferenceCounter::GetCallerAddresses(
+    const std::vector<ObjectID> object_ids) const {
+  absl::MutexLock lock(&mutex_);
+  std::vector<std::string> caller_addresses;
+  for (const auto &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    std::string caller_address = "";
+    if (it != object_id_refs_.end()) {
+      caller_address = it->second.returned_object_caller_address;
+    }
+    caller_addresses.push_back(caller_address);
+  }
+  return caller_addresses;
 }
 
 std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(

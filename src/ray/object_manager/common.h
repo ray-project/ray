@@ -34,7 +34,8 @@ using RestoreSpilledObjectCallback =
     std::function<void(const ObjectID &,
                        int64_t size,
                        const std::string &,
-                       std::function<void(const ray::Status &)>)>;
+                       std::function<void(const ray::Status &)>,
+                       const std::string &)>;
 
 /// A struct that includes info about the object.
 struct ObjectInfo {

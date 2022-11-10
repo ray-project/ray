@@ -211,8 +211,10 @@ Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<rpc::Address> &owner_addresses,
     bool fetch_only,
     bool mark_worker_blocked,
-    const TaskID &current_task_id) {
+    const TaskID &current_task_id,
+    const std::vector<std::string> &serialized_caller_address) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
+  RAY_CHECK(object_ids.size() == serialized_caller_address.size());
   std::vector<std::string> spilled_urls;
   std::vector<std::string> global_owner_ids;
   for (const auto &object_id : object_ids) {
@@ -225,6 +227,7 @@ Status raylet::RayletClient::FetchOrReconstruct(
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto spilled_urls_message = string_vec_to_flatbuf(fbb, spilled_urls);
   auto global_owner_ids_message = string_vec_to_flatbuf(fbb, global_owner_ids);
+  auto serialized_caller_address_message = string_vec_to_flatbuf(fbb, serialized_caller_address);
   auto message =
       protocol::CreateFetchOrReconstruct(fbb,
                                          object_ids_message,
@@ -233,7 +236,8 @@ Status raylet::RayletClient::FetchOrReconstruct(
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,
                                          mark_worker_blocked,
-                                         to_flatbuf(fbb, current_task_id));
+                                         to_flatbuf(fbb, current_task_id),
+                                         serialized_caller_address_message);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }

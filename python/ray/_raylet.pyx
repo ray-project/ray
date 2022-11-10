@@ -1181,14 +1181,20 @@ cdef c_vector[c_string] spill_objects_handler(
 
 cdef int64_t restore_spilled_objects_handler(
         const c_vector[CObjectReference]& object_refs_to_restore,
-        const c_vector[c_string]& object_urls) nogil:
+        const c_vector[c_string]& object_urls,
+        const c_vector[c_string]& serialized_owner_addresses,
+        const c_vector[c_string]& serialized_global_owner_ids) nogil:
     cdef:
         int64_t bytes_restored = 0
     with gil:
         urls = []
+        owner_addresses = []
+        global_owner_ids = []
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
+            owner_addresses.append(serialized_owner_addresses[i])
+            global_owner_ids.append(serialized_global_owner_ids[i])
         object_refs = VectorToObjectRefs(
                 object_refs_to_restore,
                 skip_adding_local_ref=False)
@@ -1197,7 +1203,7 @@ cdef int64_t restore_spilled_objects_handler(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
                 bytes_restored = external_storage.restore_spilled_objects(
-                    object_refs, urls)
+                    object_refs, urls, owner_addresses, global_owner_ids)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -2279,19 +2285,22 @@ cdef class CoreWorker:
             CNodeID c_spilled_node_id
             c_string serialized_object_status
             CActorID global_owner_id
+            c_string serialized_caller_address
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id,
                 &c_owner_address,
                 &c_spilled_url,
                 &c_spilled_node_id,
                 &serialized_object_status,
-                &global_owner_id)
+                &global_owner_id,
+                &serialized_caller_address)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 c_spilled_url,
                 c_spilled_node_id.Binary(),
                 serialized_object_status,
-                global_owner_id.Binary())
+                global_owner_id.Binary(),
+                serialized_caller_address)
 
     def deserialize_and_register_object_ref(
             self, const c_string &object_ref_binary,
@@ -2301,6 +2310,7 @@ cdef class CoreWorker:
             const c_string &spilled_node_id,
             const c_string &serialized_object_status,
             const c_string &global_owner_id,
+            const c_string &serialized_caller_address,
     ):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_ref_binary)
@@ -2320,7 +2330,8 @@ cdef class CoreWorker:
                 spilled_url,
                 c_spilled_node_id,
                 serialized_object_status,
-                c_global_owner_id))
+                c_global_owner_id,
+                serialized_caller_address))
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
                            const CObjectID &generator_id,
@@ -2671,6 +2682,9 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def put_task_error(self):
+        pass
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

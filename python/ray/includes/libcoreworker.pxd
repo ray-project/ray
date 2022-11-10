@@ -195,7 +195,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                               c_string *spilled_url,
                               CNodeID *spilled_node_id,
                               c_string *object_status,
-                              CActorID *global_owner_id)
+                              CActorID *global_owner_id,
+                              c_string *serialized_caller_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
@@ -203,7 +204,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const c_string &spilled_url,
                 const CNodeID &spilled_node_id,
                 const c_string &object_status,
-                const CActorID &global_owner_id)
+                const CActorID &global_owner_id,
+                const c_string &serialized_caller_address)
 
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
@@ -329,6 +331,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectReference] &) nogil) dump_objects
         (int64_t(
             const c_vector[CObjectReference] &,
+            const c_vector[c_string] &,
+            const c_vector[c_string] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(
             const c_vector[c_string]&,

@@ -82,6 +82,16 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
                .first;
       it->second.spilled_url = ref.spilled_url();
       it->second.spilled_node_id = NodeID::FromBinary(ref.spilled_node_id());
+
+      if (ref.serialized_caller_address().size()) {
+        rpc::HAReturnedObjectInfo ha_returned_object_info;
+        ha_returned_object_info.set_serialized_caller_address(ref.serialized_caller_address());
+        ha_returned_object_info.set_serialized_owner_address(ref.owner_address().SerializeAsString());
+        ha_returned_object_info.set_serialized_global_owner_id(ref.global_owner_id());
+        it->second.serialized_ha_returned_object_info = ha_returned_object_info.SerializeAsString();
+      } else {
+        it->second.serialized_ha_returned_object_info = "";
+      }
     } else {
       if (it->second.IsPullable()) {
         bundle_pull_request.MarkObjectAsPullable(obj_id);
@@ -494,6 +504,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id,
                             request.object_size,
                             direct_restore_url,
+                            request.serialized_ha_returned_object_info,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id

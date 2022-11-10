@@ -893,9 +893,14 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                   std::string *spilled_url,
                                   NodeID *spilled_node_id,
                                   std::string *serialized_object_status,
-                                  ActorID *global_owner_id) {
-  auto has_owner = reference_counter_->GetOwner(
-      object_id, owner_address, spilled_url, spilled_node_id, global_owner_id);
+                                  ActorID *global_owner_id,
+                                  std::string *serialized_caller_address) {
+  auto has_owner = reference_counter_->GetOwner(object_id,
+                                                owner_address,
+                                                spilled_url,
+                                                spilled_node_id,
+                                                global_owner_id,
+                                                serialized_caller_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
@@ -923,7 +928,8 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const std::string &spilled_url,
     const NodeID &spilled_node_id,
     const std::string &serialized_object_status,
-    const ActorID &global_owner_id) {
+    const ActorID &global_owner_id,
+    const std::string &serialized_caller_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id,
@@ -945,6 +951,11 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     // We will ask the owner about the object until the object is
     // created or we can no longer reach the owner.
     future_resolver_->ResolveFutureAsync(object_id, owner_address);
+  }
+  if (serialized_caller_address.size()) {
+    rpc::Address caller_address;
+    caller_address.ParseFromString(serialized_caller_address);
+    reference_counter_->SetCallerAddress(object_id, caller_address);
   }
 }
 
@@ -1815,6 +1826,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                                 is_reconstructable);
       RAY_CHECK(reference_counter_->HandleObjectSpilled(
           object_id, "PLACEMENT_HOLD", NodeID::Nil()));
+      reference_counter_->SetCallerAddress(object_id, task_spec.CallerAddress());
     };
     returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(),
                                                   task_spec,
@@ -2354,12 +2366,17 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
           object_id, contained_object_ids, owner_address);
     }
 
+    // ha returned object always in plasma.
+    bool is_ha_returned_object =
+        (worker_context_.GetCurrentTask()->ReturnedObjectOwnerAddress().worker_id() !=
+         worker_context_.GetCurrentTask()->CallerAddress().worker_id());
     // Allocate a buffer for the return object.
-    if (options_.is_local_mode ||
-        (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
-         // ensure we don't exceed the limit if we allocate this object inline.
-         (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
-          RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
+    if (is_ha_returned_object &&
+        (options_.is_local_mode ||
+         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
+          // ensure we don't exceed the limit if we allocate this object inline.
+          (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
+           RayConfig::instance().task_rpc_inlined_bytes_limit())))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       *task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
@@ -3467,6 +3484,12 @@ void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
   }
 }
 
+void CoreWorker::HandleCheckWorkerAlive(rpc::CheckWorkerAliveRequest request,
+                                        rpc::CheckWorkerAliveReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                              rpc::RestoreSpilledObjectsReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
@@ -3481,12 +3504,46 @@ void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest r
     }
     // Get a list of spilled_object_urls.
     std::vector<std::string> spilled_objects_url;
+    std::vector<std::string> serialized_owner_addresses;
+    std::vector<std::string> serialized_global_owner_ids;
     spilled_objects_url.reserve(request.spilled_objects_url_size());
+    RAY_CHECK(request.serialized_ha_returned_object_infos_size() == 0 || request.serialized_ha_returned_object_infos_size() == request.spilled_objects_url_size());
+    int index = 0;
     for (const auto &url : request.spilled_objects_url()) {
-      spilled_objects_url.push_back(url);
+      std::string temp_url = "PLACEMENT_HOLD";
+      if (temp_url.compare(url) == 0) {
+        // check caller still alive.
+        RAY_CHECK(request.serialized_ha_returned_object_infos()[index].size() > 0);
+        rpc::HAReturnedObjectInfo ha_returned_object_info;
+        ha_returned_object_info.ParseFromString(request.serialized_ha_returned_object_infos()[index]);
+
+        rpc::Address caller_address;
+        caller_address.ParseFromString(ha_returned_object_info.serialized_caller_address());
+
+        auto conn = core_worker_client_pool_->GetOrConnect(caller_address);
+        std::promise<std::string> result_promise;
+        conn->CheckWorkerAlive(request,
+                                [&result_promise](const Status &returned_status,
+                                                  const rpc::AssignObjectOwnerReply &reply) {
+                                  if (returned_status.ok()) {
+                                    result_promise.set_value("_ALIVE");
+                                  } else {
+                                    result_promise.set_value("_DEAD");
+                                  }
+                                });
+        temp_url += result_promise.get_future().get();
+        spilled_objects_url.push_back(std::move(temp_url));
+        serialized_owner_addresses.push_back(std::move(ha_returned_object_info.serialized_owner_address()));
+        serialized_global_owner_ids.push_back(std::move(ha_returned_object_info.serialized_global_owner_id()));
+      } else {
+        spilled_objects_url.push_back(url);
+        serialized_owner_addresses.push_back("");
+        serialized_global_owner_ids.push_back("");
+      }
+      index++;
     }
     auto total =
-        options_.restore_spilled_objects(object_refs_to_restore, spilled_objects_url);
+        options_.restore_spilled_objects(object_refs_to_restore, spilled_objects_url, serialized_owner_addresses, serialized_global_owner_ids);
     reply->set_bytes_restored_total(total);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {

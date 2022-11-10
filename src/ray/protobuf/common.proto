@@ -448,6 +448,7 @@ message ObjectReference {
   // The node id of a node where the object is spilled.
   bytes spilled_node_id = 5;
   bytes global_owner_id = 6;
+  bytes serialized_caller_address = 7;
 }
 
 message ObjectReferenceCount {

@@ -125,7 +125,8 @@ class LocalObjectManager {
   void AsyncRestoreSpilledObject(const ObjectID &object_id,
                                  int64_t object_size,
                                  const std::string &object_url,
-                                 std::function<void(const ray::Status &)> callback);
+                                 std::function<void(const ray::Status &)> callback,
+                                 const std::string &serialized_ha_returned_object_info);
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.

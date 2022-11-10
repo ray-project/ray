@@ -177,6 +177,8 @@ table FetchOrReconstruct {
   mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
+  // serialized caller addresses
+  serialized_caller_addresses: [string];
 }
 
 table NotifyUnblocked {

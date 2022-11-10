@@ -182,6 +182,10 @@ def test_normal_task_returned_object(ray_start_cluster):
     def test_remote_function():
         return "TEST", np.zeros((30 * 1024 * 1024, 1))
 
+    @ray.remote(resources={"node1": 1}, _ha=True)
+    def test_remote_function_with_small_return():
+        return "TEST"
+
     @ray.remote(resources={"node1": 1})
     class Worker:
         def do_test(self):
@@ -195,6 +199,10 @@ def test_normal_task_returned_object(ray_start_cluster):
             del ref1, ref2
 
             assert ray.get(ref)[0] == "TEST"
+
+            ref = test_remote_function_with_small_return.remote()
+            assert ray.get(ref) == "TEST"
+            assert ref.spilled_url().decode("utf-8") == "PLACEMENT_HOLD"
             return True
 
     worker = Worker.remote()

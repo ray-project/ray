@@ -386,7 +386,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         std::string *spilled_url,
                         NodeID *spilled_node_id,
                         std::string *serialized_object_status,
-                        ActorID *global_owner_id = nullptr);
+                        ActorID *global_owner_id = nullptr,
+                        std::string *serialized_caller_address = nullptr);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -409,7 +410,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &spilled_url,
       const NodeID &spilled_node_id,
       const std::string &serialized_object_status,
-      const ActorID &global_owner_id = ActorID::Nil());
+      const ActorID &global_owner_id = ActorID::Nil(),
+      const std::string &serialized_caller_address = "");
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -984,6 +986,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleCheckWorkerAlive(rpc::CheckWorkerAliveRequest request,
+                              rpc::CheckWorkerAliveReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   // Delete objects from external storage.
   void HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
