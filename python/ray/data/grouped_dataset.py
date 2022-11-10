@@ -352,6 +352,9 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group_block = block_accessor.slice(start, end)
                 group_block_accessor = BlockAccessor.for_block(group_block)
+                # Convert block of each group to batch format here, because the
+                # block format here can be different from batch format
+                # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
                 applied = fn(group_batch)
                 builder.add_batch(applied)

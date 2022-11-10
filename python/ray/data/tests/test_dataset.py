@@ -4210,9 +4210,7 @@ def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
         return {"group": group["group"] + 1, "value": group["value"] + 1}
 
     ds = ds.groupby("group").map_groups(func, batch_format="numpy")
-    expected = pa.Table.from_pydict(
-        {"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]}
-    )
+    expected = pa.Table.from_pydict({"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]})
     result = pa.Table.from_pandas(ds.to_pandas())
     assert result.equals(expected)
 
