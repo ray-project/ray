@@ -295,8 +295,7 @@ def run_release_test(
             command_runner.save_metrics(start_time_unix)
             metrics = command_runner.fetch_metrics()
         except Exception as e:
-            logger.error("Could not fetch metrics for test command")
-            logger.exception(e)
+            logger.exception(f"Could not fetch metrics for test command: {e}")
             metrics = {}
 
         # Postprocess result:

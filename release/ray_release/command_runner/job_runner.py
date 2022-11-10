@@ -63,7 +63,7 @@ class JobRunner(CommandRunner):
         metrics_script = os.path.join(
             os.path.dirname(__file__), "_prometheus_metrics.py"
         )
-        # Copy wait script to working dir
+        # Copy prometheus metrics script to working dir
         if os.path.exists("prometheus_metrics.py"):
             os.unlink("prometheus_metrics.py")
         os.link(metrics_script, "prometheus_metrics.py")
