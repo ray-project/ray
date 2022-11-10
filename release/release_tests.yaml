@@ -4795,6 +4795,31 @@
     type: sdk_command
     file_manager: sdk
 
+- name: chaos_pipelined_data_ingest_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+  legacy:
+    test_name: chaos_pipelined_data_ingest_benchmark
+    test_suite: chaos_test
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    prepare: ' python setup_chaos.py --node-kill-interval 60 --max-nodes-to-kill 2'
+    # num_epochs=10 is about 4 minutes. We run more epochs to allow time to
+    # kill nodes.
+    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming --num-epochs=10
+    wait_for_nodes:
+      num_nodes: 20
+
+    type: sdk_command
+    file_manager: sdk
+
 #####################
 # Observability tests
 #####################

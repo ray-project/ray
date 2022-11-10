@@ -18,14 +18,13 @@ class ConsumingActor:
     def __init__(self, rank):
         self._rank = rank
 
-    def consume(self, split):
-        DoConsume(split, self._rank)
+    def consume(self, split, num_epochs):
+        DoConsume(split, self._rank, num_epochs)
 
 
-def DoConsume(split, rank):
+def DoConsume(split, rank, num_epochs):
     prefetch_blocks = 1
     batch_size = 4096
-    num_epochs = 2
 
     start = time.perf_counter()
     epochs_read, batches_read, bytes_read = 0, 0, 0
@@ -87,14 +86,14 @@ def make_ds(size_gb: int):
     return dataset
 
 
-def run_ingest_bulk(dataset, num_workers):
+def run_ingest_bulk(dataset, num_workers, num_epochs):
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
     ]
     ds = dataset.map_batches(lambda df: df * 2)
     splits = ds.split(num_workers, equal=True, locality_hints=consumers)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    future = [consumers[i].consume.remote(s, num_epochs) for i, s in enumerate(splits)]
     ray.get(future)
 
     # Example ballpark number for transformation (5s):
@@ -112,7 +111,7 @@ def run_ingest_bulk(dataset, num_workers):
     # success! total time 13.813468217849731
 
 
-def run_ingest_streaming(dataset, num_workers):
+def run_ingest_streaming(dataset, num_workers, num_epochs):
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
@@ -123,7 +122,7 @@ def run_ingest_streaming(dataset, num_workers):
         .map_batches(lambda df: df * 2)
     )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    future = [consumers[i].consume.remote(s, num_epochs) for i, s in enumerate(splits)]
     ray.get(future)
 
     # Example ballpark numbers:
@@ -153,14 +152,15 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
+    parser.add_argument("--num-epochs", type=int, default=2)
     args = parser.parse_args()
 
     start = time.time()
     ds = make_ds(args.dataset_size_gb)
     if args.streaming:
-        run_ingest_streaming(ds, args.num_workers)
+        run_ingest_streaming(ds, args.num_workers, args.num_epochs)
     else:
-        run_ingest_bulk(ds, args.num_workers)
+        run_ingest_bulk(ds, args.num_workers, args.num_epochs)
 
     delta = time.time() - start
     print(f"success! total time {delta}")
