@@ -229,7 +229,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_count = group_max_replicas
-            if target_count == _worker_group_replicas(raycluster, node_type):
+            if target_count == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
                 continue
             path = f"/spec/workerGroupSpecs/{group_index}/replicas"
