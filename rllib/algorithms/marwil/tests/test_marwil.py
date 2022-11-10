@@ -148,7 +148,7 @@ class TestMARWIL(unittest.TestCase):
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=0)
-            .offline_data(input_="dataset", input_config={"paths": data_file, "format": "json"})
+            .offline_data(input_=[data_file])
         )  # Learn from offline data.
 
         for fw, sess in framework_iterator(config, session=True):
