@@ -86,16 +86,16 @@ def test_churn_long_running(
 def test_deadlock_task_with_nested_task(
     ray_with_memory_monitor,
 ):
+    task_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction - 0.1
+    )
+    nested_task_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(
+            memory_usage_threshold_fraction + 0.2
+        )
+        - task_bytes
+    )
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        task_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction - 0.1
-        )
-        nested_task_bytes = (
-            get_additional_bytes_to_reach_memory_usage_pct(
-                memory_usage_threshold_fraction + 0.2
-            )
-            - task_bytes
-        )
         ray.get(
             task_with_nested_task.remote(
                 task_bytes=task_bytes, nested_task_bytes=nested_task_bytes, barrier=None
@@ -173,11 +173,11 @@ def test_deadlock_actor_with_nested_task(
 ):
     leaker = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote()
     actor_bytes = get_additional_bytes_to_reach_memory_usage_pct(
-        (memory_usage_threshold_fraction + 0.25) / 2
+        memory_usage_threshold_fraction - 0.1
     )
     nested_task_bytes = (
         get_additional_bytes_to_reach_memory_usage_pct(
-            memory_usage_threshold_fraction + 0.25
+            memory_usage_threshold_fraction + 0.1
         )
         - actor_bytes
     )
@@ -201,21 +201,14 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
     leaker2 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
         barrier
     )
-    bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.25)
-    quarter_mem = get_additional_bytes_to_reach_memory_usage_pct(0.5) - bytes_first
-    ref1 = leaker1.perform_allocations.remote(bytes_first, quarter_mem)
-    ref2 = leaker2.perform_allocations.remote(quarter_mem, 0)
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct((memory_usage_threshold_fraction - 0.05) / 2)
+    nested_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1) - 2*parent_bytes
+    ref1 = leaker1.perform_allocations.remote(parent_bytes, nested_bytes)
+    ref2 = leaker2.perform_allocations.remote(parent_bytes, nested_bytes)
 
-    num_failed = 0
-    try:
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref1)
-    except ray.exceptions.RayTaskError:
-        num_failed += 1
-    try:
         ray.get(ref2)
-    except ray.exceptions.RayTaskError:
-        num_failed += 1
-    assert num_failed == 1
 
 
 @ray.remote
@@ -230,22 +223,22 @@ def task_with_nested_task(task_bytes, nested_task_bytes, barrier=None):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_deadlock_multiple_tasks_with_nested_task(
+def test_deadlock_two_sets_of_task_with_nested_task(
     ray_with_memory_monitor,
 ):
-    """task_with_nested_task allocates a block of memor, then runs
+    """task_with_nested_task allocates a block of memory, then runs
     a nested task which also allocates a block memory.
     This test runs two instances of task_with_nested_task.
     We expect the second one to fail."""
-    bytes_first = get_additional_bytes_to_reach_memory_usage_pct(0.3)
-    thirty_percent = get_additional_bytes_to_reach_memory_usage_pct(0.6) - bytes_first
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct((memory_usage_threshold_fraction - 0.05) / 2)
+    nested_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1) - 2*parent_bytes
 
     barrier = BarrierActor.options(
         max_restarts=0, max_task_retries=0, max_concurrency=2
     ).remote(2)
 
-    ref1 = task_with_nested_task.remote(bytes_first, thirty_percent, barrier)
-    ref2 = task_with_nested_task.remote(thirty_percent, thirty_percent, barrier)
+    ref1 = task_with_nested_task.remote(parent_bytes, nested_bytes, barrier)
+    ref2 = task_with_nested_task.remote(parent_bytes, nested_bytes, barrier)
 
     num_failed = 0
     try:
