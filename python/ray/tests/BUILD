@@ -119,6 +119,7 @@ py_test_module_list(
     "test_metrics.py",
     "test_task_metrics.py",
     "test_actor_state_metrics.py",
+    "test_placement_group_metrics.py",
     "test_object_store_metrics.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
