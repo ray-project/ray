@@ -201,8 +201,15 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
     leaker2 = ActorWithNestedTask.options(max_restarts=0, max_task_retries=0).remote(
         barrier
     )
-    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct((memory_usage_threshold_fraction - 0.05) / 2)
-    nested_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1) - 2*parent_bytes
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        (memory_usage_threshold_fraction - 0.05) / 2
+    )
+    nested_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(
+            memory_usage_threshold_fraction + 0.1
+        )
+        - 2 * parent_bytes
+    )
     ref1 = leaker1.perform_allocations.remote(parent_bytes, nested_bytes)
     ref2 = leaker2.perform_allocations.remote(parent_bytes, nested_bytes)
 
@@ -230,8 +237,15 @@ def test_deadlock_two_sets_of_task_with_nested_task(
     a nested task which also allocates a block memory.
     This test runs two instances of task_with_nested_task.
     We expect the second one to fail."""
-    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct((memory_usage_threshold_fraction - 0.05) / 2)
-    nested_bytes = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1) - 2*parent_bytes
+    parent_bytes = get_additional_bytes_to_reach_memory_usage_pct(
+        (memory_usage_threshold_fraction - 0.05) / 2
+    )
+    nested_bytes = (
+        get_additional_bytes_to_reach_memory_usage_pct(
+            memory_usage_threshold_fraction + 0.1
+        )
+        - 2 * parent_bytes
+    )
 
     barrier = BarrierActor.options(
         max_restarts=0, max_task_retries=0, max_concurrency=2
