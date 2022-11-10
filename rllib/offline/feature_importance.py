@@ -1,3 +1,6 @@
+import copy
+import numpy as np
+import pandas as pd
 from typing import Callable, Dict, Any
 
 import ray
@@ -8,11 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evalution_utils import remove_time_dim
 
-import pandas as pd
-import numpy as np
-import copy
 
 
 @DeveloperAPI
@@ -35,7 +34,23 @@ def _compute_actions(
     policy_state: Dict[str, Any],
     input_key: str = "",
     output_key: str = "",
-):
+):  
+    """A custom local function to do batch prediction of a policy.
+    
+    Given the policy state the action predictions are computed as a function of 
+    `input_key` and stored in the `output_key` column.
+
+    Args:
+        batch: A sub-batch from the dataset.
+        policy_state: The state of the policy to use for the prediction.
+        input_key: The key to use for the input to the policy. If not given, the
+            default is SampleBatch.OBS.
+        output_key: The key to use for the output of the policy. If not given, the
+            default is "predicted_actions".
+
+    Returns:
+        The modified batch with the predicted actions added as a column.
+    """
     if not input_key:
         input_key = SampleBatch.OBS
 
@@ -55,13 +70,27 @@ def _compute_actions(
 
 
 @ray.remote
-def get_feature_importance_on_index(dataset, *, index, perturb_fn, bsize, policy_state):
+def get_feature_importance_on_index(dataset: ray.data.Dataset, *, index: int, perturb_fn: Callable[[pd.DataFrame, int], None], batch_size: int, policy_state: Dict[str, Any]):
+    """A remote function to compute the feature importance of a given index.
+    
+    Args:
+        dataset: The dataset to use for the computation. The dataset should have `obs`  
+            and `actions` columns. Each record should be flat d-dimensional array. 
+        index: The index of the feature to compute the importance for.
+        perturb_fn: The function to use for perturbing the dataset at the given index.
+        batch_size: The batch size to use for the computation.
+        policy_state: The state of the policy to use for the computation.
+
+    Returns:
+        The modified dataset that contains a `delta` column which is the absolute 
+        difference between the expected output and the output due to the perturbation.
+    """
     perturbed_ds = dataset.map_batches(
-        perturb_fn, batch_size=bsize, fn_kwargs={"index": index}
+        perturb_fn, batch_size=batch_size, fn_kwargs={"index": index}
     )
     perturbed_actions = perturbed_ds.map_batches(
         _compute_actions,
-        batch_size=bsize,
+        batch_size=batch_size,
         fn_kwargs={
             "output_key": "perturbed_actions",
             "input_key": "perturbed_obs",
@@ -75,9 +104,9 @@ def get_feature_importance_on_index(dataset, *, index, perturb_fn, bsize, policy
         batch["delta"] = np.abs(batch["ref_actions"] - batch["perturbed_actions"])
         return batch
 
-    diff = perturbed_actions.map_batches(delta_fn, batch_size=bsize)
+    delta = perturbed_actions.map_batches(delta_fn, batch_size=batch_size)
 
-    return diff
+    return delta
 
 
 @DeveloperAPI
@@ -129,7 +158,8 @@ class FeatureImportance(OfflineEvaluator):
             perturb_fn: function to perturb the features. By default reshuffle the
                 features within the batch.
             limit_fraction: fraction of the dataset to use for feature importance
-                (to be used only in estimate_on_dataset)
+                This is only used in estimate_on_dataset when the dataset is too large 
+                to compute feature importance on.
         """
         super().__init__(policy)
         self.repeat = repeat
@@ -171,21 +201,31 @@ class FeatureImportance(OfflineEvaluator):
 
         return metrics
 
+    @override(OfflineEvaluator)
     def estimate_on_dataset(
         self, dataset: Dataset, *, n_parallelism: int = ...
     ) -> Dict[str, Any]:
+        """Estimate the feature importance of the policy given a dataset.
+        
+        For each feature in the dataset, the importance is computed by applying perturbations to each feature and computing the difference between the perturbed prediction and the reference prediction. The importance is computation for each feature and each perturbation is repeated `self.repeat` times. If dataset is large the user can initialize the estimator with a `limit_fraction` to limit the dataset to a fraction of the original dataset.
+
+        Note (Implementation detail): The computation across features are distributed with ray workers since each feature is independent of each other. 
+
+        Args:
+            dataset: the dataset to use for feature importance.
+            n_parallelism: number of parallel workers to use for feature importance.
+        
+        Returns:
+            A dict mapping each feature index string to its importance.
+        """
 
         policy_state = self.policy.get_state()
         # step 1: limit the dataset to a few first rows
         ds = dataset.limit(int(self.limit_fraction * dataset.count()))
 
-        # step 2: remove the time dimension from the dataset
+        # step 2: compute the reference actions
         bsize = max(1, ds.count() // n_parallelism)
-        updated_ds = ds.map_batches(remove_time_dim, batch_size=bsize)
-
-        # step 3: compute the reference actions
-        bsize = max(1, updated_ds.count() // n_parallelism)
-        actions_ds = updated_ds.map_batches(
+        actions_ds = ds.map_batches(
             _compute_actions,
             batch_size=bsize,
             fn_kwargs={
@@ -194,7 +234,8 @@ class FeatureImportance(OfflineEvaluator):
             },
         )
 
-        n_features = updated_ds.take(1)[0]["obs"].shape[-1]
+        # step 3: compute the feature importance
+        n_features = ds.take(1)[0][SampleBatch.OBS].shape[-1]
         importance = np.zeros((self.repeat, n_features))
         for r in range(self.repeat):
             # shuffle the entire dataset
