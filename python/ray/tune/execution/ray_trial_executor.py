@@ -255,6 +255,9 @@ class RayTrialExecutor:
         self._trainable_kwargs = {}
 
         self._chdir_to_trial_dir = chdir_to_trial_dir
+        if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+            # Record the original working dir before changing to the trial logdir
+            os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
 
     def setup(
         self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
