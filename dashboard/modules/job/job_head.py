@@ -343,7 +343,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/")
-    @optional_utils.aiohttp_cache
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
             self._dashboard_head.gcs_aio_client
