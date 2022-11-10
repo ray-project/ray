@@ -204,22 +204,20 @@ class TestRolloutWorker(unittest.TestCase):
             .environment("test")
             .rollouts(
                 num_rollout_workers=2,
-                rollout_fragment_length=5,
                 num_envs_per_worker=2,
                 create_env_on_local_worker=True,
             )
+            .training(train_batch_size=20)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             pg = config.build()
             results = pg.workers.foreach_worker(
-                lambda ev: ev.total_rollout_fragment_length
+                lambda w: w.total_rollout_fragment_length
             )
-            results2 = pg.workers.foreach_worker_with_index(
-                lambda ev, i: (i, ev.total_rollout_fragment_length)
+            results2 = pg.workers.foreach_worker_with_id(
+                lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = pg.workers.foreach_worker(
-                lambda ev: ev.foreach_env(lambda env: 1)
-            )
+            results3 = pg.workers.foreach_worker(lambda w: w.foreach_env(lambda env: 1))
             self.assertEqual(results, [10, 10, 10])
             self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
             self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])

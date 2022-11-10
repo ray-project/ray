@@ -168,6 +168,7 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
+        status=200 if success else 500,
     )
 
 
