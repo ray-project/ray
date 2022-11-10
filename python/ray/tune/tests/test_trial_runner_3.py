@@ -806,6 +806,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period, 38.0)
 
+    @patch.dict(
+        os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
+    )
     def testCloudCheckpointForceWithNumToKeep(self):
         """Test that cloud syncing is forced if one of the trials has made more
         than num_to_keep checkpoints since last sync."""
@@ -839,7 +842,7 @@ class TrialRunnerTest3(unittest.TestCase):
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
             remote_checkpoint_dir="fake",
-            checkpoint_config=checkpoint_config,
+            trial_checkpoint_config=checkpoint_config,
         )
 
         class CheckpointingTrial(Trial):
