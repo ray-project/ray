@@ -183,6 +183,10 @@ class Trainable:
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
         self.sync_timeout = sync_timeout
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_sleep_time = float(
+            os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
+        )
 
     @property
     def uses_cloud_checkpointing(self):
@@ -422,14 +426,6 @@ class Trainable:
 
         return result
 
-    @property
-    def _cloud_checkpoint_num_retries(self) -> int:
-        return int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
-
-    @property
-    def _cloud_checkpoint_sleep_time(self) -> int:
-        return float(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1"))
-
     def get_state(self):
         return {
             "experiment_id": self._experiment_id,
@@ -581,8 +577,8 @@ class Trainable:
                 checkpoint_dir, self._storage_path(checkpoint_dir)
             )
             self.custom_syncer.wait_or_retry(
-                max_retries=self._cloud_checkpoint_num_retries,
-                backoff_s=self._cloud_checkpoint_sleep_time,
+                max_retries=self.sync_num_retries,
+                backoff_s=self.sync_sleep_time,
             )
             return True
 
@@ -591,11 +587,11 @@ class Trainable:
         if not retry_fn(
             lambda: checkpoint.to_uri(checkpoint_uri),
             subprocess.CalledProcessError,
-            num_retries=self._cloud_checkpoint_num_retries,
-            sleep_time=self._cloud_checkpoint_sleep_time,
+            num_retries=self.sync_num_retries,
+            sleep_time=self.sync_sleep_time,
             timeout=self.sync_timeout,
         ):
-            num_retries = self._cloud_checkpoint_num_retries
+            num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint even after {num_retries} retries."
                 f"Please check if the credentials expired and that the remote "
@@ -630,8 +626,8 @@ class Trainable:
             # Only keep for backwards compatibility
             self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
             self.custom_syncer.wait_or_retry(
-                max_retries=self._cloud_checkpoint_num_retries,
-                backoff_s=self._cloud_checkpoint_sleep_time,
+                max_retries=self.sync_num_retries,
+                backoff_s=self.sync_sleep_time,
             )
             return True
 
@@ -639,11 +635,11 @@ class Trainable:
         if not retry_fn(
             lambda: checkpoint.to_directory(local_dir),
             (subprocess.CalledProcessError, FileNotFoundError),
-            num_retries=self._cloud_checkpoint_num_retries,
-            sleep_time=self._cloud_checkpoint_sleep_time,
+            num_retries=self.sync_num_retries,
+            sleep_time=self.sync_sleep_time,
             timeout=self.sync_timeout,
         ):
-            num_retries = self._cloud_checkpoint_num_retries
+            num_retries = self.sync_num_retries
             logger.error(
                 f"Could not download checkpoint even after {num_retries} "
                 f"retries: {external_uri}"
@@ -838,19 +834,19 @@ class Trainable:
                     # Keep for backwards compatibility
                     self.custom_syncer.delete(self._storage_path(checkpoint_dir))
                     self.custom_syncer.wait_or_retry(
-                        max_retries=self._cloud_checkpoint_num_retries,
-                        backoff_s=self._cloud_checkpoint_sleep_time,
+                        max_retries=self.sync_num_retries,
+                        backoff_s=self.sync_sleep_time,
                     )
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     if not retry_fn(
                         lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
-                        num_retries=self._cloud_checkpoint_num_retries,
-                        sleep_time=self._cloud_checkpoint_sleep_time,
+                        num_retries=self.sync_num_retries,
+                        sleep_time=self.sync_sleep_time,
                         timeout=self.sync_timeout,
                     ):
-                        num_retries = self._cloud_checkpoint_num_retries
+                        num_retries = self.sync_num_retries
                         logger.error(
                             f"Could not delete checkpoint even after {num_retries} "
                             f"retries: {checkpoint_uri}"
