@@ -46,6 +46,15 @@ export type NodeListRsp = {
   msg: string;
 };
 
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
+  gpuMemoryUsage: number;
+  pid: number;
+};
+
 export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;

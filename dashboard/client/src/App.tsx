@@ -3,14 +3,12 @@ import { ThemeProvider } from "@material-ui/core/styles";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
-import { Provider } from "react-redux";
 import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
 import { getNodeList } from "./service/node";
-import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
 
@@ -122,41 +120,35 @@ const App = () => {
     <ThemeProvider theme={getTheme(theme)}>
       <Suspense fallback={Loading}>
         <GlobalContext.Provider value={context}>
-          <Provider store={store}>
-            <CssBaseline />
-            <HashRouter>
-              <Switch>
-                <Route
-                  component={() => <Redirect to="/node" />}
-                  exact
-                  path="/"
-                />
-                <Route
-                  render={(props) => (
-                    <BasicLayout {...props} setTheme={setTheme} theme={theme}>
-                      <Route component={Index} exact path="/summary" />
-                      <Route component={Job} exact path="/job" />
-                      <Route component={Node} exact path="/node" />
-                      <Route component={Actors} exact path="/actors" />
-                      <Route component={Events} exact path="/events" />
-                      <Route component={Metrics} exact path="/metrics" />
-                      <Route
-                        render={(props) => (
-                          <Logs {...props} theme={theme as "light" | "dark"} />
-                        )}
-                        exact
-                        path="/log/:host?/:path?"
-                      />
-                      <Route component={NodeDetail} path="/node/:id" />
-                      <Route component={JobDetail} path="/job/:id" />
-                      <Route component={CMDResult} path="/cmd/:cmd/:ip/:pid" />
-                      <Route component={Loading} exact path="/loading" />
-                    </BasicLayout>
-                  )}
-                />
-              </Switch>
-            </HashRouter>
-          </Provider>
+          <CssBaseline />
+          <HashRouter>
+            <Switch>
+              <Route component={() => <Redirect to="/node" />} exact path="/" />
+              <Route
+                render={(props) => (
+                  <BasicLayout {...props} setTheme={setTheme} theme={theme}>
+                    <Route component={Index} exact path="/summary" />
+                    <Route component={Job} exact path="/job" />
+                    <Route component={Node} exact path="/node" />
+                    <Route component={Actors} exact path="/actors" />
+                    <Route component={Events} exact path="/events" />
+                    <Route component={Metrics} exact path="/metrics" />
+                    <Route
+                      render={(props) => (
+                        <Logs {...props} theme={theme as "light" | "dark"} />
+                      )}
+                      exact
+                      path="/log/:host?/:path?"
+                    />
+                    <Route component={NodeDetail} path="/node/:id" />
+                    <Route component={JobDetail} path="/job/:id" />
+                    <Route component={CMDResult} path="/cmd/:cmd/:ip/:pid" />
+                    <Route component={Loading} exact path="/loading" />
+                  </BasicLayout>
+                )}
+              />
+            </Switch>
+          </HashRouter>
         </GlobalContext.Provider>
       </Suspense>
     </ThemeProvider>
