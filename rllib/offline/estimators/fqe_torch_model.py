@@ -264,7 +264,10 @@ class FQETorchModel:
         }
 
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the current state of the FQE Model."""
+        """Sets the current state of the FQE Model.
+        Args:
+            state: A state dict returned by `get_state()`.
+        """
         self.n_iters = state["n_iters"]
         self.lr = state["lr"]
         self.min_loss_threshold = state["min_loss_threshold"]
@@ -278,7 +281,14 @@ class FQETorchModel:
 
     @classmethod
     def from_state(cls, state: Dict[str, Any]) -> "FQETorchModel":
-        """Creates a FQE Model from a state dict."""
+        """Creates a FQE Model from a state dict.
+        
+        Args:
+            state: A state dict returned by `get_state`.
+
+        Returns:
+            An instance of the FQETorchModel.
+        """
         policy = Policy.from_state(state["policy_state"])
         model = cls(
             policy=policy, gamma=state["gamma"], model_config=state["model_config"]
