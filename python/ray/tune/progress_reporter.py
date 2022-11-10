@@ -14,8 +14,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 from ray._private.dict import flatten_dict
 
+import ray
 from ray.tune.callback import Callback
-from ray.tune.logger import logger, pretty_print
+from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
@@ -34,9 +35,10 @@ from ray.tune.result import (
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
-from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.node import _force_on_current_node
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.queue import Queue
+from ray.util.queue import Empty, Queue
 
 from ray.widgets import Template
 
@@ -534,7 +536,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         )
 
         if not IS_NOTEBOOK:
-            logger.warning(
+            warnings.warn(
                 "You are using the `JupyterNotebookReporter`, but not "
                 "IPython/Jupyter-compatible environment was detected. "
                 "If this leads to unformatted output (e.g. like "
@@ -1532,3 +1534,61 @@ def _detect_progress_metrics(
         return None
 
     return getattr(trainable, "_progress_metrics", None)
+
+
+def _prepare_progress_reporter_for_ray_client(
+    progress_reporter: ProgressReporter,
+    verbosity: Union[int, Verbosity],
+    string_queue: Optional[Queue] = None,
+) -> Tuple[ProgressReporter, Queue]:
+    """Prepares progress reported for Ray Client by setting the string queue.
+
+    The string queue will be created if it's None."""
+    set_verbosity(verbosity)
+    progress_reporter = progress_reporter or _detect_reporter()
+
+    # JupyterNotebooks don't work with remote tune runs out of the box
+    # (e.g. via Ray client) as they don't have access to the main
+    # process stdout. So we introduce a queue here that accepts
+    # strings, which will then be displayed on the driver side.
+    if isinstance(progress_reporter, RemoteReporterMixin):
+        if string_queue is None:
+            string_queue = Queue(
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+            )
+        progress_reporter.output_queue = string_queue
+
+    return progress_reporter, string_queue
+
+
+def _stream_client_output(
+    remote_future: ray.ObjectRef,
+    progress_reporter: ProgressReporter,
+    string_queue: Queue,
+) -> Any:
+    """
+    Stream items from string queue to progress_reporter until remote_future resolves
+    """
+    if string_queue is None:
+        return
+
+    def get_next_queue_item():
+        try:
+            return string_queue.get(block=False)
+        except Empty:
+            return None
+
+    def _handle_string_queue():
+        string_item = get_next_queue_item()
+        while string_item is not None:
+            # This happens on the driver side
+            progress_reporter.display(string_item)
+            string_item = get_next_queue_item()
+
+    # ray.wait(...)[1] returns futures that are not ready, yet
+    while ray.wait([remote_future], timeout=0.2)[1]:
+        # Check if we have items to execute
+        _handle_string_queue()
+
+    # Handle queue one last time
+    _handle_string_queue()

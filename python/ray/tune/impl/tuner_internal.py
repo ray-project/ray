@@ -21,6 +21,7 @@ from ray.tune.tune_config import TuneConfig
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
+    from ray.util.queue import Queue
 
 
 _TRAINABLE_PKL = "trainable.pkl"
@@ -125,6 +126,19 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
             pickle.dump(self._trainable, fp)
         self._maybe_warn_resource_contention()
+
+    def get_run_config(self) -> RunConfig:
+        return self._run_config
+
+    # For Jupyter output with Ray Client
+    def set_run_config_and_remote_string_queue(
+        self, run_config: RunConfig, string_queue: "Queue"
+    ):
+        self._run_config = run_config
+        self._tuner_kwargs["_remote_string_queue"] = string_queue
+
+    def clear_remote_string_queue(self):
+        self._tuner_kwargs.pop("_remote_string_queue", None)
 
     def _expected_utilization(self, cpus_per_trial, cpus_total):
         num_samples = self._tune_config.num_samples
@@ -404,6 +418,7 @@ class TunerInternal:
         analysis = run(
             **args,
         )
+        self.clear_remote_string_queue()
         return analysis
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
@@ -431,10 +446,13 @@ class TunerInternal:
             **self._tuner_kwargs,
         }
         analysis = run(**args)
+        self.clear_remote_string_queue()
         return analysis
 
     def __getstate__(self):
         state = self.__dict__.copy()
+        state["_tuner_kwargs"] = state["_tuner_kwargs"].copy()
+        state["_tuner_kwargs"].pop("_remote_string_queue", None)
         state.pop(_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
