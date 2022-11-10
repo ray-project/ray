@@ -80,6 +80,9 @@ def collect_metrics(
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
+
+    Returns:
+        A result dict of metrics.
     """
     episodes = collect_episodes(
         workers, remote_worker_ids, timeout_seconds=timeout_seconds
@@ -107,6 +110,10 @@ def collect_episodes(
     Returns:
         List of RolloutMetrics.
     """
+    if not remote_worker_ids:
+        # There are no remote workers left for metrics.
+        return []
+
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.
@@ -114,7 +121,6 @@ def collect_episodes(
         lambda w: w.get_metrics(),
         local_worker=True,
         remote_worker_ids=remote_worker_ids,
-        healthy_only=True,
         timeout_seconds=timeout_seconds,
     )
     if len(metric_lists) == 0:
@@ -140,6 +146,9 @@ def summarize_episodes(
             (not newly collected in this iteration) in order to achieve the size of
             the smoothing window.
         new_episodes: All the episodes that were completed in this iteration.
+
+    Returns:
+        A result dict of metrics.
     """
 
     if new_episodes is None:

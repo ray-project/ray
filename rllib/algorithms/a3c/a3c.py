@@ -239,7 +239,10 @@ class A3C(Algorithm):
             # Synch updated weights back to the particular worker
             # (only those policies that are trainable).
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(to_worker_indices=[actor_id])
+                self.workers.sync_weights(
+                    policies=local_worker.get_policies_to_train(),
+                    to_worker_indices=[actor_id],
+                )
 
         # Update global vars of the local worker.
         if global_vars:

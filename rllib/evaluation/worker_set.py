@@ -406,22 +406,8 @@ class WorkerSet:
             def set_weight(w):
                 w.set_weights(ray.get(weights_ref), global_vars)
 
-            # Sync to all remote workers in this WorkerSet.
-            # We take weight syncing as a good opportunity for health check,
-            # because before a remote worker can re-join the lineup, we need
-            # to bring them up to date anyways.
-            # Any remote workers that have latest weights synced are healthy,
-            # and will be able to participate in the next rounds of rollout or
-            # evaluation.
-            # If weight sync fails, the remote worker is taken out of service until:
-            # 1. Ray Core potentially restarts the actor, and
-            # 2. The worker gets updated during next round of weight syncing.
-            # Do it on all remote workers regardless of their current state.
-            self.foreach_worker(
-                func=set_weight,
-                healthy_only=False,
-                remote_worker_ids=to_worker_indices,
-            )
+            # Sync to specified remote workers in this WorkerSet.
+            self.foreach_worker(func=set_weight, remote_worker_ids=to_worker_indices)
 
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
@@ -777,8 +763,8 @@ class WorkerSet:
         *,
         timeout_seconds=0,
         return_objref: bool = False,
-    ) -> Tuple[List[int], List[T]]:
-        """Get results from outstanding asynchronous requests that are ready.
+    ) -> List[Tuple[int, T]]:
+        """Get esults from outstanding asynchronous requests that are ready.
 
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
@@ -893,6 +879,15 @@ class WorkerSet:
                 local_worker=True,
             )
         )
+
+    @DeveloperAPI
+    def probe_unhealthy_workers(self) -> List[int]:
+        """Checks the unhealth workers, and try restoring their states.
+
+        Returns:
+            IDs of the workers that were restored.
+        """
+        return self.__worker_manager.probe_unhealthy_actors()
 
     @staticmethod
     def _from_existing(

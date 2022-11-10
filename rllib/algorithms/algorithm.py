@@ -150,8 +150,12 @@ class Algorithm(Trainable):
     Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
     normally composed of a single local worker
     (self.workers.local_worker()), used to compute and apply learning updates,
-    and optionally one or more remote workers  used to generate environment
+    and optionally one or more remote workers used to generate environment
     samples in parallel.
+    WorkerSet is fault tolerant and elastic. It tracks health states for all
+    the managed remote worker actors. As a result, Algorithm should never
+    access the underlying actor handles directly. Instead, always access them
+    via all the foreach APIs with assigned IDs of the underlying workers.
 
     Each worker (remotes or local) contains a PolicyMap, which itself
     may contain either one policy for single-agent training or one or more
@@ -463,6 +467,9 @@ class Algorithm(Trainable):
 
         Specific Algorithm implementations can override this method to
         use a subset of the workers for metrics collection.
+
+        Returns:
+            List of remote worker IDs to fetch metrics from.
         """
         return self.workers.healthy_worker_ids()
 
@@ -900,7 +907,7 @@ class Algorithm(Trainable):
                         all_batches.append(batch)
 
             # Evaluation worker set has n remote workers.
-            else:
+            elif len(self.evaluation_workers.healthy_worker_ids()) > 0:
                 # How many episodes have we run (across all eval workers)?
                 num_units_done = 0
                 _round = 0
@@ -925,7 +932,6 @@ class Algorithm(Trainable):
                         batches = self.evaluation_workers.foreach_worker(
                             func=lambda w: w.sample(),
                             remote_worker_ids=selected_eval_worker_ids,
-                            healthy_only=True,
                             timeout_seconds=self.config["evaluation_sample_timeout_s"],
                         )
                     except GetTimeoutError:
@@ -975,6 +981,10 @@ class Algorithm(Trainable):
                         f"({num_units_done}/{duration if not auto else '?'} "
                         f"{unit} done)"
                     )
+            else:
+                # Can't find a good way to run this evaluation.
+                # Wait for next iteration.
+                pass
 
             if metrics is None:
                 metrics = collect_metrics(
@@ -1206,6 +1216,36 @@ class Algorithm(Trainable):
 
         # Return evaluation results.
         return self.evaluation_metrics
+
+    @OverrideToImplementCustomLogic
+    @DeveloperAPI
+    def restore_workers(self, workers: WorkerSet):
+        """Try to restore failed workers if necessary.
+
+        Algorithms that use custom RolloutWorkers may override this method to
+        disable default, and create custom restoration logics.
+
+        Args:
+            workers: The WorkerSet to restore. This may be Rollout or Evaluation
+                workers.
+        """
+        if not workers or not workers.local_worker():
+            # If workers does not exist, or we don't have a local worker
+            # to sync weights from, simply skip.
+            return
+
+        # This is really cheap, since probe_unhealthy_workers() is a no-op
+        # if there are no unhealthy workers.
+        restored = workers.probe_unhealthy_workers()
+
+        if restored:
+            # By default, all policy weights are synced after restoration
+            # to bring these workers up to date.
+            workers.sync_weights(
+                policies=None,  # Sync over all policies to restore state.
+                from_worker=self.workers.local_worker(),
+                to_worker_indices=restored,
+            )
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
@@ -1759,7 +1799,7 @@ class Algorithm(Trainable):
 
         self.workers.foreach_worker(fn, healthy_only=True)
         if evaluation_workers and self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(fn, healthy_only=True)
+            self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
     def export_policy_model(
@@ -2509,6 +2549,9 @@ class Algorithm(Trainable):
                     else:
                         results = next(self.train_exec_impl)
 
+        # With training step done. Try to bring failed workers back.
+        self.restore_workers(self.workers)
+
         return results, train_iter_ctx
 
     def _run_one_evaluation(
@@ -2557,6 +2600,10 @@ class Algorithm(Trainable):
         # Run `self.evaluate()` only once per training iteration.
         else:
             eval_results = eval_func_to_use()
+
+        # After evaluation, do a round of health check to see if any of
+        # the failed workers are back.
+        self.restore_workers(self.evaluation_workers)
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"][

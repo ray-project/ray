@@ -354,7 +354,7 @@ class ApexDQN(DQN):
             _replay_actors,
             max_remote_requests_in_flight_per_actor=(
                 self.config.max_requests_in_flight_per_replay_worker
-            )
+            ),
         )
         self._replay_req_timeout_s = self.config.timeout_s_replay_manager
         self._sample_req_tiemeout_s = self.config.timeout_s_sampler_manager
@@ -411,6 +411,10 @@ class ApexDQN(DQN):
                 num_worker_samples_collected
             )
             self.update_replay_sample_priority()
+
+        # Training step done. Try to bring replay actors back to life if necessary.
+        # Replay actors can start fresh, so we do not need to restore any state.
+        self._replay_actor_manager.probe_unhealthy_actors()
 
         return copy.deepcopy(self.learner_thread.learner_info)
 
@@ -549,8 +553,13 @@ class ApexDQN(DQN):
         self.curr_num_samples_collected += num_samples_collected
         # Fetch replayed batched from last round.
         replay_sample_batches = wait_on_replay_actors()
-        if self.curr_num_samples_collected >= self.config.train_batch_size:
-            training_intensity = int(self.config.training_intensity or 1)
+        if (
+            self.curr_num_samples_collected >= self.config.train_batch_size
+            and
+            # There are at least 1 healthy replay actor.
+            self._replay_actor_manager.num_healthy_actors() > 0
+        ):
+            training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
                 self.curr_num_samples_collected / self.config.train_batch_size
             ) * training_intensity
@@ -594,10 +603,7 @@ class ApexDQN(DQN):
                     env_steps,
                     agent_steps,
                 ) = self.learner_thread.outqueue.get(timeout=0.001)
-                if (
-                    self.config.replay_buffer_config.get("prioritized_replay_alpha")
-                    > 0
-                ):
+                if self.config.replay_buffer_config.get("prioritized_replay_alpha") > 0:
                     self._replay_actor_manager.foreach_actor(
                         func=lambda actor: actor.update_priorities(priority_dict),
                         remote_actor_ids=[replay_actor_id],
@@ -638,7 +644,11 @@ class ApexDQN(DQN):
             ]
 
     def _get_shard0_replay_stats(self) -> Dict[str, Any]:
-        """Get the replay stats from the replay actor shard 0.
+        """Get replay stats from the replay actor shard 0.
+
+        The first healthy replay actor is picked to fetch stats from.
+        TODO(jungong) : figure out why not collecting data from all
+        replay actors?
 
         Returns:
             A dictionary of replay stats.

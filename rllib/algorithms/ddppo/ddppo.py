@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 class DDPPOConfig(PPOConfig):
     """Defines a configuration class from which a DDPPO Algorithm can be built.
 
-    Note(jungong) : despite best efforts, DDPPO is not really fault tolerant and
-    does not support elastic WorkerSet, because of the way Torch DDP is set up.
+    Note(jungong) : despite best efforts, DDPPO does not use fault tolerant and
+    elastic features of WorkerSet, because of the way Torch DDP is set up.
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -251,7 +251,7 @@ class DDPPO(PPO):
         world_size = self.workers.num_remote_workers()
         backend = self.config.torch_distributed_backend
         funcs = [
-            lambda w: w.setup_torch_distributed(
+            lambda w: w.setup_torch_data_parallel(
                 url=address,
                 world_rank=i,
                 world_size=world_size,
@@ -300,7 +300,6 @@ class DDPPO(PPO):
                 func=lambda w: w.set_global_vars(global_vars),
                 remote_worker_ids=[worker_id],
                 local_worker=False,
-                healthy_only=False,
                 timeout_seconds=0,  # Don't wait for workers to finish.
             )
 
@@ -310,10 +309,7 @@ class DDPPO(PPO):
         # reading the local weights.
         worker_ids = self.workers.healthy_worker_ids()
         assert worker_ids, "No healthy rollout workers?"
-        if (
-            self.config.keep_local_weights_in_sync
-            and worker_ids[0] in sampled_workers
-        ):
+        if self.config.keep_local_weights_in_sync and worker_ids[0] in sampled_workers:
             weights = self.workers.foreach_worker(
                 func=lambda w: w.get_weights(),
                 remote_worker_ids=[worker_ids[0]],

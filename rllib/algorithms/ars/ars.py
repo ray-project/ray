@@ -16,8 +16,10 @@ from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -231,8 +233,8 @@ class SharedNoiseTable:
         return idx, self.get(idx, dim)
 
 
-@ray.remote
-class Worker:
+@ray.remote(max_restarts=-1)
+class Worker(FaultAwareApply):
     def __init__(
         self,
         config: AlgorithmConfig,
@@ -241,7 +243,6 @@ class Worker:
         worker_index,
         min_task_runtime=0.2,
     ):
-
         # Set Python random, numpy, env, and torch/tf seeds.
         seed = config.seed
         if seed is not None:
@@ -400,10 +401,15 @@ class ARS(Algorithm):
 
         # Create the actors.
         logger.info("Creating actors.")
-        self.workers = [
+
+        remote_workers = [
             Worker.remote(self.config, self.env_creator, noise_id, idx + 1)
             for idx in range(self.config.num_rollout_workers)
         ]
+        self.workers = WorkerSet._from_existing(
+            local_worker=None,
+            remote_workers=remote_workers,
+        )
 
         self.episodes_so_far = 0
         self.reward_list = []
@@ -505,6 +511,10 @@ class ARS(Algorithm):
         if len(all_eval_returns) > 0:
             self.reward_list.append(eval_returns.mean())
 
+        # Bring restored workers back if necessary.
+        # We will sync filters right next.
+        self.workers.probe_unhealthy_workers()
+
         # Now sync the filters
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
@@ -529,9 +539,7 @@ class ARS(Algorithm):
 
     @override(Algorithm)
     def cleanup(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+        self.workers.stop()
 
     @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
@@ -557,11 +565,11 @@ class ARS(Algorithm):
                     num_episodes, num_timesteps
                 )
             )
-            rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
-            ]
+            rollout_ids = self.workers.foreach_worker(
+                func=lambda w: w.do_rollouts(ray.get(theta_id)),
+            )
             # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
+            for result in rollout_ids:
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
