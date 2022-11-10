@@ -712,10 +712,10 @@ class EnvRunnerV2:
         """Builds a MultiAgentSampleBatch from the episode and adds it to outputs.
 
         Args:
-            env_id (EnvID): The env id.
-            is_done (bool): Whether the env is done.
-            hit_horizon (bool): Whether the episode hit the horizon.
-            outputs (List[SampleBatchType]): The list of outputs to add the
+            env_id: The env id.
+            is_done: Whether the env is done.
+            hit_horizon: Whether the episode hit the horizon.
+            outputs: The list of outputs to add the
         """
         episode: EpisodeV2 = self._active_episodes[env_id]
         batch_builder = self._batch_builders[env_id]
