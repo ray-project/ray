@@ -35,7 +35,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
-    AlgorithmConfigDict,
     EnvCreator,
     EnvType,
     EpisodeID,
@@ -942,7 +941,6 @@ class WorkerSet:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[RolloutWorker, ActorHandle]:
-
         def session_creator():
             # Default session creator function, if `tf_session_args` are provided.
             logger.debug("Creating TF session {}".format(config["tf_session_args"]))
