@@ -1,3 +1,4 @@
+from collections import defaultdict
 import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -5,32 +6,25 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from ray.autoscaler._private.constants import (
-    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-    DISABLE_NODE_UPDATERS_KEY,
-    FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.batching_node_provider import BatchingNodeProvider, ScaleRequest, NodeData
+from ray.autoscaler._private.util import NodeKind
 from ray.autoscaler.tags import (
-    NODE_KIND_HEAD,
-    NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
     STATUS_UPDATE_FAILED,
-    TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE,
 )
 
-# Terminology:
-
-# Labels and Tags
-# We call the Kuberay labels "labels" and the Ray autoscaler tags "tags".
-# The labels are prefixed by "ray.io". Tags are prefixed by "ray-".
-# We convert between the two but do not mix them.
-
-# Worker Groups and Available Node Types
-# In Kuberay the different node types are called "worker groups", in the
-# the Ray autoscaler they are called "available node types".
+# Key for KubeRay label that identifies a Ray pod as head or worker.
+KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
+# Key for KubeRay label that identifies the worker group (autoscaler node type) of a Ray pod.
+KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
+# Kind label value indicating the pod is the head.
+KUBERAY_KIND_HEAD = "head"
+# Group name (node type) to use for the  head.
+KUBERAY_TYPE_HEAD = "head-group"
 
 # Design:
 
@@ -38,12 +32,16 @@ from ray.autoscaler.tags import (
 # (e.g. if the autoscaler wants to scale up, it increases the number of
 # replicas of the worker group it wants to scale, if it wants to scale down
 # it decreases the number of replicas and adds the exact pods that should be
-# terminated to the scaleStrategy). In order to guarantee consistency, the NodeProvider
-# then waits until Kuberay's reconciliation loop creates the pod specifications in the
-# API server and then returns control back to the autoscaler. The waiting period
-# is typically small, on the order of a few seconds. We make sure that only one
-# such modification is in process by serializing all modification operations with
-# a lock in the NodeProvider.
+# terminated to the scaleStrategy).
+
+# KuberayNodeProvider inherits from BatchingNodeProvider.
+# Thus, the autoscaler's create and terminate requests are batched into a single ScaleRequest
+# object which is submitted at the end of autoscaler update.
+# KubeRay node provider converts the ScaleRequest into a RayCluster CR patch
+# and applies the patch in the submit_scale_request method.
+# To reduce potential for race conditions, KuberayNodeProvider
+# skips submitting the patch if the operator has not yet processed workersToDelete.
+
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
@@ -51,14 +49,22 @@ logger = logging.getLogger(__name__)
 provider_exists = False
 
 
-def to_label_selector(tags: Dict[str, str]) -> str:
-    """Convert tags to label selector to embed in query to K8s API server."""
-    label_selector = ""
-    for k, v in tags.items():
-        if label_selector != "":
-            label_selector += ","
-        label_selector += "{}={}".format(k, v)
-    return label_selector
+def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
+    """Converts a pod into node data useable the autoscaler.
+    """
+    labels = pod["metadata"]["labels"]
+
+    kind, type = "", ""
+    if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
+        kind = NodeKind.HEAD
+        type = KUBERAY_TYPE_HEAD
+    else:
+        kind = NodeKind.WORKER
+        type = labels[KUBERAY_LABEL_KEY_TYPE]
+
+    status = status_tag(pod)
+    ip = pod["status"].get("podIP", "IP not yet assigned")
+    return NodeData(kind=kind, type=type, status=status, ip=ip)
 
 
 def status_tag(pod: Dict[str, Any]) -> str:
@@ -80,20 +86,6 @@ def status_tag(pod: Dict[str, Any]) -> str:
     if "terminated" in state:
         return STATUS_UPDATE_FAILED
     raise ValueError("Unexpected container state.")
-
-
-def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
-    """Convert Kuberay labels to Ray autoscaler tags."""
-    tags = {"ray-node-status": status_tag}
-
-    if labels["ray.io/node-type"] == "head":
-        tags[TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
-        tags[TAG_RAY_USER_NODE_TYPE] = "head-group"
-    else:
-        tags[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
-        tags[TAG_RAY_USER_NODE_TYPE] = labels["ray.io/group"]
-
-    return tags
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
@@ -157,7 +149,14 @@ def _worker_group_max_replicas(
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
 
-class KuberayNodeProvider(NodeProvider):  # type: ignore
+def _worker_group_replicas(
+    raycluster: Dict[str, Any], group_index: int
+):
+    # 1 is the default replicas value used by the KubeRay operator
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
+
+
+class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
     def __init__(
         self,
         provider_config: Dict[str, Any],
@@ -171,30 +170,84 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         self.headers, self.verify = load_k8s_secrets()
 
         # Disallow multiple node providers, unless explicitly allowed for testing.
-        global provider_exists
-        if not _allow_multiple:
-            assert (
-                not provider_exists
-            ), "Only one KuberayNodeProvider allowed per process."
-        assert (
-            provider_config.get(DISABLE_NODE_UPDATERS_KEY, False) is True
-        ), f"To use KuberayNodeProvider, must set `{DISABLE_NODE_UPDATERS_KEY}:True`."
-        assert provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, False) is True, (
-            "To use KuberayNodeProvider, must set "
-            f"`{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:True`."
-        )
-        assert (
-            provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
-        ), f"To use KuberayNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
         assert (
             provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
         ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
-        provider_exists = True
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name, _allow_multiple)
 
-        super().__init__(provider_config, cluster_name)
+    def get_node_data(self):
+        # Store the raycluster CR
+        self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
+
+        pod_list = self._get("pods")
+        node_data_dict = {}
+        for pod in pod_list["items"]:
+            # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
+            # request to delete an object. Full removal of the object may take some time
+            # after the deletion timestamp is set. See link for details:
+            # https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
+            if "deletionTimestamp" in pod["metadata"]:
+                # Ignore pods marked for termination.
+                continue
+            pod_name = pod["metadata"]["name"]
+            node_data_dict[pod_name] = node_data_from_pod(pod)
+
+    def submit_scale_request(self, scale_request: ScaleRequest):
+        payload = self.scale_request_to_patch_payload(scale_request, self._raycluster)
+        path = "rayclusters/{}".format(self.cluster_name)
+        self._patch(path, payload)
+
+    def safe_to_scale(self) -> bool:
+        """To reduce race conditions, wait for the operator to clear the workersToDelete
+        queue before submitting another scale request.
+        """
+        for group_spec in self._raycluster["spec"].get("workerGroupSpecs", []):
+            if group_spec.get("workersToDelete", []):
+                return False
+        return True
+
+    def _scale_request_to_patch_payload(
+        self,
+        scale_request: ScaleRequest,
+        raycluster: Dict[str, Any]
+    ):
+        """Converts autoscaler scale request into a RayCluster CR patch.
+        """
+        patch_payload = []
+        # Collect patches for replica counts.
+        for node_type, target_count in scale_request.desired_num_workers.items():
+            group_index = _worker_group_index(raycluster, node_type)
+            group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            # Cap the replica count to maxReplicas.
+            if group_max_replicas is not None and group_max_replicas < target_count:
+                logger.warning(
+                    "Autoscaler attempted to create "
+                    + "more than maxReplicas pods of type {}.".format(node_type)
+                )
+                target_count = group_max_replicas
+            if target_count == _worker_group_replicas(raycluster, node_type):
+                # No patch required.
+                continue
+            path = f"/spec/workerGroupSpecs/{group_index}/replicas"
+            patch = {"op": "replace", "path": path, "value": target_count}
+            patch_payload.append(patch)
+
+        # Maps node_type to nodes to delete for that group.
+        deletion_groups = defaultdict(list)
+        for worker in scale_request.workers_to_delete:
+            node_type = self.node_tags(worker)[TAG_RAY_USER_NODE_TYPE]
+            deletion_groups[node_type].append(worker)
+
+        for node_type, nodes_to_delete in deletion_groups.items():
+            group_index = _worker_group_index(raycluster, node_type)
+            path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy/workersToDelete"
+            patch = {"op": "replace", "path": path, "value": nodes_to_delete},
+            patch_payload.append(patch)
+
+        return patch_payload
 
     def _url(self, path: str) -> str:
         """Convert resource path to REST URL for Kubernetes API server."""
@@ -223,39 +276,6 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             result.raise_for_status()
         return result.json()
 
-    def _get_non_terminating_pods(
-        self, tag_filters: Dict[str, str]
-    ) -> List[Dict[str, Any]]:
-        """Get the list of pods in the Ray cluster, excluding pods
-        marked for deletion.
-
-        Filter by the specified tag_filters.
-
-        Return a list of pod objects, represented as dictionaries.
-
-        Details on K8s resource deletion:
-        https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
-        """
-        label_filters = to_label_selector(
-            {
-                "ray.io/cluster": self.cluster_name,
-            }
-        )
-        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
-        result = []
-        for pod in data["items"]:
-            # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
-            # request to delete an object. Full removal of the object may take some time
-            # after the deletion timestamp is set. See link in docstring for details.
-            if "deletionTimestamp" in pod["metadata"]:
-                # Ignore pods marked for termination.
-                continue
-            labels = pod["metadata"]["labels"]
-            tags = make_node_tags(labels, status_tag(pod))
-            if tag_filters.items() <= tags.items():
-                result.append(pod)
-        return result
-
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         url = url_from_resource(namespace=self.namespace, path=path)
@@ -269,95 +289,3 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             result.raise_for_status()
         return result.json()
 
-    def create_node(
-        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
-    ) -> Dict[str, Dict[str, str]]:
-        """Creates a number of nodes within the namespace."""
-        url = "rayclusters/{}".format(self.cluster_name)
-        raycluster = self._get(url)
-        group_name = tags[TAG_RAY_USER_NODE_TYPE]
-        group_index = _worker_group_index(raycluster, group_name)
-        group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
-        tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
-        current_replica_count = len(self.non_terminated_nodes(tag_filters))
-        target_replica_count = current_replica_count + count
-        # Cap the replica count to maxReplicas.
-        if group_max_replicas is not None and group_max_replicas < target_replica_count:
-            # This is a race condition. We need a more permanent solution.
-            # See https://github.com/ray-project/kuberay/issues/560.
-            logger.warning(
-                "Autoscaler attempted to create "
-                + "more than maxReplicas pods of type {}.".format(group_name)
-            )
-            target_replica_count = group_max_replicas
-
-        path = f"/spec/workerGroupSpecs/{group_index}/replicas"
-        payload = [
-            {
-                "op": "replace",
-                "path": path,
-                "value": target_replica_count,
-            },
-        ]
-        self._patch(url, payload)
-        return {}
-
-    def internal_ip(self, node_id: str) -> str:
-        """Get internal IP of a node (= Kubernetes pod)."""
-        data = self._get("pods/{}".format(node_id))
-        return data["status"].get("podIP", "IP not yet assigned")
-
-    def node_tags(self, node_id: str) -> Dict[str, str]:
-        """Get tags of a node (= Kubernetes pod)."""
-        data = self._get("pods/{}".format(node_id))
-        return make_node_tags(data["metadata"]["labels"], status_tag(data))
-
-    def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
-        """Return a list of node ids filtered by the specified tags dict."""
-        return [
-            pod["metadata"]["name"]
-            for pod in self._get_non_terminating_pods(tag_filters)
-        ]
-
-    def terminate_node(self, node_id: str) -> None:
-        """Terminates the specified node (= Kubernetes pod)."""
-        self.terminate_nodes([node_id])
-
-    def terminate_nodes(self, node_ids: List[str]) -> Dict[str, Dict[str, str]]:
-        """Batch terminates the specified nodes (= Kubernetes pods)."""
-        # Split node_ids into groups according to node type and terminate
-        # them individually. Note that in most cases, node_ids contains
-        # a single element and therefore it is most likely not worth
-        # optimizing this code to batch the requests to the API server.
-        groups = {}
-        current_replica_counts = {}
-        label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
-        pods = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
-        for pod in pods["items"]:
-            group_name = pod["metadata"]["labels"]["ray.io/group"]
-            current_replica_counts[group_name] = (
-                current_replica_counts.get(group_name, 0) + 1
-            )
-            if pod["metadata"]["name"] in node_ids:
-                groups.setdefault(group_name, []).append(pod["metadata"]["name"])
-
-        url = "rayclusters/{}".format(self.cluster_name)
-        raycluster = self._get(url)
-
-        for group_name, nodes in groups.items():
-            group_index = _worker_group_index(raycluster, group_name)
-            prefix = f"/spec/workerGroupSpecs/{group_index}"
-            payload = [
-                {
-                    "op": "replace",
-                    "path": prefix + "/replicas",
-                    "value": current_replica_counts[group_name] - len(nodes),
-                },
-                {
-                    "op": "replace",
-                    "path": prefix + "/scaleStrategy",
-                    "value": {"workersToDelete": nodes},
-                },
-            ]
-            self._patch(url, payload)
-        return {}
