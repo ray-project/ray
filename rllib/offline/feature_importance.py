@@ -80,7 +80,7 @@ class FeatureImportance(OfflineEvaluator):
         Returns:
             A dict mapping each feature index string to its importance.
         """
-
+        batch = self.convert_ma_batch_to_sample_batch(batch)
         obs_batch = batch["obs"]
         n_features = obs_batch.shape[-1]
         importance = np.zeros((self.repeat, n_features))
