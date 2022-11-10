@@ -114,9 +114,9 @@ class _ExperimentCheckpointManager:
     time (1/20) will be used for writing checkpoints, while 95% of the time
     (19/20) will be used to handle the rest of the training loop.
 
-    If ``num_to_keep`` is specified in ``trial_checkpoint_config``, syncing
+    If ``sync_every_n_trial_checkpoints`` is not None, syncing
     to cloud will be forced if any trial has checkpointed more times than
-    ``num_to_keep`` since last sync.
+    ``sync_every_n_trial_checkpoints`` since last sync.
 
     """
 
@@ -130,7 +130,7 @@ class _ExperimentCheckpointManager:
         sync_trial_checkpoints: bool,
         local_dir: str,
         remote_dir: str,
-        trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        sync_every_n_trial_checkpoints: Optional[int] = None,
     ):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -149,7 +149,7 @@ class _ExperimentCheckpointManager:
 
         self._last_checkpoint_time = 0.0
         self._last_sync_time = 0.0
-        self._trial_checkpoint_config = trial_checkpoint_config
+        self._sync_every_n_trial_checkpoints = sync_every_n_trial_checkpoints
         self._trial_num_checkpoints_since_last_sync: DefaultDict[
             Trial, int
         ] = defaultdict(int)
@@ -158,21 +158,21 @@ class _ExperimentCheckpointManager:
                 "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
             )
         )
+        self._should_force_cloud_sync = False
 
     @property
     def auto_checkpoint_enabled(self):
         return self._auto_checkpoint_enabled
 
     def on_trial_checkpoint(self, trial: Trial):
-        if not self._trial_checkpoint_config.num_to_keep:
+        if not self._sync_every_n_trial_checkpoints:
             return
         self._trial_num_checkpoints_since_last_sync[trial] += 1
-
-    def should_force_cloud_sync(self) -> bool:
-        return any(
-            num_checkpoints > self._trial_checkpoint_config.num_to_keep
-            for num_checkpoints in self._trial_num_checkpoints_since_last_sync.values()
-        )
+        if (
+            self._trial_num_checkpoints_since_last_sync[trial]
+            > self._sync_every_n_trial_checkpoints
+        ):
+            self._should_force_cloud_sync = True
 
     def checkpoint(
         self,
@@ -196,7 +196,7 @@ class _ExperimentCheckpointManager:
         if not self._checkpoint_dir:
             return
 
-        force = force or self.should_force_cloud_sync()
+        force = force or self._should_force_cloud_sync
 
         now = time.time()
         if now - self._last_checkpoint_time < self._checkpoint_period and (not force):
@@ -247,6 +247,7 @@ class _ExperimentCheckpointManager:
                 )
 
         if synced:
+            self._should_force_cloud_sync = False
             self._trial_num_checkpoints_since_last_sync.clear()
             if now - self._last_sync_time < self._excessive_sync_threshold:
                 logger.warning(
@@ -261,7 +262,8 @@ class _ExperimentCheckpointManager:
                     "`TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S` "
                     "environment variable."
                 )
-            self._last_sync_time = now
+            # syncing might have taken some time, so we grab the current timestamp again
+            self._last_sync_time = time.time()
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -355,7 +357,7 @@ class TrialRunner:
         trial_executor: Optional[RayTrialExecutor] = None,
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
-        checkpoint_config: Optional[CheckpointConfig] = None,
+        trial_checkpoint_config: Optional[CheckpointConfig] = None,
         # Deprecate on next refactor
         driver_sync_trial_checkpoints: bool = False,
     ):
@@ -490,7 +492,7 @@ class TrialRunner:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
-        self._trial_checkpoint_config = checkpoint_config or CheckpointConfig()
+        self._trial_checkpoint_config = trial_checkpoint_config or CheckpointConfig()
         self._checkpoint_manager = self._create_checkpoint_manager(
             driver_sync_trial_checkpoints
         )
@@ -527,7 +529,7 @@ class TrialRunner:
             sync_trial_checkpoints=sync_trial_checkpoints,
             local_dir=self._local_checkpoint_dir,
             remote_dir=self._remote_checkpoint_dir,
-            trial_checkpoint_config=self._trial_checkpoint_config,
+            sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
 
     @property
