@@ -103,6 +103,8 @@ class DoublyRobust(OffPolicyEstimator):
         rewards, old_prob = episode["rewards"], episode["action_prob"]
         new_prob = self.compute_action_probs(episode)
 
+        weight = new_prob / old_prob
+
         v_behavior = 0.0
         v_target = 0.0
         q_values = self.model.estimate_q(episode)
@@ -113,7 +115,7 @@ class DoublyRobust(OffPolicyEstimator):
 
         for t in reversed(range(episode.count)):
             v_behavior = rewards[t] + self.gamma * v_behavior
-            v_target = v_values[t] + (new_prob[t] / old_prob[t]) * (
+            v_target = v_values[t] + weight[t] * (
                 rewards[t] + self.gamma * v_target - q_values[t]
             )
         v_target = v_target.item()
@@ -140,10 +142,6 @@ class DoublyRobust(OffPolicyEstimator):
         v_behavior = rewards
 
         weight = new_prob / old_prob
-
-        if self._normalize_weights:
-            weight = weight / np.mean(weight)
-
         v_target = v_values + weight * (rewards - q_values)
 
         estimates_per_epsiode["v_behavior"] = v_behavior

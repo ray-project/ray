@@ -238,7 +238,7 @@ class TestFQE(unittest.TestCase):
 
         q_model_config = {
             "polyak_coef": 1.0,
-            "model": {
+            "model_config": {
                 "fcnet_hiddens": [],
                 "activation": "linear",
             },

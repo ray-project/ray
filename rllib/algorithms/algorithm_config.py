@@ -598,17 +598,18 @@ class AlgorithmConfig:
 
 
         if self.input_ == "dataset":
+            # This setup is solely for reading the dataset
             self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
             if self.in_evaluation:
                 # If using dataset for evaluation, the parallelism gets set to 
                 # evaluation_num_workers for backward compatibility and num_cpus gets 
                 # set to num_cpus_per_worker from rollout worker. 
-                self.input_config["parallelism"] = self.evaluation_num_workers
+                self.input_config["parallelism"] = self.evaluation_num_workers or 1
             else:
                 # If using dataset for training, the parallelism and num_cpus gets set 
                 # based on rollout worker parameters. This is for backwards 
                 # compatibility for now.
-                self.input_config["parallelism"] = self.num_rollout_workers
+                self.input_config["parallelism"] = self.num_rollout_workers or 1
         
 
     def build(

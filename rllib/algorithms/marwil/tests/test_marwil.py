@@ -24,7 +24,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -148,7 +148,7 @@ class TestMARWIL(unittest.TestCase):
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=0)
-            .offline_data(input_=[data_file])
+            .offline_data(input_="dataset", input_config={"paths": data_file, "format": "json"})
         )  # Learn from offline data.
 
         for fw, sess in framework_iterator(config, session=True):
