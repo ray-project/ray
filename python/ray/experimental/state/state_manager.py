@@ -255,12 +255,12 @@ class StateDataSourceClient:
     async def get_all_task_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllTaskStateEventReply]:
-        request = GetAllTaskStateEventRequest()
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        request = GetAllTaskStateEventRequest(limit=limit)
         reply = await self._gcs_task_info_stub.GetAllTaskStateEvent(
             request, timeout=timeout
         )
-        logger.info("hi")
-        logger.info(reply)
         return reply
 
     @handle_grpc_network_errors

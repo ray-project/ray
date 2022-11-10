@@ -72,6 +72,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    summarize_objects,
     summarize_tasks,
     list_cluster_events,
     StateApiClient,
@@ -2144,7 +2145,7 @@ def test_limit(shutdown_only):
     assert output == list_actors(limit=2)
 
 
-def test_network_failure(shutdown_only):
+def ttest_network_failureest_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
     ray.init()
@@ -2156,13 +2157,13 @@ def test_network_failure(shutdown_only):
         time.sleep(30)
 
     a = [f.remote() for _ in range(4)]  # noqa
-    wait_for_condition(lambda: len(list_tasks()) == 4)
+    wait_for_condition(lambda: len(list_objects()) == 4)
 
     # Kill raylet so that list_tasks will have network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
     with pytest.raises(ConnectionError):
-        list_tasks(_explain=True)
+        list_objects(_explain=True)
 
 
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
@@ -2173,8 +2174,9 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         # This will help the API not return until the node is killed.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=5000000:5000000",
+            "NodeManagerService.grpc_server.GetObjectsInfo=5000000:5000000",
         )
+        m.setenv("RAY_record_ref_creation_sites", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
@@ -2187,22 +2189,22 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
             time.sleep(30)
 
         a = [f.remote() for _ in range(4)]  # noqa
-        wait_for_condition(lambda: len(list_tasks()) == 4)
+        wait_for_condition(lambda: len(list_objects()) == 4)
 
         # Make sure when there's 0 node failure, it doesn't print the error.
         with pytest.warns(None) as record:
-            list_tasks(_explain=True)
+            list_objects(_explain=True)
         assert len(record) == 0
 
         # Kill raylet so that list_tasks will have network error on querying raylets.
         cluster.remove_node(n, allow_graceful=False)
 
         with pytest.warns(UserWarning):
-            list_tasks(raise_on_missing_output=False, _explain=True)
+            list_objects(raise_on_missing_output=False, _explain=True)
 
         # Make sure when _explain == False, warning is not printed.
         with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=False)
+            list_objects(raise_on_missing_output=False, _explain=False)
         assert len(record) == 0
 
 
@@ -2216,7 +2218,7 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
         # defer for 10s for the second node.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+            "NodeManagerService.grpc_server.GetObjectsInfo=10000000:10000000",
         )
         cluster.add_node(num_cpus=2)
 
@@ -2230,7 +2232,7 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
 
     def verify():
         with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=True, timeout=5)
+            list_objects(raise_on_missing_output=False, _explain=True, timeout=5)
         return len(record) == 1
 
     wait_for_condition(verify)
@@ -2512,7 +2514,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=20000000:20000000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskStateEvent=20000000:20000000,"
                 "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
@@ -2539,10 +2541,6 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
         _objs = [ray.put(x) for x in range(10)]  # noqa
-
-        # list_objects() will wait for raylets to be registered, which
-        # means `list_tasks` will also see the registered raylets.
-        wait_for_condition(lambda: len(list_objects()) > 0)
 
         # Running 3 slow apis to exhaust the limits
         res_q = queue.Queue()
@@ -2639,7 +2637,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=200000:200000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskStateEvent=200000:200000,"
                 "NodeManagerService.grpc_server.GetObjectsInfo=200000:200000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=200000:200000,"
                 "NodeInfoGcsService.grpc_server.GetAllNodeInfo=200000:200000,"
@@ -2738,69 +2736,76 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
     Verify when there are network partial failures,
     state API raises an exception when `raise_on_missing_output=True`.
     """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    ray.init(address=cluster.address)
-    with monkeypatch.context() as m:
-        # defer for 10s for the second node.
-        m.setenv(
-            "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
-        )
+    with monkeypatch.context() as m1:
+        m1.setenv("RAY_record_ref_creation_sites", "1")
+
+        cluster = ray_start_cluster
         cluster.add_node(num_cpus=2)
+        ray.init(address=cluster.address)
+        with monkeypatch.context() as m:
+            # defer for 10s for the second node.
+            m.setenv(
+                "RAY_testing_asio_delay_us",
+                "NodeManagerService.grpc_server.GetObjectsInfo=10000000:10000000",
+            )
+            cluster.add_node(num_cpus=2)
 
-    @ray.remote
-    def f():
-        import time
+        @ray.remote
+        def f():
+            import time
 
-        time.sleep(30)
+            time.sleep(30)
 
-    a = [f.remote() for _ in range(4)]  # noqa
+        a = [f.remote() for _ in range(4)]  # noqa
 
-    runner = CliRunner()
+        runner = CliRunner()
 
-    # Verify
-    def verify():
-        # Verify when raise_on_missing_output=True, it raises an exception.
-        try:
-            list_tasks(_explain=True, timeout=3)
-        except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
-            assert "due to query failures to the data sources." in str(e)
-        else:
-            assert False
+        # Verify
+        def verify():
+            # Verify when raise_on_missing_output=True, it raises an exception.
+            try:
+                list_objects(_explain=True, timeout=3)
+            except RayStateApiException as e:
+                assert "Failed to retrieve all objects from the cluster" in str(e)
+                assert "due to query failures to the data sources." in str(e)
+            else:
+                assert False
 
-        try:
-            summarize_tasks(_explain=True, timeout=3)
-        except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
-            assert "due to query failures to the data sources." in str(e)
-        else:
-            assert False
+            try:
+                summarize_objects(_explain=True, timeout=3)
+            except RayStateApiException as e:
+                assert "Failed to retrieve all objects from the cluster" in str(e)
+                assert "due to query failures to the data sources." in str(e)
+            else:
+                assert False
 
-        # Verify when raise_on_missing_output=False, it prints warnings.
-        with pytest.warns(None) as record:
-            list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
+            # Verify when raise_on_missing_output=False, it prints warnings.
+            with pytest.warns(None) as record:
+                list_objects(raise_on_missing_output=False, _explain=True, timeout=3)
+            assert len(record) == 1
 
-        with pytest.warns(None) as record:
-            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
+            with pytest.warns(None) as record:
+                summarize_objects(
+                    raise_on_missing_output=False, _explain=True, timeout=3
+                )
+            assert len(record) == 1
 
-        # Verify when CLI is used, exceptions are not raised.
-        with pytest.warns(None) as record:
-            result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
-        assert len(record) == 1
-        assert result.exit_code == 0
+            # Verify when CLI is used, exceptions are not raised.
+            with pytest.warns(None) as record:
+                result = runner.invoke(ray_list, ["objects", "--timeout=3"])
+            assert len(record) == 1
+            assert result.exit_code == 0
 
-        # Verify summary CLI also doesn't raise an exception.
-        with pytest.warns(None) as record:
-            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
-        assert result.exit_code == 0
-        assert len(record) == 1
-        return True
+            # Verify summary CLI also doesn't raise an exception.
+            with pytest.warns(None) as record:
+                result = runner.invoke(
+                    summary_state_cli_group, ["objects", "--timeout=3"]
+                )
+            assert result.exit_code == 0
+            assert len(record) == 1
+            return True
 
-    wait_for_condition(verify)
+        wait_for_condition(verify)
 
 
 def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
@@ -2824,7 +2829,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
     def verify():
         # Verify when raise_on_missing_output=True, it raises an exception.
         try:
-            list_tasks(_explain=True, timeout=3)
+            print(list_tasks(_explain=True, timeout=3))
         except RayStateApiException as e:
             assert "Failed to retrieve all tasks from the cluster" in str(e)
             assert "(> 10)" in str(e)

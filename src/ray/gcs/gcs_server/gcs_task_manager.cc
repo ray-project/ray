@@ -77,9 +77,14 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
     rpc::GetAllTaskStateEventReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all task state events.";
-  auto on_done = [reply, send_reply_callback](
+  auto limit = request.has_limit() ? request.limit() : -1;
+  auto on_done = [reply, limit, send_reply_callback](
                      const absl::flat_hash_map<TaskID, rpc::TaskStateEvents> &result) {
+    int count = 0;
     for (const auto &data : result) {
+      if (limit >= 0 && count++ >= limit) {
+        break;
+      }
       RAY_LOG(INFO) << data.second.DebugString();
       reply->add_events_by_task()->CopyFrom(data.second);
     }

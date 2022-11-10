@@ -645,7 +645,7 @@ message AddTaskStateEventDataReply {
 message GetAllTaskStateEventRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
-  optional int64 limit = 1;
+  optional int64 limit = 1;  // TODO: enforce it
 }
 
 message GetAllTaskStateEventReply {

@@ -354,12 +354,11 @@ class StateAPIManager:
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
         try:
-            reply = await self._client.get_all_task_info(
-                timeout=option.timeout, limit=option.limit
-            )
+            reply = await self._client.get_all_task_info(timeout=option.timeout)
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
         result = []
+        num_missing_spec = 0
         for message in reply.events_by_task:
             data = self._message_to_dict(
                 message=message,
@@ -391,6 +390,8 @@ class StateAPIManager:
 
             if state:
                 result.append(state)
+            else:
+                num_missing_spec += 1
 
         num_after_truncation = len(result)
         result = self._filter(result, option.filters, TaskState, option.detail)
@@ -401,7 +402,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             partial_failure_warning=None,
-            total=reply.total,
+            total=reply.total - num_missing_spec,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )

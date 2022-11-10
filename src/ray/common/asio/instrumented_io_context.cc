@@ -36,6 +36,7 @@ void instrumented_io_context::post(std::function<void()> handler,
       EventTracker::RecordExecution(handler, std::move(stats_handle));
     };
   }
+  RAY_LOG(INFO) << "posting:" << name;
   auto defer_us = ray::asio::testing::get_delay_us(name);
   if (defer_us == 0) {
     boost::asio::io_context::post(std::move(handler));
