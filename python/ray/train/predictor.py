@@ -124,6 +124,7 @@ class Predictor(abc.ABC):
         self._preprocessor = preprocessor
 
     @classmethod
+    @DeveloperAPI
     def preferred_batch_format(cls) -> BatchFormat:
         """Batch format hint for upstream producers to try yielding best block format.
         Can be overriden by predictor classes depending on the framework type.

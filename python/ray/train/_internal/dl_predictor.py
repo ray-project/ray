@@ -10,6 +10,7 @@ from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
 )
 from ray.train.predictor import Predictor
+from ray.util.annotations import DeveloperAPI
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
@@ -65,6 +66,7 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @classmethod
+    @DeveloperAPI
     def preferred_batch_format(cls) -> BatchFormat:
         return BatchFormat.NUMPY
 

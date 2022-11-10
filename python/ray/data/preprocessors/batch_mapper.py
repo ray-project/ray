@@ -76,7 +76,7 @@ class BatchMapper(Preprocessor):
                 Union[np.ndarray, Dict[str, np.ndarray]],
             ],
         ],
-        batch_format: Optional["BatchFormat"] = None,
+        batch_format: Optional[BatchFormat] = None,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         # TODO: Make batch_format required from user
         # TODO: Introduce a "zero_copy" format
@@ -107,7 +107,7 @@ class BatchMapper(Preprocessor):
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
 
-    def determine_transform_to_use(self, data_format: "BlockFormat"):
+    def determine_transform_to_use(self, data_format: BlockFormat):
         if self.batch_format:
             return self.batch_format
         else:

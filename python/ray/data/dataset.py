@@ -3937,8 +3937,8 @@ class Dataset(Generic[T]):
         return schema.names == [TENSOR_COLUMN_NAME]
 
     def dataset_format(self) -> BlockFormat:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
+        """The format of the dataset's underlying data blocks. Possible values
+        are: "arrow", "pandas" and "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
