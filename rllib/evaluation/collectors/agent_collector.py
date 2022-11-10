@@ -16,6 +16,7 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
@@ -122,20 +123,26 @@ class AgentCollector:
 
     def _check_view_requirement(self, vr_name: str, data: TensorType):
         """Raises an AssertionError if data does not fit all view requirements that
-        have a view on data_col."""
-        vr = self.view_requirements[vr_name]
-        # We only check for the shape here, because conflicting dtypes are often
-        # because of float conversion
-        if vr.space.shape:
-            # TODO (Artur): Enforce dtype as well
-            assert vr.space.shape == np.shape(data), (
-                f"Provided tensor\n{data}\n does not match space of view requirements/n"
-                f" {vr}.\n"
-                f"Make sure dimensions match to resolve this error.\n"
-                f"Provided tensor has shape {np.shape(data)} and view requirement has "
-                f"shape shape {vr.space.shape}. "
-                f"Make sure dimensions and dtype match to resolve this error."
-            )
+        have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
+
+        if (
+            log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
+            and vr_name in self.view_requirements
+        ):
+            vr = self.view_requirements[vr_name]
+            # We only check for the shape here, because conflicting dtypes are often
+            # because of float conversion
+            if vr.space.shape:
+                # TODO (Artur): Enforce dtype as well
+                assert vr.space.shape == np.shape(data), (
+                    f"Provided tensor\n{data}\n does not match space of view "
+                    f"requirements/n"
+                    f" {vr}.\n"
+                    f"Make sure dimensions match to resolve this error.\n"
+                    f"Provided tensor has shape {np.shape(data)} and view requirement "
+                    f"has shape shape {vr.space.shape}."
+                    f"Make sure dimensions and dtype match to resolve this error."
+                )
 
     def add_init_obs(
         self,
@@ -198,11 +205,6 @@ class AgentCollector:
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
-
-        # TODO (Kourosh): Error out when one of the keys are missing.
-        # TODO (Kourosh): Error out when the the new input_values shapes do not match
-        # the existing ones in the buffer.
-
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
