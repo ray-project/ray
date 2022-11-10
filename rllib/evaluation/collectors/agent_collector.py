@@ -165,15 +165,8 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        for k, vr in self.view_requirements.items():
-            if vr.data_col == SampleBatch.OBS:
-                # Check this on the first view requirement we find that has a view on
-                # OBS because they should all be the same
-                # TODO(Artur): This assumption is not supported by proper checks ->
-                #  introduce a helper method that checks that view requirements
-                #  spaces don't contradict themselves
-                self._check_view_requirement(k, init_obs)
-                break
+        # There must be an OBS view requirement and we can use it to check init_obs
+        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -236,8 +229,7 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            if k in self.view_requirements.keys() and not isinstance(v, (dict, tuple)):
-                self._check_view_requirement(k, v)
+            self._check_view_requirement(k, v)
 
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
