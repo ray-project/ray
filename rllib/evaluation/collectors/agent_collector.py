@@ -1,5 +1,3 @@
-import logging
-
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -17,12 +15,8 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-from ray.util.debug import log_once
 
 from ray.util.annotations import PublicAPI
-
-
-logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -132,14 +126,10 @@ class AgentCollector:
         vr = self.view_requirements[vr_name]
         # We only check for the shape here, because conflicting dtypes are often
         # because of float conversion
-        # TODO (Kourosh/Artur): Turn this into an error
-        if not vr.space.contains(data):
-            if log_once("view_requirement_not_satisfied"):
-                logger.info(
-                    f"Provided tensor {data} does not match space of view requirements "
-                    f"{vr}. Make sure dimensions and dtype match to resolve this "
-                    f"info."
-                )
+        assert vr.space.shape == np.shape(data), (
+            f"Provided tensor {data} does not match space of view requirements {vr}. "
+            f"Make sure dimensions and dtype match to resolve this error."
+        )
 
     def add_init_obs(
         self,
