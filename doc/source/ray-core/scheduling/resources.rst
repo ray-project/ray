@@ -3,16 +3,14 @@
 Resources
 =========
 
-Ray allows you to seemlessly scale your applications from a laptop to a cluster without code change and Ray resources make it possible.
+Ray allows you to seamlessly scale your applications from a laptop to a cluster without code change.
+It is possible because of Ray resources.
 Ray resources abstract away physical machines and let you express your computation in terms of resources instead of machines,
 while the system manages scheduling and autoscaling based on resource requests.
 
 A resource in Ray is a key-value pair where the key denotes a resource name, and the value is a float quantity.
-For convenience, Ray has native support for CPU, GPU, and memory resource types and they are called pre-defined resources.
-Besides those, Ray also supports custom resources.
-
-Logical Resources
------------------
+For convenience, Ray has native support for CPU, GPU, and memory resource types; CPU, GPU and memory are called **pre-defined resources**.
+Besides those, Ray also supports :ref:`custom resources <custom-resources>`.
 
 Ray resources are **logical** and don’t need to have 1-to-1 mapping with physical resources.
 For example, you can start a Ray head node with 3 GPUs via ``ray start --head --num-gpus=3`` even if it physically has zero.
@@ -30,13 +28,15 @@ The resources being logical has several implications:
 - Ray does provide :ref:`GPU <gpu-support>` isolation in forms of visible devices by automatically setting the ``CUDA_VISIBLE_DEVICES`` envrionment variable,
   but it is still up to the task or actor to actually honor it or override it.
 
+.. _custom-resources:
+
 Custom Resources
 ----------------
 
 Besides pre-defined resources, you can also specify custom resources that a Ray node has and request them in your tasks or actors.
 Several use cases of custom resources are:
 
-- Your node has a special hardware and you can represent it as a custom resource.
+- Your node has special hardware and you can represent it as a custom resource.
   Then your tasks or actors can request the custom resource via ``@ray.remote(resources={"special_hardware": 1})``
   and Ray will schedule the tasks or actors to the node that has the custom resource.
 - You can use custom resources as labels to tag nodes and you can achieve label based affinity scheduling.
@@ -108,8 +108,9 @@ available to execute the task or actor.
 
 By default, Ray tasks use 1 CPU resource and Ray actors use 1 CPU for scheduling and 0 CPU for running
 (This means, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node.
-If resources are specified explicitly, they are required
-for both scheduling and running. It's a confusing default behavior for actors due to historical reasons and it's recommended to always explicitly set ``num_cpus`` for actors to aovid any surprises).
+It's a confusing default behavior for actors due to historical reasons and
+it's recommended to always explicitly set ``num_cpus`` for actors to avoid any surprises.
+If resources are specified explicitly, they are required for both scheduling and running.).
 
 You can also explicitly specify a task's or actor's resource requirements (for example, one task may require a GPU) instead of using default ones via :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
 
