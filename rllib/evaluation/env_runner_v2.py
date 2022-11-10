@@ -514,9 +514,16 @@ class EnvRunnerV2:
                 )
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
-                self.end_episode(env_id, env_obs)
+                self._handle_done_episode(
+                    env_id=env_id,
+                    env_obs_or_exception=env_obs,
+                    is_done=True,
+                    hit_horizon=False,
+                    to_eval=to_eval,
+                    outputs=outputs,
+                )
                 # Tell the sampler we have got a faulty episode.
-                outputs.extend(RolloutMetrics(episode_faulty=True))
+                outputs.append(RolloutMetrics(episode_faulty=True))
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
@@ -695,31 +702,26 @@ class EnvRunnerV2:
 
         return to_eval, outputs
 
-    def _handle_done_episode(
+    def _build_done_episode(
         self,
         env_id: EnvID,
-        env_obs: MultiAgentDict,
         is_done: bool,
         hit_horizon: bool,
-        to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
         outputs: List[SampleBatchType],
-    ) -> None:
-        """Handle an all-finished episode.
-
-        Add collected SampleBatch to batch builder. Reset corresponding env, etc.
+    ):
+        """Builds a MultiAgentSampleBatch from the episode and adds it to outputs.
 
         Args:
-            env_id: Environment ID.
-            env_obs: Last per-environment observation.
-            is_done: If all agents are done.
-            hit_horizon: Whether the episode ended because it hit horizon.
-            to_eval: Output container for policy eval data.
-            outputs: Output container for collected sample batches.
+            env_id: The env id.
+            is_done: Whether the env is done.
+            hit_horizon: Whether the episode hit the horizon.
+            outputs: The list of outputs to add the
         """
-        check_dones = is_done and not self._no_done_at_end
-
         episode: EpisodeV2 = self._active_episodes[env_id]
         batch_builder = self._batch_builders[env_id]
+
+        check_dones = is_done and not self._no_done_at_end
+
         episode.postprocess_episode(
             batch_builder=batch_builder,
             is_done=is_done or (hit_horizon and not self._soft_horizon),
@@ -745,39 +747,47 @@ class EnvRunnerV2:
             # Clean up and delete the batch_builder.
             del self._batch_builders[env_id]
 
-            # Call each (in-memory) policy's Exploration.on_episode_end
-            # method.
-            # Note: This may break the exploration (e.g. ParameterNoise) of
-            # policies in the `policy_map` that have not been recently used
-            # (and are therefore stashed to disk). However, we certainly do not
-            # want to loop through all (even stashed) policies here as that
-            # would counter the purpose of the LRU policy caching.
-            for p in self._worker.policy_map.cache.values():
-                if getattr(p, "exploration", None) is not None:
-                    p.exploration.on_episode_end(
-                        policy=p,
-                        environment=self._base_env,
-                        episode=episode,
-                        tf_sess=p.get_session(),
-                    )
-            # Call custom on_episode_end callback.
-            self._callbacks.on_episode_end(
-                worker=self._worker,
-                base_env=self._base_env,
-                policies=self._worker.policy_map,
-                episode=episode,
-                env_index=env_id,
-            )
+    def _handle_done_episode(
+        self,
+        env_id: EnvID,
+        env_obs_or_exception: Union[MultiAgentDict, Exception],
+        is_done: bool,
+        hit_horizon: bool,
+        to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
+        outputs: List[SampleBatchType],
+    ) -> None:
+        """Handle an all-finished episode.
+
+        Add collected SampleBatch to batch builder. Reset corresponding env, etc.
+
+        Args:
+            env_id: Environment ID.
+            env_obs_or_exception: Last per-environment observation or Exception.
+            is_done: If all agents are done.
+            hit_horizon: Whether the episode ended because it hit horizon.
+            to_eval: Output container for policy eval data.
+            outputs: Output container for collected sample batches.
+        """
+        if isinstance(env_obs_or_exception, Exception):
+            is_error = True
+            episode_or_exception: Exception = env_obs_or_exception
+        else:
+            is_error = False
+            # Output the collected episode.
+            self._build_done_episode(env_id, is_done, hit_horizon, outputs)
+            episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
-        self.end_episode(env_id, episode)
+        self.end_episode(env_id, episode_or_exception)
         # Create a new episode instance (before we reset the sub-environment).
         self.create_episode(env_id)
 
         # Horizon hit and we have a soft horizon (no hard env reset).
-        if hit_horizon and self._soft_horizon:
-            resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {env_id: env_obs}
+        if not is_error and hit_horizon and self._soft_horizon:
+            resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
+                env_id: env_obs_or_exception
+            }
             # Do not reset connector state if this is a soft reset.
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
@@ -897,6 +907,22 @@ class EnvRunnerV2:
             episode=episode_or_exception,
             env_index=env_id,
         )
+
+        # Call each (in-memory) policy's Exploration.on_episode_end
+        # method.
+        # Note: This may break the exploration (e.g. ParameterNoise) of
+        # policies in the `policy_map` that have not been recently used
+        # (and are therefore stashed to disk). However, we certainly do not
+        # want to loop through all (even stashed) policies here as that
+        # would counter the purpose of the LRU policy caching.
+        for p in self._worker.policy_map.cache.values():
+            if getattr(p, "exploration", None) is not None:
+                p.exploration.on_episode_end(
+                    policy=p,
+                    environment=self._base_env,
+                    episode=episode_or_exception,
+                    tf_sess=p.get_session(),
+                )
 
         if isinstance(episode_or_exception, EpisodeV2):
             episode = episode_or_exception
