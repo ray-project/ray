@@ -1,16 +1,17 @@
 import json
 import os
-from pathlib import Path
-import tempfile
 import shutil
 import time
+import unittest
+from pathlib import Path
 
 import pytest
+
 import ray
 from ray import tune
-from ray.air import RunConfig, Checkpoint, session, FailureConfig, CheckpointConfig
-from ray.air._internal.remote_storage import download_from_uri, delete_at_uri
-from ray.tune import Trainable, Callback
+from ray.air import Checkpoint, CheckpointConfig, FailureConfig, RunConfig, session
+from ray.air._internal.remote_storage import delete_at_uri, download_from_uri
+from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.tune_config import TuneConfig
@@ -441,7 +442,7 @@ def test_tuner_restore_latest_available_checkpoint(
 
 
 @pytest.mark.parametrize("retry_num", [0, 1])
-def test_retore_retry(ray_start_4_cpus, retry_num):
+def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
     """Test retrying restore on a trial level."""
 
     class MockTrainable(Trainable):
@@ -476,14 +477,17 @@ def test_retore_retry(ray_start_4_cpus, retry_num):
             with open(checkpoint_path) as f:
                 self.idx = json.loads(f.read())["idx"]
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = str(retry_num)
-        tag_file = os.path.join(temp_dir, "tag")
+    # Set environment variable just for this test
+    with unittest.mock.patch.dict(
+        os.environ, {"TUNE_RESTORE_RETRY_NUM": str(retry_num)}
+    ):
+        tag_file = os.path.join(tmpdir, "tag")
         tuner = Tuner(
             MockTrainable,
             run_config=RunConfig(
                 name="tryout_restore",
                 stop={"training_iteration": 5},
+                local_dir=str(tmpdir),
                 failure_config=FailureConfig(max_failures=1),
                 checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             ),
