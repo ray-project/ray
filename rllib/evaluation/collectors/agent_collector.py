@@ -125,25 +125,10 @@ class AgentCollector:
         """Raises an AssertionError if data does not fit all view requirements that
         have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
 
-        if log_once(f"view_requirement_{vr_name}_checked_in_agent_collector"):
-            # ENV_ID does not have a view requirement
-            if vr_name is SampleBatch.ENV_ID:
-                return
-            # Don't check for these, because we always only have one
-            elif (
-                vr_name is SampleBatch.ACTION_PROB
-            ) and SampleBatch.ACTION_PROB not in self.view_requirements:
-                vr_name = SampleBatch.ACTION_LOGP
-            elif (
-                vr_name is SampleBatch.ACTION_LOGP
-            ) and SampleBatch.ACTION_LOGP not in self.view_requirements:
-                vr_name = SampleBatch.ACTION_PROB
-
-            assert vr_name in self.view_requirements.keys(), (
-                f"Every set of input_values must have corresponding values for all "
-                f"view requirements. {vr_name} is not in view requirements."
-            )
-
+        if (
+            log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
+            and vr_name in self.view_requirements
+        ):
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
