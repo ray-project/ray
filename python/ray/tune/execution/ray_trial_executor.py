@@ -42,7 +42,8 @@ DEFAULT_GET_TIMEOUT = 60.0  # seconds
 
 DEFAULT_ENV_VARS = {
     # https://github.com/ray-project/ray/issues/28197
-    "PL_DISABLE_FORK": "1"
+    "PL_DISABLE_FORK": "1",
+    "TUNE_ORIG_WORKING_DIR": "",
 }
 
 
@@ -148,7 +149,7 @@ def _noop_logger_creator(config, logdir, should_chdir: bool = True):
     # Upon remote process setup, record the actor's original working dir before
     # changing to the Tune logdir
     # The environment variable may be set already if actor reuse is enabled
-    if not os.getenv("TUNE_ORIG_WORKING_DIR", None):
+    if not os.getenv("TUNE_ORIG_WORKING_DIR", ""):
         os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
 
     os.makedirs(logdir, exist_ok=True)
