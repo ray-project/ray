@@ -19,6 +19,8 @@ class Result:
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
 
+    prometheus_metrics: Optional[Dict] = None
+
 
 class ExitCode(enum.Enum):
     # If you change these, also change the `retry` section

@@ -33,6 +33,7 @@ class DBReporter(Reporter):
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
         }
+        result_json.update(result.prometheus_metrics)
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
 
