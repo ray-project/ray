@@ -129,6 +129,15 @@ class AgentCollector:
             # ENV_ID does not have a view requirement
             if vr_name is SampleBatch.ENV_ID:
                 return
+            # Don't check for these, because we always only have one
+            elif (
+                vr_name is SampleBatch.ACTION_PROB
+            ) and SampleBatch.ACTION_PROB not in self.view_requirements:
+                vr_name = SampleBatch.ACTION_LOGP
+            elif (
+                vr_name is SampleBatch.ACTION_LOGP
+            ) and SampleBatch.ACTION_LOGP not in self.view_requirements:
+                vr_name = SampleBatch.ACTION_PROB
 
             assert vr_name in self.view_requirements.keys(), (
                 f"Every set of input_values must have corresponding values for all "
