@@ -11,10 +11,10 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeType
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
-    NODE_KIND_HEAD,
 )
 
 provider_exists = False

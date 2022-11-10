@@ -8,10 +8,9 @@ import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from io import StringIO
 from numbers import Number, Real
-from typing import Any, Dict, List, Optional, Tuple, Union, Literal
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray._private.ray_constants
