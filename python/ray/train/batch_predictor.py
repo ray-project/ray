@@ -9,7 +9,6 @@ from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
-from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
@@ -182,8 +181,6 @@ class BatchPredictor:
             predictor_kwargs["use_gpu"] = True
 
         batch_format: BatchFormat = self._predictor_cls.preferred_batch_format()
-        ctx = DatasetContext.get_current()
-        cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
             def __init__(self):
@@ -191,9 +188,6 @@ class BatchPredictor:
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
-                if cast_tensor_columns:
-                    # Enable automatic tensor column casting at UDF boundaries.
-                    self._predictor._set_cast_tensor_columns()
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 

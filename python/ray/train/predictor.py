@@ -76,9 +76,6 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         self._preprocessor: Optional[Preprocessor] = preprocessor
-        # Whether tensor columns should be automatically cast from/to the tensor
-        # extension type at UDF boundaries. This can be overridden by subclasses.
-        self._cast_tensor_columns = False
 
     @classmethod
     @abc.abstractmethod
@@ -136,15 +133,6 @@ class Predictor(abc.ABC):
 
         """
         return BatchFormat.PANDAS
-
-    def _set_cast_tensor_columns(self):
-        """Enable automatic tensor column casting.
-
-        If this is called on a predictor, the predictor will cast tensor columns to
-        NumPy ndarrays in the input to the preprocessors and cast tensor columns back to
-        the tensor extension type in the prediction outputs.
-        """
-        self._cast_tensor_columns = True
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
