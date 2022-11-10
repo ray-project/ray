@@ -28,6 +28,21 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
+@pytest.fixture
+def shutdown_only():
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def chdir_tmpdir(tmpdir):
+    old_cwd = os.getcwd()
+    os.chdir(tmpdir)
+    yield tmpdir
+    os.chdir(old_cwd)
+
+
 class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
@@ -90,6 +105,12 @@ def gen_dataset_func_eager():
 
 class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
+
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
@@ -274,7 +295,7 @@ class TunerTest(unittest.TestCase):
         ),
     ],
 )
-def test_tuner_api_kwargs(params_expected):
+def test_tuner_api_kwargs(shutdown_only, params_expected):
     tuner_params, assertion = params_expected
 
     tuner = Tuner(lambda config: 1, **tuner_params)
@@ -290,7 +311,7 @@ def test_tuner_api_kwargs(params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true():
+def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -301,7 +322,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_true():
         tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_false():
+def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -311,7 +332,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_false():
     tuner.fit()
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_none():
+def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner = Tuner(
         lambda config, checkpoint_dir: 1,
         run_config=ray.air.RunConfig(
@@ -322,21 +343,16 @@ def test_tuner_fn_trainable_checkpoint_at_end_none():
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_no_chdir_to_trial_dir(runtime_env, tmpdir):
+def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
     reading relatives paths to the original working directory.
     Also tests that `session.get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
-    old_cwd = os.getcwd()
-    os.chdir(tmpdir)
-
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
 
-    if ray.is_initialized():
-        ray.shutdown()
     ray.init(num_cpus=1, runtime_env=runtime_env)
 
     def train_func(config):
@@ -365,17 +381,12 @@ def test_tuner_no_chdir_to_trial_dir(runtime_env, tmpdir):
         artifact_data = open(result.log_dir / "write.txt", "r").read()
         assert artifact_data == f"{result.config['id']}"
 
-    os.chdir(old_cwd)
-    ray.shutdown()
-
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
+def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
-    old_cwd = os.getcwd()
-    os.chdir(tmpdir)
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
@@ -383,8 +394,6 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
     # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
     # Tune should still chdir to the trial directory, since we didn't disable the
     # `chdir_to_trial_dir` flag.
-    if ray.is_initialized():
-        ray.shutdown()
     ray.init(num_cpus=1, runtime_env=runtime_env)
 
     def train_func(config):
@@ -415,9 +424,6 @@ def test_tuner_relative_pathing_with_env_vars(runtime_env, tmpdir):
     for result in results:
         artifact_data = open(result.log_dir / "write.txt", "r").read()
         assert artifact_data == f"{result.config['id']}"
-
-    ray.shutdown()
-    os.chdir(old_cwd)
 
 
 if __name__ == "__main__":
