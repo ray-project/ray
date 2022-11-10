@@ -68,7 +68,6 @@ testfixtures==7.0.0
 werkzeug==2.1.2
 xlrd==2.0.1
 memray; platform_system != "Windows" and sys_platform != "darwin"
-jupyter
 
 # For doc tests
 myst-parser==0.15.2
