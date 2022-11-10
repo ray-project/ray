@@ -49,27 +49,17 @@ class TaskStateBuffer {
   TaskStateBuffer(instrumented_io_context &io_service,
                   const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
-  /// Add a task event with `TaskSpecification` available to the buffer with a specific
-  /// task status.
+  /// Add a task event with optional task metadata info delta.
   ///
   /// \param task_id Task ID of the task.
-  /// \param task_spec The corresponding task specification for metadata of the task.
+  /// \param task_info_update Changed TaskInfoEntry delta to be updated for the task.
   /// \param task_status Current task status to be recorded.
   void AddTaskEvent(TaskID task_id,
-                    const TaskSpecification &task_spec,
+                    rpc::TaskInfoEntry &&task_info_update,
                     rpc::TaskStatus task_status) LOCKS_EXCLUDED(mutex_);
 
-  /// Add a task event with only task status, when task specification of the task is not
-  /// available at the caller.
-  ///
-  /// \param task_id Task ID of the task.
-  /// \param task_spec The corresponding task specification for metadata of the task.
-  /// \param task_status Current task status to be recorded.
-  void AddTaskEvent(TaskID task_id, rpc::TaskStatus task_status) LOCKS_EXCLUDED(mutex_);
-
  private:
-  TaskIdEventMap::iterator GetOrInitTaskEvents(TaskID task_id,
-                                               rpc::TaskStatus task_status)
+  TaskIdEventMap::iterator GetOrInitTaskEvents(TaskID task_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Flush all of the events that have been added since last flush to the GCS.
@@ -77,14 +67,6 @@ class TaskStateBuffer {
 
   std::unique_ptr<rpc::TaskStateEventData> GetAndResetBuffer()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  bool ShouldIncludeTaskInfo(rpc::TaskStatus task_status);
-
-  TaskIdEventMap::iterator AddTaskEventInternal(TaskID task_id,
-                                                rpc::TaskStatus task_status)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  rpc::TaskInfoEntry FillTaskInfo(const TaskSpecification &task_spec);
 
   /// Mutex guarding rpc_profile_data_.
   absl::Mutex mutex_;

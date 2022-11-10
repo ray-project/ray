@@ -1151,11 +1151,13 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   if (worker_context_.GetCurrentTask() == nullptr) {
     task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
+                                     rpc::TaskInfoEntry(),
                                      rpc::TaskStatus::RUNNING_IN_RAY_GET);
   } else {
-    task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
-                                     *worker_context_.GetCurrentTask(),
-                                     rpc::TaskStatus::RUNNING_IN_RAY_GET);
+    task_state_buffer_->AddTaskEvent(
+        worker_context_.GetCurrentTaskID(),
+        task_manager_->MakeTaskInfoEntry(*worker_context_.GetCurrentTask()),
+        rpc::TaskStatus::RUNNING_IN_RAY_GET);
   }
 
   results->resize(ids.size(), nullptr);
@@ -2269,8 +2271,9 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
-    task_state_buffer_->AddTaskEvent(
-        task_spec.TaskId(), task_spec, rpc::TaskStatus::RUNNING);
+    task_state_buffer_->AddTaskEvent(task_spec.TaskId(),
+                                     task_manager_->MakeTaskInfoEntry(task_spec),
+                                     rpc::TaskStatus::RUNNING);
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
@@ -3248,12 +3251,13 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     task_manager_->AddTaskStatusInfo(stats);
   }
 
-  if (request.include_task_info()) {
-    task_manager_->FillTaskInfo(reply, limit);
-    for (const auto &current_running_task : current_tasks_) {
-      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
-    }
-  }
+  // TODO: cleanup
+  // if (request.include_task_info()) {
+  //   task_manager_->FillTaskInfo(reply, limit);
+  //   for (const auto &current_running_task : current_tasks_) {
+  //     reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+  //   }
+  // }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

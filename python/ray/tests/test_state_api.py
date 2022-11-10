@@ -771,7 +771,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     node_id = NodeID.from_random()
     first_task_name = "1"
     second_task_name = "2"
-    data_source_client.get_task_info = AsyncMock()
     id = b"1234"
     data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
         total=2,
@@ -1200,20 +1199,8 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     Test tasks
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_task_info("1234")
-
-    wait_for_condition(lambda: len(ray.nodes()) == 2)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
-        result = await client.get_task_info(node_id)
-        assert isinstance(result, GetTasksInfoReply)
-
-    assert len(client.get_all_registered_raylet_ids()) == 2
+    result = await client.get_all_task_info()
+    assert isinstance(result, GetAllTaskStateEventReply)
 
     """
     Test objects
@@ -1398,9 +1385,9 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     refs = [f.remote() for _ in range(2)]  # noqa
 
     async def verify():
-        result = await client.get_task_info(node_id, limit=2)
+        result = await client.get_all_task_info(limit=2)
         assert result.total == 6
-        assert len(result.owned_task_info_entries) == 2
+        assert len(result.events_by_task) == 2
         return True
 
     await async_wait_for_condition_async_predicate(verify)

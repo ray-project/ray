@@ -290,8 +290,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// any.
   void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const;
 
-  /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
-  void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
+  /// Make a rpc::TaskInfoEntry based on the TaskSpecification.
+  ///
+  /// \param[in] task_spec TaskSpecification of the task.
+  /// \return TaskInfoEntry based on the spec.
+  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
@@ -427,6 +430,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+
+  /// Update task status change.
+  void RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
