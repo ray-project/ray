@@ -94,9 +94,7 @@ class ViewRequirement:
         """
 
         if self.space is None:
-            self.space = gym.spaces.Box(
-                float("-inf"), float("inf"), shape=()
-            )
+            self.space = gym.spaces.Box(float("-inf"), float("inf"), shape=())
 
         # TODO: ideally we won't need shift_from and shift_to, and shift_step.
         # all of them should be captured within shift_arr.
