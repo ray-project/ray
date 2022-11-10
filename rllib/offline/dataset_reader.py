@@ -141,7 +141,7 @@ def get_dataset_and_shards(
         paths = _unzip_if_needed(paths, format)
 
     # TODO (Kourosh): num_workers is not necessary since we can use parallelism for
-    # everything. Having two parameters is confusing here.
+    # everything. Having two parameters is confusing here. Remove num_workers later.
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK

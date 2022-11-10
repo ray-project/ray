@@ -1,4 +1,4 @@
-from typing import Optional, Type
+from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -11,14 +11,18 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import (
+    EnvType,
+    ResultDict,
+)
+from ray.tune.logger import Logger
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -87,6 +91,7 @@ class MARWILConfig(AlgorithmConfig):
         self.train_batch_size = 2000
         # __sphinx_doc_end__
         # fmt: on
+        self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
     def training(
@@ -141,6 +146,41 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
+
+    @override(AlgorithmConfig)
+    def evaluation(
+        self,
+        **kwargs,
+    ) -> "MARWILConfig":
+        """Sets the evaluation related configuration.
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        # Pass kwargs onto super's `evaluation()` method.
+        super().evaluation(**kwargs)
+
+        if "off_policy_estimation_methods" in kwargs:
+            # User specified their OPE methods.
+            self._set_off_policy_estimation_methods = True
+
+        return self
+
+    @override(AlgorithmConfig)
+    def build(
+        self,
+        env: Optional[Union[str, EnvType]] = None,
+        logger_creator: Optional[Callable[[], Logger]] = None,
+    ) -> "Algorithm":
+        if not self._set_off_policy_estimation_methods:
+            deprecation_warning(
+                old="MARWIL used to have off_policy_estimation_methods "
+                "is and wis by default. This has"
+                "changed to off_policy_estimation_methods: \{\}."
+                "If you want to use an off-policy estimator, specify it in"
+                ".evaluation(off_policy_estimation_methods=...)",
+                error=True,
+            )
+        return super().build(env, logger_creator)
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
