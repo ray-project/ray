@@ -4804,7 +4804,7 @@
   group: core-observability-test
   working_dir: dashboard
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -4814,7 +4814,6 @@
 
   run:
     timeout: 14400
-    prepare: rllib train file atari.yaml &
     script: python mem_check.py
     type: sdk_command
     file_manager: sdk
