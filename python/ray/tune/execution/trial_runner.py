@@ -155,7 +155,7 @@ class _ExperimentCheckpointManager:
         ] = defaultdict(int)
         self._excessive_sync_threshold = float(
             os.environ.get(
-                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "2"
+                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
             )
         )
 
