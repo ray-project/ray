@@ -533,34 +533,6 @@ class WorkingDirectoryTest(unittest.TestCase):
         tune.run(f)
         ray.shutdown()
 
-    def testWorkingDirLocalMode(self):
-        """Check that the `TUNE_ORIG_WORKING_DIR` also works in local mode."""
-
-        working_dir = os.getcwd()
-
-        def f(config):
-            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
-
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
-        tune.run(f)
-        ray.shutdown()
-
-        # Env variable is set from the previous local mode run
-        assert os.getenv("TUNE_ORIG_WORKING_DIR", None)
-
-        # Try running from a new working directory without local mode,
-        # when the env variable is already set
-        tmpdir = os.path.realpath(tempfile.mkdtemp())
-        os.chdir(tmpdir)
-
-        def g(config):
-            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == tmpdir
-
-        ray.init(num_cpus=1)
-        tune.run(g)
-        ray.shutdown()
-        os.chdir(working_dir)
-
 
 class TrainableCrashWithFailFast(unittest.TestCase):
     def test(self):
