@@ -288,7 +288,7 @@ class DreamerIteration:
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Dreamer training loop.
             for n in range(self.dreamer_train_iters):
                 print(f"sub-iteration={n}/{self.dreamer_train_iters}")
@@ -345,7 +345,7 @@ class Dreamer(Algorithm):
         # Prefill episode buffer with initial exploration (uniform sampling)
         while (
             total_sampled_timesteps(self.workers.local_worker())
-            < self.config["prefill_timesteps"]
+            < self.config.prefill_timesteps
         ):
             samples = self.workers.local_worker().sample()
             self.local_replay_buffer.add(samples)
@@ -355,8 +355,8 @@ class Dreamer(Algorithm):
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer
-        dreamer_train_iters = self.config["dreamer_train_iters"]
-        batch_size = self.config["batch_size"]
+        dreamer_train_iters = self.config.dreamer_train_iters
+        batch_size = self.config.batch_size
 
         # Collect SampleBatches from rollout workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
@@ -372,7 +372,7 @@ class Dreamer(Algorithm):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Dreamer training loop.
             # Run multiple sub-iterations for each training iteration.
             for n in range(dreamer_train_iters):

@@ -18,7 +18,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 
 import logging
 import time
-from typing import Callable, Optional, Union
+from typing import Optional
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -39,11 +39,8 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import (
-    EnvType,
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
-from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +91,6 @@ class DDPPOConfig(PPOConfig):
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
         self.num_rollout_workers = 2
-        # During the sampling phase, each rollout worker will collect a batch
-        # `rollout_fragment_length * num_envs_per_worker` steps in size.
-        self.rollout_fragment_length = 100
         # Vectorize the env (should enable by default since each worker has
         # a GPU).
         self.num_envs_per_worker = 5
@@ -116,8 +110,10 @@ class DDPPOConfig(PPOConfig):
         self.num_gpus = 0
         # Each rollout worker gets a GPU.
         self.num_gpus_per_worker = 1
-        # This is auto set based on sample batch size.
-        self.train_batch_size = -1
+        # Note: This is the train_batch_size per worker (updates happen on worker
+        # side). `rollout_fragment_length` (if "auto") is computed as:
+        # `train_batch_size` // `num_envs_per_worker`.
+        self.train_batch_size = 500
         # Kl divergence penalty should be fixed to 0 in DDPPO because in order
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
@@ -203,52 +199,31 @@ class DDPPOConfig(PPOConfig):
                 "DDPPO doesn't support KL penalties like PPO-1!"
             )
 
+    @override(AlgorithmConfig)
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            # Example:
+            # 2 workers (ignored as learning happens on workers),
+            # 2 envs per worker, 100 train batch size:
+            # -> 100 / 2 -> 50
+            # 4 workers (ignored), 3 envs per worker, 1500 train batch size:
+            # -> 1500 / 3 -> 500
+            rollout_fragment_length = self.train_batch_size // (
+                self.num_envs_per_worker
+            )
+            return rollout_fragment_length
+        else:
+            return self.rollout_fragment_length
+
 
 class DDPPO(PPO):
-    def __init__(
-        self,
-        config: Optional[PartialAlgorithmConfigDict] = None,
-        env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
-        **kwargs,
-    ):
-        """Initializes a DDPPO instance.
-
-        Args:
-            config: Algorithm-specific configuration dict.
-            env: Name of the environment to use (e.g. a gym-registered str),
-                a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
-                class directly. Note that this arg can also be specified via
-                the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            **kwargs: Arguments passed to the Trainable base class
-
-        """
-        super().__init__(
-            config=config, env=env, logger_creator=logger_creator, **kwargs
-        )
-
-        if "train_batch_size" in config and config["train_batch_size"] != -1:
-            # Users should not define `train_batch_size` directly (always -1).
-            raise ValueError(
-                "Set rollout_fragment_length instead of train_batch_size for DDPPO."
-            )
-
-        # Auto-train_batch_size: Calculate from rollout len and
-        # envs-per-worker.
-        self.config["train_batch_size"] = (
-            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
-        )
-
     @classmethod
     @override(PPO)
     def get_default_config(cls) -> AlgorithmConfig:
         return DDPPOConfig()
 
     @override(PPO)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Initialize torch process group for
@@ -265,7 +240,7 @@ class DDPPO(PPO):
                     url=address,
                     world_rank=i,
                     world_size=len(self.workers.remote_workers()),
-                    backend=self.config["torch_distributed_backend"],
+                    backend=self.config.torch_distributed_backend,
                 )
                 for i, worker in enumerate(self.workers.remote_workers())
             ]
@@ -313,7 +288,7 @@ class DDPPO(PPO):
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
         if (
-            self.config["keep_local_weights_in_sync"]
+            self.config.keep_local_weights_in_sync
             and first_worker in sample_and_update_results
         ):
             self.workers.local_worker().set_weights(
@@ -328,14 +303,14 @@ class DDPPO(PPO):
     @staticmethod
     def _sample_and_train_torch_distributed(worker: RolloutWorker):
         # This function is applied remotely on each rollout worker.
-        config = worker.policy_config
+        config: AlgorithmConfig = worker.config
 
         # Generate a sample.
         start = time.perf_counter()
         batch = worker.sample()
         sample_time = time.perf_counter() - start
         expected_batch_size = (
-            config["rollout_fragment_length"] * config["num_envs_per_worker"]
+            config.get_rollout_fragment_length() * config.num_envs_per_worker
         )
         assert batch.count == expected_batch_size, (
             "Batch size possibly out of sync between workers, expected:",
@@ -350,8 +325,8 @@ class DDPPO(PPO):
             batch,
             worker.policy_map,
             worker,
-            config["num_sgd_iter"],
-            config["sgd_minibatch_size"],
+            config.num_sgd_iter,
+            config.sgd_minibatch_size,
             [Postprocessing.ADVANTAGES],
         )
         learn_on_batch_time = time.perf_counter() - start

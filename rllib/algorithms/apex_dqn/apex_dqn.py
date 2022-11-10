@@ -348,13 +348,13 @@ class ApexDQN(DQN):
                 -len(self.workers.remote_workers()) // 3 :
             ]
 
-        num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
+        num_replay_buffer_shards = self.config.optimizer["num_replay_buffer_shards"]
 
         # Create copy here so that we can modify without breaking other logic
-        replay_actor_config = copy.deepcopy(self.config["replay_buffer_config"])
+        replay_actor_config = copy.deepcopy(self.config.replay_buffer_config)
 
         replay_actor_config["capacity"] = (
-            self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
+            self.config.replay_buffer_config["capacity"] // num_replay_buffer_shards
         )
 
         ReplayActor = ray.remote(num_cpus=0)(replay_actor_config["type"])
@@ -386,14 +386,14 @@ class ApexDQN(DQN):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_replay_worker"
             ],
-            ray_wait_timeout_s=self.config["timeout_s_replay_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_replay_manager,
         )
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
-            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
         )
         self.learner_thread = LearnerThread(self.workers.local_worker())
         self.learner_thread.start()
@@ -432,7 +432,7 @@ class ApexDQN(DQN):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # trigger a sample from the replay actors and enqueue operation to the
             # learner thread.
             self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
@@ -497,7 +497,7 @@ class ApexDQN(DQN):
         Returns:
             The number of remote workers whose weights were updated.
         """
-        max_steps_weight_sync_delay = self.config["optimizer"]["max_weight_sync_delay"]
+        max_steps_weight_sync_delay = self.config.optimizer["max_weight_sync_delay"]
         # Update our local copy of the weights if the learner thread has updated
         # the learner worker's weights
         policy_ids_updated = self.learner_thread.policy_ids_updated.copy()
@@ -566,17 +566,17 @@ class ApexDQN(DQN):
         num_samples_collected = sum(num_worker_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
         replay_sample_batches = wait_on_replay_actors()
-        if self.curr_num_samples_collected >= self.config["train_batch_size"]:
-            training_intensity = int(self.config["training_intensity"] or 1)
+        if self.curr_num_samples_collected >= self.config.train_batch_size:
+            training_intensity = int(self.config.training_intensity or 1)
             num_requests_to_launch = (
-                self.curr_num_samples_collected / self.config["train_batch_size"]
+                self.curr_num_samples_collected / self.config.train_batch_size
             ) * training_intensity
             num_requests_to_launch = max(1, round(num_requests_to_launch))
             self.curr_num_samples_collected = 0
             for _ in range(num_requests_to_launch):
                 self._replay_actor_manager.call(
                     lambda actor, num_items: actor.sample(num_items),
-                    fn_args=[self.config["train_batch_size"]],
+                    fn_args=[self.config.train_batch_size],
                 )
             replay_sample_batches.extend(wait_on_replay_actors())
 
@@ -603,10 +603,7 @@ class ApexDQN(DQN):
                     env_steps,
                     agent_steps,
                 ) = self.learner_thread.outqueue.get(timeout=0.001)
-                if (
-                    self.config["replay_buffer_config"].get("prioritized_replay_alpha")
-                    > 0
-                ):
+                if self.config.replay_buffer_config.get("prioritized_replay_alpha") > 0:
                     replay_actor.update_priorities.remote(priority_dict)
                 num_samples_trained_this_itr += env_steps
                 self.update_target_networks(env_steps)
@@ -627,7 +624,7 @@ class ApexDQN(DQN):
         self._num_ts_trained_since_last_target_update += num_new_trained_samples
         if (
             self._num_ts_trained_since_last_target_update
-            >= self.config["target_network_update_freq"]
+            >= self.config.target_network_update_freq
         ):
             self._num_ts_trained_since_last_target_update = 0
             with self._timers[TARGET_NET_UPDATE_TIMER]:
@@ -662,7 +659,7 @@ class ApexDQN(DQN):
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
         replay_stats = ray.get(
-            self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
+            self._replay_actors[0].stats.remote(self.config.optimizer.get("debug"))
         )
         exploration_infos_list = self.workers.foreach_policy_to_train(
             lambda p, pid: {pid: p.get_exploration_state()}

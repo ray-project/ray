@@ -515,11 +515,12 @@ def _bundle_blocks_up_to_size(
         block_bundles.append(curr_bundle)
     if len(blocks) / len(block_bundles) >= 10:
         logger.warning(
-            f"Having to send 10 or more blocks to a single {name} task to create a "
-            f"batch of size {target_size}, which may result in less transformation "
-            "parallelism than expected. This may indicate that your blocks are too "
-            "small and/or your batch size is too large, and you may want to decrease "
-            "your read parallelism and/or decrease your batch size."
+            f"`batch_size` is set to {target_size}, which reduces parallelism from "
+            f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
+            "expected, this may indicate that the batch size is too large or the "
+            "input block size is too small. To reduce batch size, consider decreasing "
+            "`batch_size` or use the default in `map_batches`. To increase input "
+            "block size, consider decreasing `parallelism` in read."
         )
     return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
 
