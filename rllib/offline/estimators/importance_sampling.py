@@ -1,12 +1,12 @@
-from typing import Dict, List
 import os
+from typing import Dict, List, Any
 
 from ray.data import Dataset
 
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.offline_evalution_utils import compute_is_weights
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
@@ -73,12 +73,21 @@ class ImportanceSampling(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OfflineEvaluator)
-    def estimate_on_dataset(
-        self,
-        dataset: Dataset,
-        *,
-        n_parallelism: int = os.cpu_count(),
-    ):
+    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+        """Computes the Importance sampling estimate on the given dataset.
+
+        Args:
+            dataset: The dataset to compute the estimate on.
+            n_parallelism: The number of parallel workers to use.
+
+        Returns:
+            A dictionary containing the following keys:
+                v_target: The estimated value of the target policy.
+                v_behavior: The estimated value of the behavior policy.
+                v_gain: The estimated gain of the target policy over the
+                    behavior policy.
+                v_std: The standard deviation of the estimate.
+        """
         batch_size = max(dataset.count() // n_parallelism, 1)
         updated_ds = dataset.map_batches(
             compute_is_weights,
