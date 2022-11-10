@@ -171,7 +171,6 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
         self.headers, self.verify = load_k8s_secrets()
 
-        # Disallow multiple node providers, unless explicitly allowed for testing.
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
