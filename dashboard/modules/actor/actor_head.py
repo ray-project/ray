@@ -7,15 +7,12 @@ from collections import deque
 
 import aiohttp.web
 
-import ray._private.ray_constants as ray_constants
-import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
 from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
-    node_manager_pb2_grpc,
 )
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.actor import actor_consts
@@ -25,8 +22,7 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 10000))
-ACTOR_CLEANUP_FREQUENCY = 10  # seconds
-ACTORS_TO_PROCESS_PER_SECOND = 1000  # Equivalent to publisher's `publish_batch_size`
+ACTOR_CLEANUP_FREQUENCY = 1  # seconds
 
 
 def actor_table_data_to_dict(message):
@@ -69,29 +65,15 @@ def actor_table_data_to_dict(message):
 class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._stubs = {}
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
         # A queue of dead actors in order of when they died
         self.dead_actors_queue = deque()
-        DataSource.nodes.signal.append(self._update_stubs)
 
-    async def _update_stubs(self, change):
-        if change.old:
-            node_id, node_info = change.old
-            self._stubs.pop(node_id)
-        if change.new:
-            # TODO(fyrestone): Handle exceptions.
-            node_id, node_info = change.new
-            address = "{}:{}".format(
-                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
-            )
-            options = ray_constants.GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True
-            )
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._stubs[node_id] = stub
+        # -- Internal states --
+        self.total_published_events = 0
+        self.subscriber_queue_size = 0
+        self.accumulative_event_processing_s = 0
 
     async def _update_actors(self):
         # Get all actor info.
@@ -159,32 +141,34 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         subscriber = GcsAioActorSubscriber(address=gcs_addr)
         await subscriber.subscribe()
 
-        total_published_events = 0
-        acc = 0
         while True:
             try:
-                published = await subscriber.poll(batch_size=1000)
+                published = await subscriber.poll(batch_size=200)
                 start = time.monotonic()
                 for actor_id, actor_table_data in published:
                     if actor_id is not None:
                         # Convert to lower case hex ID.
                         actor_id = actor_id.hex()
                         process_actor_data_from_pubsub(actor_id, actor_table_data)
-                    total_published_events += 1
-                    # Backpressure the # of actor event process per second.
-                    if total_published_events % ACTORS_TO_PROCESS_PER_SECOND == 0:
-                        await asyncio.sleep(1)
+
+                # Yield so that we can give time for
+                # user-facing APIs to reply to the frontend.
                 elapsed = time.monotonic() - start
-                acc += elapsed
-                # TODO(sang): Convert it to internal states.
+                await asyncio.sleep(elapsed)
+
+                # Update the internal states for debugging.
+                self.accumulative_event_processing_s += elapsed
+                self.total_published_events += len(published)
+                self.subscriber_queue_size = subscriber.queue_size
                 logger.debug(
-                    f"Processing takes {elapsed}. Total process: "
-                    f"{total_published_events}"
+                    f"Processing takes {elapsed}. Total process: " f"{len(published)}"
                 )
                 logger.debug(
-                    f"Processing throughput: {total_published_events / acc} / s"
+                    "Processing throughput: "
+                    f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
+                    " / s"
                 )
-                logger.debug(f"queue size: {subscriber.queue_size}")
+                logger.debug(f"queue size: {self.subscriber_queue_size}")
             except Exception:
                 logger.exception("Error processing actor info from GCS.")
 
@@ -209,6 +193,19 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")
+
+    def get_internal_states(self):
+        states = {
+            "total_published_events": self.total_published_events,
+            "total_dead_actors": len(self.dead_actors_queue),
+            "total_actors": len(DataSource.actors),
+            "queue_size": self.subscriber_queue_size,
+        }
+        if self.accumulative_event_processing_s > 0:
+            states["event_processing_per_s"] = (
+                self.total_published_events / self.accumulative_event_processing_s
+            )
+        return states
 
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
