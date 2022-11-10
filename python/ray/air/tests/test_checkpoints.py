@@ -488,6 +488,9 @@ class CheckpointsConversionTest(unittest.TestCase):
             lambda dir: (Path(dir) / "data.txt").write_text("Data")
         )
 
+        # Ephemeral checkpoints shouldn't have their URI set
+        assert not checkpoint.uri
+
         # Assert data is correctly saved
         with checkpoint.as_directory() as dir:
             assert (Path(dir) / "data.txt").read_text() == "Data"

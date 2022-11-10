@@ -230,7 +230,7 @@ class Checkpoint:
 
         # If set, Ray AIR manages the lifecycle. In the base case, data will be
         # deleted from disk on checkpoint deconstruction.
-        self._managed = False
+        self._ephemeral = False
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -270,6 +270,9 @@ class Checkpoint:
             cloud storage or locally available file URI).
 
         """
+        if self._ephemeral:
+            return None
+
         if self._uri:
             return self._uri
 
@@ -493,7 +496,7 @@ class Checkpoint:
         temp_directory = tempfile.mkdtemp()
         populator(temp_directory)
         checkpoint = cls.from_directory(temp_directory)
-        checkpoint._managed = True
+        checkpoint._ephemeral = True
         return checkpoint
 
     # TODO: Deprecate `from_checkpoint`. For context, see #29058.
@@ -801,7 +804,7 @@ class Checkpoint:
         )
 
     def __del__(self):
-        if self._managed:
+        if self._ephemeral:
             assert self._local_path
             shutil.rmtree(self._local_path)
 
