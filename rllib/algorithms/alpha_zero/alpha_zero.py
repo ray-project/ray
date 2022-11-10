@@ -364,9 +364,9 @@ class AlphaZero(Algorithm):
                 else NUM_ENV_STEPS_SAMPLED
             ]
 
-            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            if cur_ts > self.config.num_steps_sampled_before_learning_starts:
                 train_batch = self.local_replay_buffer.sample(
-                    self.config["train_batch_size"]
+                    self.config.train_batch_size
                 )
             else:
                 train_batch = None

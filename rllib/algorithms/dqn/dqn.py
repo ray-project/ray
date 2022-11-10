@@ -425,12 +425,12 @@ class DQN(SimpleQ):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             for _ in range(sample_and_train_weight):
                 # Sample training batch (MultiAgentBatch) from replay buffer.
                 train_batch = sample_min_n_steps_from_buffer(
                     self.local_replay_buffer,
-                    self.config["train_batch_size"],
+                    self.config.train_batch_size,
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 
@@ -459,7 +459,7 @@ class DQN(SimpleQ):
                 )
 
                 last_update = self._counters[LAST_TARGET_UPDATE_TS]
-                if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                if cur_ts - last_update >= self.config.target_network_update_freq:
                     to_update = self.workers.local_worker().get_policies_to_train()
                     self.workers.local_worker().foreach_policy_to_train(
                         lambda p, pid: pid in to_update and p.update_target()

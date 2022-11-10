@@ -191,7 +191,7 @@ class UpdateTargetAndKL:
                 lambda p, _: p.update_target()
             )
             # Also update KL Coeff
-            if self.config["use_kl_loss"]:
+            if self.config.use_kl_loss:
                 self.update_kl(fetches)
 
 
@@ -231,7 +231,7 @@ class APPO(Impala):
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (
-            self.config["num_sgd_iter"] * self.config["minibatch_buffer_size"]
+            self.config.num_sgd_iter * self.config.minibatch_buffer_size
         )
         if cur_ts - last_update > target_update_freq:
             self._counters[NUM_TARGET_UPDATES] += 1
@@ -243,7 +243,7 @@ class APPO(Impala):
             )
 
             # Also update the KL-coefficient for the APPO loss, if necessary.
-            if self.config["use_kl_loss"]:
+            if self.config.use_kl_loss:
 
                 def update(pi, pi_id):
                     assert LEARNER_STATS_KEY not in train_results, (

@@ -45,10 +45,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=3)
-    config = ppo.DEFAULT_CONFIG.copy()
+    config = ppo.PPOConfig().environment("CartPole-v1")
+    config = config.to_dict()
     config["train-iterations"] = args.train_iterations
-
-    config["env"] = "CartPole-v1"
 
     tune.Tuner(
         tune.with_resources(experiment, ppo.PPO.default_resource_request(config)),

@@ -272,12 +272,12 @@ class QMix(SimpleQ):
 
         train_results = {}
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Sample n batches from replay buffer until the total number of timesteps
             # reaches `train_batch_size`.
             train_batch = sample_min_n_steps_from_buffer(
                 replay_buffer=self.local_replay_buffer,
-                min_steps=self.config["train_batch_size"],
+                min_steps=self.config.train_batch_size,
                 count_by_agent_steps=self.config.count_steps_by == "agent_steps",
             )
 
@@ -291,7 +291,7 @@ class QMix(SimpleQ):
 
             # Update target network every `target_network_update_freq` sample steps.
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            if cur_ts - last_update >= self.config.target_network_update_freq:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()

@@ -33,41 +33,43 @@ class TestPreprocessors(unittest.TestCase):
         ray.shutdown()
 
     def test_preprocessing_disabled(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
-        config["env_config"] = {
-            "config": {
-                "observation_space": Dict(
-                    {
-                        "a": Discrete(5),
-                        "b": Dict(
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                "ray.rllib.examples.env.random_env.RandomEnv",
+                env_config={
+                    "config": {
+                        "observation_space": Dict(
                             {
-                                "ba": Discrete(4),
-                                "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                                "a": Discrete(5),
+                                "b": Dict(
+                                    {
+                                        "ba": Discrete(4),
+                                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                                    }
+                                ),
+                                "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
+                                "d": Box(-1.0, 1.0, (1,), dtype=np.int32),
                             }
                         ),
-                        "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
-                        "d": Box(-1.0, 1.0, (1,), dtype=np.int32),
-                    }
-                ),
-            },
-        }
-        # Set this to True to enforce no preprocessors being used.
-        # Complex observations now arrive directly in the model as
-        # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
-        # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        config["_disable_preprocessor_api"] = True
-        # Speed things up a little.
-        config["train_batch_size"] = 100
-        config["sgd_minibatch_size"] = 10
-        config["rollout_fragment_length"] = 5
-        config["num_sgd_iter"] = 1
+                    },
+                },
+            )
+            # Speed things up a little.
+            .rollouts(rollout_fragment_length=5)
+            .training(train_batch_size=100, sgd_minibatch_size=10, num_sgd_iter=1)
+            .debugging(seed=42)
+            # Set this to True to enforce no preprocessors being used.
+            # Complex observations now arrive directly in the model as
+            # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
+            # for obs-space=Dict(a=..., b=Tuple(..., ...)).
+            .experimental(_disable_preprocessor_api=True)
+        )
 
         num_iterations = 1
         # Only supported for tf so far.
         for _ in framework_iterator(config):
-            algo = ppo.PPO(config=config)
+            algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)

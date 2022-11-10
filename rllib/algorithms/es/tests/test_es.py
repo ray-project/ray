@@ -7,8 +7,13 @@ from ray.rllib.utils.test_utils import check_compute_single_action, framework_it
 
 
 class TestES(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_es_compilation(self):
         """Test whether an ESAlgorithm can be built on all frameworks."""

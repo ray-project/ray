@@ -480,7 +480,7 @@ class Algorithm(Trainable):
 
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
-        update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
+        update_global_seed_if_necessary(self.config.framework_str, self.config.seed)
 
         self._record_usage(self.config)
 

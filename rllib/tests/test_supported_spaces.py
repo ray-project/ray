@@ -10,7 +10,6 @@ from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.es import ESConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -59,7 +58,7 @@ OBSERVATION_SPACES_TO_TEST = {
 
 def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["log_level"] = "ERROR"
-    config["train_batch_size"] = 10
+    config["train_batch_size"] = 50
     config["rollout_fragment_length"] = 10
     config["env"] = RandomEnv
 
@@ -157,39 +156,45 @@ class TestSupportedSpacesPG(unittest.TestCase):
             .rollouts(num_rollout_workers=1)
             .training(
                 optimizer={"grads_per_step": 1},
+                model={"fcnet_hiddens": [10]},
             )
         )
         check_support("A3C", config, check_bounds=True)
 
     def test_appo(self):
-        config = APPOConfig().resources(num_gpus=0).training(vtrace=False)
+        config = (
+            APPOConfig()
+            .resources(num_gpus=0)
+            .training(vtrace=False, model={"fcnet_hiddens": [10]})
+        )
         check_support("APPO", config, train=False)
         config.training(vtrace=True)
         check_support("APPO", config)
 
     def test_impala(self):
-        check_support("IMPALA", ImpalaConfig().resources(num_gpus=0))
+        check_support(
+            "IMPALA",
+            (
+                ImpalaConfig()
+                .resources(num_gpus=0)
+                .training(model={"fcnet_hiddens": [10]})
+            ),
+        )
 
     def test_ppo(self):
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
-                sgd_minibatch_size=10,
+                sgd_minibatch_size=50,
+                model={
+                    "fcnet_hiddens": [10],
+                },
             )
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
-
-    def test_pg(self):
-        check_support(
-            "PG",
-            PGConfig().rollouts(num_rollout_workers=1).training(optimizer={}),
-            train=False,
-            check_bounds=True,
-            tf2=True,
-        )
 
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):

@@ -192,10 +192,10 @@ class CRR(Algorithm):
 
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        if self.config.get("target_network_update_freq", None) is None:
-            self.config["target_network_update_freq"] = (
-                self.config["train_batch_size"] * 100
-            )
+
+        self.target_network_update_freq = self.config.target_network_update_freq
+        if self.target_network_update_freq is None:
+            self.target_network_update_freq = self.config.train_batch_size * 100
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
@@ -247,7 +247,7 @@ class CRR(Algorithm):
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(

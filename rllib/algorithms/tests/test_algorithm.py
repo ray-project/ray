@@ -367,7 +367,7 @@ class TestAlgorithm(unittest.TestCase):
 
         # Spaces given -> expect shorter build time due to no space
         # lookup required from remote worker.
-        config.create_env_on_driver = False
+        config.create_env_on_local_worker = False
         config.environment(
             observation_space=env.observation_space,
             action_space=env.action_space,

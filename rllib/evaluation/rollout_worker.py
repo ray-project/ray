@@ -477,7 +477,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_config = config.to_dict()
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_workers
+            num_workers if num_workers is not None else self.config.num_rollout_workers
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.

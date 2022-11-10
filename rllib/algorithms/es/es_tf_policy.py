@@ -91,9 +91,10 @@ class ESTFPolicy(Policy):
         self.observation_filter = get_filter(
             self.config["observation_filter"], self.preprocessor.shape
         )
-        self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
-            self.sess = make_session(single_threaded=self.single_threaded)
+            self.sess = make_session(
+                single_threaded=self.config.get("tf_single_threaded", True)
+            )
 
             # Set graph-level seed.
             if config.get("seed") is not None:
