@@ -84,6 +84,8 @@ def test_many_tasks(num_tasks: int):
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
         results.append(pi4_sample.remote(signal))
 
+    # Need to wait for task states to be propagated to GCS
+    time.sleep(3)
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
