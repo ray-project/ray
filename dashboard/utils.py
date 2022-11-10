@@ -448,21 +448,25 @@ class MutableNotificationDict(dict, MutableMapping):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.signal = Signal(self)
+        self._signal = Signal(self)
 
     def mutable(self):
         return self
 
+    @property
+    def signal(self):
+        return self._signal
+
     def __setitem__(self, key, value):
         old = self.pop(key, None)
         super().__setitem__(key, value)
-        if len(self.signal) and old != value:
+        if len(self._signal) and old != value:
             if old is None:
-                co = self.signal.send(
+                co = self._signal.send(
                     Change(owner=self, new=Dict.ChangeItem(key, value))
                 )
             else:
-                co = self.signal.send(
+                co = self._signal.send(
                     Change(
                         owner=self,
                         old=Dict.ChangeItem(key, old),
@@ -473,8 +477,8 @@ class MutableNotificationDict(dict, MutableMapping):
 
     def __delitem__(self, key):
         old = self.pop(key, None)
-        if len(self.signal) and old is not None:
-            co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
+        if len(self._signal) and old is not None:
+            co = self._signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
     def reset(self, d):
