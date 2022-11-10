@@ -53,7 +53,7 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline import get_offline_io_resource_bundles, get_dataset_and_shards
+from ray.rllib.offline import get_dataset_and_shards, get_offline_io_resource_bundles
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
     ImportanceSampling,
@@ -617,7 +617,7 @@ class Algorithm(Trainable):
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
-        # Note: We skipp workerset creation if we need to do offline evaluation
+        # Note: We skip workerset creation if we need to do offline evaluation
         if self._should_create_evaluation_rollout_workers(self.evaluation_config):
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
@@ -651,14 +651,14 @@ class Algorithm(Trainable):
             self.evaluation_config.off_policy_estimation_methods
             and not self.evaluation_config.ope_split_batch_by_episode
         ):
-            # the num worker is set to 0 to avoid creating shards since there is no
-            # worker anymore
+            # the num worker is set to 0 to avoid creating shards. The dataset will not
+            # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
             ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
 
             # Dataset should be in form of one episode per row. in case of bandits each
-            # row is just one time step. To make the computation easier later we remove
-            # the time dimension.
+            # row is just one time step. To make the computation more efficient later
+            # we remove the time dimension here.
             batch_size = max(
                 ds.count() // self.evaluation_config.evaluation_num_workers, 1
             )
@@ -2039,10 +2039,15 @@ class Algorithm(Trainable):
         eval_cf.validate()
         eval_cf.freeze()
 
+        # resources for local worker
         local_worker = {
             "CPU": cf.num_cpus_for_local_worker,
             "GPU": 0 if cf._fake_gpus else cf.num_gpus,
         }
+
+        bundles = [local_worker]
+
+        # resources for rollout env samplers
         rollout_workers = [
             {
                 "CPU": cf.num_cpus_per_worker,
@@ -2052,10 +2057,7 @@ class Algorithm(Trainable):
             for _ in range(cf.num_rollout_workers)
         ]
 
-        # resources for training env samplers
-        bundles = [local_worker]
-
-        # resources for evaluation env samplers
+        # resources for evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
@@ -2068,11 +2070,10 @@ class Algorithm(Trainable):
                 for _ in range(eval_cf.evaluation_num_workers)
             ]
         else:
-            # resources for offline dataset readers
-            # Note (Kourosh): we should not claim extra workers for the
-            # training on offline
-            # dataset since rollout workers have already claimed it.
-            # (The mysterious 1 extra worker was due to this.)
+            # resources for offline dataset readers during evaluation
+            # Note (Kourosh): we should not claim extra workers for
+            # training on the offline dataset, since rollout workers have already
+            # claimed it. (The mysterious 1 extra worker was due to this.)
             evaluation_bundle = get_offline_io_resource_bundles(eval_cf)
 
         bundles += rollout_workers + evaluation_bundle
@@ -2849,8 +2850,16 @@ class Algorithm(Trainable):
         return results, train_iter_ctx
 
     def _run_offline_evaluation(self):
-        # Note: we can only run offline evaluation in single agent case for now.
+        """Runs offline evaluation via `OfflineEvaluator.estimate_on_dataset()` API.
+
+        This method will be used when `evaluation_dataset` is provided.
+        Note: This will only work if the policy is a single agent policy.
+
+        Returns:
+            The results dict from the offline evaluation call.
+        """
         assert len(self.workers.local_worker().policy_map) == 1
+
         offline_eval_results = {"off_policy_estimator": {}}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
             offline_eval_results["off_policy_estimator"][
@@ -2862,9 +2871,20 @@ class Algorithm(Trainable):
         return offline_eval_results
 
     @classmethod
-    def _should_create_evaluation_rollout_workers(cls, eval_config):
-        do_offline_evaluation = eval_config.get("off_policy_estimation_methods")
-        return not do_offline_evaluation and (
+    def _should_create_evaluation_rollout_workers(cls, eval_config: "AlgorithmConfig"):
+        """Determines whether we need to create evaluation workers.
+
+        Returns False if we need to run offline evaluation
+        (with ope.estimate_on_dastaset API) or when local worker is to be used for
+        evaluation. Note: We only use estimate_on_dataset API with bandits for now.
+        That is when ope_split_batch_by_episode is False. TODO: In future we will do
+        the same for episodic RL OPE.
+        """
+        run_offline_evaluation = (
+            eval_config.get("off_policy_estimation_methods")
+            and not eval_config.ope_split_batch_by_episode
+        )
+        return not run_offline_evaluation and (
             eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
         )
 
