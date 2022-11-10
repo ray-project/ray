@@ -16,18 +16,19 @@ Logical Resources
 
 Ray resources are **logical** and don’t need to have 1-to-1 mapping with physical resources.
 For example, you can start a Ray head node with 3 GPUs via ``ray start --head --num-gpus=3`` even if it physically has zero.
+They are mainly used for admission control during scheduling.
 
 The resources being logical has several implications:
 
-  - Resource requirements of tasks or actors does NOT impose any limits on the actual physical resource usage.
-    For example, Ray doesn't prevent a ``num_cpus=1`` task from launching multiple threads and using multiple physical CPUs.
-    It's your responsibility to make sure your tasks or actors use no more resources than specified via resource requirements.
-  - Ray doesn't provide CPU isolation for tasks or actors.
-    For example, Ray won't reserve a physical CPU excludsively and pin a ``num_cpus=1`` task to it.
-    Ray will let the OS scheduler schedule and run the task instead.
-    If needed, you can use OS APIs like ``sched_setaffinity`` to pin a task to a physical CPU.
-  - Ray does provide :ref:`GPU <gpu-support>` isolation in forms of visible devices by automatically setting the ``CUDA_VISIBLE_DEVICES`` envrionment variable,
-    but it is still up to the task or actor to actually honor it or override it.
+- Resource requirements of tasks or actors does NOT impose any limits on the actual physical resource usage.
+  For example, Ray doesn't prevent a ``num_cpus=1`` task from launching multiple threads and using multiple physical CPUs.
+  It's your responsibility to make sure your tasks or actors use no more resources than specified via resource requirements.
+- Ray doesn't provide CPU isolation for tasks or actors.
+  For example, Ray won't reserve a physical CPU excludsively and pin a ``num_cpus=1`` task to it.
+  Ray will let the OS scheduler schedule and run the task instead.
+  If needed, you can use OS APIs like ``sched_setaffinity`` to pin a task to a physical CPU.
+- Ray does provide :ref:`GPU <gpu-support>` isolation in forms of visible devices by automatically setting the ``CUDA_VISIBLE_DEVICES`` envrionment variable,
+  but it is still up to the task or actor to actually honor it or override it.
 
 Custom Resources
 ----------------
@@ -35,13 +36,13 @@ Custom Resources
 Besides pre-defined resources, you can also specify custom resources that a Ray node has and request them in your tasks or actors.
 Several use cases of custom resources are:
 
-  - Your node has a special hardware and you can represent it as a custom resource.
-    Then your tasks or actors can request the custom resource via ``@ray.remote(resources={"special_hardware": 1})``
-    and Ray will schedule the tasks or actors to the node that has the custom resource.
-  - You can use custom resources as labels to tag nodes and you can achieve label based affinity scheduling.
-    For example, you can do ``ray.remote(resources={"custom_label": 0.001})`` to schedule tasks or actors to nodes with ``custom_label`` custom resource.
-    In this use case, the actual quantity doesn't matter that much and the convention is to specify a tiny number so that the label resource is
-    not the limiting factor for parallelism.
+- Your node has a special hardware and you can represent it as a custom resource.
+  Then your tasks or actors can request the custom resource via ``@ray.remote(resources={"special_hardware": 1})``
+  and Ray will schedule the tasks or actors to the node that has the custom resource.
+- You can use custom resources as labels to tag nodes and you can achieve label based affinity scheduling.
+  For example, you can do ``ray.remote(resources={"custom_label": 0.001})`` to schedule tasks or actors to nodes with ``custom_label`` custom resource.
+  In this use case, the actual quantity doesn't matter that much and the convention is to specify a tiny number so that the label resource is
+  not the limiting factor for parallelism.
 
 Specifying Node Resources
 -------------------------
@@ -135,6 +136,10 @@ You can also explicitly specify a task's or actor's resource requirements (for e
         ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 0.5).SetResource("special_hardware", 1.0).Remote();
 
         ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
+
+.. note::
+
+  Ray supports fractional resource requirements. For example, if your task or actor is IO bound and has low CPU usage, you can specify fractional CPU ``num_cpus=0.5`` or even zero CPU ``num_cpus=0``.
 
 .. tip::
 
