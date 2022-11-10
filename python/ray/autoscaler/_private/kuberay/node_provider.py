@@ -23,7 +23,8 @@ from ray.autoscaler.tags import (
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
-# Key for KubeRay label that identifies the worker group (autoscaler node type) of a Ray pod.
+# Key for KubeRay label that identifies the worker group (autoscaler node type) of a
+# Ray pod.
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
@@ -39,8 +40,8 @@ KUBERAY_TYPE_HEAD = "head-group"
 # terminated to the scaleStrategy).
 
 # KuberayNodeProvider inherits from BatchingNodeProvider.
-# Thus, the autoscaler's create and terminate requests are batched into a single ScaleRequest
-# object which is submitted at the end of autoscaler update.
+# Thus, the autoscaler's create and terminate requests are batched into a single
+# Scale Request object which is submitted at the end of autoscaler update.
 # KubeRay node provider converts the ScaleRequest into a RayCluster CR patch
 # and applies the patch in the submit_scale_request method.
 # To reduce potential for race conditions, KuberayNodeProvider
