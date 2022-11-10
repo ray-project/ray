@@ -275,7 +275,7 @@ class TransformRoutines:
         )
 
         spectrogram = np.abs(spectrogram)
-        spectrogram = 10 * np.log10(spectrogram ** 2)
+        spectrogram = 10 * np.log10(spectrogram**2)
         return spectrogram
 
     @staticmethod
@@ -462,7 +462,10 @@ def main():
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
     print(f"Peak memory usage per processes:\n {usage}")
-    print(ray._private.internal_api.memory_summary(stats_only=True))
+    try:
+        print(ray._private.internal_api.memory_summary(stats_only=True))
+    except Exception as e:
+        print(f"Warning: query memory summary failed: {e}")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
             json.dumps(

@@ -150,6 +150,23 @@ ds.show(2)
 # fmt: on
 
 # fmt: off
+# __read_images_begin__
+ds = ray.data.read_images("example://image-datasets/simple")
+# -> Dataset(num_blocks=3, num_rows=3, 
+#            schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
+
+ds.take(1)
+# -> [array([[[ 88,  70,  68],
+#            [103,  88,  85],
+#            [112,  96,  97],
+#            ...,
+#            [168, 151,  81],
+#            [167, 149,  83],
+#            [166, 148,  82]]], dtype=uint8)]
+# __read_images_end__
+# fmt: on
+
+# fmt: off
 # __from_numpy_mult_begin__
 import numpy as np
 

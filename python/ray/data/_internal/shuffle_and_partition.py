@@ -37,7 +37,7 @@ class _ShufflePartitionOp(ShuffleOp):
         stats = BlockExecStats.builder()
         if block_udf:
             # TODO(ekl) note that this effectively disables block splitting.
-            blocks = list(block_udf(block))
+            blocks = list(block_udf([block]))
             if len(blocks) > 1:
                 builder = BlockAccessor.for_block(blocks[0]).builder()
                 for b in blocks:
@@ -56,7 +56,7 @@ class _ShufflePartitionOp(ShuffleOp):
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
+            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
 
         # Randomize the distribution order of the blocks (this prevents empty
         # outputs when input blocks are very small).

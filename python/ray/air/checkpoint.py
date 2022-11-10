@@ -37,6 +37,7 @@ _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 logger = logging.getLogger(__name__)
@@ -54,23 +55,6 @@ class _CheckpointMetadata:
 
     checkpoint_type: Type["Checkpoint"]
     checkpoint_state: Dict[str, Any]
-
-
-class _CheckpointDict(dict):
-    """A ``dict`` that represents a checkpoint.
-
-    Args:
-        metadata: Metadata about the checkpoint that this ``dict`` represents.
-    """
-
-    def __init__(self, *args, metadata: _CheckpointMetadata, **kwargs):
-        self._metadata = metadata
-        super().__init__(*args, **kwargs)
-
-    @property
-    def metadata(self) -> _CheckpointMetadata:
-        """Metadata about the checkpoint that this ``dict`` represents."""
-        return self._metadata
 
 
 @PublicAPI(stability="beta")
@@ -320,9 +304,10 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         state = {}
-        if isinstance(data, _CheckpointDict):
-            cls = cls._get_checkpoint_type(data.metadata.checkpoint_type)
-            state = data.metadata.checkpoint_state
+        if _METADATA_KEY in data:
+            metadata = data[_METADATA_KEY]
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
 
         checkpoint = cls(data_dict=data)
         checkpoint.__dict__.update(state)
@@ -331,11 +316,6 @@ class Checkpoint:
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
-
-        .. note::
-            :meth:`~Checkpoint.to_dict` returns a ``dict`` subclass that contains
-            information about the checkpoint type. This ``dict`` subclass is
-            functionally identical to the built-in ``dict``.
 
         Returns:
             dict: Dictionary containing checkpoint data.
@@ -402,7 +382,8 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
-        return _CheckpointDict(checkpoint_data, metadata=self._metadata)
+        checkpoint_data[_METADATA_KEY] = self._metadata
+        return checkpoint_data
 
     @classmethod
     @Deprecated(
@@ -473,6 +454,7 @@ class Checkpoint:
 
         return checkpoint
 
+    # TODO: Deprecate `from_checkpoint`. For context, see #29058.
     @classmethod
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
         """Create a checkpoint from a generic :py:class:`Checkpoint`.
@@ -486,6 +468,9 @@ class Checkpoint:
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
         """
+        if type(other) is cls:
+            return other
+
         return cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
@@ -516,6 +501,11 @@ class Checkpoint:
                     "constraints. Try specifing a shorter checkpoint path."
                 )
         return os.path.join(tmp_dir_path, checkpoint_dir_name)
+
+    def _save_checkpoint_metadata_in_directory(self, path: str) -> None:
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        with open(checkpoint_metadata_path, "wb") as file:
+            pickle.dump(self._metadata, file)
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
@@ -563,9 +553,7 @@ class Checkpoint:
                     f"No valid location found for checkpoint {self}: {self._uri}"
                 )
 
-        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
-        with open(checkpoint_metadata_path, "wb") as file:
-            pickle.dump(self._metadata, file)
+        self._save_checkpoint_metadata_in_directory(path)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.

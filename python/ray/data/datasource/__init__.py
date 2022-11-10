@@ -24,7 +24,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
-from ray.data.datasource.image_folder_datasource import ImageFolderDatasource
+from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
@@ -37,8 +37,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
 )
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
-from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
-from ray.data.datasource.torch_datasource import SimpleTorchDatasource
+from ray.data.datasource.text_datasource import TextDatasource
 
 __all__ = [
     "BaseFileMetadataProvider",
@@ -54,7 +53,7 @@ __all__ = [
     "FileBasedDatasource",
     "FileExtensionFilter",
     "FileMetadataProvider",
-    "ImageFolderDatasource",
+    "ImageDatasource",
     "JSONDatasource",
     "NumpyDatasource",
     "ParquetBaseDatasource",
@@ -69,8 +68,7 @@ __all__ = [
     "RangeDatasource",
     "ReadTask",
     "Reader",
-    "SimpleTensorFlowDatasource",
-    "SimpleTorchDatasource",
+    "TextDatasource",
     "TFRecordDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",

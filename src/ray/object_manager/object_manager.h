@@ -104,9 +104,12 @@ class ObjectStoreRunner {
 class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                        BundlePriority prio) = 0;
+                        BundlePriority prio,
+                        const std::string &task_name) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
+  virtual int64_t PullManagerNumInactivePullsByTaskName(
+      const std::string &task_name) const = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -151,6 +154,11 @@ class ObjectManager : public ObjectManagerInterface,
 
   bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
     return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
+  }
+
+  int64_t PullManagerNumInactivePullsByTaskName(
+      const std::string &task_name) const override {
+    return pull_manager_->NumInactivePulls(task_name);
   }
 
  public:
@@ -204,7 +212,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param prio The bundle priority.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                BundlePriority prio) override;
+                BundlePriority prio,
+                const std::string &task_name) override;
 
   /// Cancels the pull request with the given ID. This cancels any fetches for
   /// objects that were passed to the original pull request, if no other pull

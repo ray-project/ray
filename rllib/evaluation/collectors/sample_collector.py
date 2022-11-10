@@ -58,9 +58,9 @@ class SampleCollector(metaclass=ABCMeta):
         self.count_steps_by = count_steps_by
 
     @abstractmethod
-    def add_init_obs(self, episode: Episode, agent_id: AgentID,
-                     policy_id: PolicyID, t: int,
-                     init_obs: TensorType) -> None:
+    def add_init_obs(self, episode: Episode, agent_id: AgentID, env_id: EnvID,
+                     policy_id: PolicyID,
+                     init_obs: TensorType, t: int = -1) -> None:
         """Adds an initial obs (after reset) to this collector.
 
         Since the very first observation in an environment is collected w/o
@@ -77,9 +77,9 @@ class SampleCollector(metaclass=ABCMeta):
                 values for.
             env_id: The environment index (in a vectorized setup).
             policy_id: Unique id for policy controlling the agent.
+            init_obs: Initial observation (after env.reset()).
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
-            init_obs: Initial observation (after env.reset()).
 
         Examples:
             >>> obs = env.reset()

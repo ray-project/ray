@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Union, List
+from typing import Dict, Union, List
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,7 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 
+# TODO: Consolidate data conversion edges for arrow bug workaround.
 try:
     import pyarrow
 except ImportError:
@@ -109,6 +110,68 @@ def convert_pandas_to_batch_type(
         )
 
 
+def _convert_batch_type_to_numpy(
+    data: DataBatchType,
+) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    """Convert the provided data to a NumPy ndarray or dict of ndarrays.
+
+    Args:
+        data: Data of type DataBatchType
+
+    Returns:
+        A numpy representation of the input data.
+    """
+    if isinstance(data, np.ndarray):
+        return data
+    elif isinstance(data, dict):
+        for col_name, col in data.items():
+            if not isinstance(col, np.ndarray):
+                raise ValueError(
+                    "All values in the provided dict must be of type "
+                    f"np.ndarray. Found type {type(col)} for key {col_name} "
+                    f"instead."
+                )
+        return data
+    elif pyarrow is not None and isinstance(data, pyarrow.Table):
+        from ray.air.util.tensor_extensions.arrow import ArrowTensorType
+        from ray.air.util.transform_pyarrow import (
+            _is_column_extension_type,
+            _concatenate_extension_column,
+        )
+
+        if data.column_names == [TENSOR_COLUMN_NAME] and (
+            isinstance(data.schema.types[0], ArrowTensorType)
+        ):
+            # If representing a tensor dataset, return as a single numpy array.
+            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+            # Arrow’s incorrect concatenation of extension arrays:
+            # https://issues.apache.org/jira/browse/ARROW-16503
+            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
+                zero_copy_only=False
+            )
+        else:
+            output_dict = {}
+            for col_name in data.column_names:
+                col = data[col_name]
+                if col.num_chunks == 0:
+                    col = pyarrow.array([], type=col.type)
+                elif _is_column_extension_type(col):
+                    # Arrow’s incorrect concatenation of extension arrays:
+                    # https://issues.apache.org/jira/browse/ARROW-16503
+                    col = _concatenate_extension_column(col)
+                else:
+                    col = col.combine_chunks()
+                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
+            return output_dict
+    elif isinstance(data, pd.DataFrame):
+        return convert_pandas_to_batch_type(data, DataType.NUMPY)
+    else:
+        raise ValueError(
+            f"Received data of type: {type(data)}, but expected it to be one "
+            f"of {DataBatchType}"
+        )
+
+
 def _ndarray_to_column(arr: np.ndarray) -> Union[pd.Series, List[np.ndarray]]:
     """Convert a NumPy ndarray into an appropriate column format for insertion into a
     pandas DataFrame.
@@ -142,28 +205,28 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
-    from ray.air.util.tensor_extensions.pandas import TensorArray
+    from ray.air.util.tensor_extensions.pandas import (
+        TensorArray,
+        column_needs_tensor_extension,
+    )
 
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
     # this. See https://github.com/pandas-dev/pandas/issues/41848
-    for col_name, col in df.items():
-        if (
-            col.dtype.type is np.object_
-            and not col.empty
-            and isinstance(col.iloc[0], np.ndarray)
-        ):
-            try:
-                df.loc[:, col_name] = TensorArray(col)
-            except Exception as e:
-                raise ValueError(
-                    f"Tried to cast column {col_name} to the TensorArray tensor "
-                    "extension type but the conversion failed. To disable automatic "
-                    "casting to this tensor extension, set "
-                    "ctx = DatasetContext.get_current(); "
-                    "ctx.enable_tensor_extension_casting = False."
-                ) from e
+    with pd.option_context("chained_assignment", None):
+        for col_name, col in df.items():
+            if column_needs_tensor_extension(col):
+                try:
+                    df.loc[:, col_name] = TensorArray(col)
+                except Exception as e:
+                    raise ValueError(
+                        f"Tried to cast column {col_name} to the TensorArray tensor "
+                        "extension type but the conversion failed. To disable "
+                        "automatic casting to this tensor extension, set "
+                        "ctx = DatasetContext.get_current(); "
+                        "ctx.enable_tensor_extension_casting = False."
+                    ) from e
     return df
 
 
@@ -171,8 +234,9 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     from ray.air.util.tensor_extensions.pandas import TensorDtype
 
-    # Try to convert any tensor extension columns to ndarray columns.
-    for col_name, col in df.items():
-        if isinstance(col.dtype, TensorDtype):
-            df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
-    return df
+    with pd.option_context("chained_assignment", None):
+        # Try to convert any tensor extension columns to ndarray columns.
+        for col_name, col in df.items():
+            if isinstance(col.dtype, TensorDtype):
+                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+        return df

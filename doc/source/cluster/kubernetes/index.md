@@ -91,6 +91,8 @@ and discussion of new and upcoming features.
 
 ```{note}
 The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/master/python/ray/ray_operator).
+The legacy Ray operator will be compatible with Ray versions up to Ray 2.1.0.
+However, **the legacy Ray operator will be removed in Ray 2.2.0.**
 Check the linked README for migration notes.
 
 If you have used the legacy Ray operator in the past,

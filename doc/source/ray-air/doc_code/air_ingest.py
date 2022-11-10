@@ -163,14 +163,14 @@ my_trainer.fit()
 
 # __global_shuffling_start__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):
@@ -196,14 +196,14 @@ my_trainer.fit()
 
 # __local_shuffling_start__
 import ray
-from ray import train
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = train.get_dataset_shard("train")
+    data_shard: Dataset = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):

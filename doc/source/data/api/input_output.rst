@@ -48,6 +48,11 @@ Text
 
 .. autofunction:: ray.data.read_text
 
+Images (experimental)
+---------------------
+
+.. autofunction:: ray.data.read_images
+
 Binary
 ------
 
@@ -57,6 +62,9 @@ TFRecords
 ---------
 
 .. autofunction:: ray.data.read_tfrecords
+
+.. autofunction:: ray.data.Dataset.write_tfrecords
+    :noindex:
 
 
 Pandas
@@ -129,10 +137,20 @@ Mars
 .. automethod:: ray.data.Dataset.to_mars
     :noindex:
 
+Torch
+-----
+
+.. autofunction:: ray.data.from_torch
+
 HuggingFace
 ------------
 
 .. autofunction:: ray.data.from_huggingface
+
+TensorFlow
+----------
+
+.. autofunction:: ray.data.from_tf
 
 
 .. _data_source_api:
@@ -151,6 +169,9 @@ Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+.. autoclass:: ray.data.datasource.Reader
+    :members:
+
 
 Built-in Datasources
 ####################
@@ -164,7 +185,7 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
 
-.. autoclass:: ray.data.datasource.ImageFolderDatasource
+.. autoclass:: ray.data.datasource.ImageDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.JSONDatasource
@@ -177,12 +198,6 @@ Built-in Datasources
     :members:
 
 .. autoclass:: ray.data.datasource.RangeDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
-    :members:
-
-.. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.TFRecordDatasource

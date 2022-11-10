@@ -1,9 +1,8 @@
-import time
-import unittest
 from collections import defaultdict
-
 import gym
 import numpy as np
+import time
+import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -12,7 +11,8 @@ from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.algorithms.pg import PG, PGConfig
+from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
@@ -148,9 +148,7 @@ class FaultInjectEnv(gym.Env):
 
 
 def is_recreated(w):
-    return w.apply.remote(
-        lambda w: w.recreated_worker or w.env_context.recreated_worker
-    )
+    return w.recreated_worker or w.env_context.recreated_worker
 
 
 class TestWorkerFailures(unittest.TestCase):
@@ -169,7 +167,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
-        config.num_workers = 2
+        config.num_rollout_workers = 2
         config.ignore_worker_failures = True
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
@@ -190,7 +188,7 @@ class TestWorkerFailures(unittest.TestCase):
             algo = config.build()
             result = algo.train()
 
-            # Both rollout workers are healthy.
+            # One of the rollout workers failed.
             self.assertTrue(result["num_healthy_workers"] == 1)
             if fail_eval:
                 # One of the eval workers failed.
@@ -200,7 +198,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_fatal(self, config, fail_eval=False):
         # Test raises real error when out of workers.
-        config.num_workers = 2
+        config.num_rollout_workers = 2
         config.ignore_worker_failures = False
         config.env = "fault_env"
         # Make both worker idx=1 and 2 fail.
@@ -224,7 +222,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_fatal_but_recreate(self, config):
         # Test raises real error when out of workers.
-        config.num_workers = 1
+        config.num_rollout_workers = 1
         config.evaluation_num_workers = 1
         config.evaluation_interval = 1
         config.env = "fault_env"
@@ -300,7 +298,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_multi_g_p_u(self):
         self._do_test_fault_ignore(
             PPOConfig()
-            .rollouts(rollout_fragment_length=10)
+            .rollouts(rollout_fragment_length=5)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
@@ -328,6 +326,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .evaluation(
+                evaluation_num_workers=1,
                 enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
@@ -380,11 +379,7 @@ class TestWorkerFailures(unittest.TestCase):
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
             result = a.train()
@@ -393,11 +388,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Workers are re-created.
             self.assertEqual(result["num_recreated_workers"], 2)
             self.assertTrue(
-                all(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                all(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
     def test_policies_are_restored_on_recovered_worker(self):
@@ -409,7 +400,11 @@ class TestWorkerFailures(unittest.TestCase):
                 # Add a custom policy to algorithm
                 algorithm.add_policy(
                     policy_id="test_policy",
-                    policy_cls=PGTorchPolicy,
+                    policy_cls=(
+                        PGTorchPolicy
+                        if algorithm.config.framework_str == "torch"
+                        else PGTF2Policy
+                    ),
                     observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
                     action_space=gym.spaces.Discrete(2),
                     config={},
@@ -464,7 +459,7 @@ class TestWorkerFailures(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
+            # Reset interaction counter.
             ray.wait([counter.reset.remote()])
 
             a = config.build()
@@ -474,19 +469,12 @@ class TestWorkerFailures(unittest.TestCase):
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
             self.assertTrue(
                 not any(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -497,20 +485,13 @@ class TestWorkerFailures(unittest.TestCase):
             # Both workers are re-created.
             self.assertEqual(result["num_recreated_workers"], 2)
             self.assertTrue(
-                all(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                all(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
             # Eval worker is re-created.
             self.assertTrue(
                 all(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -521,23 +502,13 @@ class TestWorkerFailures(unittest.TestCase):
 
             # Rollout worker has test policy.
             self.assertTrue(
-                all(
-                    ray.get(
-                        [
-                            w.apply.remote(has_test_policy)
-                            for w in a.workers.remote_workers()
-                        ]
-                    )
-                )
+                all(a.workers.foreach_worker(has_test_policy, local_worker=False))
             )
             # Eval worker has test policy.
             self.assertTrue(
                 all(
-                    ray.get(
-                        [
-                            w.apply.remote(has_test_policy)
-                            for w in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        has_test_policy, local_worker=False
                     )
                 )
             )
@@ -585,20 +556,13 @@ class TestWorkerFailures(unittest.TestCase):
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
             # Eval workers are also fresh and not recreated.
             self.assertTrue(
                 not any(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -609,11 +573,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Nothing happens to worker. They are still not re-created.
             self.assertEqual(result["num_recreated_workers"], 0)
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
             self.assertEqual(result["evaluation"]["num_healthy_workers"], 2)
@@ -621,11 +581,8 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(result["evaluation"]["num_recreated_workers"], 2)
             self.assertTrue(
                 all(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -637,6 +594,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PGConfig()
+            .environment("fault_env")
             .rollouts(
                 num_rollout_workers=2,
                 ignore_worker_failures=True,  # Ignore failure.
@@ -677,15 +635,11 @@ class TestWorkerFailures(unittest.TestCase):
             # Reset interaciton counter.
             ray.wait([counter.reset.remote()])
 
-            a = PG(config=config, env="fault_env")
+            a = config.build()
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
             result = a.train()
@@ -694,11 +648,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Workers are re-created.
             self.assertEqual(result["num_recreated_workers"], 2)
             self.assertTrue(
-                all(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                all(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
@@ -707,11 +657,8 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(result["evaluation"]["num_recreated_workers"], 0)
             self.assertTrue(
                 not any(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -847,20 +794,13 @@ class TestWorkerFailures(unittest.TestCase):
 
             # Before train loop, workers are fresh and not recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
             # Eval workers are also fresh and not recreated.
             self.assertTrue(
                 not any(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
+                    a.evaluation_workers.foreach_worker(
+                        is_recreated, local_worker=False
                     )
                 )
             )
@@ -874,24 +814,13 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertTrue(result["num_healthy_workers"] == 1)
             # All workers are still not restored, since env are restored.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [is_recreated(worker) for worker in a.workers.remote_workers()]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
             # All eval workers are still not restored, since env are recreated.
             self.assertTrue(
-                not any(
-                    ray.get(
-                        [
-                            is_recreated(worker)
-                            for worker in a.evaluation_workers.remote_workers()
-                        ]
-                    )
-                )
+                not any(a.workers.foreach_worker(is_recreated, local_worker=False))
             )
 
     def test_env_wait_time_workers_restore_env(self):
@@ -906,7 +835,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Worker fault tolerance.
                 recreate_failed_workers=False,  # Do not ignore.
                 restart_failed_sub_environments=True,  # But recover.
-                rollout_fragment_length=10,
+                rollout_fragment_length=5,
                 # Use EMA PerfStat.
                 # Really large coeff to show the difference in env_wait_time_ms.
                 # Pretty much consider the last 2 data points.

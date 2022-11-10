@@ -44,7 +44,7 @@ class TestOPE(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
 
-        env_name = "CartPole-v0"
+        env_name = "CartPole-v1"
         cls.gamma = 0.99
         n_episodes = 3
         cls.q_model_config = {"n_iters": 160}
@@ -52,11 +52,11 @@ class TestOPE(unittest.TestCase):
         config = (
             DQNConfig()
             .environment(env=env_name)
-            .rollouts(batch_mode="complete_episodes")
             .framework("torch")
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
+            .rollouts(batch_mode="complete_episodes")
             .offline_data(
-                input_="dataset", input_config={"format": "json", "paths": train_data}
+                input_="dataset",
+                input_config={"format": "json", "paths": train_data},
             )
             .evaluation(
                 evaluation_interval=1,
@@ -64,12 +64,13 @@ class TestOPE(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
                 off_policy_estimation_methods={
-                    "is": {"type": ImportanceSampling},
-                    "wis": {"type": WeightedImportanceSampling},
-                    "dm_fqe": {"type": DirectMethod},
-                    "dr_fqe": {"type": DoublyRobust},
+                    "is": {"type": ImportanceSampling, "epsilon_greedy": 0.1},
+                    "wis": {"type": WeightedImportanceSampling, "epsilon_greedy": 0.1},
+                    "dm_fqe": {"type": DirectMethod, "epsilon_greedy": 0.1},
+                    "dr_fqe": {"type": DoublyRobust, "epsilon_greedy": 0.1},
                 },
             )
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
         )
         cls.algo = config.build()
 

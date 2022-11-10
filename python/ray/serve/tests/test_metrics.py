@@ -1,4 +1,5 @@
 import os
+from typing import List, Dict
 
 import requests
 import pytest
@@ -10,7 +11,22 @@ from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
 
 
-def test_serve_metrics_for_successful_connection(serve_instance):
+@pytest.fixture
+def serve_start_shutdown():
+    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
+    yield serve.start()
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     @serve.deployment(name="metrics")
     async def f(request):
         return "hello"
@@ -46,6 +62,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
             "serve_deployment_processing_latency_ms",
             # gauge
             "serve_replica_processing_queries",
+            "serve_deployment_replica_healthy",
             # handle
             "serve_handle_request_counter",
         ]
@@ -66,7 +83,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         verify_metrics(do_assert=True)
 
 
-def test_http_metrics(serve_instance):
+def test_http_metrics(serve_start_shutdown):
 
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -153,6 +170,50 @@ def test_http_metrics(serve_instance):
         verify_error_count(do_assert=True)
 
 
+def test_http_metrics_fields(serve_start_shutdown):
+    """Tests the http metrics' fields' behavior."""
+
+    @serve.deployment(route_prefix="/real_route")
+    def f(*args):
+        return 1 / 0
+
+    serve.run(f.bind())
+
+    # Should generate 404 responses
+    broken_url = "http://127.0.0.1:8000/fake_route"
+    for _ in range(10):
+        requests.get(broken_url).text
+    print("Sent requests to broken URL.")
+
+    num_requests = get_metric_dictionaries("serve_num_http_requests")
+    assert len(num_requests) == 1
+    assert num_requests[0]["route"] == "/fake_route"
+    assert num_requests[0]["method"] == "GET"
+    print("serve_num_http_requests working as expected.")
+
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "/fake_route"
+    assert num_errors[0]["error_code"] == "404"
+    assert num_errors[0]["method"] == "GET"
+    print("serve_num_http_error_requests working as expected.")
+
+    # Deployment should generate divide-by-zero errors
+    correct_url = "http://127.0.0.1:8000/real_route"
+    for _ in range(10):
+        requests.get(correct_url).text
+    print("Sent requests to correct URL.")
+
+    num_deployment_errors = get_metric_dictionaries(
+        "serve_num_deployment_http_error_requests"
+    )
+    assert len(num_deployment_errors) == 1
+    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["error_code"] == "500"
+    assert num_deployment_errors[0]["method"] == "GET"
+    print("serve_num_deployment_http_error_requests working as expected.")
+
+
 def test_actor_summary(serve_instance):
     @serve.deployment
     def f():
@@ -164,6 +225,48 @@ def test_actor_summary(serve_instance):
     assert class_names.issuperset(
         {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
     )
+
+
+def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
+    """Gets a list of metric's dictionaries from metrics' text output.
+
+    Return:
+        Example:
+
+        >>> get_metric_dictionaries("ray_serve_num_http_requests")
+        [
+            {
+                'Component': 'core_worker',
+                'JobId': '01000000',
+                ...
+                'method': 'GET',
+                'route': '/hello'
+            },
+            {
+                'Component': 'core_worker',
+                ...
+                'method': 'GET',
+                'route': '/hello/'
+            }
+        ]
+    """
+
+    def metric_available() -> bool:
+        metrics = requests.get("http://127.0.0.1:9999").text
+        return name in metrics
+
+    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
+
+    metrics = requests.get("http://127.0.0.1:9999").text
+
+    metric_dicts = []
+    for line in metrics.split("\n"):
+        if name + "{" in line:
+            dict_body_start, dict_body_end = line.find("{") + 1, line.rfind("}")
+            metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
+            metric_dicts.append(eval(metric_dict_str))
+
+    return metric_dicts
 
 
 if __name__ == "__main__":

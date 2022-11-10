@@ -56,7 +56,8 @@ class CoreWorkerDirectTaskReceiver {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
       ReferenceCounter::ReferenceTableProto *borrower_refs,
-      bool *is_retryable_error)>;
+      bool *is_retryable_error,
+      bool *is_application_error)>;
 
   using OnTaskDone = std::function<Status()>;
 
