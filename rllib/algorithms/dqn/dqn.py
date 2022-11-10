@@ -56,62 +56,62 @@ class DQNConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.replay_buffer_config)
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 60000,
-        >>>         "prioritized_replay_alpha": 0.5,
-        >>>         "prioritized_replay_beta": 0.5,
-        >>>         "prioritized_replay_eps": 3e-6,
-        >>>     }
-        >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=1)\
-        >>>       .rollouts(num_rollout_workers=3)\
-        >>>       .environment("CartPole-v1")
-        >>> trainer = DQN(config=config)
-        >>> while True:
-        >>>     trainer.train()
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update( # doctest: +SKIP
+        ...     {
+        ...         "capacity": 60000,
+        ...         "prioritized_replay_alpha": 0.5,
+        ...         "prioritized_replay_beta": 0.5,
+        ...         "prioritized_replay_eps": 3e-6,
+        ...     }
+        ... )
+        >>> config = config.training(replay_buffer_config=replay_config)# doctest: +SKIP
+        >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=3)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
+        >>> trainer = DQN(config=config)  # doctest: +SKIP
+        >>> trainer.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> from ray import air
         >>> from ray import tune
         >>> config = DQNConfig()
-        >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
-        >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "DQN",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> config = config.training( # doctest: +SKIP
+        ...     num_atoms=tune.grid_search(list(range(1,11))))
+        >>> config = config.environment(env="CartPole-v1") # doctest: +SKIP
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "DQN",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
-        >>>     {
-        >>>         "initial_epsilon": 1.5,
-        >>>         "final_epsilon": 0.01,
-        >>>         "epsilone_timesteps": 5000,
-        >>>     }
-        >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
-        >>>       .exploration(exploration_config=explore_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update( # doctest: +SKIP
+        ...     {
+        ...         "initial_epsilon": 1.5,
+        ...         "final_epsilon": 0.01,
+        ...         "epsilone_timesteps": 5000,
+        ...     }
+        ... )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\ # doctest: +SKIP
+        ...       .exploration(exploration_config=explore_config)
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
-        >>>     {
-        >>>         "type": "softq",
-        >>>         "temperature": [1.0],
-        >>>     }
-        >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
-        >>>       .exploration(exploration_config=explore_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update( # doctest: +SKIP
+        ...     {
+        ...         "type": "softq",
+        ...         "temperature": [1.0],
+        ...     }
+        ... )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\ # doctest: +SKIP
+        ...       .exploration(exploration_config=explore_config)
     """
 
     def __init__(self, algo_class=None):

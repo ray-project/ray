@@ -48,14 +48,15 @@ class ARSConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
-        >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)\
-        ...     .environment("CartPole-v1")
-        >>> print(config.to_dict())
+        >>> config = ARSConfig()  # doctest: +SKIP
+        >>> config = config.training(report_length=20) # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
@@ -63,14 +64,15 @@ class ARSConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
-        >>> print(config.action_noise_std)
+        >>> print(config.action_noise_std)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "ARS",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
