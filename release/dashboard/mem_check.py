@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     if status == JobStatus.FAILED or status == JobStatus.STOPPED:
         print(client.get_job_logs(job_id))
-        assert False, "Rllib job has failed."
+        assert False, "Job has failed."
 
     me = raw_metrics(addr)
     found = False
