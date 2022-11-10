@@ -167,19 +167,19 @@ class DoublyRobust(OffPolicyEstimator):
         self, dataset: Dataset, *, n_parallelism: int = ...
     ) -> Dict[str, Any]:
         """Estimates the policy value using the Doubly Robust estimator.
-        
-        The doubly robust estimator uses normalization of importance sampling weights 
-        (aka. propensity ratios) to the average of the importance weights across the 
-        entire dataset. This is done to reduce the variance of the estimate (similar to 
-        weighted importance sampling). You can disable this by setting 
+
+        The doubly robust estimator uses normalization of importance sampling weights
+        (aka. propensity ratios) to the average of the importance weights across the
+        entire dataset. This is done to reduce the variance of the estimate (similar to
+        weighted importance sampling). You can disable this by setting
         `normalize_weights=False` in the constructor.
-        
+
         Note: This estimate works for only discrete action spaces for now.
-        
+
         Args:
-            dataset: Dataset to compute the estimate on. Each record in dataset should  
-                include the following columns: `obs`, `actions`, `action_prob` and 
-                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
             n_parallelism: Number of parallelism to use for the computation.
 
         Returns:

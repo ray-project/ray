@@ -13,7 +13,6 @@ from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 
 
-
 @DeveloperAPI
 def _perturb_fn(batch: np.ndarray, index: int):
     # shuffle the indexth column features
@@ -34,10 +33,10 @@ def _compute_actions(
     policy_state: Dict[str, Any],
     input_key: str = "",
     output_key: str = "",
-):  
+):
     """A custom local function to do batch prediction of a policy.
-    
-    Given the policy state the action predictions are computed as a function of 
+
+    Given the policy state the action predictions are computed as a function of
     `input_key` and stored in the `output_key` column.
 
     Args:
@@ -70,19 +69,26 @@ def _compute_actions(
 
 
 @ray.remote
-def get_feature_importance_on_index(dataset: ray.data.Dataset, *, index: int, perturb_fn: Callable[[pd.DataFrame, int], None], batch_size: int, policy_state: Dict[str, Any]):
+def get_feature_importance_on_index(
+    dataset: ray.data.Dataset,
+    *,
+    index: int,
+    perturb_fn: Callable[[pd.DataFrame, int], None],
+    batch_size: int,
+    policy_state: Dict[str, Any],
+):
     """A remote function to compute the feature importance of a given index.
-    
+
     Args:
-        dataset: The dataset to use for the computation. The dataset should have `obs`  
-            and `actions` columns. Each record should be flat d-dimensional array. 
+        dataset: The dataset to use for the computation. The dataset should have `obs`
+            and `actions` columns. Each record should be flat d-dimensional array.
         index: The index of the feature to compute the importance for.
         perturb_fn: The function to use for perturbing the dataset at the given index.
         batch_size: The batch size to use for the computation.
         policy_state: The state of the policy to use for the computation.
 
     Returns:
-        The modified dataset that contains a `delta` column which is the absolute 
+        The modified dataset that contains a `delta` column which is the absolute
         difference between the expected output and the output due to the perturbation.
     """
     perturbed_ds = dataset.map_batches(
@@ -158,7 +164,7 @@ class FeatureImportance(OfflineEvaluator):
             perturb_fn: function to perturb the features. By default reshuffle the
                 features within the batch.
             limit_fraction: fraction of the dataset to use for feature importance
-                This is only used in estimate_on_dataset when the dataset is too large 
+                This is only used in estimate_on_dataset when the dataset is too large
                 to compute feature importance on.
         """
         super().__init__(policy)
@@ -206,17 +212,24 @@ class FeatureImportance(OfflineEvaluator):
         self, dataset: Dataset, *, n_parallelism: int = ...
     ) -> Dict[str, Any]:
         """Estimate the feature importance of the policy given a dataset.
-        
-        For each feature in the dataset, the importance is computed by applying perturbations to each feature and computing the difference between the perturbed prediction and the reference prediction. The importance is computation for each feature and each perturbation is repeated `self.repeat` times. If dataset is large the user can initialize the estimator with a `limit_fraction` to limit the dataset to a fraction of the original dataset.
 
-        The dataset should include a column named `obs` where each row is a vector of D dimensions. The importance is computed for each dimension of the vector.
+        For each feature in the dataset, the importance is computed by applying
+        perturbations to each feature and computing the difference between the
+        perturbed prediction and the reference prediction. The importance is
+        computation for each feature and each perturbation is repeated `self.repeat`
+        times. If dataset is large the user can initialize the estimator with a
+        `limit_fraction` to limit the dataset to a fraction of the original dataset.
 
-        Note (Implementation detail): The computation across features are distributed with ray workers since each feature is independent of each other. 
+        The dataset should include a column named `obs` where each row is a vector of D
+        dimensions. The importance is computed for each dimension of the vector.
+
+        Note (Implementation detail): The computation across features are distributed
+        with ray workers since each feature is independent of each other.
 
         Args:
             dataset: the dataset to use for feature importance.
             n_parallelism: number of parallel workers to use for feature importance.
-        
+
         Returns:
             A dict mapping each feature index string to its importance.
         """

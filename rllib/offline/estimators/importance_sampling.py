@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List, Any
 
 from ray.data import Dataset
@@ -73,15 +72,17 @@ class ImportanceSampling(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OfflineEvaluator)
-    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
         """Computes the Importance sampling estimate on the given dataset.
 
         Note: This estimate works for both continuous and discrete action spaces.
-        
+
         Args:
-            dataset: Dataset to compute the estimate on. Each record in dataset should  
-                with include the following columns: `obs`, `actions`, `action_prob` and 
-                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
             n_parallelism: The number of parallel workers to use.
 
         Returns:

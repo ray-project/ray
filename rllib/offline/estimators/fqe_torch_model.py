@@ -282,7 +282,7 @@ class FQETorchModel:
     @classmethod
     def from_state(cls, state: Dict[str, Any]) -> "FQETorchModel":
         """Creates a FQE Model from a state dict.
-        
+
         Args:
             state: A state dict returned by `get_state`.
 

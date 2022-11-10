@@ -129,13 +129,13 @@ class DirectMethod(OffPolicyEstimator):
         self, dataset: Dataset, *, n_parallelism: int = ...
     ) -> Dict[str, Any]:
         """Calculates the Direct Method estimate on the given dataset.
-        
+
         Note: This estimate works for only discrete action spaces for now.
-        
+
         Args:
-            dataset: Dataset to compute the estimate on. Each record in dataset should  
-                include the following columns: `obs`, `actions`, `action_prob` and 
-                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
             n_parallelism: The number of parallel workers to use.
 
         Returns:

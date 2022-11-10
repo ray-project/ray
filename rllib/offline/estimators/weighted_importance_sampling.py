@@ -1,6 +1,5 @@
 from typing import Dict, Any, List
 import numpy as np
-import os
 
 from ray.data import Dataset
 
@@ -128,17 +127,19 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         self.p[eps_id] = episode_p
 
     @override(OfflineEvaluator)
-    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
         """Computes the weighted importance sampling estimate on a dataset.
-        
+
         Note: This estimate works for both continuous and discrete action spaces.
-        
+
         Args:
-            dataset: Dataset to compute the estimate on. Each record in dataset should  
-                include the following columns: `obs`, `actions`, `action_prob` and 
-                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
             n_parallelism: Number of parallel workers to use for the computation.
-        
+
         Returns:
             Dictionary with the following keys:
                 v_target: The weighted importance sampling estimate.
