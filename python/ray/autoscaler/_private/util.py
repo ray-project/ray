@@ -8,7 +8,6 @@ import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from io import StringIO
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -21,13 +20,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
-from ray.autoscaler.tags import (
-    NODE_KIND_HEAD,
-    NODE_KIND_UNMANAGED,
-    NODE_KIND_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-)
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 REQUIRED, OPTIONAL = True, False
 
@@ -58,6 +51,9 @@ DictCount = Tuple[Dict, Number]
 # e.g., cpu_4_ondemand.
 NodeType = str
 
+# e.g., head, worker, unmanaged
+NodeKind = str
+
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
@@ -76,12 +72,6 @@ NodeCount = int
 Usage = Dict[str, Tuple[Number, Number]]
 
 logger = logging.getLogger(__name__)
-
-
-class NodeKind(Enum):
-    HEAD = NODE_KIND_HEAD
-    WORKER = NODE_KIND_WORKER
-    UNMANAGED = NODE_KIND_UNMANAGED
 
 
 def is_placement_group_resource(resource_name: str) -> bool:
