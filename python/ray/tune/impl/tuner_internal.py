@@ -280,7 +280,7 @@ class TunerInternal:
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    def _convert_trainable(self, trainable: Any) -> Type[Trainable]:
+    def _convert_trainable(self, trainable) -> Union[str, Callable, Type[Trainable]]:
         from ray.train.trainer import BaseTrainer
 
         if not self._converted_trainable:
