@@ -3,7 +3,7 @@ import os
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from typing import Callable, Optional
+from typing import Callable
 
 import ray
 from ray._private.utils import binary_to_hex
@@ -12,22 +12,22 @@ _default_handler = None
 
 
 def setup_logger(
-    logging_level, logging_format, logging_handler: Optional[logging.Handler] = None
+    logging_level: int,
+    logging_format: str,
 ):
     """Setup default logging for ray."""
-    if not logging_handler:
-        logger = logging.getLogger("ray")
-        if type(logging_level) is str:
-            logging_level = logging.getLevelName(logging_level.upper())
-        logger.setLevel(logging_level)
-        global _default_handler
-        if _default_handler is None:
-            _default_handler = logging.StreamHandler()
-            logger.addHandler(_default_handler)
-        _default_handler.setFormatter(logging.Formatter(logging_format))
-        # # Setting this will avoid the message
-        # # being propagated to the parent logger.
-        logger.propagate = False
+    logger = logging.getLogger("ray")
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(logging_level)
+    global _default_handler
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler()
+        logger.addHandler(_default_handler)
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    # # Setting this will avoid the message
+    # # being propagated to the parent logger.
+    logger.propagate = False
 
 
 def setup_component_logger(
