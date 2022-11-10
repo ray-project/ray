@@ -35,7 +35,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
-    AlgorithmConfigDict,
     EnvCreator,
     EnvType,
     EpisodeID,
@@ -69,7 +68,7 @@ class WorkerSet:
         env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
-        config: Optional[Union["AlgorithmConfig", AlgorithmConfigDict]] = None,
+        config: Optional["AlgorithmConfig"] = None,
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
@@ -170,7 +169,7 @@ class WorkerSet:
         self,
         *,
         validate_env: Optional[Callable[[EnvType], None]] = None,
-        config: Optional[AlgorithmConfigDict] = None,
+        config: Optional["AlgorithmConfig"] = None,
         num_workers: int = 0,
         local_worker: bool = True,
     ):
@@ -190,8 +189,14 @@ class WorkerSet:
         self._local_worker = None
         if num_workers == 0:
             local_worker = True
+        # Create a local (learner) version of the config for the local worker.
+        # The only difference is the tf_session_args, which - for the local worker -
+        # will be `config.tf_session_args` updated/overridden with
+        # `config.local_tf_session_args`.
+        local_tf_session_args = config.tf_session_args.copy()
+        local_tf_session_args.update(config.local_tf_session_args)
         self._local_config = config.copy(copy_frozen=False).framework(
-            tf_session_args=config.local_tf_session_args
+            tf_session_args=local_tf_session_args
         )
 
         if config.input_ == "dataset":
@@ -937,6 +942,7 @@ class WorkerSet:
         ] = None,
     ) -> Union[RolloutWorker, ActorHandle]:
         def session_creator():
+            # Default session creator function, if `tf_session_args` are provided.
             logger.debug("Creating TF session {}".format(config["tf_session_args"]))
             return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
 
