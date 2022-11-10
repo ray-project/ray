@@ -85,7 +85,8 @@ struct CoreWorkerOptions {
         metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
-        session_name("") {}
+        session_name(""),
+        entrypoint("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -181,6 +182,7 @@ struct CoreWorkerOptions {
       object_allocator;
   /// Session name (Cluster ID) of the cluster.
   std::string session_name;
+  std::string entrypoint;
 };
 }  // namespace core
 }  // namespace ray

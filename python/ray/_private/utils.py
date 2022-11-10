@@ -20,6 +20,7 @@ import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
+from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 import grpc
 import numpy as np
@@ -1598,6 +1599,21 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_entrypoint_name():
+    """Get the entrypoint of the current script."""
+    prefix = ""
+    try:
+        curr = psutil.Process()
+        # Prepend `interactive_shell` for interactive shell scripts.
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode # noqa
+        if hasattr(sys, "ps1"):
+            prefix = "(interactive_shell) "
+
+        return prefix + list2cmdline(curr.cmdline())
+    except Exception:
+        return "unknown"
 
 
 def _add_url_query_params(url: str, params: Dict[str, str]) -> str:

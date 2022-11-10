@@ -171,7 +171,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              &local_raylet_id,
                                              &assigned_port,
                                              &serialized_job_config,
-                                             options_.startup_token);
+                                             options_.startup_token,
+                                             options_.entrypoint);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.

@@ -1,4 +1,5 @@
-import { TableCell, TableRow } from "@material-ui/core";
+import { TableCell, TableRow, Tooltip } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core/styles";
 import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
@@ -7,6 +8,16 @@ import { DurationText } from "../../common/DurationText";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
+
+const useStyles = makeStyles((theme) => ({
+  overflowCell: {
+    display: "block",
+    width: "150px",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+}));
 
 type JobRowProps = {
   job: UnifiedJob;
@@ -21,10 +32,12 @@ export const JobRow = ({
     status,
     start_time,
     end_time,
+    entrypoint,
   },
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
   const { progress, error } = useJobProgress(job_id ?? undefined);
+  const classes = useStyles();
 
   const progressBar = (() => {
     if (!progress || error) {
@@ -49,6 +62,16 @@ export const JobRow = ({
         {job_id ? <Link to={`/job/${job_id}`}>{job_id}</Link> : "-"}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
+      <TableCell align="center">
+        <Tooltip
+          className={classes.overflowCell}
+          title={entrypoint}
+          arrow
+          interactive
+        >
+          <div>{entrypoint}</div>
+        </Tooltip>
+      </TableCell>
       <TableCell align="center">{status}</TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (
