@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from io import StringIO
 from numbers import Number, Real
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Literal
 
 import ray
 import ray._private.ray_constants
@@ -57,6 +57,9 @@ DictCount = Tuple[Dict, Number]
 
 # e.g., cpu_4_ondemand.
 NodeType = str
+
+# e.g., head, worker, unmanaged
+NodeKind = str
 
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]

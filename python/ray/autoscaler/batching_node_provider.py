@@ -14,6 +14,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
+    NODE_KIND_HEAD,
 )
 
 provider_exists = False
@@ -179,7 +180,7 @@ class BatchingNodeProvider(NodeProvider):
     def _cur_num_workers(self, node_data_dict: Dict[str, Any]):
         num_workers_dict = defaultdict(int)
         for node_data in node_data_dict.values():
-            if node_data.kind == NodeKind.HEAD:
+            if node_data.kind == NODE_KIND_HEAD:
                 # Only track workers.
                 continue
             num_workers_dict[node_data.type] += 1

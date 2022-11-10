@@ -16,12 +16,14 @@ from ray.autoscaler.batching_node_provider import (
     NodeData,
     ScaleRequest,
 )
-from ray.autoscaler._private.util import NodeID, NodeKind, NodeType
+from ray.autoscaler._private.util import NodeID, NodeType
 from ray.autoscaler.tags import (
     STATUS_UP_TO_DATE,
     TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
 )
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
@@ -45,7 +47,7 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         # Fake cluster manager state:
         self._node_data_dict: Dict[NodeID, NodeData] = {}
 
-        self._add_node(node_type="head-group", node_kind=NodeKind.HEAD)
+        self._add_node(node_type="head-group", node_kind=NODE_KIND_HEAD)
         # Allow unit test to the control output of safe_to_scale.
         self._safe_to_scale_test_flag = True
         self._scale_request_submitted_count = 0
@@ -72,7 +74,7 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
             # nodes to terminate!
             assert diff >= 0, diff
             for _ in range(diff):
-                self._add_node(node_type, NodeKind.WORKER)
+                self._add_node(node_type, NODE_KIND_WORKER)
 
     def _add_node(self, node_type, node_kind):
         new_node_id = str(uuid4())
@@ -202,13 +204,18 @@ class BatchingNodeProviderTester:
             node_kind = tags[TAG_RAY_NODE_KIND]
             node_status = tags[TAG_RAY_NODE_STATUS]
             if node_type == "head-group":
-                assert node_kind == NodeKind.HEAD
+                assert node_kind == NODE_KIND_HEAD
             else:
-                assert node_kind == NodeKind.WORKER
+                assert node_kind == NODE_KIND_WORKER
             # Just by construction of this test:
             assert node_status == STATUS_UP_TO_DATE
 
             actual_node_counts[node_type] += 1
+
+        # Remove 0 values from expected_node_counts before comparing.
+        for k, v in copy(self.expected_node_counts).items():
+            if v == 0:
+                del self.expected_node_counts[k]
         assert actual_node_counts == self.expected_node_counts
 
         # Make some assertions about internal structure of the node provider.
