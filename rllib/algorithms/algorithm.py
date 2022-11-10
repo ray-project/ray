@@ -26,6 +26,7 @@ from typing import (
     Union,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+from ray.rllib.offline.offline_evalution_utils import remove_time_dim
 import tree
 
 import ray
@@ -646,12 +647,20 @@ class Algorithm(Trainable):
                 self._evaluation_weights_seq_number = 0
 
         self.evaluation_dataset = None
-        if self.evaluation_config.get("off_policy_estimation_methods"):
+        if self.evaluation_config.off_policy_estimation_methods and not self.evaluation_config.ope_split_batch_by_episode:
             # the num worker is set to 0 to avoid creating shards since there is no
             # worker anymore
             logger.info("Creating evaluation dataset ...")
-            self.evaluation_dataset, _ = get_dataset_and_shards(
+            ds, _ = get_dataset_and_shards(
                 self.evaluation_config, num_workers=0
+            )
+
+            # Dataset should be in form of one episode per row. in case of bandits each 
+            # row is just one time step. To make the computation easier later we remove 
+            # the time dimension.
+            batch_size = max(ds.count() // self.evaluation_config.evaluation_num_workers, 1)
+            self.evaluation_dataset = ds.map_batches(
+                remove_time_dim, batch_size=batch_size
             )
             logger.info("Evaluation dataset created")
 
@@ -2751,7 +2760,7 @@ class Algorithm(Trainable):
             The results dict from the evaluation call.
         """
 
-        if self.config["off_policy_estimation_methods"]:
+        if self.evaluation_dataset is not None:
             eval_results = {}
             eval_results["evaluation"] = self._run_offline_evaluation()
             return eval_results

@@ -82,14 +82,9 @@ class ImportanceSampling(OffPolicyEstimator):
         dataset: Dataset,
         *,
         n_parallelism: int = os.cpu_count(),
-    ):
-        dsize = dataset.count()
-        batch_size = max(dsize // n_parallelism, 1)
-        # step 1: clean the dataset and remove the time dimension from bandits
-        updated_ds = dataset.map_batches(remove_time_dim, batch_size=batch_size)
-        # step 2: compute the weights and weighted rewards
-        batch_size = max(updated_ds.count() // n_parallelism, 1)
-        updated_ds = updated_ds.map_batches(
+    ):  
+        batch_size = max(dataset.count() // n_parallelism, 1)
+        updated_ds = dataset.map_batches(
             compute_is_weights,
             batch_size=batch_size,
             fn_kwargs={
