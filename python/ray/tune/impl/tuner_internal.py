@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
+_CONVERTED_TRAINABLE_KEY = "_converted_trainable"
 _PARAM_SPACE_KEY = "_param_space"
 _EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
 
@@ -99,6 +100,7 @@ class TunerInternal:
 
         self._is_restored = False
         self._trainable = trainable
+        self._converted_trainable = None
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
@@ -278,15 +280,17 @@ class TunerInternal:
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    @staticmethod
-    def _convert_trainable(trainable: Any) -> Type[Trainable]:
+    def _convert_trainable(self, trainable: Any) -> Type[Trainable]:
         from ray.train.trainer import BaseTrainer
 
-        if isinstance(trainable, BaseTrainer):
-            trainable = trainable.as_trainable()
-        else:
-            trainable = trainable
-        return trainable
+        if not self._converted_trainable:
+            self._converted_trainable = (
+                trainable.as_trainable()
+                if isinstance(trainable, BaseTrainer)
+                else trainable
+            )
+
+        return self._converted_trainable
 
     def fit(self) -> ResultGrid:
         trainable = self._convert_trainable(self._trainable)
@@ -436,6 +440,7 @@ class TunerInternal:
     def __getstate__(self):
         state = self.__dict__.copy()
         state.pop(_TRAINABLE_KEY, None)
+        state.pop(_CONVERTED_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
         return state
