@@ -7,7 +7,7 @@ import gym
 from pathlib import Path
 
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.policy import local_policy_inference
 
 
 parser = argparse.ArgumentParser()
@@ -35,27 +35,20 @@ def run(checkpoint_path):
     )
     policy = policies[args.policy_id]
 
-    # Put policy in inference mode, so we don't spend time on training
-    # only transformations.
-    policy.agent_connectors.in_eval()
-    policy.action_connectors.in_eval()
-
     # Run CartPole.
     env = gym.make("CartPole-v1")
     obs = env.reset()
     done = False
     step = 0
-
     while not done:
         step += 1
-        # Use connectors() to run inference, so we do not have to
+
+        # Use local_policy_inference() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
         # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
-        action, state_outs, infos = policy.compute_actions_from_raw_input_dict(
-            env_ids=["env_1"],
-            agent_ids=["agent_1"],
-            input_dict={SampleBatch.OBS: [obs]},
-        )
+        policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
+        assert len(policy_outputs) == 1
+        action, _, _ = policy_outputs[0]
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
