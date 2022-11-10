@@ -3,8 +3,6 @@ import logging
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.memory_utils as memory_utils
 
-# TODO(fyrestone): Not import from dashboard module.
-from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
 from ray.dashboard.utils import Dict, Signal, async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -26,8 +24,6 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
-    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
-    jobs = Dict()
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
@@ -48,10 +44,6 @@ class DataSource:
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
     events = Dict()
-    # The current scheduling stats (e.g., pending actor creation tasks)
-    # of gcs.
-    # {task type(str): task list}
-    gcs_scheduling_stats = Dict()
 
 
 class DataOrganizer:
@@ -280,63 +272,3 @@ class DataOrganizer:
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
         return actor
-
-    @classmethod
-    async def get_actor_creation_tasks(cls):
-        # Collect infeasible tasks in worker nodes.
-        infeasible_tasks = sum(
-            (
-                list(node_stats.get("infeasibleTasks", []))
-                for node_stats in DataSource.node_stats.values()
-            ),
-            [],
-        )
-        # Collect infeasible actor creation tasks in gcs.
-        infeasible_tasks.extend(
-            list(DataSource.gcs_scheduling_stats.get("infeasibleTasks", []))
-        )
-        new_infeasible_tasks = []
-        for task in infeasible_tasks:
-            task = dict(task)
-            task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "INFEASIBLE"
-            new_infeasible_tasks.append(task)
-
-        # Collect pending tasks in worker nodes.
-        resource_pending_tasks = sum(
-            (
-                list(data.get("readyTasks", []))
-                for data in DataSource.node_stats.values()
-            ),
-            [],
-        )
-        # Collect pending actor creation tasks in gcs.
-        resource_pending_tasks.extend(
-            list(DataSource.gcs_scheduling_stats.get("readyTasks", []))
-        )
-        new_resource_pending_tasks = []
-        for task in resource_pending_tasks:
-            task = dict(task)
-            task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "PENDING_RESOURCES"
-            new_resource_pending_tasks.append(task)
-
-        results = {
-            task["actorCreationTaskSpec"]["actorId"]: task
-            for task in new_resource_pending_tasks + new_infeasible_tasks
-        }
-        return results
-
-    @classmethod
-    async def get_memory_table(
-        cls,
-        sort_by=memory_utils.SortingType.OBJECT_SIZE,
-        group_by=memory_utils.GroupByType.STACK_TRACE,
-    ):
-        all_worker_stats = []
-        for node_stats in DataSource.node_stats.values():
-            all_worker_stats.extend(node_stats.get("coreWorkersStats", []))
-        memory_information = memory_utils.construct_memory_table(
-            all_worker_stats, group_by=group_by, sort_by=sort_by
-        )
-        return memory_information
