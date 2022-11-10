@@ -290,7 +290,7 @@ py_test(
 
 py_test(
     name = "test_syncer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],

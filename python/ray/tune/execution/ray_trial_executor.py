@@ -44,6 +44,10 @@ DEFAULT_ENV_VARS = {
     # https://github.com/ray-project/ray/issues/28197
     "PL_DISABLE_FORK": "1"
 }
+ENV_VARS_TO_PROPAGATE = {
+    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
+    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
+}
 
 
 class _ActorClassCache:
@@ -72,6 +76,10 @@ class _ActorClassCache:
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
         env_vars = DEFAULT_ENV_VARS.copy()
+
+        for env_var_to_propagate in ENV_VARS_TO_PROPAGATE:
+            if env_var_to_propagate in os.environ:
+                env_vars[env_var_to_propagate] = os.environ[env_var_to_propagate]
 
         runtime_env = {"env_vars": env_vars}
         if trainable_cls not in self._cache:
