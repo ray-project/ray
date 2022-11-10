@@ -80,12 +80,6 @@ Usage = Dict[str, Tuple[Number, Number]]
 logger = logging.getLogger(__name__)
 
 
-class NodeKind(Enum):
-    HEAD = NODE_KIND_HEAD
-    WORKER = NODE_KIND_WORKER
-    UNMANAGED = NODE_KIND_UNMANAGED
-
-
 def is_placement_group_resource(resource_name: str) -> bool:
     """
     Check if a resource name is structured like a placement group.
