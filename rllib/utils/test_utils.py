@@ -26,8 +26,12 @@ from gym.spaces import Box
 import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
 
@@ -496,6 +500,57 @@ def check_learning_achieved(
     if best_avg_reward < min_reward:
         raise ValueError(f"`stop-reward` of {min_reward} not reached!")
     print(f"`stop-reward` of {min_reward} reached! ok")
+
+
+def check_off_policyness(
+    results: ResultDict,
+    upper_limit: float,
+    lower_limit: float = 0.0,
+) -> Optional[float]:
+    """Verifies that the off-policy'ness of some update is within some range.
+
+    Off-policy'ness is defined as the average (across n workers) diff
+    between the number of gradient updates performed on the policy used
+    for sampling vs the number of gradient updates that have been performed
+    on the trained policy (usually the one on the local worker).
+
+    Uses the published DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY metric inside
+    a training results dict and compares to the given bounds.
+
+    Note: Only works with single-agent results thus far.
+
+    Args:
+        results: The training results dict.
+        upper_limit: The upper limit to for the off_policy_ness value.
+        lower_limit: The lower limit to for the off_policy_ness value.
+
+    Returns:
+        The off-policy'ness value (described above).
+
+    Raises:
+        AssertionError: If the value is out of bounds.
+    """
+
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+
+    # Assert that the off-policy'ness is within the given bounds.
+    learner_info = results["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID not in learner_info:
+        return None
+    off_policy_ness = learner_info[DEFAULT_POLICY_ID][
+        DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY
+    ]
+    # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
+    # 1 rollout worker.
+    if not (lower_limit <= off_policy_ness <= upper_limit):
+        raise AssertionError(
+            f"`off_policy_ness` ({off_policy_ness}) is outside the given bounds "
+            f"({lower_limit} - {upper_limit})!"
+        )
+
+    return off_policy_ness
 
 
 def check_train_results(train_results):

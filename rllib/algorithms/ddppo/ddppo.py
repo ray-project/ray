@@ -21,7 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -53,13 +53,13 @@ class DDPPOConfig(PPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
-        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
-        ...             .resources(num_gpus=1)\
-        ...             .rollouts(num_rollout_workers=10)
-        >>> print(config.to_dict())
+        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)
+        >>> config = config.resources(num_gpus=1)
+        >>> config = config.rollouts(num_rollout_workers=10)
+        >>> print(config.to_dict())   # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -67,14 +67,15 @@ class DDPPOConfig(PPOConfig):
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
-        >>> print(config.kl_coeff)
+        >>> print(config.kl_coeff)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
+        >>> config.training( # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1") # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "DDPPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -129,8 +130,8 @@ class DDPPOConfig(PPOConfig):
     def training(
         self,
         *,
-        keep_local_weights_in_sync: Optional[bool] = None,
-        torch_distributed_backend: Optional[str] = None,
+        keep_local_weights_in_sync: Optional[bool] = NotProvided,
+        torch_distributed_backend: Optional[str] = NotProvided,
         **kwargs,
     ) -> "DDPPOConfig":
         """Sets the training related configuration.
@@ -148,12 +149,59 @@ class DDPPOConfig(PPOConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if keep_local_weights_in_sync is not None:
+        if keep_local_weights_in_sync is not NotProvided:
             self.keep_local_weights_in_sync = keep_local_weights_in_sync
-        if torch_distributed_backend is not None:
+        if torch_distributed_backend is not NotProvided:
             self.torch_distributed_backend = torch_distributed_backend
 
         return self
+
+    @override(PPOConfig)
+    def validate(self) -> None:
+        # Call (base) PPO's config validation function first.
+        # Note that this will not touch or check on the train_batch_size=-1
+        # setting.
+        super().validate()
+
+        # Must have `num_rollout_workers` >= 1.
+        if self.num_rollout_workers < 1:
+            raise ValueError(
+                "Due to its distributed, decentralized nature, "
+                "DD-PPO requires `num_workers` to be >= 1!"
+            )
+
+        # Only supported for PyTorch so far.
+        if self.framework_str != "torch":
+            raise ValueError("Distributed data parallel is only supported for PyTorch")
+        if self.torch_distributed_backend not in ("gloo", "mpi", "nccl"):
+            raise ValueError(
+                "Only gloo, mpi, or nccl is supported for "
+                "the backend of PyTorch distributed."
+            )
+        # `num_gpus` must be 0/None, since all optimization happens on Workers.
+        if self.num_gpus:
+            raise ValueError(
+                "When using distributed data parallel, you should set "
+                "num_gpus=0 since all optimization "
+                "is happening on workers. Enable GPUs for workers by setting "
+                "num_gpus_per_worker=1."
+            )
+        # `batch_mode` must be "truncate_episodes".
+        if not self.in_evaluation and self.batch_mode != "truncate_episodes":
+            raise ValueError(
+                "Distributed data parallel requires truncate_episodes batch mode."
+            )
+
+        # DDPPO doesn't support KL penalties like PPO-1.
+        # In order to support KL penalties, DDPPO would need to become
+        # undecentralized, which defeats the purpose of the algorithm.
+        # Users can still tune the entropy coefficient to control the
+        # policy entropy (similar to controlling the KL penalty).
+        if self.kl_coeff != 0.0 or self.kl_target != 0.0:
+            raise ValueError(
+                "Invalid zero-values for `kl_coeff` and/or `kl_target`! "
+                "DDPPO doesn't support KL penalties like PPO-1!"
+            )
 
 
 class DDPPO(PPO):
@@ -198,60 +246,6 @@ class DDPPO(PPO):
     @override(PPO)
     def get_default_config(cls) -> AlgorithmConfig:
         return DDPPOConfig()
-
-    @override(PPO)
-    def validate_config(self, config):
-        """Validates the Algorithm's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
-        # Call (base) PPO's config validation function first.
-        # Note that this will not touch or check on the train_batch_size=-1
-        # setting.
-        super().validate_config(config)
-
-        # Must have `num_workers` >= 1.
-        if config["num_workers"] < 1:
-            raise ValueError(
-                "Due to its distributed, decentralized nature, "
-                "DD-PPO requires `num_workers` to be >= 1!"
-            )
-
-        # Only supported for PyTorch so far.
-        if config["framework"] != "torch":
-            raise ValueError("Distributed data parallel is only supported for PyTorch")
-        if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
-            raise ValueError(
-                "Only gloo, mpi, or nccl is supported for "
-                "the backend of PyTorch distributed."
-            )
-        # `num_gpus` must be 0/None, since all optimization happens on Workers.
-        if config["num_gpus"]:
-            raise ValueError(
-                "When using distributed data parallel, you should set "
-                "num_gpus=0 since all optimization "
-                "is happening on workers. Enable GPUs for workers by setting "
-                "num_gpus_per_worker=1."
-            )
-        # `batch_mode` must be "truncate_episodes".
-        if (
-            not config.get("in_evaluation")
-            and config["batch_mode"] != "truncate_episodes"
-        ):
-            raise ValueError(
-                "Distributed data parallel requires truncate_episodes batch mode."
-            )
-        # DDPPO doesn't support KL penalties like PPO-1.
-        # In order to support KL penalties, DDPPO would need to become
-        # undecentralized, which defeats the purpose of the algorithm.
-        # Users can still tune the entropy coefficient to control the
-        # policy entropy (similar to controlling the KL penalty).
-        if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
-            raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
     @override(PPO)
     def setup(self, config: PartialAlgorithmConfigDict):

@@ -21,7 +21,7 @@ import ray
 from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
 from ray.rllib.algorithms import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -55,63 +55,71 @@ class ApexDQNConfig(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.replay_buffer_config)
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 100000,
-        >>>         "prioritized_replay_alpha": 0.45,
-        >>>         "prioritized_replay_beta": 0.55,
-        >>>         "prioritized_replay_eps": 3e-6,
-        >>>     }
-        >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=1)\
-        >>>       .rollouts(num_rollout_workers=30)\
-        >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> print(config.replay_buffer_config) # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update( # doctest: +SKIP
+        ...     {
+        ...         "capacity": 100000,
+        ...         "prioritized_replay_alpha": 0.45,
+        ...         "prioritized_replay_beta": 0.55,
+        ...         "prioritized_replay_eps": 3e-6,
+        ...     }
+        ... )
+        >>> config = config.training(replay_buffer_config=replay_config) #doctest: +SKIP
+        >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=30)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
+        >>> algo = config.build() # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> from ray import air
         >>> from ray import tune
         >>> config = ApexDQNConfig()
-        >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
-        >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "APEX",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> config.training(  # doctest: +SKIP
+        ...     num_atoms=tune.grid_search(list(range(1, 11)))
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
+        >>> tune.Tuner( # doctest: +SKIP
+        ...     "APEX",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
-        >>>     {
-        >>>         "type": "EpsilonGreedy",
-        >>>         "initial_epsilon": 0.96,
-        >>>         "final_epsilon": 0.01,
-        >>>         "epsilone_timesteps": 5000,
-        >>>     }
-        >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
-        >>>       .exploration(exploration_config=explore_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
+        ...     {
+        ...         "type": "EpsilonGreedy",
+        ...         "initial_epsilon": 0.96,
+        ...         "final_epsilon": 0.01,
+        ...         "epsilone_timesteps": 5000,
+        ...     }
+        ... )
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
+        ... )
+        >>> config = config.exploration(  # doctest: +SKIP
+        ...     exploration_config=explore_config
+        ... )
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexDQNConfig()
-        >>> print(config.exploration_config)
-        >>> explore_config = config.exploration_config.update(
-        >>>     {
-        >>>         "type": "SoftQ",
-        >>>         "temperature": [1.0],
-        >>>     }
-        >>> )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
-        >>>       .exploration(exploration_config=explore_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(  # doctest: +SKIP
+        ...     {
+        ...         "type": "SoftQ",
+        ...         "temperature": [1.0],
+        ...     }
+        ... )
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr_schedule=[[1, 1e-3, [500, 5e-3]]
+        ... )
+        >>> config = config.exploration(  # doctest: +SKIP
+        ...     exploration_config=explore_config
+        ... )
     """
 
     def __init__(self, algo_class=None):
@@ -199,10 +207,10 @@ class ApexDQNConfig(DQNConfig):
     def training(
         self,
         *,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_replay_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_replay_manager: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
     ) -> "ApexDQNConfig":
         """Sets the training related configuration.
@@ -305,20 +313,27 @@ class ApexDQNConfig(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_replay_worker is not None:
+        if max_requests_in_flight_per_replay_worker is not NotProvided:
             self.max_requests_in_flight_per_replay_worker = (
                 max_requests_in_flight_per_replay_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_replay_manager is not None:
+        if timeout_s_replay_manager is not NotProvided:
             self.timeout_s_replay_manager = timeout_s_replay_manager
 
         return self
+
+    @override(DQNConfig)
+    def validate(self) -> None:
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
+        # Call DQN's validation method.
+        super().validate()
 
 
 class ApexDQN(DQN):
@@ -394,13 +409,6 @@ class ApexDQN(DQN):
         return ApexDQNConfig()
 
     @override(DQN)
-    def validate_config(self, config):
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
-        # Call DQN's validation method.
-        super().validate_config(config)
-
-    @override(DQN)
     def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         num_worker_samples_collected = defaultdict(int)
@@ -419,7 +427,9 @@ class ApexDQN(DQN):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
 
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
@@ -515,7 +525,7 @@ class ApexDQN(DQN):
                         {
                             "timestep": self._counters[
                                 NUM_AGENT_STEPS_TRAINED
-                                if self._by_agent_steps
+                                if self.config.count_steps_by == "agent_steps"
                                 else NUM_ENV_STEPS_TRAINED
                             ]
                         },
@@ -628,7 +638,7 @@ class ApexDQN(DQN):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 NUM_AGENT_STEPS_TRAINED
-                if self._by_agent_steps
+                if self.config.count_steps_by == "agent_steps"
                 else NUM_ENV_STEPS_TRAINED
             ]
 
@@ -642,6 +652,7 @@ class ApexDQN(DQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        super().on_worker_failures(removed_workers, new_workers)
         self._sampling_actor_manager.remove_workers(
             removed_workers, remove_in_flight_requests=True
         )

@@ -12,7 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
@@ -39,14 +39,14 @@ class APPOConfig(ImpalaConfig):
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)\
-        ...     .resources(num_gpus=1)\
-        ...     .rollouts(num_rollout_workers=16)\
-        ...     .environment("CartPole-v1")
-        >>> print(config.to_dict())
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)
+        >>> config = config.resources(num_gpus=1)
+        >>> config = config.rollouts(num_rollout_workers=16)
+        >>> config = config.environment("CartPole-v1")
+        >>> print(config.to_dict())  # doctest: +SKIP
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
@@ -54,14 +54,14 @@ class APPOConfig(ImpalaConfig):
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
-        >>> print(config.sample_async)
+        >>> print(config.sample_async)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "APPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -117,14 +117,14 @@ class APPOConfig(ImpalaConfig):
     def training(
         self,
         *,
-        vtrace: Optional[bool] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        use_kl_loss: Optional[bool] = None,
-        kl_coeff: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        vtrace: Optional[bool] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        use_kl_loss: Optional[bool] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -150,21 +150,21 @@ class APPOConfig(ImpalaConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if vtrace is not None:
+        if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if use_critic is not None:
+        if use_critic is not NotProvided:
             self.use_critic = use_critic
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if use_kl_loss is not None:
+        if use_kl_loss is not NotProvided:
             self.use_kl_loss = use_kl_loss
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
 
         return self
@@ -225,7 +225,9 @@ class APPO(Impala):
                 training step.
         """
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            NUM_AGENT_STEPS_SAMPLED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_SAMPLED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = (
@@ -276,9 +278,10 @@ class APPO(Impala):
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
+    @classmethod
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialAlgorithmConfigDict
+        cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

@@ -33,7 +33,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
-from ray.exceptions import GetTimeoutError, RayActorError, RayError
+from ray.exceptions import GetTimeoutError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -60,7 +60,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -79,7 +79,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -93,7 +93,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentID,
@@ -295,7 +295,7 @@ class Algorithm(Trainable):
                 "No `algorithm_class` key was found in given `state`! "
                 "Cannot create new Algorithm."
             )
-        # algo_class = get_algorithm_class(algo_class_name)
+        # algo_class = get_trainable_cls(algo_class_name)
         # Create the new algo.
         config = state.get("config")
         if not config:
@@ -324,7 +324,7 @@ class Algorithm(Trainable):
         """
         config = config or self.get_default_config()
 
-        # Resolve possible dict into an AlgorithmConfig object as well as
+        # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
         # which normally would expect a PPOConfig object).
@@ -336,12 +336,22 @@ class Algorithm(Trainable):
                 config = AlgorithmConfig.from_dict(
                     config_dict=self.merge_trainer_configs(default_config, config, True)
                 )
+            # Default config is an AlgorithmConfig -> update its properties
+            # from the given config dict.
             else:
                 config = default_config.update_from_dict(config)
         else:
             default_config = self.get_default_config()
+            # Given AlgorithmConfig is not of the same type as the default config:
+            # This could be the case e.g. if the user is building an algo from a
+            # generic AlgorithmConfig() object.
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
+
+        # In case this algo is using a generic config (with no algo_class set), set it
+        # here.
+        if config.algo_class is None:
+            config.algo_class = type(self)
 
         if env is not None:
             deprecation_warning(
@@ -351,7 +361,8 @@ class Algorithm(Trainable):
             )
             config.environment(env)
 
-        # Freeze our AlgorithmConfig object (no more changes possible).
+        # Validate and freeze our AlgorithmConfig object (no more changes possible).
+        config.validate()
         config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
@@ -467,14 +478,10 @@ class Algorithm(Trainable):
             config_obj.env = self._env_id
             self.config = config_obj
 
-        # Validate the framework settings in config.
-        self.validate_framework(self.config)
-
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
 
-        self.validate_config(self.config)
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
@@ -545,36 +552,15 @@ class Algorithm(Trainable):
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            try:
-                self.workers = WorkerSet(
-                    env_creator=self.env_creator,
-                    validate_env=self.validate_env,
-                    default_policy_class=self.get_default_policy_class(self.config),
-                    config=self.config,
-                    num_workers=self.config["num_workers"],
-                    local_worker=True,
-                    logdir=self.logdir,
-                )
-            # WorkerSet creation possibly fails, if some (remote) workers cannot
-            # be initialized properly (due to some errors in the RolloutWorker's
-            # constructor).
-            except RayActorError as e:
-                # In case of an actor (remote worker) init failure, the remote worker
-                # may still exist and will be accessible, however, e.g. calling
-                # its `sample.remote()` would result in strange "property not found"
-                # errors.
-                if e.actor_init_failed:
-                    # Raise the original error here that the RolloutWorker raised
-                    # during its construction process. This is to enforce transparency
-                    # for the user (better to understand the real reason behind the
-                    # failure).
-                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
-                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
-                    # to a config mismatch) thrown inside the actor.
-                    raise e.args[0].args[2]
-                # In any other case, raise the RayActorError as-is.
-                else:
-                    raise e
+            self.workers = WorkerSet(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.config,
+                num_workers=self.config["num_workers"],
+                local_worker=True,
+                logdir=self.logdir,
+            )
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -599,9 +585,10 @@ class Algorithm(Trainable):
                 "policies"
             ] = self.workers.local_worker().policy_dict
 
-        # Validate evaluation config.
+        # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
-        self.validate_config(self.evaluation_config)
+        self.evaluation_config.validate()
+        self.evaluation_config.freeze()
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -682,22 +669,18 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
+    @classmethod
     def get_default_policy_class(
-        self,
-        config: Union[AlgorithmConfig, AlgorithmConfigDict],
-    ) -> Type[Policy]:
+        cls,
+        config: AlgorithmConfig,
+    ) -> Optional[Type[Policy]]:
         """Returns a default Policy class to use, given a config.
 
-        This class will be used inside RolloutWorkers' PolicyMaps in case
+        This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
-
-        This method is experimental and currently only used, iff the Trainer
-        class was not created using the `build_trainer` utility and if
-        the Trainer sub-class does not override `_init()` and create it's
-        own WorkerSet in `_init()`.
         """
-        return getattr(self, "_policy_class", None)
+        return None
 
     @override(Trainable)
     def step(self) -> ResultDict:
@@ -979,7 +962,9 @@ class Algorithm(Trainable):
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
-                            _agent_steps if self._by_agent_steps else _env_steps
+                            _agent_steps
+                            if self.config.count_steps_by == "agent_steps"
+                            else _env_steps
                         )
                     if self.reward_estimators:
                         # TODO: (kourosh) This approach will cause an OOM issue when
@@ -1188,7 +1173,11 @@ class Algorithm(Trainable):
                         assert np.sum(batch[SampleBatch.DONES])
             # n timesteps per returned batch.
             else:
-                num_units_done += _agent_steps if self._by_agent_steps else _env_steps
+                num_units_done += (
+                    _agent_steps
+                    if self.config.count_steps_by == "agent_steps"
+                    else _env_steps
+                )
 
             if self.reward_estimators:
                 all_batches.extend(batches)
@@ -1262,7 +1251,7 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )
@@ -1661,7 +1650,8 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
+        # Deprecated.
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1706,49 +1696,41 @@ class Algorithm(Trainable):
         """
         validate_policy_id(policy_id, error=True)
 
-        # Worker list is explicitly provided -> Use only those workers (local or remote)
-        # specified.
-        if workers is not None:
-            # Call static utility method.
-            WorkerSet.add_policy_to_workers(
-                workers,
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
-            )
-        # Add to all our regular RolloutWorkers and maybe also all evaluation workers.
-        else:
-            self.workers.add_policy(
-                policy_id,
-                policy_cls,
-                policy,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_state=policy_state,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
+        if workers is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="workers",
+                help=(
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
+                    "and no-op now. Please do not use it anymore."
+                ),
+                error=False,
             )
 
-            # Add to evaluation workers, if necessary.
-            if evaluation_workers is True and self.evaluation_workers is not None:
-                self.evaluation_workers.add_policy(
-                    policy_id,
-                    policy_cls,
-                    policy,
-                    observation_space=observation_space,
-                    action_space=action_space,
-                    config=config,
-                    policy_state=policy_state,
-                    policy_mapping_fn=policy_mapping_fn,
-                    policies_to_train=policies_to_train,
-                )
+        self.workers.add_policy(
+            policy_id,
+            policy_cls,
+            policy,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+        # Add to evaluation workers, if necessary.
+        if evaluation_workers is True and self.evaluation_workers is not None:
+            self.evaluation_workers.add_policy(
+                policy_id,
+                policy_cls,
+                policy,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
@@ -2222,204 +2204,6 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
-    ) -> None:
-        """Validates the config object (or dictionary) wrt. the framework settings.
-
-        Args:
-            config: The config object (or dictionary) to be validated.
-        """
-        _tf1, _tf, _tfv = None, None, None
-        _torch = None
-        framework = config["framework"]
-        tf_valid_frameworks = {"tf", "tf2"}
-        if framework not in tf_valid_frameworks and framework != "torch":
-            return
-        elif framework in tf_valid_frameworks:
-            _tf1, _tf, _tfv = try_import_tf()
-        else:
-            _torch, _ = try_import_torch()
-
-        def check_if_correct_nn_framework_installed():
-            """Check if tf/torch experiment is running and tf/torch installed."""
-            if framework in tf_valid_frameworks:
-                if not (_tf1 or _tf):
-                    raise ImportError(
-                        (
-                            "TensorFlow was specified as the 'framework' "
-                            "inside of your config dictionary. However, there was "
-                            "no installation found. You can install TensorFlow "
-                            "via `pip install tensorflow`"
-                        )
-                    )
-            elif framework == "torch":
-                if not _torch:
-                    raise ImportError(
-                        (
-                            "PyTorch was specified as the 'framework' inside "
-                            "of your config dictionary. However, there was no "
-                            "installation found. You can install PyTorch via "
-                            "`pip install torch`"
-                        )
-                    )
-
-        def resolve_tf_settings():
-            """Check and resolve tf settings."""
-
-            if _tf1 and config["framework"] == "tf2":
-                if config["framework"] == "tf2" and _tfv < 2:
-                    raise ValueError(
-                        "You configured `framework`=tf2, but your installed "
-                        "pip tf-version is < 2.0! Make sure your TensorFlow "
-                        "version is >= 2.x."
-                    )
-                if not _tf1.executing_eagerly():
-                    _tf1.enable_eager_execution()
-                # Recommend setting tracing to True for speedups.
-                logger.info(
-                    f"Executing eagerly (framework='{config['framework']}'),"
-                    f" with eager_tracing={config['eager_tracing']}. For "
-                    "production workloads, make sure to set eager_tracing=True"
-                    "  in order to match the speed of tf-static-graph "
-                    "(framework='tf'). For debugging purposes, "
-                    "`eager_tracing=False` is the best choice."
-                )
-            # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
-            # enabling eager tracing for similar speed.
-            elif _tf1 and config["framework"] == "tf":
-                logger.info(
-                    "Your framework setting is 'tf', meaning you are using "
-                    "static-graph mode. Set framework='tf2' to enable eager "
-                    "execution with tf2.x. You may also then want to set "
-                    "eager_tracing=True in order to reach similar execution "
-                    "speed as with static-graph mode."
-                )
-
-        check_if_correct_nn_framework_installed()
-        resolve_tf_settings()
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @DeveloperAPI
-    def validate_config(
-        self,
-        config: Union[AlgorithmConfig, AlgorithmConfigDict],
-    ) -> None:
-        """Validates a given config object (or dictionary) for this Algorithm.
-
-        Users should override this method to implement custom validation
-        behavior. It is recommended to call `super().validate_config()` in
-        this override.
-
-        Args:
-            config: The given config object (or dictionary) to check.
-
-        Raises:
-            ValueError: If there is something wrong with the config.
-        """
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
-
-        model_config = config.get("model", MODEL_DEFAULTS)
-
-        # Multi-GPU settings.
-        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-
-        framework = config.get("framework", "tf")
-
-        if simple_optim_setting is True:
-            pass
-        # Multi-GPU setting: Must use multi_gpu_train_one_step.
-        elif config.get("num_gpus", 0) > 1:
-            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
-            #  ok for tf2 here.
-            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
-            if framework == "tf2" and type(self).__name__ != "AlphaStar":
-                raise ValueError(
-                    "`num_gpus` > 1 not supported yet for "
-                    "framework={}!".format(framework)
-                )
-            elif simple_optim_setting is True:
-                raise ValueError(
-                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider not setting `simple_optimizer` in your config."
-                )
-            config["simple_optimizer"] = False
-        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: multi_gpu_train_one_step (if supported by the algo's
-        # `training_step()` method).
-        elif simple_optim_setting == DEPRECATED_VALUE:
-            # tf-eager: Must use simple optimizer.
-            if framework not in ["tf", "torch"]:
-                config["simple_optimizer"] = True
-            # Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif (
-                (isinstance(config, AlgorithmConfig) and config.is_multi_agent())
-                or isinstance(config, dict)
-                and AlgorithmConfig.from_dict(config).is_multi_agent()
-            ):
-                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-                from ray.rllib.policy.torch_policy import TorchPolicy
-
-                default_policy_cls = self.get_default_policy_class(config)
-                policies = config["multiagent"]["policies"]
-                policy_specs = (
-                    [
-                        PolicySpec(*spec) if isinstance(spec, (tuple, list)) else spec
-                        for spec in policies.values()
-                    ]
-                    if isinstance(policies, dict)
-                    else [PolicySpec() for _ in policies]
-                )
-
-                if any(
-                    (spec.policy_class or default_policy_cls) is None
-                    or not issubclass(
-                        spec.policy_class or default_policy_cls,
-                        (DynamicTFPolicy, TorchPolicy),
-                    )
-                    for spec in policy_specs
-                ):
-                    config["simple_optimizer"] = True
-                else:
-                    config["simple_optimizer"] = False
-            else:
-                config["simple_optimizer"] = False
-
-        # User manually set simple-optimizer to False -> Error if tf-eager.
-        elif simple_optim_setting is False:
-            if framework == "tf2":
-                raise ValueError(
-                    "`simple_optimizer=False` not supported for "
-                    "config.framework({})!".format(framework)
-                )
-
-        # Check model config.
-        # If no preprocessing, propagate into model's config as well
-        # (so model will know, whether inputs are preprocessed or not).
-        if config["_disable_preprocessor_api"] is True:
-            model_config["_disable_preprocessor_api"] = True
-        # If no action flattening, propagate into model's config as well
-        # (so model will know, whether action inputs are already flattened or
-        # not).
-        if config["_disable_action_flattening"] is True:
-            model_config["_disable_action_flattening"] = True
-
-        # Prev_a/r settings.
-        prev_a_r = model_config.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
-        if prev_a_r != DEPRECATED_VALUE:
-            deprecation_warning(
-                "model.lstm_use_prev_action_reward",
-                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=True,
-            )
-
-        # Store multi-agent batch count mode.
-        self._by_agent_steps = (
-            self.config["multiagent"].get("count_steps_by") == "agent_steps"
-        )
-
-    @staticmethod
     @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Env validator function for this Algorithm class.
@@ -2502,6 +2286,8 @@ class Algorithm(Trainable):
 
         return len(new_workers)
 
+    # TODO(jungong) : remove this callback once we get rid of all the worker
+    # failure handling logics from Algorithms.
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -2511,7 +2297,12 @@ class Algorithm(Trainable):
             removed_workers: List of removed workers.
             new_workers: List of new workers.
         """
-        pass
+        for actor in removed_workers:
+            # The list of workers for metrics may not be the
+            # same as the full list of workers.
+            if actor in self._remote_workers_for_metrics:
+                self._remote_workers_for_metrics.remove(actor)
+        self._remote_workers_for_metrics += new_workers
 
     @override(Trainable)
     def _export_model(
@@ -2776,8 +2567,7 @@ class Algorithm(Trainable):
         ):
             return
 
-        buffer_type = config["replay_buffer_config"]["type"]
-        return from_config(buffer_type, config["replay_buffer_config"])
+        return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     @DeveloperAPI
     def _kwargs_for_execution_plan(self):
@@ -3009,7 +2799,7 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
@@ -3087,11 +2877,14 @@ class Algorithm(Trainable):
             logdir=self.logdir,
         )
 
+    def validate_config(self, config) -> None:
+        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+        pass
+
     @staticmethod
-    @Deprecated(new="Algorithm.validate_config()", error=True)
+    @Deprecated(new="AlgorithmConfig.validate()", error=True)
     def _validate_config(config, trainer_or_none):
-        assert trainer_or_none is not None
-        return trainer_or_none.validate_config(config)
+        pass
 
 
 # TODO: Create a dict that throw a deprecation warning once we have fully moved
@@ -3141,8 +2934,8 @@ class TrainIterCtx:
             return False
 
         # Stopping criteria.
-        elif self.algo.config["_disable_execution_plan_api"]:
-            if self.algo._by_agent_steps:
+        elif self.algo.config._disable_execution_plan_api:
+            if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (
                     self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
                     - self.init_agent_steps_sampled
