@@ -1,6 +1,6 @@
-from collections import defaultdict
 import json
 import logging
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -9,8 +9,12 @@ from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler.batching_node_provider import BatchingNodeProvider, ScaleRequest, NodeData
 from ray.autoscaler._private.util import NodeKind
+from ray.autoscaler.batching_node_provider import (
+    BatchingNodeProvider,
+    NodeData,
+    ScaleRequest,
+)
 from ray.autoscaler.tags import (
     STATUS_UP_TO_DATE,
     STATUS_UPDATE_FAILED,
@@ -50,8 +54,7 @@ provider_exists = False
 
 
 def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
-    """Converts a pod into node data useable the autoscaler.
-    """
+    """Converts a pod into node data useable the autoscaler."""
     labels = pod["metadata"]["labels"]
 
     kind, type = "", ""
@@ -149,9 +152,7 @@ def _worker_group_max_replicas(
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
 
-def _worker_group_replicas(
-    raycluster: Dict[str, Any], group_index: int
-):
+def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default replicas value used by the KubeRay operator
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
@@ -176,7 +177,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         assert (
             provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
         ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
-        BatchingNodeProvider.__init__(self, provider_config, cluster_name, _allow_multiple)
+        BatchingNodeProvider.__init__(
+            self, provider_config, cluster_name, _allow_multiple
+        )
 
     def get_node_data(self):
         # Store the raycluster CR
@@ -210,12 +213,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _scale_request_to_patch_payload(
-        self,
-        scale_request: ScaleRequest,
-        raycluster: Dict[str, Any]
+        self, scale_request: ScaleRequest, raycluster: Dict[str, Any]
     ):
-        """Converts autoscaler scale request into a RayCluster CR patch.
-        """
+        """Converts autoscaler scale request into a RayCluster CR patch."""
         patch_payload = []
         # Collect patches for replica counts.
         for node_type, target_count in scale_request.desired_num_workers.items():
@@ -244,7 +244,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         for node_type, nodes_to_delete in deletion_groups.items():
             group_index = _worker_group_index(raycluster, node_type)
             path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy/workersToDelete"
-            patch = {"op": "replace", "path": path, "value": nodes_to_delete},
+            patch = ({"op": "replace", "path": path, "value": nodes_to_delete},)
             patch_payload.append(patch)
 
         return patch_payload
@@ -288,4 +288,3 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
-
