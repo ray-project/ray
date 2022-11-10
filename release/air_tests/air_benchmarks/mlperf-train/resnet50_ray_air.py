@@ -452,6 +452,12 @@ if __name__ == "__main__":
     parser.add_argument("--num-cpu-nodes", default=0, type=int)
     args = parser.parse_args()
 
+    ray.init(
+        runtime_env={
+            "working_dir": os.path.dirname(__file__),
+        }
+    )
+
     if args.use_tf_data or args.use_ray_data:
         assert (
             args.data_root is not None
