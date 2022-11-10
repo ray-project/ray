@@ -27,6 +27,12 @@ def ray_start_2_cpus():
 
 
 @pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()
+
+
+@pytest.fixture
 def temp_data_dirs():
     tmp_source = os.path.realpath(tempfile.mkdtemp())
     tmp_target = os.path.realpath(tempfile.mkdtemp())
@@ -443,10 +449,20 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
 
 
 @pytest.mark.parametrize("num_retries", [None, 1, 2])
-def test_trainable_syncer_retry(ray_start_2_cpus, temp_data_dirs, num_retries):
+def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
     """Check that Trainable.save() default syncing can retry"""
     tmp_source, tmp_target = temp_data_dirs
     num_retries = num_retries or 3
+    ray.init(
+        num_cpus=2,
+        configure_logging=False,
+        runtime_env={
+            "env_vars": {
+                "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S": "0",
+                "TUNE_CHECKPOINT_CLOUD_RETRY_NUM": str(num_retries),
+            }
+        },
+    )
 
     class FaultyCheckpoint(Checkpoint):
         def to_uri(self, uri: str) -> str:
@@ -463,13 +479,7 @@ def test_trainable_syncer_retry(ray_start_2_cpus, temp_data_dirs, num_retries):
             def mock_error(x):
                 output.append(x)
 
-            with patch.object(logger, "error", mock_error), patch.dict(
-                os.environ,
-                {
-                    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S": "0",
-                    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM": str(num_retries),
-                },
-            ):
+            with patch.object(logger, "error", mock_error):
                 ret = super()._maybe_save_to_cloud(checkpoint_dir)
             assert f"after {num_retries}" in output[0]
             return ret
