@@ -1,4 +1,5 @@
 import { TableCell, TableRow, Tooltip } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core/styles";
 import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
@@ -7,7 +8,6 @@ import { DurationText } from "../../common/DurationText";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
-import { makeStyles } from "@material-ui/core/styles";
 
 const useStyles = makeStyles((theme) => ({
   overflowCell: {
