@@ -1192,7 +1192,11 @@ def init(
             arguments is passed in.
     """
     if configure_logging:
-        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
+        setup_logger(
+            logging_level,
+            logging_format or ray_constants.LOGGER_FORMAT,
+            kwargs.pop("_logging_handler", None),
+        )
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
