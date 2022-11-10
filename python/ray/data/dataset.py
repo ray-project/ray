@@ -95,7 +95,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_and_register_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
@@ -103,6 +103,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
+from ray.widgets.util import ensure_notebook_deps
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -2498,7 +2499,7 @@ class Dataset(Generic[T]):
                     blocks,
                     metadata,
                     ray_remote_args,
-                    _wrap_and_register_arrow_serialization_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -3035,7 +3036,10 @@ class Dataset(Generic[T]):
                 Call this method if you need more flexibility.
 
         """  # noqa: E501
-        from ray.air._internal.tensorflow_utils import get_type_spec
+        from ray.air._internal.tensorflow_utils import (
+            get_type_spec,
+            convert_ndarray_to_tf_tensor,
+        )
 
         try:
             import tensorflow as tf
@@ -3076,24 +3080,35 @@ class Dataset(Generic[T]):
         validate_columns(feature_columns)
         validate_columns(label_columns)
 
-        def get_columns_from_batch(
-            batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
+        def convert_batch_to_tensors(
+            batch: Dict[str, np.ndarray],
+            *,
+            columns: Union[str, List[str]],
+            type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
             if isinstance(columns, str):
-                return batch[columns]
-            return {column: batch[column] for column in columns}
+                return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
+            return {
+                convert_ndarray_to_tf_tensor(batch[column], type_spec=type_spec[column])
+                for column in columns
+            }
 
         def generator():
-            for batch in self.iter_tf_batches(
+            for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
+                batch_format="numpy",
             ):
                 assert isinstance(batch, dict)
-                features = get_columns_from_batch(batch, columns=feature_columns)
-                labels = get_columns_from_batch(batch, columns=label_columns)
+                features = convert_batch_to_tensors(
+                    batch, columns=feature_columns, type_spec=feature_type_spec
+                )
+                labels = convert_batch_to_tensors(
+                    batch, columns=label_columns, type_spec=label_type_spec
+                )
                 yield features, labels
 
         feature_type_spec = get_type_spec(schema, columns=feature_columns)
@@ -4022,31 +4037,26 @@ class Dataset(Generic[T]):
         else:
             return result
 
+    @ensure_notebook_deps(
+        ["ipywidgets", "8"],
+    )
     def _ipython_display_(self):
-        try:
-            from ipywidgets import HTML, VBox, Layout
-        except ImportError:
-            logger.warn(
-                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
-                "enable notebook widgets."
-            )
-            return None
-
+        from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
-        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+        tab = self._tab_repr_()
 
+        if tab:
+            display(VBox([title, tab], layout=Layout(width="100%")))
+
+    @ensure_notebook_deps(
+        ["tabulate", None],
+        ["ipywidgets", "8"],
+    )
     def _tab_repr_(self):
-        try:
-            from tabulate import tabulate
-            from ipywidgets import Tab, HTML
-        except ImportError:
-            logger.info(
-                "For rich Dataset reprs in notebooks, run "
-                "`pip install tabulate ipywidgets`."
-            )
-            return ""
+        from tabulate import tabulate
+        from ipywidgets import Tab, HTML
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -4077,27 +4087,22 @@ class Dataset(Generic[T]):
                 max_height="300px",
             )
 
-        tab = Tab()
         children = []
-
-        tab.set_title(0, "Metadata")
         children.append(
-            Template("scrollableTable.html.j2").render(
-                table=tabulate(
-                    tabular_data=metadata.items(),
-                    tablefmt="html",
-                    showindex=False,
-                    headers=["Field", "Value"],
-                ),
-                max_height="300px",
+            HTML(
+                Template("scrollableTable.html.j2").render(
+                    table=tabulate(
+                        tabular_data=metadata.items(),
+                        tablefmt="html",
+                        showindex=False,
+                        headers=["Field", "Value"],
+                    ),
+                    max_height="300px",
+                )
             )
         )
-
-        tab.set_title(1, "Schema")
-        children.append(schema_repr)
-
-        tab.children = [HTML(child) for child in children]
-        return tab
+        children.append(HTML(schema_repr))
+        return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
         schema = self.schema()
