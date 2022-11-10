@@ -200,7 +200,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest):
-        payload = self.scale_request_to_patch_payload(scale_request, self._raycluster)
+        payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
         path = "rayclusters/{}".format(self.cluster_name)
         self._patch(path, payload)
 
