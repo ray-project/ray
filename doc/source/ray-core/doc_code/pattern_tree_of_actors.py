@@ -12,7 +12,7 @@ class Trainer:
 class Supervisor:
     def __init__(self):
         self.data = [1, 2, 3]
-        self.trainers = [Trainer.remote() for _ in range(3)]
+        self.trainers = [Trainer.remote() for _ in range(len(self.data))]
 
     def fit(self):
         # Train the same model with different training data in parallel.
