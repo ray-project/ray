@@ -5,7 +5,7 @@ import os
 import sys
 import time
 import html
-from siz.moves import queue
+from six.moves import queue
 import threading
 from typing import (
     TYPE_CHECKING,
