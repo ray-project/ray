@@ -176,6 +176,9 @@ class RayParams:
         tracing_startup_hook=None,
         no_monitor: Optional[bool] = False,
         env_vars: Optional[Dict[str, str]] = None,
+        session_name: Optional[str] = None,
+        webui: Optional[str] = None,
+        cluster_meta: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -232,6 +235,9 @@ class RayParams:
         )
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
+        self.session_name = session_name
+        self.webui = webui
+        self.cluster_meta = cluster_meta
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
