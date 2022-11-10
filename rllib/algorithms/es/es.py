@@ -94,6 +94,7 @@ class ESConfig(AlgorithmConfig):
         self.stepsize = 0.01
         self.noise_size = 250000000
         self.report_length = 10
+        self.tf_single_threaded = True
 
         # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
@@ -126,6 +127,7 @@ class ESConfig(AlgorithmConfig):
         stepsize: Optional[float] = NotProvided,
         noise_size: Optional[int] = NotProvided,
         report_length: Optional[int] = NotProvided,
+        tf_single_threaded: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "ESConfig":
         """Sets the training related configuration.
@@ -143,6 +145,8 @@ class ESConfig(AlgorithmConfig):
             noise_size: Number of rows in the noise table (shared across workers).
                 Each row contains a gaussian noise value for each model parameter.
             report_length: How many of the last rewards we average over.
+            tf_single_threaded: Whether the tf-session should be generated without any
+                parallelism options.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -170,6 +174,8 @@ class ESConfig(AlgorithmConfig):
             self.noise_size = noise_size
         if report_length is not NotProvided:
             self.report_length = report_length
+        if tf_single_threaded is not NotProvided:
+            self.tf_single_threaded = tf_single_threaded
 
         return self
 
@@ -225,7 +231,7 @@ class SharedNoiseTable:
 class Worker:
     def __init__(
         self,
-        config,
+        config: AlgorithmConfig,
         policy_params,
         env_creator,
         noise,
@@ -234,23 +240,22 @@ class Worker:
     ):
 
         # Set Python random, numpy, env, and torch/tf seeds.
-        seed = config.get("seed")
+        seed = config.seed
         if seed is not None:
             # Python random module.
             random.seed(seed)
             # Numpy.
             np.random.seed(seed)
             # Torch.
-            if config.get("framework") == "torch":
+            if config.framework_str == "torch":
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
-        self.config = config.to_dict()
-        self.config.update(policy_params)
-        self.config["single_threaded"] = True
+        self.config = config
+        self.config.update_from_dict(policy_params)
         self.noise = SharedNoiseTable(noise)
 
-        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        env_context = EnvContext(config.env_config, worker_index)
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
@@ -261,13 +266,11 @@ class Worker:
 
         from ray.rllib import models
 
-        self.preprocessor = models.ModelCatalog.get_preprocessor(
-            self.env, config["model"]
-        )
+        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env, config.model)
 
         _policy_class = get_policy_class(config)
         self.policy = _policy_class(
-            self.env.observation_space, self.env.action_space, config
+            self.env.observation_space, self.env.action_space, config.to_dict()
         )
 
     @property
@@ -305,7 +308,7 @@ class Worker:
             len(noise_indices) == 0 or time.time() - task_tstart < self.min_task_runtime
         ):
 
-            if np.random.uniform() < self.config["eval_prob"]:
+            if np.random.uniform() < self.config.eval_prob:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
@@ -315,7 +318,7 @@ class Worker:
                 # Do a regular run with parameter perturbations.
                 noise_index = self.noise.sample_index(self.policy.num_params)
 
-                perturbation = self.config["noise_stdev"] * self.noise.get(
+                perturbation = self.config.noise_stdev * self.noise.get(
                     noise_index, self.policy.num_params
                 )
 
@@ -344,8 +347,8 @@ class Worker:
         )
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
+def get_policy_class(config: AlgorithmConfig):
+    if config.framework_str == "torch":
         from ray.rllib.algorithms.es.es_torch_policy import ESTorchPolicy
 
         policy_cls = ESTorchPolicy
@@ -373,10 +376,10 @@ class ES(Algorithm):
         self.config.validate()
 
         # Generate the local env.
-        env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
+        env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config["callbacks"]()
+        self.callbacks = self.config.callbacks_class()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
@@ -384,19 +387,19 @@ class ES(Algorithm):
             action_space=env.action_space,
             config=self.config,
         )
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
-        self.report_length = self.config["report_length"]
+        self.optimizer = optimizers.Adam(self.policy, self.config.stepsize)
+        self.report_length = self.config.report_length
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(self.config.noise_size)
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
             Worker.remote(self.config, {}, self.env_creator, noise_id, idx + 1)
-            for idx in range(self.config["num_workers"])
+            for idx in range(self.config.num_rollout_workers)
         ]
 
         self.episodes_so_far = 0

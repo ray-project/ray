@@ -159,7 +159,7 @@ class A2C(A3C):
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if self.config["microbatch_size"]:
+        if self.config.microbatch_size:
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 
@@ -169,7 +169,7 @@ class A2C(A3C):
         # W/o microbatching: Identical to Algorithm's default implementation.
         # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.
-        if self.config["microbatch_size"] is None:
+        if self.config.microbatch_size is None:
             return Algorithm.training_step(self)
 
         # In microbatch mode, we want to compute gradients on experience
@@ -179,11 +179,11 @@ class A2C(A3C):
         # used.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["microbatch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.microbatch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["microbatch_size"]
+                worker_set=self.workers, max_env_steps=self.config.microbatch_size
             )
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -204,7 +204,7 @@ class A2C(A3C):
 
         # If `train_batch_size` reached: Accumulate gradients and apply.
         num_microbatches = math.ceil(
-            self.config["train_batch_size"] / self.config["microbatch_size"]
+            self.config.train_batch_size / self.config.microbatch_size
         )
         if self._num_microbatches >= num_microbatches:
             # Update counters.
