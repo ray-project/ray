@@ -1,6 +1,5 @@
 import logging
 
-import logger
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -135,8 +134,8 @@ class AgentCollector:
         # TODO (Kourosh/Artur): Turn this into an error
         if not vr.space.contains(data):
             logger.warning(
-                f"Provided tensor {data} does not match space of view requirements {vr}. "
-                f"Make sure dimensions and dtype match to resolve this error."
+                f"Provided tensor {data} does not match space of view requirements "
+                f"{vr}. Make sure dimensions and dtype match to resolve this error."
             )
 
     def add_init_obs(
