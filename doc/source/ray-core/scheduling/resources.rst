@@ -89,6 +89,7 @@ There are several ways to do that depending on how you start the Ray cluster:
     If you are using :ref:`kuberay <kuberay-index>` to start a Ray cluster, you can set the :ref:`rayStartParams field <rayStartParams>` in the yaml file:
 
     .. code-block:: yaml
+
         headGroupSpec:
           rayStartParams:
             num-cpus: "3"
