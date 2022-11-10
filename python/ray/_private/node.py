@@ -297,7 +297,7 @@ class Node:
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
-            if not ray_params.storage:
+            if ray_params.storage is not None:
                 self.get_gcs_client().internal_kv_put(
                     b"storage",
                     ray_params.storage.encode(),
@@ -364,8 +364,8 @@ class Node:
         """
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        cluster_meta = self._ray_params.cluster_meta
-        if cluster_meta is None:
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
+        if cluster_metadata is None:
             cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
 
         if not cluster_metadata:

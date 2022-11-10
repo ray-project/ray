@@ -119,6 +119,8 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
+        session_name: The name of the session of the ray cluster.
+        webui: The url of the UI.
     """
 
     def __init__(
@@ -178,7 +180,6 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
-        cluster_meta: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -237,7 +238,6 @@ class RayParams:
         self.env_vars = env_vars
         self.session_name = session_name
         self.webui = webui
-        self.cluster_meta = cluster_meta
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
