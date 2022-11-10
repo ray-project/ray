@@ -89,10 +89,7 @@ class TestEpisodeV2(unittest.TestCase):
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
                 policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
             )
-            .rollouts(
-                enable_connectors=True,
-                num_rollout_workers=0
-            ),
+            .rollouts(enable_connectors=True, num_rollout_workers=0),
         )
         sample_batches = ev.sample()
         self.assertEqual(len(sample_batches.policy_batches), 4)
