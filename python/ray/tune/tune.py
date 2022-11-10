@@ -638,6 +638,7 @@ def run(
         trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
+        checkpoint_config=experiments[0].checkpoint_config,
         # Driver should only sync trial checkpoints if
         # checkpoints are not synced to cloud
         driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
