@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
+from ray.util.debug import log_once
 
 from ray.util.annotations import PublicAPI
 
@@ -133,10 +134,12 @@ class AgentCollector:
         # because of float conversion
         # TODO (Kourosh/Artur): Turn this into an error
         if not vr.space.contains(data):
-            logger.warning(
-                f"Provided tensor {data} does not match space of view requirements "
-                f"{vr}. Make sure dimensions and dtype match to resolve this error."
-            )
+            if log_once("view_requirement_not_satisfied"):
+                logger.info(
+                    f"Provided tensor {data} does not match space of view requirements "
+                    f"{vr}. Make sure dimensions and dtype match to resolve this "
+                    f"info."
+                )
 
     def add_init_obs(
         self,
