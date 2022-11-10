@@ -27,6 +27,7 @@ class FullClusterManager(MinimalClusterManager):
     def start_cluster(self, timeout: float = 600.0):
         logger.info(f"Creating cluster {self.cluster_name}")
         logger.info(f"Autosuspend time: {self.autosuspend_minutes} minutes")
+        logger.info(f"Auto terminate after: {self.maximum_uptime_minutes} minutes")
         try:
             result = self.sdk.create_cluster(
                 dict(

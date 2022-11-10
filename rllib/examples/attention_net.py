@@ -73,7 +73,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -127,35 +127,40 @@ if __name__ == "__main__":
     registry.register_env("StatelessCartPole", lambda _: StatelessCartPole())
 
     # main part: RLlib config with AttentionNet model
-    config = {
-        "env": args.env,
-        # This env_config is only used for the RepeatAfterMeEnv env.
-        "env_config": {
-            "repeat_delay": 2,
-        },
-        "gamma": 0.99,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
-        "num_envs_per_worker": 20,
-        "entropy_coeff": 0.001,
-        "num_sgd_iter": 10,
-        "vf_loss_coeff": 1e-5,
-        "model": {
-            # Attention net wrapping (for tf) can already use the native keras
-            # model versions. For torch, this will have no effect.
-            "_use_default_native_models": True,
-            "use_attention": not args.no_attention,
-            "max_seq_len": 10,
-            "attention_num_transformer_units": 1,
-            "attention_dim": 32,
-            "attention_memory_inference": 10,
-            "attention_memory_training": 10,
-            "attention_num_heads": 1,
-            "attention_head_dim": 32,
-            "attention_position_wise_mlp_dim": 32,
-        },
-        "framework": args.framework,
-    }
+    config = (
+        ppo.PPOConfig()
+        .environment(
+            args.env,
+            # This env_config is only used for the RepeatAfterMeEnv env.
+            env_config={"repeat_delay": 2},
+        )
+        .training(
+            gamma=0.99,
+            entropy_coeff=0.001,
+            num_sgd_iter=10,
+            vf_loss_coeff=1e-5,
+            model={
+                # Attention net wrapping (for tf) can already use the native keras
+                # model versions. For torch, this will have no effect.
+                "_use_default_native_models": True,
+                "use_attention": not args.no_attention,
+                "max_seq_len": 10,
+                "attention_num_transformer_units": 1,
+                "attention_dim": 32,
+                "attention_memory_inference": 10,
+                "attention_memory_training": 10,
+                "attention_num_heads": 1,
+                "attention_head_dim": 32,
+                "attention_position_wise_mlp_dim": 32,
+            },
+        )
+        .framework(args.framework)
+        .rollouts(num_envs_per_worker=20)
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0))
+        )
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -168,9 +173,7 @@ if __name__ == "__main__":
         # manual training loop using PPO and manually keeping track of state
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
-        ppo_config = ppo.DEFAULT_CONFIG.copy()
-        ppo_config.update(config)
-        algo = ppo.PPO(config=ppo_config, env=args.env)
+        algo = config.build()
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = algo.train()
@@ -215,7 +218,9 @@ if __name__ == "__main__":
     # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         tuner = tune.Tuner(
-            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+            args.run,
+            param_space=config.to_dict(),
+            run_config=air.RunConfig(stop=stop, verbose=2),
         )
         results = tuner.fit()
 

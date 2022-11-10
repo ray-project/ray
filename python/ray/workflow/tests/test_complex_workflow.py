@@ -32,7 +32,7 @@ def gather_and_hash(*inputs):
     import time
 
     output = hashlib.sha256("-".join(inputs).encode()).hexdigest()
-    sleep_duration = int(output, 16) / 2 ** 256 / 100
+    sleep_duration = int(output, 16) / 2**256 / 100
     time.sleep(sleep_duration)
     return output
 
@@ -40,7 +40,7 @@ def gather_and_hash(*inputs):
 def generate_random_dag(node, max_rounds=40):
     random.seed(42)
 
-    max_inputs = int(max_rounds ** 0.5)
+    max_inputs = int(max_rounds**0.5)
     nodes = [node.bind("start")]
     for _ in range(max_rounds):
         n_samples = random.randint(1, min(len(nodes), max_inputs))

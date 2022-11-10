@@ -4,6 +4,7 @@ import functools
 import hashlib
 import importlib
 import inspect
+import json
 import logging
 import multiprocessing
 import os
@@ -19,7 +20,6 @@ import warnings
 from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
-
 import grpc
 import numpy as np
 
@@ -640,6 +640,26 @@ def get_cgroupv1_used_memory(filename):
         return None
 
 
+def get_cgroupv2_used_memory(stat_file, usage_file):
+    # Uses same calculation as libcontainer, that is:
+    # memory.current - memory.stat[inactive_file]
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+    inactive_file_bytes = -1
+    current_usage = -1
+    with open(usage_file, "r") as f:
+        current_usage = int(f.read().strip())
+    with open(stat_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if current_usage >= 0 and inactive_file_bytes >= 0:
+            working_set = current_usage - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
 def get_used_memory():
     """Return the currently used system memory in bytes
 
@@ -653,11 +673,15 @@ def get_used_memory():
     memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
+    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
         docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
-    elif os.path.exists(memory_usage_filename_v2):
-        with open(memory_usage_filename_v2, "r") as f:
-            docker_usage = int(f.read())
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
         return docker_usage
@@ -1363,6 +1387,24 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
+
+
+def parse_resources_json(
+    resources: str, cli_logger, cf, command_arg="--resources"
+) -> Dict[str, float]:
+    try:
+        resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(
+                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+            ),
+        )
+    return resources
 
 
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):

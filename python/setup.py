@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=["tests"])
         else:
             return []
 
@@ -146,7 +146,6 @@ else:
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
-    "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -201,6 +200,7 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
+ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
 
 # html templates for notebook integration
 ray_files += [
@@ -271,6 +271,8 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
+        "typer",
+        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -299,7 +301,7 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0, <= 8.0.4",
+        "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.32.0; python_version < '3.10'",
@@ -309,7 +311,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
-        "protobuf >= 3.15.3, < 4.0.0",
+        "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",

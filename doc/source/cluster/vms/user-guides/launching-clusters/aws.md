@@ -94,6 +94,21 @@ setup_commands:
         sudo chmod 777 efs;
 ```
 
+### Configuring IAM Role and EC2 Instance Profile
+
+By default, Ray nodes in a Ray AWS cluster have full EC2 and S3 permissions (i.e. `arn:aws:iam::aws:policy/AmazonEC2FullAccess` and `arn:aws:iam::aws:policy/AmazonS3FullAccess`). This is a good default for trying out Ray clusters but you may want to change the permissions Ray nodes have for various reasons (e.g. to reduce the permissions for security reasons). You can do so by providing a custom `IamInstanceProfile` to the related `node_config`:
+
+```yaml
+available_node_types:
+  ray.worker.default:
+    node_config:
+      ...
+      IamInstanceProfile:
+        Arn: arn:aws:iam::YOUR_AWS_ACCOUNT:YOUR_INSTANCE_PROFILE
+```
+
+Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on configuring IAM role and EC2 instance profile.
+
 (aws-cluster-s3)=
 
 ### Accessing S3

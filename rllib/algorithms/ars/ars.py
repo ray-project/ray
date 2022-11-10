@@ -10,7 +10,8 @@ import time
 from typing import Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
@@ -26,7 +27,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,12 @@ class ARSConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        ...     .rollouts(num_rollout_workers=4)\
+        ...     .environment("CartPole-v1")
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
@@ -95,15 +96,19 @@ class ARSConfig(AlgorithmConfig):
         self.offset = 0
 
         # Override some of AlgorithmConfig's default values with ARS-specific values.
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.observation_filter = "MeanStdFilter"
+
         # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
         # Therefore, we must be careful not to use more than 1 env per eval worker
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
-        self.evaluation_config["num_envs_per_worker"] = 1
-        self.evaluation_config["observation_filter"] = "NoFilter"
-
+        self.evaluation(
+            evaluation_config={
+                "num_envs_per_worker": 1,
+                "observation_filter": "NoFilter",
+            }
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -111,15 +116,15 @@ class ARSConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        action_noise_std: Optional[float] = None,
-        noise_stdev: Optional[float] = None,
-        num_rollouts: Optional[int] = None,
-        rollouts_used: Optional[int] = None,
-        sgd_stepsize: Optional[float] = None,
-        noise_size: Optional[int] = None,
-        eval_prob: Optional[float] = None,
-        report_length: Optional[int] = None,
-        offset: Optional[int] = None,
+        action_noise_std: Optional[float] = NotProvided,
+        noise_stdev: Optional[float] = NotProvided,
+        num_rollouts: Optional[int] = NotProvided,
+        rollouts_used: Optional[int] = NotProvided,
+        sgd_stepsize: Optional[float] = NotProvided,
+        noise_size: Optional[int] = NotProvided,
+        eval_prob: Optional[float] = NotProvided,
+        report_length: Optional[int] = NotProvided,
+        offset: Optional[int] = NotProvided,
         **kwargs,
     ) -> "ARSConfig":
         """Sets the training related configuration.
@@ -145,26 +150,53 @@ class ARSConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if action_noise_std is not None:
+        if action_noise_std is not NotProvided:
             self.action_noise_std = action_noise_std
-        if noise_stdev is not None:
+        if noise_stdev is not NotProvided:
             self.noise_stdev = noise_stdev
-        if num_rollouts is not None:
+        if num_rollouts is not NotProvided:
             self.num_rollouts = num_rollouts
-        if rollouts_used is not None:
+        if rollouts_used is not NotProvided:
             self.rollouts_used = rollouts_used
-        if sgd_stepsize is not None:
+        if sgd_stepsize is not NotProvided:
             self.sgd_stepsize = sgd_stepsize
-        if noise_size is not None:
+        if noise_size is not NotProvided:
             self.noise_size = noise_size
-        if eval_prob is not None:
+        if eval_prob is not NotProvided:
             self.eval_prob = eval_prob
-        if report_length is not None:
+        if report_length is not NotProvided:
             self.report_length = report_length
-        if offset is not None:
+        if offset is not NotProvided:
             self.offset = offset
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for ARS!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("`num_rollout_workers` must be > 0 for ARS!")
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("num_envs_per_worker") != 1
+        ):
+            raise ValueError(
+                "`evaluation_config.num_envs_per_worker` must always be 1 for "
+                "ARS! To parallelize evaluation, increase "
+                "`evaluation_num_workers` to > 1."
+            )
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("observation_filter") != "NoFilter"
+        ):
+            raise ValueError(
+                "`evaluation_config.observation_filter` must always be "
+                "`NoFilter` for ARS!"
+            )
 
 
 @ray.remote
@@ -318,43 +350,18 @@ class ARS(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ARSConfig().to_dict()
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for ARS!")
-        if config["num_workers"] <= 0:
-            raise ValueError("`num_workers` must be > 0 for ARS!")
-        if config["evaluation_config"]["num_envs_per_worker"] != 1:
-            raise ValueError(
-                "`evaluation_config.num_envs_per_worker` must always be 1 for "
-                "ARS! To parallelize evaluation, increase "
-                "`evaluation_num_workers` to > 1."
-            )
-        if config["evaluation_config"]["observation_filter"] != "NoFilter":
-            raise ValueError(
-                "`evaluation_config.observation_filter` must always be "
-                "`NoFilter` for ARS!"
-            )
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ARSConfig()
 
     @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
-            self.config = self.merge_trainer_configs(
-                self.get_default_config(), config, self._allow_unknown_configs
-            )
-        else:
-            self.config = config.to_dict()
+            self.config = self.get_default_config().update_from_dict(config)
 
         # Validate our config dict.
-        self.validate_config(self.config)
+        self.config.validate()
 
         # Generate the local env.
         env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)

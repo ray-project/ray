@@ -16,6 +16,7 @@ from ray.experimental.state.api import list_actors
 
 from ray import serve
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
@@ -36,6 +37,32 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture()
+def ray_instance(request):
+    """Starts and stops a Ray instance for this test.
+
+    Args:
+        request: request.param should contain a dictionary of env vars and
+            their values. The Ray instance will be started with these env vars.
+    """
+
+    original_env_vars = os.environ.copy()
+
+    try:
+        requested_env_vars = request.param
+    except AttributeError:
+        requested_env_vars = {}
+
+    os.environ.update(requested_env_vars)
+
+    yield ray.init()
+
+    ray.shutdown()
+
+    os.environ.clear()
+    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -714,6 +741,25 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
+class TestRequestProcessingTimeoutS:
+    @pytest.mark.parametrize(
+        "ray_instance", [{"REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+    )
+    def test_normal_operation(self, ray_instance):
+        """Checks that a moderate timeout doesn't affect normal operation."""
+
+        @serve.deployment(num_replicas=2)
+        def f(*args):
+            return "Success!"
+
+        serve.run(f.bind())
+
+        for _ in range(20):
+            requests.get("http://localhost:8000").text == "Success!"
+
+        serve.shutdown()
+
+
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
@@ -799,6 +845,15 @@ def test_handle_early_detect_failure(shutdown_ray):
     serve.shutdown()
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Raylet-based scheduler favors (http proxy) actors' owner "
+    + "nodes (the head one), so the `EveryNode` option is actually not "
+    + "enforced. Besides, the second http proxy does not die with the "
+    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
+    + "may collocate the second http proxy and the place holder) "
+    + "can not shutdown the worker node.",
+)
 def test_autoscaler_shutdown_node_http_everynode(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
