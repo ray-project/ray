@@ -762,7 +762,7 @@ class EnvRunnerV2:
 
         Args:
             env_id: Environment ID.
-            env_obs: Last per-environment observation.
+            env_obs_or_exception: Last per-environment observation or Exception.
             is_done: If all agents are done.
             hit_horizon: Whether the episode ended because it hit horizon.
             to_eval: Output container for policy eval data.
@@ -770,7 +770,7 @@ class EnvRunnerV2:
         """
         if isinstance(env_obs_or_exception, Exception):
             is_error = True
-            episode_or_exception: Exception = Exception()
+            episode_or_exception: Exception = env_obs_or_exception
         else:
             is_error = False
             # Output the collected episode.

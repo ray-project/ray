@@ -13,6 +13,7 @@ from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -96,10 +97,19 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
+    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
 
+    kwargs = aws_credentials.copy()
+
+    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+        kwargs["allow_bucket_creation"] = True
+        kwargs["allow_bucket_deletion"] = True
+
     fs = pa.fs.S3FileSystem(
-        region="us-west-2", endpoint_override=s3_server, **aws_credentials
+        region="us-west-2",
+        endpoint_override=s3_server,
+        **kwargs,
     )
     if s3_path.startswith("s3://"):
         if "@" in s3_path:
@@ -343,20 +353,8 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0", "8.0.0"])
+@pytest.fixture(params=["5.0.0"])
 def unsupported_pyarrow_version(request):
-    orig_version = pa.__version__
-    pa.__version__ = request.param
-    # Unset pyarrow version cache.
-    import ray._private.utils as utils
-
-    utils._PYARROW_VERSION = None
-    yield request.param
-    pa.__version__ = orig_version
-
-
-@pytest.fixture(params=["5.0.0", "8.0.0"])
-def unsupported_pyarrow_version_that_exists(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
