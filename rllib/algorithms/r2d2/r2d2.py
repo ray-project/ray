@@ -19,20 +19,19 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.h_function_epsilon)
+        >>> print(config.h_function_epsilon)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 1000000,
         >>>         "replay_burn_in": 20,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
+        >>> config.training(replay_buffer_config=replay_config)\  # doctest: +SKIP
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> algo = R2D2(config=config)
-        >>> while True:
-        >>>     algo.train()
+        >>> algo = R2D2(config=config)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -41,16 +40,16 @@ class R2D2Config(DQNConfig):
         >>> config = R2D2Config()
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "R2D2",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "R2D2",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.0,
@@ -64,7 +63,7 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "SoftQ",
