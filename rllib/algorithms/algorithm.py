@@ -2753,7 +2753,7 @@ class Algorithm(Trainable):
 
         if self.config["off_policy_estimation_methods"]:
             eval_results = {}
-            eval_results["evaluation"] = self._run_offline_evaluation(train_future)
+            eval_results["evaluation"] = self._run_offline_evaluation()
             return eval_results
 
         eval_results = {
@@ -2839,13 +2839,12 @@ class Algorithm(Trainable):
 
         return results, train_iter_ctx
 
-    def _run_offline_evaluation(self, train_future=None):
-        # TODO (Kourosh): Figure out how to this in parallel with training.
+    def _run_offline_evaluation(self):
         # Note: we can only run offline evaluation in single agent case for now.
         assert len(self.workers.local_worker().policy_map) == 1
-        offline_eval_results = {}
+        offline_eval_results = {"off_policy_estimator": {}}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
-            offline_eval_results[
+            offline_eval_results["off_policy_estimator"][
                 evaluator_name
             ] = offline_evaluator.estimate_on_dataset(
                 self.evaluation_dataset,
