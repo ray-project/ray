@@ -202,6 +202,9 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
     def submit_scale_request(self, scale_request: ScaleRequest):
         payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
         path = "rayclusters/{}".format(self.cluster_name)
+        logger.info("Autoscaler is submitting the following patch to RayCluster"
+                    f"{self.cluster_name} in namespace {self.namespace}.")
+        logger.info(payload)
         self._patch(path, payload)
 
     def safe_to_scale(self) -> bool:
@@ -210,6 +213,10 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         """
         for group_spec in self._raycluster["spec"].get("workerGroupSpecs", []):
             if group_spec.get("workersToDelete", []):
+                logger.warning(
+                    "workersToDelete has not been processed yet."
+                    " Autoscaler backing off submitting scale request."
+                )
                 return False
         return True
 
