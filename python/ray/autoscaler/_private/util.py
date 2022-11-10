@@ -20,10 +20,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
-from ray.autoscaler.tags import (
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-)
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 REQUIRED, OPTIONAL = True, False
 
