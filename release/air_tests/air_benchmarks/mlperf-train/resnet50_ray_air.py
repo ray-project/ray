@@ -41,6 +41,9 @@ SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
 
+# Each image is about 600KB after preprocessing.
+APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
+
 
 def build_model():
     return tf.keras.applications.resnet50.ResNet50(
@@ -459,6 +462,15 @@ if __name__ == "__main__":
     memory_utilization_tracker = MaxMemoryUtilizationTracker(sample_interval_s=1)
     memory_utilization_tracker.start()
 
+    # Get the available space on the current filesystem.
+    # We'll use this to check whether the job should throw an OutOfDiskError.
+    statvfs = os.statvfs("/home")
+    available_disk_space = statvfs.f_bavail * statvfs.f_frsize
+    expected_disk_usage = args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
+    print(f"Available disk space: {available_disk_space / 1e9}GB")
+    print(f"Expected disk usage: {expected_disk_usage/ 1e9}GB")
+    disk_error_expected = expected_disk_usage > available_disk_space * 0.8
+
     datasets = {}
     train_loop_config = {
         "num_epochs": args.num_epochs,
@@ -543,7 +555,18 @@ if __name__ == "__main__":
         )
     )
 
-    write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    try:
+        write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    except OSError:
+        if not disk_error_expected:
+            raise
 
     if exc is not None:
-        raise exc
+        print(f"Raised exception: {exc}")
+        if not disk_error_expected:
+            raise exc
+        else:
+            # There is no way to get the error cause from the TuneError
+            # returned by AIR, so it's possible that it raised an error other
+            # than OutOfDiskError here.
+            pass

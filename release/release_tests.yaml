@@ -633,7 +633,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: bash out_of_core_benchmark.sh
     type: sdk_command
     file_manager: sdk
@@ -1778,6 +1778,8 @@
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 
@@ -3856,7 +3858,7 @@
 
   run:
     timeout: 500
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.6
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.5
 
     type: sdk_command
     file_manager: sdk
