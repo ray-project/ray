@@ -16,7 +16,6 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
-    wait_until_succeeded_without_exception,
 )
 
 
