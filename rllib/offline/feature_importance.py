@@ -209,6 +209,8 @@ class FeatureImportance(OfflineEvaluator):
         
         For each feature in the dataset, the importance is computed by applying perturbations to each feature and computing the difference between the perturbed prediction and the reference prediction. The importance is computation for each feature and each perturbation is repeated `self.repeat` times. If dataset is large the user can initialize the estimator with a `limit_fraction` to limit the dataset to a fraction of the original dataset.
 
+        The dataset should include a column named `obs` where each row is a vector of D dimensions. The importance is computed for each dimension of the vector.
+
         Note (Implementation detail): The computation across features are distributed with ray workers since each feature is independent of each other. 
 
         Args:
