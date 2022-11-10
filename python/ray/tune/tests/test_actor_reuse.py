@@ -20,8 +20,8 @@ def ray_start_1_cpu():
 
 
 @pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
+def ray_start_4_cpus_extra():
+    address_info = ray.init(num_cpus=4, resources={"extra": 4})
     yield address_info
     ray.shutdown()
 
@@ -31,48 +31,57 @@ class FrequentPausesScheduler(FIFOScheduler):
         return TrialScheduler.PAUSE
 
 
-def create_resettable_class():
-    class MyResettableClass(Trainable):
-        def setup(self, config):
-            self.config = config
-            self.num_resets = 0
-            self.iter = 0
-            self.msg = config.get("message", None)
-            self.sleep = int(config.get("sleep", 0))
+class MyResettableClass(Trainable):
+    def setup(self, config):
+        self.config = config
+        self.num_resets = 0
+        self.iter = 0
+        self.msg = config.get("message", None)
+        self.sleep = int(config.get("sleep", 0))
+        self.fail = config.get("fail", False)
 
-        def step(self):
-            self.iter += 1
+    def step(self):
+        self.iter += 1
 
-            if self.msg:
-                print("PRINT_STDOUT: {}".format(self.msg))
-                print("PRINT_STDERR: {}".format(self.msg), file=sys.stderr)
-                logger.info("LOG_STDERR: {}".format(self.msg))
+        if self.msg:
+            print("PRINT_STDOUT: {}".format(self.msg))
+            print("PRINT_STDERR: {}".format(self.msg), file=sys.stderr)
+            logger.info("LOG_STDERR: {}".format(self.msg))
 
-            if self.sleep:
-                time.sleep(self.sleep)
+        if self.fail:
+            raise RuntimeError("Failing")
 
-            return {
-                "id": self.config["id"],
-                "num_resets": self.num_resets,
-                "done": self.iter > 1,
-                "iter": self.iter,
-            }
+        if self.sleep:
+            time.sleep(self.sleep)
 
-        def save_checkpoint(self, chkpt_dir):
-            return {"iter": self.iter}
+        return {
+            "id": self.config.get("id", 0),
+            "num_resets": self.num_resets,
+            "done": self.iter > 1,
+            "iter": self.iter,
+        }
 
-        def load_checkpoint(self, item):
-            self.iter = item["iter"]
+    def save_checkpoint(self, chkpt_dir):
+        return {"iter": self.iter}
 
-        def reset_config(self, new_config):
-            if "fake_reset_not_supported" in self.config:
-                return False
-            self.num_resets += 1
-            self.iter = 0
-            self.msg = new_config.get("message", "No message")
-            return True
+    def load_checkpoint(self, item):
+        self.iter = item["iter"]
 
-    return MyResettableClass
+    def reset_config(self, new_config):
+        if "fake_reset_not_supported" in self.config:
+            return False
+        self.num_resets += 1
+        self.iter = 0
+        self.msg = new_config.get("message", None)
+        self.fail = new_config.get("fail", False)
+        return True
+
+    @classmethod
+    def default_resource_request(cls, config):
+        required_resources = config.get("required_resources", None)
+        if required_resources:
+            return required_resources
+        return None
 
 
 def _run_trials_with_frequent_pauses(trainable, reuse=False):
@@ -94,7 +103,7 @@ def test_trial_reuse_disabled(ray_start_1_cpu):
 
     We assert the `num_resets` of each trainable class to be 0 (no reuse).
     """
-    trials = _run_trials_with_frequent_pauses(create_resettable_class(), reuse=False)
+    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=False)
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
@@ -107,7 +116,7 @@ def test_trial_reuse_disabled_per_default(ray_start_1_cpu):
 
     We assert the `num_resets` of each trainable class to be 0 (no reuse).
     """
-    trials = _run_trials_with_frequent_pauses(create_resettable_class(), reuse=None)
+    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=None)
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
@@ -126,10 +135,55 @@ def test_trial_reuse_enabled(ray_start_1_cpu):
     - After each iteration, trials are paused and actors cached for reuse
     - Thus, the first trial finishes after 4 resets, the second after 5, etc.
     """
-    trials = _run_trials_with_frequent_pauses(create_resettable_class(), reuse=True)
+    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=True)
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [4, 5, 6, 7]
+
+
+def test_trial_reuse_with_failing(ray_start_1_cpu):
+    """Test that failing actors won't be reused.
+
+    - 1 trial can run at a time
+    - Some trials are failing
+    - We assert that trials after failing trials are scheduled on fresh actors
+        (num_resets = 0)
+    - We assert that trials after successful trials are schedule on reused actors
+        (num_reset = last_num_resets + 1)
+    """
+    trials = tune.run(
+        MyResettableClass,
+        reuse_actors=True,
+        config={
+            "fail": tune.grid_search(
+                [False, True, False, False, True, True, False, False, False]
+            )
+        },
+        raise_on_failed_trial=False,
+    ).trials
+
+    assert [t.last_result.get("iter") for t in trials] == [
+        2,
+        None,
+        2,
+        2,
+        None,
+        None,
+        2,
+        2,
+        2,
+    ]
+    assert [t.last_result.get("num_resets") for t in trials] == [
+        0,
+        None,
+        0,
+        1,
+        None,
+        None,
+        0,
+        1,
+        2,
+    ]
 
 
 def test_reuse_enabled_error(ray_start_1_cpu):
@@ -138,7 +192,7 @@ def test_reuse_enabled_error(ray_start_1_cpu):
         run_experiments(
             {
                 "foo": {
-                    "run": create_resettable_class(),
+                    "run": MyResettableClass,
                     "max_failures": 1,
                     "num_samples": 1,
                     "config": {
@@ -159,7 +213,7 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
     the log output to be written to the log file of the new trial - i.e. we expect
     that the old trial logfile is closed and a new one is open.
     """
-    register_trainable("foo2", create_resettable_class())
+    register_trainable("foo2", MyResettableClass)
 
     # Log to default files
     [trial1, trial2] = tune.run(
@@ -205,10 +259,16 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
         assert "LOG_STDERR: First" not in content
 
 
-def test_multi_trial_reuse(ray_start_4_cpus):
+def test_multi_trial_reuse(ray_start_4_cpus_extra):
+    """Test that actors from multiple trials running in parallel will be reused.
+
+    - 2 trials can run at the same time
+    - Trial 3 will be scheduled after trial 1 succeeded, so will reuse actor
+    - Trial 4 will be scheduled after trial 2 succeeded, so will reuse actor
+    """
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "2"
 
-    register_trainable("foo2", create_resettable_class())
+    register_trainable("foo2", MyResettableClass)
 
     # We sleep here for one second so that the third actor
     # does not finish training before the fourth can be scheduled.
@@ -227,6 +287,74 @@ def test_multi_trial_reuse(ray_start_4_cpus):
 
     assert trial3.last_result["num_resets"] == 1
     assert trial4.last_result["num_resets"] == 1
+
+
+def test_multi_trial_reuse_with_failing(ray_start_4_cpus_extra):
+    """Test that failing trial's actors are not reused.
+
+    - 2 trials can run at the same time
+    - Trial 1 succeeds, trial 2 fails
+    - Trial 3 will be scheduled after trial 2 failed, so won't reuse actor
+    - Trial 4 will be scheduled after trial 1 succeeded, so will reuse actor
+    """
+    os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "2"
+
+    register_trainable("foo2", MyResettableClass)
+
+    [trial1, trial2, trial3, trial4] = tune.run(
+        "foo2",
+        config={
+            "fail": tune.grid_search([False, True, False, False]),
+            "id": -1,
+            "sleep": 2,
+        },
+        reuse_actors=True,
+        resources_per_trial={"cpu": 2},
+        raise_on_failed_trial=False,
+    ).trials
+
+    assert trial1.last_result["num_resets"] == 0
+    assert trial3.last_result["num_resets"] == 0
+    assert trial4.last_result["num_resets"] == 1
+
+
+def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
+    """Test that actors with heterogeneous resource requirements are reused efficiently.
+
+    - Run 6 trials in total
+    - Up to 2 trials can run at the same time
+    - Trials 1 and 6, 2 and 4, and 3 and 5, have the same resource request, respectively
+    - Assert that trials 4, 5, and 6 re-use their respective previous actors
+
+    """
+    os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "6"
+
+    register_trainable("foo2", MyResettableClass)
+
+    trials = tune.run(
+        "foo2",
+        config={
+            # The extra resources are selected so that only any 2 placement groups
+            # can be scheduled at the same time at all times (to force sequential
+            # execution of trials)
+            "required_resources": tune.grid_search(
+                [
+                    {"cpu": 4, "custom_resources": {"extra": 4}},
+                    {"cpu": 2, "custom_resources": {"extra": 1}},
+                    {"cpu": 1, "custom_resources": {"extra": 3}},
+                    {"cpu": 2, "custom_resources": {"extra": 1}},
+                    {"cpu": 1, "custom_resources": {"extra": 3}},
+                    {"cpu": 4, "custom_resources": {"extra": 4}},
+                ]
+            ),
+            "id": -1,
+            "sleep": 2,
+        },
+        reuse_actors=True,
+    ).trials
+
+    # Actors may be re-used in a different order as the staged_trials set is unsorted
+    assert sorted([t.last_result["num_resets"] for t in trials]) == [0, 0, 0, 1, 1, 1]
 
 
 if __name__ == "__main__":

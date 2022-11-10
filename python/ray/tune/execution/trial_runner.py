@@ -920,7 +920,9 @@ class TrialRunner:
 
         assert next_trial is not None
         logger.debug(f"Trying to start trial: {next_trial}")
-        if not _start_trial(next_trial) and next_trial.status != Trial.ERROR:
+
+        trial_started = _start_trial(next_trial)
+        if not trial_started and next_trial.status != Trial.ERROR:
             # Only try to start another trial if previous trial startup
             # did not error (e.g. it just didn't start because its
             # placement group is not ready, yet).
@@ -929,6 +931,7 @@ class TrialRunner:
             # TrialRunnerPlacementGroupHeterogeneousTest::
             # testResourceDeadlock
             next_trial = self.trial_executor.get_ready_trial()
+
             if next_trial is not None:
                 # Must be able to start.
                 assert _start_trial(next_trial)

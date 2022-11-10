@@ -334,6 +334,11 @@ class RayTrialExecutor:
         """
         for trial in self._staged_trials:
             resource_request = trial.placement_group_factory
+            # If we have a cached actor for these resources, return
+            if self._cached_resources_to_actor[resource_request]:
+                return trial
+
+            # If the resources are available from the resource manager, return
             if self._resource_manager.has_resources_ready(
                 resource_request=resource_request
             ):
