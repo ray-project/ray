@@ -49,7 +49,7 @@ if __name__ == "__main__":
     top_n_mem_usage = get_top_n_memory_usage()
     print(top_n_mem_usage)
     print(f"Memory growth: {mem_growth} GB")
-    
+
     if status == JobStatus.FAILED or status == JobStatus.STOPPED:
         print(client.get_job_logs(job_id))
         assert False, "Rllib job has failed."
@@ -64,7 +64,7 @@ if __name__ == "__main__":
                     found = True
                     # Make sure it doesn't use more than 500MB of data.
                     assert sample.value < 500
-    
+
     assert found, "Agent memory metrics are not found."
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
