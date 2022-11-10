@@ -18,9 +18,7 @@ The supervisor can process results or update child actors prior to returning.
 Example use case
 ----------------
 
-You want to train 3 models at the same time, while being able to checkpoint/inspect its state.
-
-For example, Ray Tune uses this pattern to run each trail.
+You want to do data parallel training by following the SPMD (single program, multiple data) programming paradigm and use a supervisor actor to do the orchestration.
 
 Code example
 ------------
