@@ -38,8 +38,9 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    if session.get_checkpoint():
-        state = session.get_checkpoint().to_dict()
+    checkpoint = session.get_checkpoint()
+    if checkpoint:
+        state = checkpoint.to_dict()
     else:
         state = {"it": 0}
 
