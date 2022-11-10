@@ -26,7 +26,7 @@ from typing import (
     Union,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evalution_utils import remove_time_dim
+from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 import tree
 
 import ray

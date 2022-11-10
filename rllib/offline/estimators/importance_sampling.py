@@ -5,7 +5,7 @@ from ray.data import Dataset
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evalution_utils import compute_is_weights
+from ray.rllib.offline.offline_evaluation_utils import compute_is_weights
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -76,8 +76,12 @@ class ImportanceSampling(OffPolicyEstimator):
     def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
         """Computes the Importance sampling estimate on the given dataset.
 
+        Note: This estimate works for both continuous and discrete action spaces.
+        
         Args:
-            dataset: The dataset to compute the estimate on.
+            dataset: Dataset to compute the estimate on. Each record in dataset should  
+                with include the following columns: `obs`, `actions`, `action_prob` and 
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
             n_parallelism: The number of parallel workers to use.
 
         Returns:

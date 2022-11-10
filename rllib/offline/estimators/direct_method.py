@@ -5,7 +5,7 @@ import numpy as np
 from ray.data import Dataset
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.offline.offline_evalution_utils import (
+from ray.rllib.offline.offline_evaluation_utils import (
     compute_is_weights,
     compute_q_and_v_values,
 )
@@ -128,7 +128,24 @@ class DirectMethod(OffPolicyEstimator):
     def estimate_on_dataset(
         self, dataset: Dataset, *, n_parallelism: int = ...
     ) -> Dict[str, Any]:
+        """Calculates the Direct Method estimate on the given dataset.
+        
+        Note: This estimate works for only discrete action spaces for now.
+        
+        Args:
+            dataset: Dataset to compute the estimate on. Each record in dataset should  
+                include the following columns: `obs`, `actions`, `action_prob` and 
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions. 
+            n_parallelism: The number of parallel workers to use.
 
+        Returns:
+            Dictionary with the following keys:
+                v_target: The estimated value of the target policy.
+                v_behavior: The estimated value of the behavior policy.
+                v_gain: The estimated gain of the target policy over the behavior
+                    policy.
+                v_std: The standard deviation of the estimated value of the target.
+        """
         # step 1: compute the weights and weighted rewards
         batch_size = max(dataset.count() // n_parallelism, 1)
         updated_ds = dataset.map_batches(
