@@ -225,10 +225,11 @@ class PPOConfig(PGConfig):
         # to -1 to auto-calculate the actual batch size later).
         if self.sgd_minibatch_size > self.train_batch_size:
             raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    self.sgd_minibatch_size, self.train_batch_size
-                )
+                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                "times."
             )
 
         # Episodes may only be truncated (and passed into PPO's
