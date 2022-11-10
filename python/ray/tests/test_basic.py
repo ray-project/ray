@@ -360,6 +360,7 @@ def test_options():
 
     assert foo._default_options == {
         "_metadata": {"namespace": {"a": 1, "b": 2}},
+        "max_calls": 1,
         "num_gpus": 2,
     }
 

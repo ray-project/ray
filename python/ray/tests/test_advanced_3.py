@@ -200,10 +200,10 @@ def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.f()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.f"
 
     @ray.remote
     def unique_1():
@@ -220,10 +220,10 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
-            assert setproctitle.getproctitle() == f"ray::{method_task_name}()"
+            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
 
     task_name = "bar"
 

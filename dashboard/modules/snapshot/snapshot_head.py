@@ -128,25 +128,18 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             timeout = SNAPSHOT_API_TIMEOUT_SECONDS
 
         actor_limit = int(req.query.get("actor_limit", "1000"))
-        (
-            job_info,
-            job_submission_data,
-            actor_data,
-            serve_data,
-            session_name,
-        ) = await asyncio.gather(
+        (job_info, job_submission_data, actor_data, serve_data,) = await asyncio.gather(
             self.get_job_info(timeout),
             self.get_job_submission_info(timeout),
             self.get_actor_info(actor_limit, timeout),
             self.get_serve_info(timeout),
-            self.get_session_name(timeout),
         )
         snapshot = {
             "jobs": job_info,
             "job_submission": job_submission_data,
             "actors": actor_data,
             "deployments": serve_data,
-            "session_name": session_name,
+            "session_name": self._dashboard_head.session_name,
             "ray_version": ray.__version__,
             "ray_commit": ray.__commit__,
         }
@@ -429,14 +422,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             hashlib.sha1(name.encode()).hexdigest(): info
             for name, info in deployments.items()
         }
-
-    async def get_session_name(self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS):
-        session_name = await self._gcs_aio_client.internal_kv_get(
-            b"session_name",
-            namespace=ray_constants.KV_NAMESPACE_SESSION,
-            timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
-        )
-        return session_name.decode()
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
