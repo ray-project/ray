@@ -205,6 +205,14 @@ Here is an overview of the available batch formats:
    instead of iterating over each row of a batch and summing up values of that column,
    use ``df_batch["col_foo"].sum()``.
 
+.. tip::
+
+  If the UDF for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` does **not**
+  mutate its input, we can prevent an unnecessary data batch copy by specifying
+  ``zero_copy_batch=True``, which will provide the UDF with zero-copy, read-only
+  batches. See the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` docstring for
+  more information.
+
 .. _transform_datasets_batch_output_types:
 
 Batch UDF Output Types
