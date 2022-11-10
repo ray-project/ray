@@ -20,9 +20,9 @@ else:
     from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.tests.test_state_api import (
-    generate_task_entry,
+    generate_task_data,
     generate_actor_data,
     generate_object_info,
 )
@@ -30,7 +30,10 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
 )
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllActorInfoReply,
+    GetAllTaskStateEventReply,
+)
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
 from ray.experimental.state.state_cli import summary_state_cli_group
@@ -63,49 +66,47 @@ async def test_api_manager_summary_tasks(state_api_manager):
 
     first_task_name = "1"
     second_task_name = "2"
-    data_source_client.get_task_info = AsyncMock()
+    data_source_client.get_all_task_info = AsyncMock()
     ids = [TaskID((f"{i}" * 24).encode()) for i in range(5)]
     # 1: {PENDING_NODE_ASSIGNMENT:3, RUNNING:1}, 2:{PENDING_NODE_ASSIGNMENT: 1}
-    data_source_client.get_task_info.side_effect = [
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
-                    id=ids[0].binary(),
-                    func_or_class=first_task_name,
-                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-                    type=TaskType.NORMAL_TASK,
-                ),
-                generate_task_entry(
-                    id=ids[1].binary(),
-                    func_or_class=first_task_name,
-                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-                    type=TaskType.NORMAL_TASK,
-                ),
-                generate_task_entry(
-                    id=ids[2].binary(),
-                    func_or_class=first_task_name,
-                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-                    type=TaskType.NORMAL_TASK,
-                ),
-            ]
-        ),
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
-                    id=ids[3].binary(),
-                    func_or_class=first_task_name,
-                    state=TaskStatus.RUNNING,
-                    type=TaskType.NORMAL_TASK,
-                ),
-                generate_task_entry(
-                    id=ids[4].binary(),
-                    func_or_class=second_task_name,
-                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-                    type=TaskType.ACTOR_TASK,
-                ),
-            ]
-        ),
-    ]
+    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+        total=5,
+        events_by_task=[
+            generate_task_data(
+                id=ids[0].binary(),
+                func_or_class=first_task_name,
+                state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
+                type=TaskType.NORMAL_TASK,
+            ),
+            generate_task_data(
+                id=ids[1].binary(),
+                func_or_class=first_task_name,
+                state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
+                type=TaskType.NORMAL_TASK,
+            ),
+            generate_task_data(
+                id=ids[2].binary(),
+                func_or_class=first_task_name,
+                state_events=[
+                    (TaskStatus.PENDING_NODE_ASSIGNMENT, 3),
+                    (TaskStatus.PENDING_ARGS_AVAIL, 0),
+                ],
+                type=TaskType.NORMAL_TASK,
+            ),
+            generate_task_data(
+                id=ids[3].binary(),
+                func_or_class=first_task_name,
+                state_events=[(TaskStatus.RUNNING, 1)],
+                type=TaskType.NORMAL_TASK,
+            ),
+            generate_task_data(
+                id=ids[4].binary(),
+                func_or_class=second_task_name,
+                state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
+                type=TaskType.ACTOR_TASK,
+            ),
+        ],
+    )
 
     """
     Test cluster summary.
