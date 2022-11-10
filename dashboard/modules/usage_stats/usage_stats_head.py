@@ -28,8 +28,10 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
-        self._dashboard_url_base = f"http://{dashboard_head.http_host}:{dashboard_head.http_port}"
-        # We want to record stats for anyone who has run ray with grafana or 
+        self._dashboard_url_base = (
+            f"http://{dashboard_head.http_host}:{dashboard_head.http_port}"
+        )
+        # We want to record stats for anyone who has run ray with grafana or
         # prometheus at any point in time during a ray session.
         self._grafana_ran_before = False
         self._prometheus_ran_before = False
@@ -54,14 +56,14 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         if self._grafana_ran_before:
             return
 
-        resp = requests.get(
-            f"{self._dashboard_url_base}/api/grafana_health"
-        )
+        resp = requests.get(f"{self._dashboard_url_base}/api/grafana_health")
         grafana_running = False
         try:
             if resp.status_code == 200:
                 json = resp.json()
-                grafana_running = (json["result"] == True and json["data"]["grafanaHost"] != "DISABLED")
+                grafana_running = (
+                    json["result"] is True and json["data"]["grafanaHost"] != "DISABLED"
+                )
         except Exception:
             pass
 
@@ -78,14 +80,14 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         if self._prometheus_ran_before:
-            return 
+            return
 
         resp = requests.get(f"{self._dashboard_url_base}/api/prometheus_health")
         prometheus_running = False
         try:
             if resp.status_code == 200:
                 json = resp.json()
-                prometheus_running = json["result"] == True
+                prometheus_running = json["result"] is True
         except Exception:
             pass
 
@@ -100,7 +102,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     def _fetch_and_record_extra_telemetry(self):
         logger.debug("Recording dashboard metrics extra telemetry data...")
-        self._check_grafana_running()     
+        self._check_grafana_running()
         self._check_prometheus_running()
 
     def _report_usage_sync(self):

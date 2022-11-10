@@ -189,7 +189,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                         success=False,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
-                        text=text
+                        text=text,
                     )
 
                 return dashboard_optional_utils.rest_response(
@@ -198,10 +198,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
         except Exception as e:
             return dashboard_optional_utils.rest_response(
-                    success=False,
-                    message="prometheus healthcheck failed.",
-                    reason=str(e)
-                )
+                success=False, message="prometheus healthcheck failed.", reason=str(e)
+            )
 
     @routes.get("/api/progress")
     async def get_progress(self, req):
