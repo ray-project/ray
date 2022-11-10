@@ -581,7 +581,7 @@ class Trainable:
                 checkpoint_dir, self._storage_path(checkpoint_dir)
             )
             self.custom_syncer.wait_or_retry(
-                num_retries=self._cloud_checkpoint_num_retries,
+                max_retries=self._cloud_checkpoint_num_retries,
                 backoff_s=self._cloud_checkpoint_sleep_time,
             )
             return True
@@ -630,7 +630,7 @@ class Trainable:
             # Only keep for backwards compatibility
             self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
             self.custom_syncer.wait_or_retry(
-                num_retries=self._cloud_checkpoint_num_retries,
+                max_retries=self._cloud_checkpoint_num_retries,
                 backoff_s=self._cloud_checkpoint_sleep_time,
             )
             return True
@@ -838,7 +838,7 @@ class Trainable:
                     # Keep for backwards compatibility
                     self.custom_syncer.delete(self._storage_path(checkpoint_dir))
                     self.custom_syncer.wait_or_retry(
-                        num_retries=self._cloud_checkpoint_num_retries,
+                        max_retries=self._cloud_checkpoint_num_retries,
                         backoff_s=self._cloud_checkpoint_sleep_time,
                     )
                 else:
