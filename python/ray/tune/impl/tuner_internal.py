@@ -145,7 +145,7 @@ class TunerInternal:
         if not ray.is_initialized():
             return
 
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self._get_converted_trainable()
 
         # This may not be precise, but we don't have a great way of
         # accessing the actual scaling config if it is being tuned.
@@ -268,7 +268,7 @@ class TunerInternal:
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._convert_trainable(self._trainable),
+            self._get_converted_trainable(),
             run_config.local_dir,
             run_config.name,
         )
@@ -280,20 +280,20 @@ class TunerInternal:
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    def _convert_trainable(self, trainable) -> Union[str, Callable, Type[Trainable]]:
+    def _get_converted_trainable(self) -> Union[str, Callable, Type[Trainable]]:
         from ray.train.trainer import BaseTrainer
 
         if not self._converted_trainable:
             self._converted_trainable = (
-                trainable.as_trainable()
-                if isinstance(trainable, BaseTrainer)
-                else trainable
+                self._trainable.as_trainable()
+                if isinstance(self._trainable, BaseTrainer)
+                else self._trainable
             )
 
         return self._converted_trainable
 
     def fit(self) -> ResultGrid:
-        trainable = self._convert_trainable(self._trainable)
+        trainable = self._get_converted_trainable()
         assert self._experiment_checkpoint_dir
         if not self._is_restored:
             param_space = copy.deepcopy(self._param_space)
