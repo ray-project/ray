@@ -356,10 +356,6 @@ class RayTrialExecutor:
         logger.debug(f"Trial {trial}: Reusing cached actor " f"{actor}")
 
         trial.set_runner(actor)
-        self._trial_to_allocated_resources[trial] = allocated_resources
-
-        # Cancel resource request
-        self._resource_manager.cancel_resource_request(resource_request)
 
         if not self.reset_trial(
             trial, trial.config, trial.experiment_tag, logger_creator
@@ -368,6 +364,11 @@ class RayTrialExecutor:
                 "Trainable runner reuse requires reset_config() to be "
                 "implemented and return True."
             )
+
+        self._trial_to_allocated_resources[trial] = allocated_resources
+
+        # Cancel resource request
+        self._resource_manager.cancel_resource_request(resource_request)
 
         return actor
 
