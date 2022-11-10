@@ -275,15 +275,13 @@ class FQETorchModel:
         self.policy.set_state(state["policy_state"])
         self.q_model.load_state_dict(state["q_model_state"])
         self.target_q_model.load_state_dict(state["target_q_model_state"])
-        
+
     @classmethod
     def from_state(cls, state: Dict[str, Any]) -> "FQETorchModel":
         """Creates a FQE Model from a state dict."""
         policy = Policy.from_state(state["policy_state"])
         model = cls(
-            policy=policy, 
-            gamma=state["gamma"], 
-            model_config=state["model_config"]
+            policy=policy, gamma=state["gamma"], model_config=state["model_config"]
         )
         model.set_state(state)
         return model

@@ -617,7 +617,7 @@ class Algorithm(Trainable):
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
         # Note: We skipp workerset creation if we need to do offline evaluation
-        if not self.config.get("off_policy_estimation_methods") and (self.config.evaluation_num_workers > 0 or self.config.evaluation_interval) :
+        if self._should_create_evaluation_rollout_workers(self.evaluation_config):
             _, env_creator = self._get_env_id_and_creator(
                 self.evaluation_config.env, self.evaluation_config
             )
@@ -645,10 +645,9 @@ class Algorithm(Trainable):
                 )
                 self._evaluation_weights_seq_number = 0
 
-
         self.evaluation_dataset = None
         if self.evaluation_config.get("off_policy_estimation_methods"):
-            # the num worker is set to 0 to avoid creating shards since there is no 
+            # the num worker is set to 0 to avoid creating shards since there is no
             # worker anymore
             logger.info("Creating evaluation dataset ...")
             self.evaluation_dataset, _ = get_dataset_and_shards(
@@ -2019,50 +2018,55 @@ class Algorithm(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        default_config = cls.get_default_config()
-        # TODO: Have to make this work for now for AlgorithmConfigs (returned by
-        #  get_default_config(). Use only AlgorithmConfigs once all Algorithms
-        #  return an AlgorothmConfig from their get_default_config() method.
-        if not isinstance(default_config, dict):
-            default_config = default_config.to_dict()
-        cf = dict(default_config, **config)
-        eval_cf = cf["evaluation_config"] or {}
+        cf = (
+            cls.get_default_config()
+            .update_from_dict(config)
+        )
+        cf.validate()
+        cf.freeze()
+
+        # get evaluation config
+        eval_cf = cf.get_evaluation_config_object()
+        eval_cf.validate()
+        eval_cf.freeze()
 
         local_worker = {
-            "CPU": cf["num_cpus_for_driver"],
-            "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+            "CPU": cf.num_cpus_for_local_worker,
+            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
         }
         rollout_workers = [
             {
-                "CPU": cf["num_cpus_per_worker"],
-                "GPU": cf["num_gpus_per_worker"],
-                **cf["custom_resources_per_worker"],
+                "CPU": cf.num_cpus_per_worker,
+                "GPU": cf.num_gpus_per_worker,
+                **cf.custom_resources_per_worker,
             }
-            for _ in range(cf["num_workers"])
+            for _ in range(cf.num_rollout_workers)
         ]
 
-        bundles = [local_worker] + rollout_workers
+        # resources for training env samplers
+        bundles = [local_worker]
 
-        if cf["evaluation_interval"]:
+        # resources for evaluation env samplers
+        if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            bundles += [
+            evaluation_bundle = [
                 {
-                    "CPU": eval_cf.get(
-                        "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                    ),
-                    "GPU": eval_cf.get(
-                        "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                    ),
-                    **eval_cf.get(
-                        "custom_resources_per_worker", cf["custom_resources_per_worker"]
-                    ),
+                    "CPU": eval_cf.num_cpus_per_worker,
+                    "GPU": eval_cf.num_gpus_per_worker,
+                    **eval_cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["evaluation_num_workers"])
+                for _ in range(eval_cf.evaluation_num_workers)
             ]
+        else:
+            # resources for offline dataset readers
+            # Note (Kourosh): we should not claim extra workers for the 
+            # training on offline 
+            # dataset since rollout workers have already claimed it. 
+            # (The mysterious 1 extra worker was due to this.)
+            evaluation_bundle = get_offline_io_resource_bundles(eval_cf)
 
-        # In case our I/O reader/writer requires conmpute resources.
-        bundles += get_offline_io_resource_bundles(cf)
+        bundles += rollout_workers + evaluation_bundle
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -2835,18 +2839,26 @@ class Algorithm(Trainable):
 
         return results, train_iter_ctx
 
-    
-    def _run_offline_evaluation(self, train_future = None):
+    def _run_offline_evaluation(self, train_future=None):
         # TODO (Kourosh): Figure out how to this in parallel with training.
         # Note: we can only run offline evaluation in single agent case for now.
         assert len(self.workers.local_worker().policy_map) == 1
         offline_eval_results = {}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
-            offline_eval_results[evaluator_name] = offline_evaluator.estimate_on_dataset(
-                self.evaluation_dataset, 
-                n_parallelism=self.evaluation_config.evaluation_num_workers
+            offline_eval_results[
+                evaluator_name
+            ] = offline_evaluator.estimate_on_dataset(
+                self.evaluation_dataset,
+                n_parallelism=self.evaluation_config.evaluation_num_workers,
             )
         return offline_eval_results
+
+    @classmethod
+    def _should_create_evaluation_rollout_workers(cls, eval_config):
+        do_offline_evaluation = eval_config.get("off_policy_estimation_methods")
+        return not do_offline_evaluation and (
+            eval_config.evaluation_num_workers > 0 or eval_config.evaluation_interval
+        )
 
     @staticmethod
     def _automatic_evaluation_duration_fn(

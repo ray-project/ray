@@ -6,12 +6,12 @@ from ray.data import Dataset
 
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.offline_evalution_utils import (
-    remove_time_dim, compute_is_weights
+    remove_time_dim,
+    compute_is_weights,
 )
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-
 
 
 @DeveloperAPI
@@ -78,11 +78,11 @@ class ImportanceSampling(OffPolicyEstimator):
 
     @override(OfflineEvaluator)
     def estimate_on_dataset(
-        self, 
-        dataset: Dataset, 
-        *, 
+        self,
+        dataset: Dataset,
+        *,
         n_parallelism: int = os.cpu_count(),
-    ):        
+    ):
         dsize = dataset.count()
         batch_size = max(dsize // n_parallelism, 1)
         # step 1: clean the dataset and remove the time dimension from bandits
@@ -90,19 +90,19 @@ class ImportanceSampling(OffPolicyEstimator):
         # step 2: compute the weights and weighted rewards
         batch_size = max(updated_ds.count() // n_parallelism, 1)
         updated_ds = updated_ds.map_batches(
-            compute_is_weights, 
-            batch_size=batch_size, 
+            compute_is_weights,
+            batch_size=batch_size,
             fn_kwargs={
-                "policy_state": self.policy.get_state(), 
-                "estimator_class": self.__class__
-            }
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
         )
         v_target = updated_ds.mean("weighted_rewards")
         v_behavior = updated_ds.mean("rewards")
         v_gain = v_target / v_behavior
         # TODO (Kourosh): Fix the STD
         v_std = updated_ds.std("weighted_rewards")
-        
+
         return {
             "v_target": v_target,
             "v_behavior": v_behavior,

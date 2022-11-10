@@ -7,7 +7,9 @@ from ray.data import Dataset
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.offline_evalution_utils import (
-    remove_time_dim, compute_is_weights, compute_q_and_v_values
+    remove_time_dim,
+    compute_is_weights,
+    compute_q_and_v_values,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
@@ -125,8 +127,10 @@ class DirectMethod(OffPolicyEstimator):
         return {"loss": np.mean(losses)}
 
     @override(OfflineEvaluator)
-    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
-        
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
+
         dsize = dataset.count()
         batch_size = max(dsize // n_parallelism, 1)
         # step 1: clean the dataset and remove the time dimension for bandits
@@ -134,12 +138,12 @@ class DirectMethod(OffPolicyEstimator):
         # step 2: compute the weights and weighted rewards
         batch_size = max(updated_ds.count() // n_parallelism, 1)
         updated_ds = updated_ds.map_batches(
-            compute_is_weights, 
-            batch_size=batch_size, 
+            compute_is_weights,
+            batch_size=batch_size,
             fn_kwargs={
-                "policy_state": self.policy.get_state(), 
-                "estimator_class": self.__class__
-            }
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
         )
 
         # step 3: compute v_values
@@ -150,10 +154,10 @@ class DirectMethod(OffPolicyEstimator):
             fn_kwargs={
                 "model_class": self.model.__class__,
                 "model_state": self.model.get_state(),
-                "compute_q_values": False
-            }
+                "compute_q_values": False,
+            },
         )
-    
+
         v_behavior = updated_ds.mean("rewards")
         v_target = updated_ds.mean("v_values")
         v_gain = v_target / v_behavior

@@ -16,7 +16,9 @@ from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.offline_evalution_utils import (
-    remove_time_dim, compute_is_weights, compute_q_and_v_values
+    remove_time_dim,
+    compute_is_weights,
+    compute_q_and_v_values,
 )
 
 logger = logging.getLogger()
@@ -164,7 +166,9 @@ class DoublyRobust(OffPolicyEstimator):
         return {"loss": np.mean(losses)}
 
     @override(OfflineEvaluator)
-    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
 
         dsize = dataset.count()
         batch_size = max(dsize // n_parallelism, 1)
@@ -173,12 +177,12 @@ class DoublyRobust(OffPolicyEstimator):
         # step 2: compute the weights and weighted rewards
         batch_size = max(updated_ds.count() // n_parallelism, 1)
         updated_ds = updated_ds.map_batches(
-            compute_is_weights, 
-            batch_size=batch_size, 
+            compute_is_weights,
+            batch_size=batch_size,
             fn_kwargs={
-                "policy_state": self.policy.get_state(), 
-                "estimator_class": self.__class__
-            }
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
         )
 
         # step 3: compute q_values and v_values
@@ -189,13 +193,15 @@ class DoublyRobust(OffPolicyEstimator):
             fn_kwargs={
                 "model_class": self.model.__class__,
                 "model_state": self.model.get_state(),
-            }
+            },
         )
 
         # step 4: compute the v_target
         def compute_v_target(batch: pd.DataFrame, normalizer: float = 1.0):
             weights = batch["weights"] / normalizer
-            batch["v_target"] = batch["v_values"] + weights * (batch["rewards"] - batch["q_values"])
+            batch["v_target"] = batch["v_values"] + weights * (
+                batch["rewards"] - batch["q_values"]
+            )
             batch["v_behavior"] = batch["rewards"]
             return batch
 
@@ -203,11 +209,9 @@ class DoublyRobust(OffPolicyEstimator):
         updated_ds = updated_ds.map_batches(
             compute_v_target,
             batch_size=batch_size,
-            fn_kwargs={
-                "normalizer": normamizer
-            }
+            fn_kwargs={"normalizer": normamizer},
         )
-    
+
         v_behavior = updated_ds.mean("v_behavior")
         v_target = updated_ds.mean("v_target")
         v_gain = v_target / v_behavior
@@ -219,4 +223,3 @@ class DoublyRobust(OffPolicyEstimator):
             "v_gain": v_gain,
             "v_std": v_std,
         }
-

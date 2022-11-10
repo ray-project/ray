@@ -21,6 +21,7 @@ def _perturb_fn(batch: np.ndarray, index: int):
     random_inds = np.random.permutation(batch.shape[0])
     batch[:, index] = batch[random_inds, index]
 
+
 @ExperimentalAPI
 def _perturb_df(batch: pd.DataFrame, index: int):
     obs_batch = np.vstack(batch["obs"].values)
@@ -28,63 +29,56 @@ def _perturb_df(batch: pd.DataFrame, index: int):
     batch["perturbed_obs"] = list(obs_batch)
     return batch
 
+
 def _compute_actions(
-    batch: pd.DataFrame, 
-    policy_state: Dict[str, Any], 
-    input_key: str = "", 
+    batch: pd.DataFrame,
+    policy_state: Dict[str, Any],
+    input_key: str = "",
     output_key: str = "",
 ):
     if not input_key:
         input_key = SampleBatch.OBS
 
     policy = Policy.from_state(policy_state)
-    sample_batch = SampleBatch({
-        SampleBatch.OBS: np.vstack(batch[input_key].values),
-    })
+    sample_batch = SampleBatch(
+        {
+            SampleBatch.OBS: np.vstack(batch[input_key].values),
+        }
+    )
     actions, _, _ = policy.compute_actions_from_input_dict(sample_batch, explore=False)
-    
+
     if not output_key:
         output_key = "predicted_actions"
     batch[output_key] = actions
 
     return batch
 
+
 @ray.remote
-def get_feature_importance_on_index(
-    dataset, 
-    *, 
-    index, 
-    perturb_fn, 
-    bsize, 
-    policy_state
-):
+def get_feature_importance_on_index(dataset, *, index, perturb_fn, bsize, policy_state):
     perturbed_ds = dataset.map_batches(
-        perturb_fn, 
-        batch_size=bsize, 
-        fn_kwargs={"index": index}
+        perturb_fn, batch_size=bsize, fn_kwargs={"index": index}
     )
     perturbed_actions = perturbed_ds.map_batches(
-        _compute_actions, 
-        batch_size=bsize, 
+        _compute_actions,
+        batch_size=bsize,
         fn_kwargs={
-            "output_key": "perturbed_actions", 
+            "output_key": "perturbed_actions",
             "input_key": "perturbed_obs",
-            "policy_state": policy_state
-        }
+            "policy_state": policy_state,
+        },
     )
 
     def delta_fn(batch):
-        # take the abs difference between columns 'ref_actions` and `perturbed_actions` 
+        # take the abs difference between columns 'ref_actions` and `perturbed_actions`
         # and store it in `diff`
         batch["delta"] = np.abs(batch["ref_actions"] - batch["perturbed_actions"])
         return batch
 
-    diff = perturbed_actions.map_batches(
-        delta_fn,
-        batch_size=bsize
-    )
+    diff = perturbed_actions.map_batches(delta_fn, batch_size=bsize)
 
     return diff
+
 
 @DeveloperAPI
 class FeatureImportance(OfflineEvaluator):
@@ -134,7 +128,7 @@ class FeatureImportance(OfflineEvaluator):
             repeat: number of times to repeat the perturbation.
             perturb_fn: function to perturb the features. By default reshuffle the
                 features within the batch.
-            limit_fraction: fraction of the dataset to use for feature importance 
+            limit_fraction: fraction of the dataset to use for feature importance
                 (to be used only in estimate_on_dataset)
         """
         super().__init__(policy)
@@ -177,10 +171,12 @@ class FeatureImportance(OfflineEvaluator):
 
         return metrics
 
-    def estimate_on_dataset(self, dataset: Dataset, *, n_parallelism: int = ...) -> Dict[str, Any]:
-        
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
+
         policy_state = self.policy.get_state()
-        # step 1: limit the dataset to a few first rows 
+        # step 1: limit the dataset to a few first rows
         ds = dataset.limit(int(self.limit_fraction * dataset.count()))
 
         # step 2: remove the time dimension from the dataset
@@ -190,12 +186,12 @@ class FeatureImportance(OfflineEvaluator):
         # step 3: compute the reference actions
         bsize = max(1, updated_ds.count() // n_parallelism)
         actions_ds = updated_ds.map_batches(
-            _compute_actions, 
-            batch_size=bsize, 
+            _compute_actions,
+            batch_size=bsize,
             fn_kwargs={
                 "output_key": "ref_actions",
                 "policy_state": policy_state,
-            }
+            },
         )
 
         n_features = updated_ds.take(1)[0]["obs"].shape[-1]
@@ -208,12 +204,13 @@ class FeatureImportance(OfflineEvaluator):
             # for each index perturb the dataset and compute the feat importance score
             remote_fns = [
                 get_feature_importance_on_index.remote(
-                    dataset=shuffled_ds, 
-                    index=i, 
+                    dataset=shuffled_ds,
+                    index=i,
                     perturb_fn=self.perturb_fn,
-                    bsize=bsize_per_task, 
+                    bsize=bsize_per_task,
                     policy_state=policy_state,
-                ) for i in range(n_features)
+                )
+                for i in range(n_features)
             ]
             ds_w_fi_scores = ray.get(remote_fns)
             importance[r] = np.array([d.mean("delta") for d in ds_w_fi_scores])

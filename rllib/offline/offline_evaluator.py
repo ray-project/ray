@@ -58,13 +58,13 @@ class OfflineEvaluator(abc.ABC):
 
     @ExperimentalAPI
     def estimate_on_dataset(
-        self, 
-        dataset: Dataset, 
-        *, 
+        self,
+        dataset: Dataset,
+        *,
         n_parallelism: int = os.cpu_count(),
     ) -> Dict[str, Any]:
 
-        """Calculates the estmiate of the metrics based on the given offline dataset. 
+        """Calculates the estmiate of the metrics based on the given offline dataset.
 
         Args:
             dataset: The ray dataset object to do offline evaluation on.

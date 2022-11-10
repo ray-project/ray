@@ -1,4 +1,3 @@
-
 import pandas as pd
 from typing import Any, Dict, Type, TYPE_CHECKING
 import numpy as np
@@ -13,17 +12,19 @@ from ray.rllib.policy import Policy
 
 
 def compute_q_and_v_values(
-    batch: pd.DataFrame, 
-    model_class: Type["FQETorchModel"], 
+    batch: pd.DataFrame,
+    model_class: Type["FQETorchModel"],
     model_state: Dict[str, Any],
     compute_q_values: bool = True,
 ):
     model = model_class.from_state(model_state)
 
-    sample_batch = SampleBatch({
-        SampleBatch.OBS: np.vstack(batch[SampleBatch.OBS]),
-        SampleBatch.ACTIONS: np.vstack(batch[SampleBatch.ACTIONS]).squeeze(-1),
-    })
+    sample_batch = SampleBatch(
+        {
+            SampleBatch.OBS: np.vstack(batch[SampleBatch.OBS]),
+            SampleBatch.ACTIONS: np.vstack(batch[SampleBatch.ACTIONS]).squeeze(-1),
+        }
+    )
 
     v_values = model.estimate_v(sample_batch)
     v_values = convert_to_numpy(v_values)
@@ -38,25 +39,27 @@ def compute_q_and_v_values(
 
 
 def compute_is_weights(
-    batch, 
+    batch,
     policy_state,
     estimator_class,
-):  
+):
     """Computes importance sampling weights for the given batch of samples."""
     policy = policy = Policy.from_state(policy_state)
     estimator = estimator_class(policy=policy, gamma=0, epsilon_greedy=0)
-    sample_batch = SampleBatch({
-        SampleBatch.OBS: np.vstack(batch["obs"].values),
-        SampleBatch.ACTIONS: np.vstack(batch["actions"].values).squeeze(-1),
-        SampleBatch.ACTION_PROB: np.vstack(batch["action_prob"].values).squeeze(-1),
-        SampleBatch.REWARDS: np.vstack(batch["rewards"].values).squeeze(-1),
-    })
+    sample_batch = SampleBatch(
+        {
+            SampleBatch.OBS: np.vstack(batch["obs"].values),
+            SampleBatch.ACTIONS: np.vstack(batch["actions"].values).squeeze(-1),
+            SampleBatch.ACTION_PROB: np.vstack(batch["action_prob"].values).squeeze(-1),
+            SampleBatch.REWARDS: np.vstack(batch["rewards"].values).squeeze(-1),
+        }
+    )
     new_prob = estimator.compute_action_probs(sample_batch)
     old_prob = sample_batch[SampleBatch.ACTION_PROB]
     rewards = sample_batch[SampleBatch.REWARDS]
     weights = new_prob / old_prob
     weighted_rewards = weights * rewards
-    
+
     batch["weights"] = weights
     batch["weighted_rewards"] = weighted_rewards
     batch["new_prob"] = new_prob
@@ -64,12 +67,12 @@ def compute_is_weights(
 
     return batch
 
-    
+
 def remove_time_dim(batch: pd.DataFrame) -> pd.DataFrame:
     """Removes the time dimension from the given sub-batch of the dataset.
-    
-    RLlib assumes each record in the dataset is a single episode. 
-    However, for bandits, each episode is only a single timestep. This function removes 
+
+    RLlib assumes each record in the dataset is a single episode.
+    However, for bandits, each episode is only a single timestep. This function removes
     the time dimension from the given sub-batch of the dataset.
 
     Args:
@@ -87,4 +90,3 @@ def remove_time_dim(batch: pd.DataFrame) -> pd.DataFrame:
     ]:
         batch[k] = batch[k].apply(lambda x: x[0])
     return batch
-
