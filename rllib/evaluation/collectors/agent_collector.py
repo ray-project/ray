@@ -126,10 +126,16 @@ class AgentCollector:
         vr = self.view_requirements[vr_name]
         # We only check for the shape here, because conflicting dtypes are often
         # because of float conversion
-        assert vr.space.shape == np.shape(data), (
-            f"Provided tensor {data} does not match space of view requirements {vr}. "
-            f"Make sure dimensions and dtype match to resolve this error."
-        )
+        if vr.space.shape:
+            # TODO (Artur): Enforce dtype as well
+            assert vr.space.shape == np.shape(data), (
+                f"Provided tensor\n{data}\n does not match space of view requirements/n"
+                f" {vr}.\n"
+                f"Make sure dimensions match to resolve this error.\n"
+                f"Provided tensor has shape {np.shape(data)} and view requirement has "
+                f"shape shape {vr.space.shape}. "
+                f"Make sure dimensions and dtype match to resolve this error."
+            )
 
     def add_init_obs(
         self,
