@@ -152,6 +152,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
         self._acquired_pgs.remove(pg)
         remove_placement_group(pg)
+        self._pg_to_request.pop(pg)
 
     def clear(self):
         for staged_pgs in self._request_to_staged_pgs.values():

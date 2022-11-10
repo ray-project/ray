@@ -836,8 +836,8 @@ class RayTrialExecutor:
         self._resource_updater.update_avail_resources()
 
     def on_step_end(self) -> None:
-        self._do_force_trial_cleanup()
         self._cleanup_cached_actors()
+        self._do_force_trial_cleanup()
 
     def _count_staged_resources(self):
         counter = Counter()
@@ -868,6 +868,8 @@ class RayTrialExecutor:
                         _ExecutorEventType.STOP_RESULT,
                         allocated_resources,
                     )
+                    if self._trial_cleanup:  # force trial cleanup within a deadline
+                        self._trial_cleanup.add(future)
 
             # Re-add actors in self._newly_cached_actors
             for actor, allocated_resources in re_add:
@@ -1012,6 +1014,8 @@ class RayTrialExecutor:
         return self._resource_updater.get_num_gpus() > 0
 
     def cleanup(self) -> None:
+        self._cleanup_cached_actors(force_all=True)
+
         while self._futures:
             if self._trial_cleanup and self._trial_cleanup.is_empty():
                 break
@@ -1040,7 +1044,6 @@ class RayTrialExecutor:
                 resource_request=resource_request
             )
 
-        self._cleanup_cached_actors(force_all=True)
         self._resource_manager.clear()
 
     @contextmanager
