@@ -14,8 +14,8 @@ class Target:
 
     A panel will have one or more targets. By default, all targets are rendered as
     stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line. Any legend="FINISHED|FAILED|DEAD" series will also be rendered
-    hidden by default.
+    a blue dotted line. Any legend="FINISHED|FAILED|DEAD|REMOVED" series will also be
+    rendered hidden by default.
 
     Attributes:
         expr: The prometheus query to evaluate.
@@ -150,6 +150,18 @@ GRAFANA_PANELS = [
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
             ),
+        ],
+    ),
+    Panel(
+        id=40,
+        title="Scheduler Placement Groups",
+        description="Current number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.",
+        unit="placement groups",
+        targets=[
+            Target(
+                expr="sum(ray_placement_groups{{{global_filters}}}) by (State)",
+                legend="{{State}}",
+            )
         ],
     ),
     Panel(
@@ -357,7 +369,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD/",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
             "hiddenSeries": True,
         },
     ],
