@@ -523,6 +523,7 @@ class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
         """Trainables should know the original working dir through env variable."""
 
+        os.environ.pop("TUNE_ORIG_WORKING_DIR", None)
         working_dir = os.getcwd()
 
         def f(config):
