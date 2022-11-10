@@ -31,7 +31,8 @@ DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_FKRmeV5pA6X72aVscFALNC32",
 )
-DEFAULT_PYTHON_VERSION = (3, 7)
+
+DEFAULT_PYTHON_VERSION = (3, 8)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
