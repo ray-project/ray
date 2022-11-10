@@ -454,7 +454,7 @@ class WandbLoggerCallback(LoggerCallback):
         self.save_checkpoints = save_checkpoints
         self.kwargs = kwargs
 
-        self._remote_logger_class = ray.remote(self._logger_actor_cls)
+        self._remote_logger_class = None
 
         self._trial_logging_actors: Dict[
             "Trial", ray.actor.ActorHandle[_WandbLoggingActor]
@@ -522,6 +522,11 @@ class WandbLoggerCallback(LoggerCallback):
         self._start_logging_actor(trial, exclude_results, **wandb_init_kwargs)
 
     def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
+        if not self._remote_logger_class:
+            self._remote_logger_class = ray.remote(
+                num_cpus=0, **_force_on_current_node()
+            )(self._logger_actor_cls)
+
         self._trial_queues[trial] = Queue(
             actor_options={"num_cpus": 0, **_force_on_current_node()}
         )
