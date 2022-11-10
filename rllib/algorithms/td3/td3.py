@@ -3,10 +3,10 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
@@ -105,8 +105,8 @@ class TD3Config(DDPGConfig):
 class TD3(DDPG):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return TD3Config().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return TD3Config()
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg..td3.TD3Config instead!

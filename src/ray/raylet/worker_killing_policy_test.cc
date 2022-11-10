@@ -30,6 +30,7 @@ class WorkerKillerTest : public ::testing::Test {
   MemoryMonitor memory_monitor_ = {
       io_context_,
       0 /*usage_threshold*/,
+      -1 /*min_memory_free_bytes*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,

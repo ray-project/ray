@@ -46,14 +46,6 @@ export type NodeListRsp = {
   msg: string;
 };
 
-export type NodeWithWorkersListRsp = {
-  data: {
-    clients: NodeDetailExtend[];
-  };
-  result: boolean;
-  msg: string;
-};
-
 export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;

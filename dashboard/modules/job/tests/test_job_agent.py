@@ -223,15 +223,17 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
         JobSubmitRequest,
     )
-
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
+
+    # Conda env takes longer to install, causing flakiness.
+    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
 
     wait_for_condition(
         partial(
             _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
         ),
-        timeout=120,
+        timeout=timeout,
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent
@@ -473,7 +475,7 @@ async def test_job_log_in_multiple_node(
         return True
 
     st = time.time()
-    while time.time() - st <= 15:
+    while time.time() - st <= 30:
         try:
             await _check_all_jobs_log()
             break

@@ -50,11 +50,31 @@ export const useNodeList = () => {
     };
   }, [getList]);
 
+  const finalSortFunc = (a: NodeDetail, b: NodeDetail) => {
+    const sortFuncs: ((a: NodeDetail, b: NodeDetail) => number)[] = [
+      // user override first
+      sorterFunc,
+      // Head node is always first
+      (a, b) => (a.raylet.isHeadNode ? 0 : 1) - (b.raylet.isHeadNode ? 0 : 1),
+      // Then sort by state
+      (a, b) => (a.raylet.state > b.raylet.state ? 1 : -1),
+      // Finally sort by nodeId
+      (a, b) => (a.raylet.nodeId > b.raylet.nodeId ? 1 : -1),
+    ];
+
+    for (const sortFunc of sortFuncs) {
+      const val = sortFunc(a, b);
+      if (val !== 0) {
+        return val;
+      }
+    }
+    return 0;
+  };
+
   return {
     nodeList: nodeList
       .map((e) => ({ ...e, state: e.raylet.state }))
-      .sort((a, b) => (a.raylet.nodeId > b.raylet.nodeId ? 1 : -1))
-      .sort(sorterFunc)
+      .sort(finalSortFunc)
       .filter((node) =>
         filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
       ),

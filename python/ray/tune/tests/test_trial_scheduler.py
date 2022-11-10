@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -856,8 +857,10 @@ class _MockTrial(Trial):
         self.custom_dirname = None
         self._default_result_or_future = None
         self.checkpoint_manager = _CheckpointManager(
-            keep_checkpoints_num=2,
-            checkpoint_score_attr="episode_reward_mean",
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="episode_reward_mean",
+            ),
             delete_fn=lambda c: None,
         )
 
@@ -1247,41 +1250,59 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
+        def explore_fn(
+            config, mutations, resample_probability, custom_explore_fn=lambda x: x
+        ):
+            new_config, _ = _explore(
+                config,
+                mutations,
+                resample_probability,
+                perturbation_factors=(1.2, 0.8),
+                custom_explore_fn=custom_explore_fn,
+            )
+            return new_config
+
         # Categorical case
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0), {3, 4})
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: explore_fn({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0), {8, 10}
         )
         assertProduces(
-            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
-        )
-        assertProduces(
-            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
-        )
-        assertProduces(
-            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: explore_fn({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0),
             {3, 4, 8, 10},
         )
 
+        # Check that tuple also works
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": (3, 4, 8, 10)}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": (3, 4, 8, 10)}, 0.0), {3, 4})
+
+        # Passing in an invalid types should raise an error
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": {3, 4, 8, 10}}, 0.0)
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": "invalid"}, 0.0)
+
         # Continuous case
         assertProduces(
-            lambda: _explore(
-                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0
             ),
             {10.0, 100.0},
         )
@@ -1309,7 +1330,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1319,7 +1340,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                lambda x: x,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1331,7 +1351,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1341,7 +1361,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                custom_explore_fn,
+                custom_explore_fn=custom_explore_fn,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1862,7 +1882,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {}
-        self.on_trial_result(pbt, runner, trials[0], result(1, 10))
+        self.on_trial_result(
+            pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
+        )
         self.on_trial_result(
             pbt, runner, trials[2], result(1, 200), TrialScheduler.CONTINUE
         )
@@ -2312,7 +2334,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # skip trial complete in this mock setting
 
     def testPBTNanInf(self):
-        scheduler = PopulationBasedTraining(metric="episode_reward_mean", mode="max")
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean",
+            mode="max",
+            hyperparam_mutations={"ignored": [1]},
+        )
         t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2392,7 +2418,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(MedianStoppingRule)
 
     def testAnonymousMetricEndToEndPBT(self):
-        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
+        self._testAnonymousMetricEndToEnd(
+            lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
+        )
 
 
 if __name__ == "__main__":

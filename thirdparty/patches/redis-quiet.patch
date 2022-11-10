@@ -1,7 +1,7 @@
 diff --git a/deps/Makefile b/deps/Makefile
 index 8592e17..0c13eea 100644
---- deps/Makefile
-+++ deps/Makefile
+--- a/deps/Makefile
++++ b/deps/Makefile
 @@ -49,19 +49,19 @@ ifeq ($(BUILD_TLS),yes)
  endif
  
@@ -45,8 +45,8 @@ index 8592e17..0c13eea 100644
  
 diff --git a/deps/jemalloc/Makefile.in b/deps/jemalloc/Makefile.in
 index 7128b00..da8e429 100644
---- deps/jemalloc/Makefile.in
-+++ deps/jemalloc/Makefile.in
+--- a/deps/jemalloc/Makefile.in
++++ b/deps/jemalloc/Makefile.in
 @@ -406,7 +406,7 @@ $(objroot)include/jemalloc/internal/private_namespace_jet.gen.h: $(C_JET_SYMS)
  	$(SHELL) $(srcroot)include/jemalloc/internal/private_namespace.sh $^ > $@
  
@@ -57,9 +57,18 @@ index 7128b00..da8e429 100644
  $(CPP_OBJS) $(CPP_PIC_OBJS) $(TESTS_CPP_OBJS): %.$(O):
  	@mkdir -p $(@D)
 diff --git a/src/Makefile b/src/Makefile
-index e4f7d90..218543f 100644
---- src/Makefile
-+++ src/Makefile
+index e4f7d90..704d4b4 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -115,7 +115,7 @@ endif
+ # Override default settings if possible
+ -include .make-settings
+ 
+-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS)
++FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS) $(CPPFLAGS)
+ FINAL_LDFLAGS=$(LDFLAGS) $(REDIS_LDFLAGS) $(DEBUG)
+ FINAL_LIBS=-lm
+ DEBUG=-g -ggdb
 @@ -326,9 +326,9 @@ REDIS_CHECK_AOF_NAME=redis-check-aof$(PROG_SUFFIX)
  ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(REDIS_SERVER_OBJ) $(REDIS_CLI_OBJ) $(REDIS_BENCHMARK_OBJ)))
  

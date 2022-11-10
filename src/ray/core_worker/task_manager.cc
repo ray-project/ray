@@ -99,9 +99,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.emplace(
-        spec.TaskId(),
-        TaskEntry(spec, max_retries, num_returns, task_counter_, max_oom_retries));
+    auto inserted = submissible_tasks_.try_emplace(
+        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -298,7 +297,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr) {
+                                      const rpc::Address &worker_addr,
+                                      bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   bool first_execution = false;
@@ -375,7 +375,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    if (is_application_error) {
+      it->second.SetStatus(rpc::TaskStatus::FAILED);
+    } else {
+      it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    }
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -485,6 +489,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
+    it->second.SetStatus(rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -759,7 +764,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
+                                              const NodeID &node_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
@@ -767,6 +773,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  it->second.SetNodeId(node_id);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -784,14 +791,17 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
     const auto &task_state = task_entry.GetStatus();
+    const auto &node_id = task_entry.GetNodeId();
     rpc::TaskType type;
     if (task_spec.IsNormalTask()) {
       type = rpc::TaskType::NORMAL_TASK;
     } else if (task_spec.IsActorCreationTask()) {
       type = rpc::TaskType::ACTOR_CREATION_TASK;
+      entry->set_actor_id(task_spec.ActorCreationId().Binary());
     } else {
       RAY_CHECK(task_spec.IsActorTask());
       type = rpc::TaskType::ACTOR_TASK;
+      entry->set_actor_id(task_spec.ActorId().Binary());
     }
     entry->set_type(type);
     entry->set_name(task_spec.GetName());
@@ -799,6 +809,9 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
     entry->set_scheduling_state(task_state);
     entry->set_job_id(task_spec.JobId().Binary());
+    if (!node_id.IsNil()) {
+      entry->set_node_id(node_id.Binary());
+    }
     entry->set_task_id(task_spec.TaskId().Binary());
     entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
@@ -807,6 +820,23 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
   reply->set_tasks_total(total);
+}
+
+void TaskManager::RecordMetrics() {
+  absl::MutexLock lock(&mu_);
+  task_counter_.FlushOnChangeCallbacks();
+}
+
+ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return ObjectID::Nil();
+  }
+  if (!it->second.spec.ReturnsDynamic()) {
+    return ObjectID::Nil();
+  }
+  return it->second.spec.ReturnId(0);
 }
 
 }  // namespace core

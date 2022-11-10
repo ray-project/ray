@@ -50,7 +50,9 @@ class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
       const result = await getLogs(nodeIp, pid);
       this.setState({ result, error: null });
     } catch (error) {
-      this.setState({ result: null, error: error.toString() });
+      if (error instanceof Error) {
+        this.setState({ result: null, error: error.toString() });
+      }
     }
   }
 

@@ -19,6 +19,7 @@
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/rpc/client_call.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter_client.h"
@@ -96,15 +97,17 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
  public:
   OpenCensusProtoExporter(const int port,
                           instrumented_io_context &io_service,
-                          const std::string address);
+                          const std::string address,
+                          const WorkerID &worker_id);
 
   ~OpenCensusProtoExporter() = default;
 
   static void Register(const int port,
                        instrumented_io_context &io_service,
-                       const std::string address) {
+                       const std::string address,
+                       const WorkerID &worker_id) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address));
+        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id));
   }
 
   void ExportViewData(
@@ -116,6 +119,8 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   rpc::ClientCallManager client_call_manager_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> client_;
+  /// The worker ID of the current component.
+  WorkerID worker_id_;
 };
 
 }  // namespace stats

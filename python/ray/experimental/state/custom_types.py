@@ -45,6 +45,7 @@ TASK_STATUS = [
     "RUNNING_IN_RAY_GET",
     "RUNNING_IN_RAY_WAIT",
     "FINISHED",
+    "FAILED",
 ]
 TypeTaskStatus = Literal[tuple(TASK_STATUS)]
 NODE_STATUS = ["ALIVE", "DEAD"]
@@ -61,6 +62,7 @@ WORKER_EXIT_TYPE = [
     "INTENDED_SYSTEM_EXIT",
     "USER_ERROR",
     "INTENDED_USER_EXIT",
+    "NODE_OUT_OF_MEMORY",
 ]
 TypeWorkerExitType = Literal[tuple(WORKER_EXIT_TYPE)]
 TASK_TYPE = [

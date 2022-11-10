@@ -22,10 +22,10 @@ def test_basic(ray_start_regular_shared, pandas):
     assert ray.get(rad.get_async(-1)) is None
     assert ray.get(rad.get_async(100)) is None
     for i in range(100):
-        assert ray.get(rad.get_async(i)) == {"value": i, "embedding": i ** 2}
+        assert ray.get(rad.get_async(i)) == {"value": i, "embedding": i**2}
 
     def expected(i):
-        return {"value": i, "embedding": i ** 2}
+        return {"value": i, "embedding": i**2}
 
     # Test multiget.
     results = rad.multiget([-1] + list(range(10)) + [100])
