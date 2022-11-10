@@ -863,7 +863,11 @@ class RayTrialExecutor:
                     self._newly_cached_actors.remove(actor)
                     re_add.append((actor, allocated_resources))
                 else:
-                    self._resource_manager.return_resources(allocated_resources)
+                    future = actor.stop.remote()
+                    self._futures[future] = (
+                        _ExecutorEventType.STOP_RESULT,
+                        allocated_resources,
+                    )
 
             # Re-add actors in self._newly_cached_actors
             for actor, allocated_resources in re_add:
@@ -1024,7 +1028,7 @@ class RayTrialExecutor:
 
             # It could be STOP future after all, if so, deal with it here.
             if event_type == _ExecutorEventType.STOP_RESULT:
-                self._resource_manager.return_resources(
+                self._resource_manager.free_resources(
                     allocated_resources=allocated_resources
                 )
                 # Blocking here is ok as the future returned
@@ -1187,7 +1191,7 @@ class RayTrialExecutor:
             result_type, trial_or_allocated_resources = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 # This will block, which is ok as the stop future returned
-                self._resource_manager.return_resources(
+                self._resource_manager.free_resources(
                     allocated_resources=trial_or_allocated_resources
                 )
                 _post_stop_cleanup(ready_future, timeout=None)

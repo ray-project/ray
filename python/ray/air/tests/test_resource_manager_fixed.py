@@ -15,7 +15,7 @@ def test_acquire_return_resources():
     assert manager.has_resources_ready(REQUEST_2_CPU)
     assert not manager.has_resources_ready(REQUEST_4_CPU)
 
-    manager.return_resources(ready_2)
+    manager.free_resources(ready_2)
 
     assert manager.has_resources_ready(REQUEST_4_CPU)
 

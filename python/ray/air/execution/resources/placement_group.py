@@ -147,7 +147,7 @@ class PlacementGroupResourceManager(ResourceManager):
 
         return self._resource_cls(placement_group=pg, resource_request=resource_request)
 
-    def return_resources(self, allocated_resources: PlacementGroupAllocatedResource):
+    def free_resources(self, allocated_resources: PlacementGroupAllocatedResource):
         pg = allocated_resources.placement_group
 
         self._acquired_pgs.remove(pg)
