@@ -476,6 +476,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
     try:
         logging_params = dict(
             logging_level=args.logging_level,

@@ -271,6 +271,7 @@ def init_ray_and_catch_exceptions() -> Callable:
                         ray.init(
                             address=address,
                             log_to_driver=False,
+                            configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:

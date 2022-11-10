@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
+    run_string_as_driver_nonblocking,
 )
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
@@ -483,6 +484,38 @@ async def test_job_log_in_multiple_node(
             print("error:", ex)
             time.sleep(1)
     assert all(job_check_status), job_check_status
+
+
+def test_agent_logs_not_streamed_to_drivers():
+    """Ensure when the job submission is used,
+    (ray.init is called from an agent), the agent logs are
+    not streamed to drivers.
+
+    Related: https://github.com/ray-project/ray/issues/29944
+    """
+    script = """
+import ray
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._private.test_utils import format_web_url
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+address = ray._private.worker._global_node.webui_url
+address = format_web_url(address)
+client = JobSubmissionClient(address)
+submission_id = client.submit_job(entrypoint="ls")
+wait_for_condition(
+    lambda: client.get_job_status(submission_id) == JobStatus.SUCCEEDED
+)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(raylet)" not in out_str
+    assert "(raylet)" not in err_str
 
 
 if __name__ == "__main__":
