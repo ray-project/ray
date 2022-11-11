@@ -225,7 +225,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
     def _scale_request_to_patch_payload(
         self, scale_request: ScaleRequest, raycluster: Dict[str, Any]
-    ):
+    ) -> List[Dict[str, Any]]:
         """Converts autoscaler scale request into a RayCluster CR patch."""
         patch_payload = []
         # Collect patches for replica counts.
