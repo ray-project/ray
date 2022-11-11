@@ -12,6 +12,12 @@ A resource in Ray is a key-value pair where the key denotes a resource name, and
 For convenience, Ray has native support for CPU, GPU, and memory resource types; CPU, GPU and memory are called **pre-defined resources**.
 Besides those, Ray also supports :ref:`custom resources <custom-resources>`.
 
+Physical Resources and Logical Resources
+----------------------------------------
+
+Physical resources are resources that a machine physically has such as physical CPUs and GPUs
+and logical resources are virtual resources defined by a system.
+
 Ray resources are **logical** and don’t need to have 1-to-1 mapping with physical resources.
 For example, you can start a Ray head node with 3 GPUs via ``ray start --head --num-gpus=3`` even if it physically has zero.
 They are mainly used for admission control during scheduling.
