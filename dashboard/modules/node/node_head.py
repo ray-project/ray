@@ -18,7 +18,6 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.dashboard.datacenter import DataOrganizer, DataSource
-from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
@@ -269,38 +268,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message="Node details fetched.", detail=node_info
         )
 
-    @routes.get("/memory/memory_table")
-    async def get_memory_table(self, req) -> aiohttp.web.Response:
-        group_by = req.query.get("group_by")
-        sort_by = req.query.get("sort_by")
-        kwargs = {}
-        if group_by:
-            kwargs["group_by"] = GroupByType(group_by)
-        if sort_by:
-            kwargs["sort_by"] = SortingType(sort_by)
-
-        memory_table = await DataOrganizer.get_memory_table(**kwargs)
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetched memory table",
-            memory_table=memory_table.as_dict(),
-        )
-
-    @routes.get("/memory/set_fetch")
-    async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
-        should_fetch = req.query["shouldFetch"]
-        if should_fetch == "true":
-            self._collect_memory_info = True
-        elif should_fetch == "false":
-            self._collect_memory_info = False
-        else:
-            return dashboard_optional_utils.rest_response(
-                success=False, message=f"Unknown argument to set_fetch {should_fetch}"
-            )
-        return dashboard_optional_utils.rest_response(
-            success=True, message=f"Successfully set fetching to {should_fetch}"
-        )
-
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
@@ -349,17 +316,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             else:
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[node_id] = reply_dict
-
-        # Update scheduling stats (e.g., pending actor creation tasks) of gcs.
-        try:
-            reply = await self._gcs_node_resource_info_stub.GetGcsSchedulingStats(
-                gcs_service_pb2.GetGcsSchedulingStatsRequest(),
-                timeout=2,
-            )
-            if reply.status.code == 0:
-                DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
-        except Exception:
-            logger.exception("Error updating gcs stats.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
