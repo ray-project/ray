@@ -94,6 +94,10 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
+    title: "Scheduler Placement Groups",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+  },
+  {
     title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
