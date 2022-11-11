@@ -128,6 +128,7 @@ class AgentCollector:
     def _check_view_requirement(self, vr_name: str, data: TensorType):
         """Raises an AssertionError if data does not fit all view requirements that
         have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
+        return
 
         if (
             log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
