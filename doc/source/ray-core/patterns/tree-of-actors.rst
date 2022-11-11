@@ -18,7 +18,8 @@ The supervisor can process results or update child actors prior to returning.
 Example use case
 ----------------
 
-You want to do data parallel training by following the SPMD (single program, multiple data) programming paradigm and use a supervisor actor to do the orchestration.
+You want to do data parallel training and train the same model with different hyperparameters in parallel.
+For each hyperparameter, you can launch a supervisor actor to do the orchestration and it will create worker actors to do the actual training per data shard.
 
 Code example
 ------------
