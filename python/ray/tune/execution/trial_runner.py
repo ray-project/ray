@@ -71,12 +71,13 @@ def _load_trial_from_checkpoint(
     """_summary_
 
     Args:
-        trial_cp: Trial state from the experiment checkpoint, which is saved via
-            `Trial.get_json_state`
+        trial_cp: Trial state from the experiment checkpoint, which is loaded
+            from the trial's `Trial.get_json_state`.
         stub: Whether or not to validate the trainable name when creating the Trial.
             Used for testing purposes for creating mocks.
-        new_local_dir: if set, the Trial `local_dir` will be updated in the
-            `trial_cp` state
+        new_local_dir: If set, the Trial `local_dir` will be updated in the
+            `trial_cp` state. Used in the case that the trial directory has moved
+            from where it was saved initially.
 
     Returns:
         new_trial: New trial with state loaded from experiment checkpoint
