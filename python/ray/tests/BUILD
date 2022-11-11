@@ -355,14 +355,6 @@ py_test(
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )
 
-py_test(
-    name = "test_actor_group",
-    size = "medium",
-    srcs = ["test_actor_group.py"],
-    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serve"],
-    deps = ["//:ray_lib", ":conftest"]
-)
-
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
