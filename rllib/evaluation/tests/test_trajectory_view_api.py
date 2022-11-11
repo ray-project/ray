@@ -44,7 +44,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -354,7 +354,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda aid, episode, **kwargs: "p{}".format(aid),
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p{}".format(agent_id),
             count_steps_by="agent_steps",
         )
 
