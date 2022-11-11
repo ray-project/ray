@@ -195,7 +195,7 @@ def test_fractional_memory_round_down(shutdown_only):
 
     with ray.init(num_cpus=1, _memory=2):
         ray.get(test.options(memory=2.9).remote(), timeout=2)
-        
+
     with ray.init(num_cpus=1, _memory=0.2):
         ray.get(test.options(memory=0.5).remote(), timeout=2)
 
