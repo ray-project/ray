@@ -221,20 +221,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::HandleGetGcsSchedulingStats(
-    rpc::GetGcsSchedulingStatsRequest request,
-    rpc::GetGcsSchedulingStatsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (cluster_task_manager_) {
-    // Fill pending (actor creation) tasks of gcs when gcs actor scheduler is enabled.
-    rpc::GetNodeStatsReply gcs_stats;
-    cluster_task_manager_->FillPendingActorInfo(&gcs_stats);
-    reply->mutable_infeasible_tasks()->CopyFrom(gcs_stats.infeasible_tasks());
-    reply->mutable_ready_tasks()->CopyFrom(gcs_stats.ready_tasks());
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);

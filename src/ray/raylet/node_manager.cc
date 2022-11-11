@@ -2551,7 +2551,6 @@ void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
 void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  cluster_task_manager_->FillPendingActorInfo(reply);
   // Report object spilling stats.
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
