@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gym
-from gym.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,15 +16,24 @@ from typing import (
     Union,
 )
 
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box
+from packaging import version
+from collections import defaultdict
+
 import ray
+import ray.cloudpickle as pickle
+from ray.util import log_once
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -37,22 +41,25 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.typing import (
+    ActionConnectorDataType,
+)
+from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -64,6 +71,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
@@ -362,6 +370,363 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
+    @PublicAPI(stability="alpha")
+    def compute_actions_from_raw_input_dict(
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        agent_ids: Optional[List[str]] = None,
+        env_ids: Optional[List[str]] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from collected samples (across multiple-agents).
+
+        Args:
+            input_dict: A SampleBatch or input dict containing the Tensors
+                to compute actions. These inputs are not assumed to abide to the
+                model's view requirements or to be preprocessed but are instead fed
+                to connectors.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            agent_ids: Agent IDs of observations in input_dict
+            env_ids: Environment IDs of observations in input_dict
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
+
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        # Until we have fully migrated to connectors, we wrap compute_action-methods
+        assert "episodes" not in kwargs.keys(), (
+            "episodes argument can not be used together with connectors. Episodes "
+            "are built internally and make this arg redundant."
+        )
+        if (
+            input_dict.get(SampleBatch.OBS) is None
+            and input_dict.get(SampleBatch.NEXT_OBS) is None
+        ):
+            if log_once("compute_actions_obs_and_next_obs_provided"):
+                logger.debug(
+                    "compute_actions_from_input_dict() expects "
+                    "either SampleBatch.OBS or "
+                    "SampleBatch.NEXT_OBS to be present in the "
+                    "input_dict arg and interprets it as the "
+                    "latest observations returned by the "
+                    "environment. We subsequently default to the content of "
+                    "SampleBatch.NEXT_OBS."
+                )
+            # Agent connectors require this field to be empty
+            del input_dict[SampleBatch.OBS]
+        elif input_dict.get(SampleBatch.NEXT_OBS) is None:
+            assert SampleBatch.OBS in input_dict, (
+                "Input dict must contain a "
+                "value for key "
+                "`SampleBatch.NEXT_OBS` or at "
+                "least for `SampleBatch.OBS`."
+            )
+            # Interpret observation as next observation if need be here
+            input_dict[SampleBatch.NEXT_OBS] = input_dict[SampleBatch.OBS]
+
+        return self.compute_actions_from_raw_input(
+            next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
+            reward_batch=input_dict[SampleBatch.REWARDS],
+            dones_batch=input_dict[SampleBatch.DONES],
+            info_batch=input_dict[SampleBatch.INFOS],
+            timestep_batch=input_dict.get(SampleBatch.T),
+            explore=explore,
+            agent_ids=agent_ids,
+            env_ids=env_ids,
+            **kwargs,
+        )
+
+    def _check_compute_action_agent_id_arg(self, agent_id_arg):
+        if agent_id_arg is None:
+            if log_once("policy_{}_called_without_agent_ids".format(self)):
+                logger.info(
+                    "Calling compute_action<s>() on policy {} without "
+                    "specifying agent_ids. This will default to "
+                    '`agent_id="0"`. Ignore this if this policy '
+                    "represents a single agent.".format(self)
+                )
+            return False
+
+    def _check_compute_action_env_id_arg(self, env_id_arg):
+        if env_id_arg is None:
+            if log_once("policy_{}_called_without_env_ids".format(self)):
+                logger.info(
+                    "Calling compute_action<s>() on policy {} without "
+                    "specifying an env_id. This will default to "
+                    '`env_id="0"`. Ignore this when dealing with '
+                    "single environment.".format(self)
+                )
+            return False
+
+    @PublicAPI(stability="alpha")
+    def compute_actions_from_raw_input(
+        self,
+        next_obs_batch: List[TensorStructType],
+        reward_batch: List[TensorStructType],
+        dones_batch: List[TensorStructType],
+        info_batch: List[Dict[str, list]],
+        t_batch: Optional[List[int]] = None,
+        explore: bool = None,
+        agent_ids: Optional[int] = None,
+        env_ids: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from observations.
+
+        The inputs are meant to be the outputs of an environment.
+        This can be used to implement a direct policy/environment loop.
+        Calls to policy models and action distribution functions are wrapped with
+        connectors.
+
+        Args:
+            next_obs_batch: Batch of observations, one per agent.
+            reward_batch: Batch of rewards, one per agent.
+            dones_batch: batch of dones, one per agent.
+            info_batch: Batch of infos, one per agent.
+            t_batch: Batch of timesteps, one per agent. If None, we assume the
+                subsequent timestep when building trajectories from this input data.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            agent_ids: Batch of agent_ids, matching the agents that generated the
+                observations.
+            env_ids: Batch of env_ids, matching the environments that generated the
+                observations.
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
+
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        if not self.connectors_created:
+            logger.warning(
+                "Trying to compute action with connectors, "
+                "but no connectors where initialized on this "
+                "policy. This creates the connectors from the "
+                "policy config but will not synchronize them."
+            )
+            self.init_connectors(self.config)
+            # maybe_get_filters_for_syncing(self, name)
+
+        for old_kwarg in [
+            "state_batches",
+            "prev_action_batch",
+            "prev_reward_batch",
+            "episodes",
+            "input_dict",
+        ]:
+            assert old_kwarg not in kwargs, (
+                "Within the context of connectors, "
+                "{} is internally built by "
+                "connectors and can not be "
+                "provided as an argument.".format(old_kwarg)
+            )
+
+        # Turn all None default args into lists to zip further down
+        if not self._check_compute_action_agent_id_arg(agent_ids):
+            # Assume there is only one agent
+            agent_ids = np.zeros(len(next_obs_batch))
+        if not self._check_compute_action_env_id_arg(env_ids):
+            # Assume there is only one env
+            env_ids = np.zeros(len(next_obs_batch))
+        _reward_batch = (
+            [None] * len(next_obs_batch) if reward_batch is None else reward_batch
+        )
+        _dones_batch = (
+            [None] * len(next_obs_batch) if dones_batch is None else dones_batch
+        )
+        _info_batch = [None] * len(next_obs_batch) if info_batch is None else info_batch
+        _t_batch = [None] * len(next_obs_batch) if t_batch is None else t_batch
+
+        assert (
+            len(agent_ids)
+            == len(env_ids)
+            == len(next_obs_batch)
+            == len(_reward_batch)
+            == len(_dones_batch)
+            == len(_info_batch)
+            == len(_t_batch)
+        ), "All batched inputs must have the same first dimension"
+
+        # Compute ACD list
+        acd_list: List[AgentConnectorDataType] = []
+        for (
+            agent_obs,
+            agent_reward,
+            agent_done,
+            agent_info,
+            agent_t,
+            env_id,
+            agent_id,
+        ) in zip(
+            next_obs_batch,
+            _reward_batch,
+            _dones_batch,
+            _info_batch,
+            _t_batch,
+            env_ids,
+            agent_ids,
+        ):
+            values_dict = {
+                SampleBatch.ENV_ID: env_id,
+                SampleBatch.AGENT_INDEX: agent_id,
+                # Last action (SampleBatch.ACTIONS) column will be populated by
+                # StateBufferConnector.
+                # Reward received after taking action at timestep t.
+                SampleBatch.NEXT_OBS: agent_obs,
+            }
+            # If rewards, dones and infos are not provided, assume they are not required
+            if agent_reward is not None:
+                values_dict[SampleBatch.REWARDS] = agent_reward
+            if agent_done is not None:
+                values_dict[SampleBatch.DONES] = agent_done
+            if agent_info is not None:
+                values_dict[SampleBatch.INFOS] = agent_info
+            if agent_t is not None:
+                values_dict[SampleBatch.T] = agent_t
+
+            # Create one ACD per observation
+            acd_list.append(
+                AgentConnectorDataType(
+                    env_id=env_id, agent_id=agent_id, data=values_dict
+                )
+            )
+
+        processed = self.agent_connectors(acd_list)
+
+        # Set interceptors for every batch
+        if self.config["framework"] == "torch":
+            # Actually convert to torch tensors.
+            [
+                self._lazy_tensor_dict(step_out.data.sample_batch)
+                for step_out in processed
+            ]
+
+        action_connector_input_data = [
+            self.compute_actions_from_input_dict(
+                step_out.data.sample_batch,
+                explore=explore,
+                # This may be inaccurate when processing large batches
+                kwargs=kwargs,
+                **kwargs,
+            )
+            for step_out in processed
+        ]
+
+        # Turn action lists from ES and ARS into arrays
+        action_connector_input_data = [
+            (np.array(a), s, i) if isinstance(a, list) else (a, s, i)
+            for a, s, i in action_connector_input_data
+        ]
+
+        actions = list()  # We return [BATCH_DIM, ACTION_DIM, ...]
+        rnn_states = list()  # We return [BATCH_DIM, STATE_DIM, ...]
+        fetches = defaultdict(list)  # We return a dict shaped similarly as
+        # {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+
+        for output_data, env_id, agent_id, agent_idx in zip(
+            action_connector_input_data, env_ids, agent_ids, range(len(env_ids))
+        ):  # All
+            # lengths of batched inputs assumed to be equal here, choice of env_ids is
+            # arbitrary
+
+            # Construct the "input_dict" manually here, since we have one input dict
+            # per agent
+            input_dict = {
+                SampleBatch.NEXT_OBS: next_obs_batch,
+            }
+            if reward_batch is not None:
+                input_dict[SampleBatch.REWARDS] = reward_batch[agent_idx]
+            if dones_batch is not None:
+                input_dict[SampleBatch.DONES] = dones_batch[agent_idx]
+            if info_batch is not None:
+                input_dict[SampleBatch.INFOS] = info_batch[agent_idx]
+            if t_batch is not None:
+                input_dict[SampleBatch.T] = t_batch[agent_idx]
+
+            #  Post-process policy output by running them through action connectors.
+            ac_data = ActionConnectorDataType(
+                env_id="0",
+                agent_id="0",
+                input_dict=input_dict,
+                output=output_data,
+            )
+
+            self.agent_connectors.on_policy_output(ac_data)
+
+            _action, _rnn_state, _fetches = self.action_connectors(ac_data).output
+            actions.extend(_action)
+            rnn_states.append(np.array(_rnn_state))
+            for key, item in _fetches.items():
+                fetches[key].extend(item)
+
+        # Turn fetches into a dict and conform all batches inside into TensorType
+        fetches = dict(fetches)
+        for key, value in fetches.items():
+            fetches[key] = np.array(value)
+
+        return (
+            np.array(actions),
+            convert_to_numpy(rnn_states),
+            convert_to_numpy(fetches),
+        )
+
+    @property
+    def action_connectors_created(self):
+        return self.agent_connectors is not None
+
+    @property
+    def agent_connectors_created(self):
+        return self.action_connectors is not None
+
+    @property
+    def connectors_created(self):
+        return self.agent_connectors_created and self.action_connectors_created
+
+    @PublicAPI(stability="alpha")
+    def init_connectors(self, config: TrainerConfigDict):
+        """Util to create agent and action connectors for a Policy.
+
+        Args:
+            policy: Policy instance.
+            config: Trainer config dict.
+        """
+        # Import here to avoid circular dependencies
+        from ray.rllib.connectors.connector import ConnectorContext
+        from ray.rllib.connectors.util import (
+            get_agent_connectors_from_config,
+            get_action_connectors_from_config,
+        )
+
+        ctx: ConnectorContext = ConnectorContext.from_policy(self)
+
+        assert self.agent_connectors is None and self.agent_connectors is None, (
+            "Can not create connectors for a policy that already has connectors. This "
+            "can happen if you add a Policy that has connectors attached to a "
+            "RolloutWorker with add_policy()."
+        )
+
+        self.agent_connectors = get_agent_connectors_from_config(ctx, config)
+        self.action_connectors = get_action_connectors_from_config(ctx, config)
+
+        logger.info("Using connectors:")
+        logger.info(self.agent_connectors.__str__(indentation=4))
+        logger.info(self.action_connectors.__str__(indentation=4))
+
     @DeveloperAPI
     def init_view_requirements(self):
         """Maximal view requirements dict for `learn_on_batch()` and
@@ -468,6 +833,7 @@ class Policy(metaclass=ABCMeta):
             episodes=episodes,
             explore=explore,
             timestep=timestep,
+            **kwargs,
         )
 
         # Some policies don't return a tuple, but always just a single action.
@@ -501,6 +867,7 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
+        This method should not be called directly in connector-enabled policies.
         Takes an input dict (usually a SampleBatch) as its main data input.
         This allows for using this method in case a more complex input pattern
         (view requirements) is needed, for example when the Model requires the
@@ -517,7 +884,7 @@ class Policy(metaclass=ABCMeta):
             timestep: The current (sampling) time step.
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
-                algorithms.
+                algorithms. (Only relevant without connectors)
 
         Keyword Args:
             kwargs: Forward compatibility placeholder.
@@ -534,8 +901,8 @@ class Policy(metaclass=ABCMeta):
         # `self.compute_actions()`.
         state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
         return self.compute_actions(
-            input_dict[SampleBatch.OBS],
-            state_batches,
+            obs_batch=input_dict[SampleBatch.OBS],
+            state_batches=state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
             info_batch=input_dict.get(SampleBatch.INFOS),
@@ -935,24 +1302,25 @@ class Policy(metaclass=ABCMeta):
             state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
-        # To avoid a circular dependency problem cause by SampleBatch.
-        from ray.rllib.connectors.util import restore_connectors_for_policy
-
         # No-op if connector is not enabled.
         if not self.config.get("enable_connectors", False):
             return
 
+        # To avoid a circular dependency problem cause by SampleBatch.
+        from ray.rllib.connectors.connector import ConnectorContext, get_connector
+
+        def _restore(cfg):
+            ctx: ConnectorContext = ConnectorContext.from_policy(self)
+            name, params = cfg
+            return get_connector(ctx, name, params)
+
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:
-            self.agent_connectors = restore_connectors_for_policy(
-                self, connector_configs["agent"]
-            )
+            self.agent_connectors = _restore(connector_configs["agent"])
             logger.info("restoring agent connectors:")
             logger.info(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
-            self.action_connectors = restore_connectors_for_policy(
-                self, connector_configs["action"]
-            )
+            self.action_connectors = _restore(connector_configs["action"])
             logger.info("restoring action connectors:")
             logger.info(self.action_connectors.__str__(indentation=4))
 
@@ -1257,14 +1625,20 @@ class Policy(metaclass=ABCMeta):
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )
+
         self._lazy_tensor_dict(self._dummy_batch)
-        actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
-            self._dummy_batch, explore=False
-        )
+
+        (
+            actions,
+            state_outs,
+            extra_outs,
+        ) = self.compute_actions_from_input_dict(self._dummy_batch, explore=False)
+
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
-        # Add all extra action outputs to view reqirements (these may be
+
+        # Add all extra action outputs to view requirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
@@ -1279,6 +1653,8 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
             self.view_requirements[key].used_for_compute_actions = True
+        # Get a dummy batch that is transformed from the original space to the model
+        # input space already to initialize the loss with it
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )
@@ -1405,21 +1781,26 @@ class Policy(metaclass=ABCMeta):
             )
 
     def _get_dummy_batch_from_view_requirements(
-        self, batch_size: int = 1
+        self,
+        batch_size: int = 1,
     ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
             batch_size: The size of the batch to create.
+            original_space: If True, sample from the original space and in order to
+                let connectors transform into model input space
 
         Returns:
             Dict[str, TensorType]: The dummy batch containing all zero values.
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
+            space = view_req.space
+
             data_col = view_req.data_col or view_col
             # Flattened dummy batch.
-            if (isinstance(view_req.space, (gym.spaces.Tuple, gym.spaces.Dict))) and (
+            if (isinstance(space, (gym.spaces.Tuple, gym.spaces.Dict))) and (
                 (
                     data_col == SampleBatch.OBS
                     and not self.config["_disable_preprocessor_api"]
@@ -1430,21 +1811,21 @@ class Policy(metaclass=ABCMeta):
                 )
             ):
                 _, shape = ModelCatalog.get_action_shape(
-                    view_req.space, framework=self.config["framework"]
+                    space, framework=self.config["framework"]
                 )
                 ret[view_col] = np.zeros((batch_size,) + shape[1:], np.float32)
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
-                if isinstance(view_req.space, gym.spaces.Space):
+                if isinstance(space, gym.spaces.Space):
                     time_size = (
                         len(view_req.shift_arr) if len(view_req.shift_arr) > 1 else None
                     )
                     ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space, batch_size=batch_size, time_size=time_size
+                        space, batch_size=batch_size, time_size=time_size
                     )
                 else:
-                    ret[view_col] = [view_req.space for _ in range(batch_size)]
+                    ret[view_col] = [space for _ in range(batch_size)]
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.

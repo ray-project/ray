@@ -115,7 +115,6 @@ class ViewRequirement:
             self.shift_to = int(t)
 
         shift = self.shift
-        self.shfit_arr = None
         if self.shift_from:
             self.shift_arr = np.arange(
                 self.shift_from, self.shift_to + 1, self.shift_step
