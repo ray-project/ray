@@ -659,9 +659,8 @@ class Algorithm(Trainable):
             # Dataset should be in form of one episode per row. in case of bandits each
             # row is just one time step. To make the computation more efficient later
             # we remove the time dimension here.
-            batch_size = max(
-                ds.count() // self.evaluation_config.evaluation_num_workers, 1
-            )
+            parallelism = self.evaluation_config.evaluation_num_workers or 1
+            batch_size = max(ds.count() // parallelism, 1)
             self.evaluation_dataset = ds.map_batches(
                 remove_time_dim, batch_size=batch_size
             )
@@ -849,6 +848,11 @@ class Algorithm(Trainable):
         """
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
+
+        if self.evaluation_dataset is not None:
+            eval_results = {}
+            eval_results["evaluation"] = self._run_offline_evaluation()
+            return eval_results
 
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
@@ -2761,11 +2765,6 @@ class Algorithm(Trainable):
             The results dict from the evaluation call.
         """
 
-        if self.evaluation_dataset is not None:
-            eval_results = {}
-            eval_results["evaluation"] = self._run_offline_evaluation()
-            return eval_results
-
         eval_results = {
             "evaluation": {
                 "episode_reward_max": np.nan,
@@ -2860,13 +2859,14 @@ class Algorithm(Trainable):
         """
         assert len(self.workers.local_worker().policy_map) == 1
 
+        parallelism = self.evaluation_config.evaluation_num_workers or 1
         offline_eval_results = {"off_policy_estimator": {}}
         for evaluator_name, offline_evaluator in self.reward_estimators.items():
             offline_eval_results["off_policy_estimator"][
                 evaluator_name
             ] = offline_evaluator.estimate_on_dataset(
                 self.evaluation_dataset,
-                n_parallelism=self.evaluation_config.evaluation_num_workers,
+                n_parallelism=parallelism,
             )
         return offline_eval_results
 

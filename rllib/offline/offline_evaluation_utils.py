@@ -116,13 +116,15 @@ def remove_time_dim(batch: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The modified batch with the time dimension removed (when applicable)
     """
-    for k in [
+    BATCHED_KEYS = {
         SampleBatch.OBS,
         SampleBatch.ACTIONS,
         SampleBatch.ACTION_PROB,
         SampleBatch.REWARDS,
         SampleBatch.NEXT_OBS,
         SampleBatch.DONES,
-    ]:
-        batch[k] = batch[k].apply(lambda x: x[0] if len(x) == 1 else x)
+    }
+    for k in batch.columns:
+        if k in BATCHED_KEYS:
+            batch[k] = batch[k].apply(lambda x: x[0] if len(x) == 1 else x)
     return batch

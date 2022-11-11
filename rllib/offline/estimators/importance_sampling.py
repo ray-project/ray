@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+import math
 
 from ray.data import Dataset
 
@@ -89,9 +90,10 @@ class ImportanceSampling(OffPolicyEstimator):
             A dictionary containing the following keys:
                 v_target: The estimated value of the target policy.
                 v_behavior: The estimated value of the behavior policy.
-                v_gain: The estimated gain of the target policy over the
+                v_gain_mean: The mean of the gain of the target policy over the
                     behavior policy.
-                v_std: The standard deviation of the estimate.
+                v_gain_ste: The standard error of the gain of the target policy over
+                    the behavior policy.
         """
         batch_size = max(dataset.count() // n_parallelism, 1)
         updated_ds = dataset.map_batches(
@@ -104,13 +106,14 @@ class ImportanceSampling(OffPolicyEstimator):
         )
         v_target = updated_ds.mean("weighted_rewards")
         v_behavior = updated_ds.mean("rewards")
-        v_gain = v_target / v_behavior
-        # TODO (Kourosh): Fix the STD
-        v_std = updated_ds.std("weighted_rewards")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("weighted_rewards") / v_behavior / math.sqrt(dataset.count())
+        )
 
         return {
             "v_target": v_target,
             "v_behavior": v_behavior,
-            "v_gain": v_gain,
-            "v_std": v_std,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
         }
