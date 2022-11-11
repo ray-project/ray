@@ -136,7 +136,7 @@ class AgentCollector:
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
-            if hasattr(vr.space, "space") and not vr.space.shape == np.shape(data):
+            if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
