@@ -57,13 +57,13 @@ class BulkExecutor(Executor):
             # Compute dependencies.
             inputs = [execute_recursive(dep) for dep in node.input_dependencies]
 
-            # Execute this node.
+            # Execute this operator (3 cases).
             output = []
             if isinstance(node, OneToOneOperator):
-                assert len(inputs == 1), "OneToOne takes exactly 1 input stream"
-                _naive_task_execute(inputs[0], node)
+                assert len(inputs) == 1, "OneToOne takes exactly 1 input stream"
+                output = _naive_task_execute(inputs[0], node)
             elif isinstance(node, AllToAllOperator):
-                assert len(inputs == 1), "AllToAll takes exactly 1 input stream"
+                assert len(inputs) == 1, "AllToAll takes exactly 1 input stream"
                 output = node.execute_all(inputs[0])
             elif isinstance(node, BufferOperator):
                 for i, ref_bundles in enumerate(inputs):

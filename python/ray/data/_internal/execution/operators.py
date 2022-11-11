@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.compute import BlockTransform
 
 
-class InputOperator(BufferOperator):
+class InputDataBuffer(BufferOperator):
     """Defines the input data for the operator DAG."""
 
     def __init__(self, input_data: List[RefBundle]):
@@ -27,7 +27,7 @@ class InputOperator(BufferOperator):
 class MapOperator(OneToOneOperator):
     """Defines a simple map operation over blocks."""
 
-    def __init__(self, input_op: PhysicalOperator, block_transform: BlockTransform):
+    def __init__(self, block_transform: BlockTransform, input_op: PhysicalOperator):
         self._block_transform = block_transform
         super().__init__([input_op])
 

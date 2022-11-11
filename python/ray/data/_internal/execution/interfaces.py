@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Iterator, Tuple
 
+import ray
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -32,6 +33,13 @@ class RefBundle:
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool = False
+
+    def __post_init__(self):
+        for b in self.blocks:
+            assert isinstance(b, tuple), b
+            assert len(b) == 2, b
+            assert isinstance(b[0], ray.ObjectRef), b
+            assert isinstance(b[1], BlockMetadata), b
 
     def destroy(self) -> None:
         """Clears the object store memory for these blocks."""
@@ -71,12 +79,14 @@ class PhysicalOperator:
 
     def __init__(self, input_dependencies: List["PhysicalOperator"]):
         self._input_dependencies = input_dependencies
+        for x in input_dependencies:
+            assert isinstance(x, PhysicalOperator), x
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
         """List of operators that provide inputs for this operator."""
         assert hasattr(
-            self, "_input_dependenies"
+            self, "_input_dependencies"
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
 
