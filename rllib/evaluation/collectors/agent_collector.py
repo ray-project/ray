@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -18,6 +20,8 @@ from ray.rllib.utils.typing import (
 
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -132,15 +136,16 @@ class AgentCollector:
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
-            if vr.space.shape:
+            if vr.space.shape and not vr.space.shape == np.shape(data):
+                # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
-                assert vr.space.shape == np.shape(data), (
+                logger.warning(
                     f"Provided tensor\n{data}\n does not match space of view "
                     f"requirements {vr_name}.\n"
                     f"Make sure dimensions match to resolve this error.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions and dtype match to resolve this error."
+                    f"Make sure dimensions and dtype match to resolve this warning."
                 )
 
     def add_init_obs(
