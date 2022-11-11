@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -18,6 +20,8 @@ from ray.rllib.utils.typing import (
 
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -72,7 +76,7 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states or []
+        self.intial_states = intial_states
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
 
@@ -572,7 +576,19 @@ class AgentCollector:
                     f"policy.get_initial_states()?"
                 )
             state_ind = int(data_col.split("_")[-1])
-            self._build_buffers({data_col: self.intial_states[state_ind]})
+            if self.intial_states:
+                initial_state = self.intial_states[state_ind]
+            else:
+                # Some models and policies don't provide initial states and
+                if log_once("initial_state_not_provided_in_agent_collector"):
+                    logger.info(
+                        "Agent collector was not provided an initial state "
+                        "but policy is recurrent. We infer initial state by "
+                        "sampling from the view requirement."
+                    )
+                initial_state = self.view_requirements[data_col].space.sample()
+
+            self._build_buffers({data_col: initial_state})
         else:
             is_state = False
             # only create dummy data during inference
