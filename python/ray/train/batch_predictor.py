@@ -419,6 +419,10 @@ class BatchPredictor:
         """
         preprocessor = self.get_preprocessor()
         dataset_block_format = ds.dataset_format()
+        if dataset_block_format == BlockFormat.SIMPLE:
+            # Naive case that we cast to pandas for compatibility.
+            return BatchFormat.PANDAS
+
         if not preprocessor:
             # No preprocessor, just use the dataset format.
             return (
@@ -426,9 +430,11 @@ class BatchPredictor:
                 if dataset_block_format == BlockFormat.ARROW
                 else BatchFormat.PANDAS
             )
-        elif dataset_block_format == BlockFormat.SIMPLE:
-            # Naive case that we cast to pandas for compatibility.
-            return BatchFormat.PANDAS
-        else:
-            # Use same batch format as first preprocessor to minimize data copies.
-            return preprocessor.determine_transform_to_use(dataset_block_format)
+        elif hasattr(preprocessor, "preprocessors"):
+            # For Chain preprocessor, we picked the first one as entry point.
+            # TODO (jiaodong): We should revisit if our Chain preprocessor is
+            # still optimal with context of lazy execution.
+            preprocessor = preprocessor.preprocessors[0]
+
+        # Use same batch format as first preprocessor to minimize data copies.
+        return preprocessor.determine_transform_to_use(dataset_block_format)
