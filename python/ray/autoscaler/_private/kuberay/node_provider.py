@@ -9,7 +9,6 @@ from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler._private.util import NodeKind
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
     NodeData,
@@ -19,6 +18,8 @@ from ray.autoscaler.tags import (
     STATUS_UP_TO_DATE,
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
 )
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
@@ -60,10 +61,10 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
 
     kind, type = "", ""
     if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
-        kind = NodeKind.HEAD
+        kind = NODE_KIND_HEAD
         type = KUBERAY_TYPE_HEAD
     else:
-        kind = NodeKind.WORKER
+        kind = NODE_KIND_WORKER
         type = labels[KUBERAY_LABEL_KEY_TYPE]
 
     status = status_tag(pod)
