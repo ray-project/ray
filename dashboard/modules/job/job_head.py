@@ -460,6 +460,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
+        return ws
+
     async def run(self, server):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(

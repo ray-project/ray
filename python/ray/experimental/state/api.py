@@ -198,8 +198,14 @@ class StateApiClient(SubmissionClient):
                     timeout=timeout,
                     params=params,
                 )
-
-                response.raise_for_status()
+                # If we have a valid JSON error, don't raise a generic exception but
+                # instead let the caller parse it to raise a more precise exception.
+                if (
+                    response.status_code == 500
+                    and "application/json"
+                    not in response.headers.get("Content-Type", "")
+                ):
+                    response.raise_for_status()
             except requests.exceptions.RequestException as e:
                 err_str = f"Failed to make request to {self._address}{endpoint}. "
 

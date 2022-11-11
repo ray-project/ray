@@ -101,7 +101,7 @@ class TestAlgorithm(unittest.TestCase):
                 else:
                     new_pol = algo.add_policy(
                         pid,
-                        algo.get_default_policy_class(config.to_dict()),
+                        algo.get_default_policy_class(config),
                         # Test changing the mapping fn.
                         policy_mapping_fn=new_mapping_fn,
                         # Change the list of policies to train.
@@ -367,7 +367,7 @@ class TestAlgorithm(unittest.TestCase):
 
         # Spaces given -> expect shorter build time due to no space
         # lookup required from remote worker.
-        config.create_env_on_driver = False
+        config.create_env_on_local_worker = False
         config.environment(
             observation_space=env.observation_space,
             action_space=env.action_space,

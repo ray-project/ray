@@ -1,9 +1,12 @@
 from collections import defaultdict
 import copy
+from gym.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
+import numpy as np
 import os
 import platform
+import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -18,10 +21,6 @@ from typing import (
     Type,
     Union,
 )
-
-from gym.spaces import Discrete, MultiDiscrete, Space
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -478,7 +477,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_config = config.to_dict()
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_workers
+            num_workers if num_workers is not None else self.config.num_rollout_workers
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -524,12 +523,25 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_policy_mapping_fn(self.config.policy_mapping_fn)
 
         self.env_creator: EnvCreator = env_creator
+        # Resolve possible auto-fragment length.
+        configured_rollout_fragment_length = self.config.get_rollout_fragment_length(
+            worker_index=self.worker_index
+        )
         self.total_rollout_fragment_length: int = (
-            self.config.rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
-        self.global_vars: Optional[dict] = None
+        self.global_vars: dict = {
+            # TODO(sven): Make this per-policy!
+            "timesteps": 0,
+            # Counter for performed gradient updates per policy in `self.policy_map`.
+            # Allows for compiling metrics on the off-policy'ness of an update given
+            # that the number of gradient updates of the sampling policies are known
+            # to the learner (and can be compared to the learner version of the same
+            # policy).
+            "num_grad_updates_per_policy": defaultdict(int),
+        }
 
         # If seed is provided, add worker index to it and 10k iff evaluation worker.
         self.seed = (
@@ -747,7 +759,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
         # long.
-        rollout_fragment_length_for_sampler = self.config.rollout_fragment_length
+        rollout_fragment_length_for_sampler = configured_rollout_fragment_length
         if self.config.batch_mode == "truncate_episodes":
             pack = True
         # `complete_episodes`: Never cut episodes and sampler will return
@@ -1753,10 +1765,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:
-        """Returns the current global_vars dict of this worker.
+        """Returns the current `self.global_vars` dict of this RolloutWorker.
 
         Returns:
-            The current global_vars dict of this worker.
+            The current `self.global_vars` dict of this RolloutWorker.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -1769,22 +1781,50 @@ class RolloutWorker(ParallelIteratorWorker):
         return self.global_vars
 
     @DeveloperAPI
-    def set_global_vars(self, global_vars: dict) -> None:
+    def set_global_vars(
+        self,
+        global_vars: dict,
+        policy_ids: Optional[List[PolicyID]] = None,
+    ) -> None:
         """Updates this worker's and all its policies' global vars.
 
+        Updates are done using the dict's update method.
+
         Args:
-            global_vars: The new global_vars dict.
+            global_vars: The global_vars dict to update the `self.global_vars` dict
+                from.
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
 
         Examples:
             >>> worker = ... # doctest: +SKIP
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        # Only update policies that are being trained in order to avoid superfluous
-        # access of policies which might have been offloaded to disk. This is important
-        # here since global vars are constantly being updated.
-        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
-        self.global_vars = global_vars
+        # Handle per-policy values.
+        global_vars_copy = global_vars.copy()
+        gradient_updates_per_policy = global_vars_copy.pop(
+            "num_grad_updates_per_policy", {}
+        )
+        self.global_vars["num_grad_updates_per_policy"].update(
+            gradient_updates_per_policy
+        )
+        # Only update explicitly provided policies or those that that are being
+        # trained, in order to avoid superfluous access of policies, which might have
+        # been offloaded to the object store.
+        # Important b/c global vars are constantly being updated.
+        for pid in policy_ids if policy_ids is not None else self.policy_map.keys():
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, None):
+                self.policy_map[pid].on_global_var_update(
+                    dict(
+                        global_vars_copy,
+                        # If count is None, Policy won't update the counter.
+                        **{"num_grad_updates": gradient_updates_per_policy.get(pid)},
+                    )
+                )
+
+        # Update all other global vars.
+        self.global_vars.update(global_vars_copy)
 
     @DeveloperAPI
     def stop(self) -> None:
@@ -1912,15 +1952,15 @@ class RolloutWorker(ParallelIteratorWorker):
         # Loop through given policy-dict and add each entry to our map.
         for name, policy_spec in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            # Update the general config with the specific config
-            # for this particular policy.
-            merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
-            update_dict = (
-                policy_spec.config.to_dict()
-                if isinstance(policy_spec.config, AlgorithmConfig)
-                else policy_spec.config
-            )
-            merged_conf.update_from_dict(update_dict or {})
+
+            # Policy brings its own complete AlgorithmConfig -> Use it for this policy.
+            if isinstance(policy_spec.config, AlgorithmConfig):
+                merged_conf = policy_spec.config
+            else:
+                # Update the general config with the specific config
+                # for this particular policy.
+                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
             merged_conf.worker_index = self.worker_index

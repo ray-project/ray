@@ -13,7 +13,6 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
@@ -180,12 +179,17 @@ class DashboardAgent:
                     parent = curr_proc.parent()
                     # If the parent is dead, it is None.
                     parent_gone = parent is None
-                    # Sometimes, the parent is changed to the `init` process.
-                    # In this case, the parent.pid is 1.
-                    init_assigned_for_parent = parent.pid == 1
-                    # Sometimes, the parent is dead, and the pid is reused
-                    # by other processes. In this case, this condition is triggered.
-                    parent_changed = self.ppid != parent.pid
+                    init_assigned_for_parent = False
+                    parent_changed = False
+
+                    if parent:
+                        # Sometimes, the parent is changed to the `init` process.
+                        # In this case, the parent.pid is 1.
+                        init_assigned_for_parent = parent.pid == 1
+                        # Sometimes, the parent is dead, and the pid is reused
+                        # by other processes. In this case, this condition is triggered.
+                        parent_changed = self.ppid != parent.pid
+
                     if parent_gone or init_assigned_for_parent or parent_changed:
                         parent_death_cnt += 1
                         logger.warning(
@@ -257,7 +261,7 @@ class DashboardAgent:
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
             except Exception:
-                logger.error("Failed to check parent PID, exiting.")
+                logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         if sys.platform not in ["win32", "cygwin"]:
@@ -291,9 +295,10 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        internal_kv._internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]),
+        await self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
+            json.dumps([http_port, self.grpc_port]).encode(),
+            True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
@@ -471,6 +476,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
     try:
         logging_params = dict(
             logging_level=args.logging_level,
