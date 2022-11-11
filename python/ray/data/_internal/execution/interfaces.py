@@ -72,9 +72,12 @@ class PhysicalOperator:
     must be aware of in operator DAGs.
 
     Subclasses:
-        OneToOneOperator
-        AllToAllOperator
-        BufferOperator
+        OneToOneOperator: handles one-to-one operations (e.g., map)
+        AllToAllOperator: handles all-to-all operations (e.g., sort)
+        BufferOperator: handles stream manipulation operations (e.g., union)
+
+    In summary, OneToOne and AllToAll transform the *data* of a single input stream.
+    BufferOperators transform the *structure* of one or more input streams.
     """
 
     def __init__(self, input_dependencies: List["PhysicalOperator"]):
@@ -92,7 +95,7 @@ class PhysicalOperator:
 
 
 class Executor:
-    """Abstract class for executors, wihch implement physical operator execution.
+    """Abstract class for executors, which implement physical operator execution.
 
     Subclasses:
         BulkExecutor
