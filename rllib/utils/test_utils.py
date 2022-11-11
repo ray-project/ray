@@ -471,7 +471,10 @@ def check_compute_single_action(
 
         if method_to_test == "input_dict":
             action, _, _ = pol.compute_actions_from_raw_input_dict(
-                input_dict={SampleBatch.NEXT_OBS: [obs]},
+                input_dict={SampleBatch.NEXT_OBS: [obs],
+                            SampleBatch.REWARDS: [0],
+                            SampleBatch.DONES: [False],
+                            SampleBatch.INFOS: [{}]},
                 explore=explore,
                 timestep=timestep,
                 clip=clip,
@@ -487,6 +490,9 @@ def check_compute_single_action(
             t0 = time.time_ns()
             action = what.compute_actions_from_raw_input(
                 next_obs_batch=[obs],
+                reward_batch=[0],
+                dones_batch=[False],
+                info_batch=[{}],
                 explore=explore,
                 timestep=timestep,
                 unsquash_action=unsquash,

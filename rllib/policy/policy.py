@@ -435,9 +435,9 @@ class Policy(metaclass=ABCMeta):
 
         return self.compute_actions_from_raw_input(
             next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
-            reward_batch=input_dict.get(SampleBatch.REWARDS),
-            dones_batch=input_dict.get(SampleBatch.DONES),
-            info_batch=input_dict.get(SampleBatch.INFOS),
+            reward_batch=input_dict[SampleBatch.REWARDS],
+            dones_batch=input_dict[SampleBatch.DONES],
+            info_batch=input_dict[SampleBatch.INFOS],
             timestep_batch=input_dict.get(SampleBatch.T),
             explore=explore,
             agent_ids=agent_ids,
@@ -467,66 +467,13 @@ class Policy(metaclass=ABCMeta):
                 )
             return False
 
-    def _compute_single_action_with_connectors(
-        self,
-        obs: TensorStructType,
-        reward: TensorStructType,
-        done: TensorStructType,
-        info: Dict[str, list] = None,
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        agent_id: Optional[int] = None,
-        env_id: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        if log_once("legacy_compute_single_action_method"):
-            deprecation_warning(
-                help="_compute_single_action_with_connectors will soon be "
-                "deprecated. When computing a single action, "
-                "use a batched compute_actions_from_input_dict "
-                "method."
-            )
-
-        for old_kwarg in [
-            "state",
-            "prev_action",
-            "prev_reward",
-            "episode",
-            "input_dict",
-        ]:
-            assert old_kwarg not in kwargs, (
-                "Within the context of connectors, "
-                "{} is internally built by "
-                "connectors and can not be "
-                "provided as an argument.".format(old_kwarg)
-            )
-
-        if not self._check_compute_action_agent_id_arg(agent_id):
-            agent_id = "0"
-
-        if not self._check_compute_action_env_id_arg(env_id):
-            env_id = "0"
-
-        # Share logic with compute_actions_from_raw_inputs
-        result = self.compute_actions_from_raw_input(
-            obs_batch=[obs],
-            reward_batch=[reward],
-            info_batch=[info],
-            explore=explore,
-            timestep=timestep,
-            agent_ids=[agent_id],
-            env_ids=[env_id],
-        )
-
-        return result[0]
-
     @PublicAPI(stability="alpha")
     def compute_actions_from_raw_input(
         self,
         next_obs_batch: List[TensorStructType],
-        reward_batch: Optional[List[TensorStructType]] = None,
-        dones_batch: Optional[List[TensorStructType]] = None,
-        info_batch: Optional[List[Dict[str, list]]] = None,
+        reward_batch: List[TensorStructType],
+        dones_batch: List[TensorStructType],
+        info_batch: List[Dict[str, list]],
         t_batch: Optional[List[int]] = None,
         explore: bool = None,
         agent_ids: Optional[int] = None,
