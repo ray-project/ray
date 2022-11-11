@@ -31,7 +31,8 @@ def test_worker_group_index(group_name, expected_index):
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
-    "group_index,expected_max_replicas,expected_replicas", [(0, 300, 1), (1, 200, 1), (2, None, 0)]
+    "group_index,expected_max_replicas,expected_replicas",
+    [(0, 300, 1), (1, 200, 1), (2, None, 0)],
 )
 def test_worker_group_replicas(group_index, expected_max_replicas, expected_replicas):
     """Basic unit test for _worker_group_max_replicas and _worker_group_replicas
@@ -50,12 +51,8 @@ def test_worker_group_replicas(group_index, expected_max_replicas, expected_repl
     no_max_replicas_group["replicas"] = 0
     raycluster["spec"]["workerGroupSpecs"].append(no_max_replicas_group)
 
-    assert (
-        _worker_group_max_replicas(raycluster, group_index) == expected_max_replicas
-    )
-    assert (
-        _worker_group_replicas(raycluster, group_index) == expected_replicas
-    )
+    assert _worker_group_max_replicas(raycluster, group_index) == expected_max_replicas
+    assert _worker_group_replicas(raycluster, group_index) == expected_replicas
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
@@ -70,23 +67,21 @@ def test_create_node_cap_at_max(
     allowed by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
 
     Args:
-        attempted_target_replica_count: The mocked desired replica count for a given worker group.
+        attempted_target_replica_count: The mocked desired replica count for a given
+            worker group.
         expected_target_replica_count: The actual requested replicaCount. Should be
             capped at maxReplicas (300, for the config in this test.)
     """
+
     def mock_init(node_provider, provider_config, cluster_name):
         pass
 
     raycluster = get_basic_ray_cr()
-    with mock.patch.object(
-        KuberayNodeProvider,
-        "__init__",
-        return_value=None
-    ):
+    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         scale_request = ScaleRequest(
             workers_to_delete=set(),
-            desired_num_workers={"small-group": attempted_target_replica_count}
+            desired_num_workers={"small-group": attempted_target_replica_count},
         )
         kr_node_provider.node_data_dict = {}
         patch = kr_node_provider._scale_request_to_patch_payload(
