@@ -92,7 +92,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes,
-              std::shared_ptr<worker::TaskStateBuffer> task_state_buffer)
+              std::shared_ptr<worker::TaskStateBuffer> task_state_buffer = nullptr)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),

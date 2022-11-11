@@ -26,17 +26,9 @@ void GcsTaskManager::HandleAddTaskStateEventData(
     rpc::AddTaskStateEventDataRequest request,
     rpc::AddTaskStateEventDataReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto node_id = request.data().node_id();
-  RAY_LOG(INFO) << "Adding events of tasks from node [node_id=" << node_id << "]";
+  // TODO
   RAY_LOG(INFO) << request.data().DebugString();
   size_t num_to_process = request.data().events_by_task_size();
-  if (num_to_process == 0) {
-    RAY_LOG(WARNING) << "Missing task events in task state event request: "
-                     << request.DebugString();
-
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    return;
-  }
 
   // Context to keep track async operations across events from multiple tasks.
   // In fact, since the current underlying event loop on GCS table is single-threaded, non
@@ -78,8 +70,10 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all task state events.";
   auto limit = request.has_limit() ? request.limit() : -1;
-  auto on_done = [reply, limit, send_reply_callback](
+
+  auto on_done = [this, reply, limit, send_reply_callback](
                      const absl::flat_hash_map<TaskID, rpc::TaskStateEvents> &result) {
+    absl::MutexLock lock(&mutex_);
     int count = 0;
     for (const auto &data : result) {
       if (limit >= 0 && count++ >= limit) {
@@ -88,7 +82,7 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
       RAY_LOG(INFO) << data.second.DebugString();
       reply->add_events_by_task()->CopyFrom(data.second);
     }
-    reply->set_total(result.size());
+    reply->set_total(tasks_reported_.size());
     RAY_LOG(DEBUG) << "Finished getting all task states info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
@@ -103,40 +97,64 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
                                               rpc::TaskStateEvents &&events_by_task,
                                               AddTaskStateEventCallback cb_on_done) {
   RAY_CHECK(cb_on_done) << "AddTaskStateEventCallback callback is empty";
-
+  // TODO
   RAY_LOG(INFO) << "events by task:" << events_by_task.DebugString();
   // Callback on async get done
-  auto cb_on_get_done =
-      [this, task_id, cb_on_done, events_by_task = std::move(events_by_task)](
-          Status status, const boost::optional<rpc::TaskStateEvents> &result) {
-        // Failed to get the entry
-        if (!status.ok()) {
-          cb_on_done(status, task_id);
-          return;
-        }
+  auto cb_on_get_done = [this,
+                         task_id,
+                         cb_on_done,
+                         events_by_task = std::move(events_by_task)](
+                            Status status,
+                            const boost::optional<rpc::TaskStateEvents> &result) {
+    absl::MutexLock lock(&mutex_);
+    // Failed to get the entry
+    if (!status.ok()) {
+      cb_on_done(status, task_id);
+      return;
+    }
 
-        // Merge events
-        rpc::TaskStateEvents empty_task_state_events;
-        auto cur_task_state_events = result.value_or(empty_task_state_events);
-        cur_task_state_events.MergeFrom(events_by_task);
+    if (!result.has_value()) {
+      // Adding another new task state event entry in GCS.
+      tasks_reported_.insert(task_id);
 
-        // Callback on async put done
-        auto cb_on_put_done = [task_id, cb_on_done](Status status) {
-          // Fail callback if put failed, and invoke succeed callback to indicate entire
-          // sequence of operations succeed.
-          cb_on_done(status, task_id);
-        };
+      // TODO(rickyx): We might want to adopt a better throttling strategy, i.e.
+      // spilling data to disk.
+      if (tasks_reported_.size() >
+          RayConfig::instance().task_state_events_max_num_task_in_gcs()) {
+        RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1000)
+            << "Max number of tasks event states("
+            << RayConfig::instance().task_state_events_max_num_task_in_gcs()
+            << ") allowed reached. Dropping task state events. Set "
+               "`RAY_task_state_events_max_num_task_in_gcs` to a higher value to store "
+               "more.";
+        cb_on_done(Status::OK(), task_id);
+        return;
+      }
+    }
 
-        // Overwrite the current task state event in the GCS table
-        // TODO(rickyx): We could do an in-placed mutation actually if we send in-place
-        // mutation callback to the underlying gcs storage table.
-        auto put_status = gcs_table_storage_->TaskStateEventTable().Put(
-            task_id, std::move(cur_task_state_events), cb_on_put_done);
+    // Merge events
+    rpc::TaskStateEvents empty_task_state_events;
+    auto cur_task_state_events = result.value_or(empty_task_state_events);
 
-        if (!put_status.ok()) {
-          cb_on_done(put_status, task_id);
-        }
-      };
+    cur_task_state_events.MergeFrom(events_by_task);
+
+    // Callback on async put done
+    auto cb_on_put_done = [task_id, cb_on_done](Status status) {
+      // Fail callback if put failed, and invoke succeed callback to indicate entire
+      // sequence of operations succeed.
+      cb_on_done(status, task_id);
+    };
+
+    // Overwrite the current task state event in the GCS table
+    // TODO(rickyx): We could do an in-placed mutation actually if we send in-place
+    // mutation callback to the underlying gcs storage table.
+    auto put_status = gcs_table_storage_->TaskStateEventTable().Put(
+        task_id, std::move(cur_task_state_events), cb_on_put_done);
+
+    if (!put_status.ok()) {
+      cb_on_done(put_status, task_id);
+    }
+  };
 
   // Get the current task state events and update it.
   auto get_status =

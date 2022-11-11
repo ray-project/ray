@@ -68,7 +68,7 @@ class TaskStateBuffer {
   std::unique_ptr<rpc::TaskStateEventData> GetAndResetBuffer()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Mutex guarding rpc_profile_data_.
+  /// Mutex guarding task_events_map_.
   absl::Mutex mutex_;
 
   /// ASIO IO service event loop. Must be started by the caller.
@@ -83,18 +83,17 @@ class TaskStateBuffer {
   /// Current buffer storing task state events, mapped from task name to a list of events.
   TaskIdEventMap task_events_map_ GUARDED_BY(mutex_);
 
-  /// Metadata for the buffer
+  /// Flag to toggle event recording on/off.
+  bool recording_on_ = false;
 
-  /// TODO(rickyx): init these fields properly based on callers.
-  /// Component type of the component where this buffer is maintained.
-  const std::string component_type_;
+  /// Flag to record if there's a pending gRPC call. A simple way to prevent overloading
+  /// GCS with too many calls. There is no point sending more events if GCS could not
+  /// process them quick enough.
+  std::atomic<bool> grpc_in_progress_ = false;
 
-  /// Binary representation of component id of the component where this buffer is
-  /// maintained.
-  const std::string component_id_;
-
-  /// Node ID.
-  const NodeID node_id_;
+  /// Stats tracking for debugging and monitoring.
+  size_t total_events_bytes_ = 0;
+  size_t total_num_events_ = 0;
 };
 
 }  // namespace worker

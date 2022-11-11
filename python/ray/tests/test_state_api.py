@@ -3,7 +3,7 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -45,7 +45,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllTaskStateEventReply,
     GetAllWorkerInfoReply,
 )
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -187,10 +187,13 @@ def generate_task_data(
     id,
     name="class",
     func_or_class="class",
-    state_events=[(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)],
+    state_events=None,
     type=TaskType.NORMAL_TASK,
     node_id=None,
 ):
+    if state_events is None:
+        state_events = [(TaskStatus.PENDING_NODE_ASSIGNMENT, 0)]
+
     task_info = TaskInfoEntry(
         task_id=id,
         name=name,
@@ -2795,12 +2798,21 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
         wait_for_condition(verify)
 
 
-def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
+@pytest.mark.parametrize(
+    "max_data_source,max_num_gcs_task",
+    [(100, 10), (10, 100)],
+)
+def test_raise_on_missing_output_truncation(
+    max_data_source, max_num_gcs_task, monkeypatch, shutdown_only
+):
     with monkeypatch.context() as m:
-        # defer for 10s for the second node.
         m.setenv(
             "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
-            "10",
+            str(max_data_source),
+        )
+        m.setenv(
+            "RAY_task_state_events_max_num_task_in_gcs",
+            str(max_num_gcs_task),
         )
         ray.init()
 
@@ -2818,16 +2830,16 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             print(list_tasks(_explain=True, timeout=3))
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
-            assert "(> 10)" in str(e)
+            assert "Failed to retrieve all 15 tasks" in str(e)
+            assert "only 10" in str(e)
         else:
             assert False
 
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
-            assert "(> 10)" in str(e)
+            assert "Failed to retrieve all 15 tasks" in str(e)
+            assert "only 10" in str(e)
         else:
             assert False
 

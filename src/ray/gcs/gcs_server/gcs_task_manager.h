@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"  // absl::Mutex
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -54,6 +56,16 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+
+  /// Mutex guarding tasks_reported_
+  absl::Mutex mutex_;
+
+  /// Total set of tasks id reported to GCS, this might be larger than the actual tasks
+  /// stored in GCS due to constrain on the size of GCS table We need a total set instead
+  /// of a simple counter since events from a single task might arrive at separate gRPC
+  /// calls. With a simple counter, we are not able to know the exact number of tasks we
+  /// are dropping.
+  absl::flat_hash_set<TaskID> tasks_reported_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

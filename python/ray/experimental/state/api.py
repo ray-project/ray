@@ -419,13 +419,11 @@ class StateApiClient(SubmissionClient):
 
         if total != num_after_truncation:
             raise RayStateApiException(
-                f"Failed to retrieve all {resource.value} from the cluster because "
-                "they are not reachable due to data truncation. It happens "
-                "when the returned data is too large "
+                f"Failed to retrieve all {total} {resource.value} from the cluster "
+                f"because of data truncation/loss, only {num_after_truncation}."
                 # When the data is truncated, the truncation
                 # threshold == num_after_truncation. We cannot set this to env
                 # var because the CLI side might not have the correct env var.
-                f"(> {num_after_truncation}) "
                 "To avoid raising an exception and allow having missing output, "
                 "set `raise_on_missing_output=False`. "
             )

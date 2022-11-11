@@ -19,10 +19,10 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoRequest,
     GetAllPlacementGroupReply,
     GetAllPlacementGroupRequest,
+    GetAllTaskStateEventReply,
+    GetAllTaskStateEventRequest,
     GetAllWorkerInfoReply,
     GetAllWorkerInfoRequest,
-    GetAllTaskStateEventRequest,
-    GetAllTaskStateEventReply,
 )
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
