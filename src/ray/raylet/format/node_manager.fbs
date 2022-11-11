@@ -129,6 +129,8 @@ table RegisterClientRequest {
   port: int;
   // The config bytes of this job serialized with protobuf.
   serialized_job_config: string;
+  // The entrypoint of the job.
+  entrypoint: string;
 }
 
 table RegisterClientReply {

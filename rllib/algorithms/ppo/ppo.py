@@ -48,13 +48,14 @@ class PPOConfig(PGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = PPOConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -62,14 +63,16 @@ class PPOConfig(PGConfig):
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config.training(  # doctest: +SKIP
+        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -223,12 +226,13 @@ class PPOConfig(PGConfig):
         # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size > 0:
+        if self.sgd_minibatch_size > self.train_batch_size:
             raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    self.sgd_minibatch_size, self.train_batch_size
-                )
+                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                "times."
             )
 
         # Episodes may only be truncated (and passed into PPO's
@@ -308,11 +312,11 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -321,7 +325,7 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config["simple_optimizer"]:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -354,7 +358,7 @@ class PPO(Algorithm):
 
             # Warn about excessively high value function loss
             scaled_vf_loss = (
-                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+                self.config.vf_loss_coeff * policy_info[LEARNER_STATS_KEY]["vf_loss"]
             )
             policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
             if (
@@ -374,7 +378,7 @@ class PPO(Algorithm):
             mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
-                and mean_reward > self.config["vf_clip_param"]
+                and mean_reward > self.config.vf_clip_param
             ):
                 self.warned_vf_clip = True
                 logger.warning(
