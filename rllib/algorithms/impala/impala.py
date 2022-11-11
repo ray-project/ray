@@ -541,9 +541,9 @@ class Impala(Algorithm):
         )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
-        workers_that_need_updates = set(
+        workers_that_need_updates = {
             worker_id for worker_id, _ in unprocessed_sample_batches
-        )
+        }
 
         # Send the collected batches (still object refs) to our aggregation workers.
         if use_tree_aggregation:
