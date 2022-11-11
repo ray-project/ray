@@ -135,6 +135,7 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
 
     for k in state_fields_columns:
         assert k in result_dict
+
     for k in result_dict:
         assert k in state_fields_columns
 
@@ -2135,7 +2136,7 @@ def test_limit(shutdown_only):
     assert output == list_actors(limit=2)
 
 
-def ttest_network_failureest_network_failure(shutdown_only):
+def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
     ray.init()

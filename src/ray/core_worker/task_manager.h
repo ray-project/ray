@@ -432,6 +432,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
 
   /// Update task status change.
+  ///
+  /// \param task_entry corresponding TaskEntry of a task to record the event.
+  /// \param status the changed status.
   void RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status);
 
   /// Used to store task results.

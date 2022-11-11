@@ -228,8 +228,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// RPCs are replied.
   /// \param include_memory_info If true, it requires every object ref information
   /// from all workers.
-  /// \param include_task_info If true, it requires every task metadata information
-  /// from all workers.
   /// \param limit A maximum number of task/object entries to return from each core
   /// worker.
   /// \param on_all_replied A callback that's called when every worker replies.
@@ -238,7 +236,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
       rpc::SendReplyCallback &send_reply_callback,
       bool include_memory_info,
-      bool include_task_info,
       int64_t limit,
       const std::function<void()> &on_all_replied);
 
@@ -597,11 +594,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `GetTasksInfo` request.
-  void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                          rpc::GetTasksInfoReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetTaskFailureCause` request.
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,

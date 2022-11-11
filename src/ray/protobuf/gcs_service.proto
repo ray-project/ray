@@ -645,7 +645,7 @@ message AddTaskStateEventDataReply {
 message GetAllTaskStateEventRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
-  optional int64 limit = 1;  // TODO: enforce it
+  optional int64 limit = 1;
 }
 
 message GetAllTaskStateEventReply {
@@ -659,10 +659,11 @@ message GetAllTaskStateEventReply {
 // Service for task info access
 // TODO: actually rename it to TaskStateInfoGcsService
 service TaskInfoGcsService {
-  // TODO
+  // Add task event data to GCS.
   rpc AddTaskStateEventData(AddTaskStateEventDataRequest)
       returns (AddTaskStateEventDataReply);
 
+  // Query all the task state events.
   rpc GetAllTaskStateEvent(GetAllTaskStateEventRequest)
       returns (GetAllTaskStateEventReply);
 }

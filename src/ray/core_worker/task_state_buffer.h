@@ -33,13 +33,20 @@ namespace core {
 namespace worker {
 
 using TaskIdEventMap = absl::flat_hash_map<TaskID, rpc::TaskStateEvents>;
-/// An in-memory buffer for storing task state changes, and flushing them periodically to
+
+/// An in-memory buffer for storing task state events, and flushing them periodically to
 /// GCS. Task state events will be recorded by other core components, i.e. core worker
 /// and raylet.
+/// If any of the gRPC call failed, the task events will be silently dropped. This
+/// is probably fine since this usually indicated a much worse issue.
+/// If GCS failed to respond quickly enough on the next flush, no gRPC will be made and
+/// reporting of events to GCS will be delayed until GCS replies the gRPC.
+///
+/// TODO(rickyx): The buffer could currently grow unbounded in memory if GCS is
+/// overloaded/unavailable.
+///
+///
 /// This class is thread-safe.
-/// TODO: The buffer could be configured with parameters for frequency of flushing, and
-/// and maximal number of entries pending. Extra entries should evict old events when
-/// necessary.
 class TaskStateBuffer {
  public:
   /// Constructor
@@ -58,12 +65,17 @@ class TaskStateBuffer {
                     rpc::TaskInfoEntry &&task_info_update,
                     rpc::TaskStatus task_status) LOCKS_EXCLUDED(mutex_);
 
+  /// Flush all of the events that have been added since last flush to the GCS.
+  /// If previous flush's gRPC hasn't been replied and `forced` is false, the flush will
+  /// be skipped until the next invocation.
+  ///
+  /// \param forced True if it should be flushed regardless of previous gRPC event's
+  /// state.
+  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_);
+
  private:
   TaskIdEventMap::iterator GetOrInitTaskEvents(TaskID task_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Flush all of the events that have been added since last flush to the GCS.
-  void FlushEvents() LOCKS_EXCLUDED(mutex_);
 
   std::unique_ptr<rpc::TaskStateEventData> GetAndResetBuffer()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -86,9 +98,11 @@ class TaskStateBuffer {
   /// Flag to toggle event recording on/off.
   bool recording_on_ = false;
 
-  /// Flag to record if there's a pending gRPC call. A simple way to prevent overloading
+  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
+  /// TODO(rickyx): When there are so many workers, we might even want to proxy those to
+  /// the agent/raylet to further prevent overloading GCS.
   std::atomic<bool> grpc_in_progress_ = false;
 
   /// Stats tracking for debugging and monitoring.

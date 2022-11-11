@@ -45,7 +45,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTaskFailureCause, -1)
 
@@ -146,10 +145,6 @@ class NodeManagerServiceHandler {
   virtual void HandleGetSystemConfig(GetSystemConfigRequest request,
                                      GetSystemConfigReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTasksInfo(GetTasksInfoRequest request,
-                                  GetTasksInfoReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetObjectsInfo(GetObjectsInfoRequest request,
                                     GetObjectsInfoReply *reply,

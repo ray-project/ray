@@ -543,10 +543,6 @@ class TaskInfoAccessor {
   virtual Status AsyncAddTaskStateEventData(
       std::unique_ptr<rpc::TaskStateEventData> data_ptr, const StatusCallback &callback);
 
-  /// TODO
-  virtual Status AsyncGetAllTaskStateEvent(
-      const MultiItemCallback<rpc::TaskStateEvents> &callback);
-
  private:
   GcsClient *client_impl_;
 };

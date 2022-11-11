@@ -279,9 +279,6 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
-  // Whether to include task information. This could be large since it
-  // includes metadata for all live tasks.
-  bool include_task_info = 3;
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 4;
@@ -290,21 +287,6 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-  /// Task information
-  /// Task information is scattered to 3 places.
-  /// Owner of tasks: knows the general state of task
-  ///   (e.g., waiting for deps or scheduling).
-  /// Worker that executes tasks: knows whether or not the task is actually running.
-  ///   This is necessary because the task can be queued on the execution side.
-  /// Raylet: Knows the exact scheduling state.
-  // A list of task information of the current worker.
-  repeated TaskInfoEntry owned_task_info_entries = 2;
-  // A list of task that's currently running.
-  // All tasks must be treated as TaskStatus::RUNNING
-  // from the caller side.
-  repeated bytes running_task_ids = 3;
-  // Length of the number of tasks without truncation.
-  int64 tasks_total = 4;
 }
 
 message LocalGCRequest {

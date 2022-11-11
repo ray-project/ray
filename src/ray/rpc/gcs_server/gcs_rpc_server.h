@@ -602,6 +602,7 @@ class TaskInfoGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
+  /// \param[in] io_service IO service to run the handler.
   /// \param[in] handler The service handler that actually handle the requests.
   explicit TaskInfoGrpcService(instrumented_io_context &io_service,
                                TaskInfoGcsServiceHandler &handler)

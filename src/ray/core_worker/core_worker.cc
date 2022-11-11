@@ -636,6 +636,9 @@ void CoreWorker::Disconnect(
   // Force stats export before exiting the worker.
   RecordMetrics();
 
+  // Force task state events push before exiting the worker.
+  task_state_buffer_->FlushEvents(/* forced */ true);
+
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
@@ -3250,14 +3253,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
         plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
   }
-
-  // TODO: cleanup
-  // if (request.include_task_info()) {
-  //   task_manager_->FillTaskInfo(reply, limit);
-  //   for (const auto &current_running_task : current_tasks_) {
-  //     reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
-  //   }
-  // }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

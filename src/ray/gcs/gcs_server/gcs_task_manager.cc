@@ -26,8 +26,8 @@ void GcsTaskManager::HandleAddTaskStateEventData(
     rpc::AddTaskStateEventDataRequest request,
     rpc::AddTaskStateEventDataReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // TODO
-  RAY_LOG(INFO) << request.data().DebugString();
+  RAY_LOG(DEBUG) << "Adding task state event:" << request.data().ShortDebugString();
+
   size_t num_to_process = request.data().events_by_task_size();
 
   // Context to keep track async operations across events from multiple tasks.
@@ -39,11 +39,11 @@ void GcsTaskManager::HandleAddTaskStateEventData(
   auto cb_on_done =
       [this, num_to_process, num_success, num_failure, send_reply_callback, reply](
           const Status &status, const TaskID &task_id) {
-        RAY_LOG(INFO) << "in done callback: " << status << ", task_id=" << task_id.Hex();
         if (!status.ok()) {
           ++(*num_failure);
-          RAY_LOG(WARNING) << "Failed to add task state events for task. [task_id="
-                           << task_id.Hex() << "][status=" << status.ToString() << "].";
+          RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+              << "Failed to add task state events for task. [task_id=" << task_id.Hex()
+              << "][status=" << status.ToString() << "].";
         } else {
           ++(*num_success);
         }
@@ -52,13 +52,13 @@ void GcsTaskManager::HandleAddTaskStateEventData(
 
         // Processed all the task events
         if (*num_success + *num_failure == num_to_process) {
-          RAY_LOG(INFO) << "Processed all " << num_to_process
-                        << " task state events, failed=" << *num_failure
-                        << ",success=" << *num_success;
+          RAY_LOG(DEBUG) << "Processed all " << num_to_process
+                         << " task state events, failed=" << *num_failure
+                         << ",success=" << *num_success;
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         }
 
-        RAY_LOG(INFO) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
+        RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
       };
 
   AddTaskStateEvents(std::move(*request.release_data()), std::move(cb_on_done));
@@ -68,7 +68,7 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
     rpc::GetAllTaskStateEventRequest request,
     rpc::GetAllTaskStateEventReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Getting all task state events.";
+  RAY_LOG(DEBUG) << "Getting all task state events: " << request.ShortDebugString();
   auto limit = request.has_limit() ? request.limit() : -1;
 
   auto on_done = [this, reply, limit, send_reply_callback](
@@ -79,11 +79,11 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
       if (limit >= 0 && count++ >= limit) {
         break;
       }
-      RAY_LOG(INFO) << data.second.DebugString();
       reply->add_events_by_task()->CopyFrom(data.second);
     }
     reply->set_total(tasks_reported_.size());
-    RAY_LOG(DEBUG) << "Finished getting all task states info.";
+    RAY_LOG(DEBUG) << "Finished getting all task states info, with "
+                   << reply->ShortDebugString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
@@ -96,9 +96,7 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
 void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
                                               rpc::TaskStateEvents &&events_by_task,
                                               AddTaskStateEventCallback cb_on_done) {
-  RAY_CHECK(cb_on_done) << "AddTaskStateEventCallback callback is empty";
-  // TODO
-  RAY_LOG(INFO) << "events by task:" << events_by_task.DebugString();
+  RAY_CHECK(cb_on_done) << "AddTaskStateEventCallback callback should not be empty";
   // Callback on async get done
   auto cb_on_get_done = [this,
                          task_id,
@@ -118,7 +116,7 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
       tasks_reported_.insert(task_id);
 
       // TODO(rickyx): We might want to adopt a better throttling strategy, i.e.
-      // spilling data to disk.
+      // spilling data to disk. But for now, dropping events if there are too many in GCS.
       if (tasks_reported_.size() >
           RayConfig::instance().task_state_events_max_num_task_in_gcs()) {
         RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1000)
@@ -132,7 +130,7 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
       }
     }
 
-    // Merge events
+    // Merge events of a single task.
     rpc::TaskStateEvents empty_task_state_events;
     auto cur_task_state_events = result.value_or(empty_task_state_events);
 
@@ -166,7 +164,7 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
 
 void GcsTaskManager::AddTaskStateEvents(rpc::TaskStateEventData &&data,
                                         AddTaskStateEventCallback cb_on_done) {
-  // Update each task
+  // Update each task.
   for (auto &events_by_task : *data.mutable_events_by_task()) {
     auto task_id = TaskID::FromBinary(events_by_task.task_id());
     AddTaskStateEventForTask(task_id, std::move(events_by_task), cb_on_done);

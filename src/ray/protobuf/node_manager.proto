@@ -108,16 +108,14 @@ message CommitBundleResourcesRequest {
   repeated Bundle bundle_specs = 1;
 }
 
-message CommitBundleResourcesReply {
-}
+message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {
-}
+message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -132,15 +130,13 @@ message ReturnWorkerRequest {
   bool worker_exiting = 4;
 }
 
-message ReturnWorkerReply {
-}
+message ReturnWorkerReply {}
 
 message ReleaseUnusedWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
 }
 
-message ReleaseUnusedWorkersReply {
-}
+message ReleaseUnusedWorkersReply {}
 
 message ShutdownRayletRequest {
   /// Whether the shutdown request is graceful or not.
@@ -229,11 +225,9 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {
-}
+message GlobalGCRequest {}
 
-message GlobalGCReply {
-}
+message GlobalGCReply {}
 
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
@@ -272,18 +266,15 @@ message ReleaseUnusedBundlesRequest {
   repeated Bundle bundles_in_use = 1;
 }
 
-message ReleaseUnusedBundlesReply {
-}
+message ReleaseUnusedBundlesReply {}
 
-message GetSystemConfigRequest {
-}
+message GetSystemConfigRequest {}
 
 message GetSystemConfigReply {
   string system_config = 1;
 }
 
-message RequestResourceReportRequest {
-}
+message RequestResourceReportRequest {}
 
 message RequestResourceReportReply {
   ResourcesData resources = 1;
@@ -296,28 +287,7 @@ message UpdateResourceUsageRequest {
   bytes serialized_resource_usage_batch = 1;
 }
 
-message UpdateResourceUsageReply {
-}
-
-message GetTasksInfoRequest {
-  // Maximum number of entries to return.
-  // If not specified, return the whole entries without truncation.
-  optional int64 limit = 1;
-}
-
-message GetTasksInfoReply {
-  repeated TaskInfoEntry owned_task_info_entries = 1;
-  // A list of task that's currently running.
-  // All tasks must be treated as TaskStatus::RUNNING
-  // from the caller side.
-  repeated bytes running_task_ids = 2;
-  // Length of the corresponding resource without truncation.
-  int64 total = 3;
-  // NOTE: we don't truncate running_task_ids because it is usually small.
-  // However, there are edge cases it can be very large (e.g., when the
-  // async actor tasks are used, it can have up to 1000 running tasks per
-  // actor). We should handle this better.
-}
+message UpdateResourceUsageReply {}
 
 message GetObjectsInfoRequest {
   // Maximum number of entries to return.
@@ -408,8 +378,6 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
-  // [State API] Get the all task information of the node.
-  rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
   // Gets the task execution result. May contain a result if

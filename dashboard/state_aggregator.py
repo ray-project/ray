@@ -10,8 +10,6 @@ from ray._private.ray_constants import env_integer
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import binary_to_hex
-from ray.core.generated.common_pb2 import TaskStatus
 from ray.experimental.state.common import (
     ActorState,
     ListApiOptions,
@@ -353,6 +351,12 @@ class StateAPIManager:
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all task information from the cluster.
+
+        Returns:
+            {task_id -> task_data_in_dict}
+            task_data_in_dict's schema is in TaskState
+        """
         try:
             reply = await self._client.get_all_task_info(timeout=option.timeout)
         except DataSourceUnavailable:
@@ -371,27 +375,20 @@ class StateAPIManager:
                 ],
             )
 
-            def _to_task_state(data):
-                # TODO(rickyx): Maybe we should autogenerate this?
-                task_info = data.get("task_info", None)
-                if not task_info:
-                    # TODO(rickyx): some tasks don't have the spec, the driver script?
-                    return None
-                task_state = task_info
-                task_state_events = data.get("task_events", None)
-                if task_state_events:
-                    most_recent_state = max(
-                        task_state_events, key=lambda e: e["event_time"]
-                    )
-                    task_state["scheduling_state"] = most_recent_state["task_status"]
-                return task_state
-
-            state = _to_task_state(data)
-
-            if state:
-                result.append(state)
-            else:
+            task_info = data.get("task_info", None)
+            if not task_info:
+                # Note(rickyx): some tasks don't have the spec, the driver script?
                 num_missing_spec += 1
+                continue
+            task_state = task_info
+            task_state_events = data.get("task_events", None)
+            if task_state_events:
+                most_recent_state = max(
+                    task_state_events, key=lambda e: e["event_time"]
+                )
+                task_state["scheduling_state"] = most_recent_state["task_status"]
+
+            result.append(task_state)
 
         num_after_truncation = len(result)
         result = self._filter(result, option.filters, TaskState, option.detail)
@@ -402,82 +399,8 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             partial_failure_warning=None,
+            # Adjust total to exclude tasks missing spec info
             total=reply.total - num_missing_spec,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
-        )
-
-    async def list_tasks_v1(self, *, option: ListApiOptions) -> ListApiResponse:
-        """List all task information from the cluster.
-
-        Returns:
-            {task_id -> task_data_in_dict}
-            task_data_in_dict's schema is in TaskState
-        """
-        raylet_ids = self._client.get_all_registered_raylet_ids()
-        replies = await asyncio.gather(
-            *[
-                self._client.get_task_info(node_id, timeout=option.timeout)
-                for node_id in raylet_ids
-            ],
-            return_exceptions=True,
-        )
-
-        unresponsive_nodes = 0
-        running_task_id = set()
-        successful_replies = []
-        total_tasks = 0
-        for reply in replies:
-            if isinstance(reply, DataSourceUnavailable):
-                unresponsive_nodes += 1
-                continue
-            elif isinstance(reply, Exception):
-                raise reply
-
-            successful_replies.append(reply)
-            total_tasks += reply.total
-            for task_id in reply.running_task_ids:
-                running_task_id.add(binary_to_hex(task_id))
-
-        partial_failure_warning = None
-        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
-            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-                type="raylet",
-                total=len(raylet_ids),
-                network_failures=unresponsive_nodes,
-                log_command="raylet.out",
-            )
-            if unresponsive_nodes == len(raylet_ids):
-                raise DataSourceUnavailable(warning_msg)
-            partial_failure_warning = (
-                f"The returned data may contain incomplete result. {warning_msg}"
-            )
-
-        result = []
-        for reply in successful_replies:
-            assert not isinstance(reply, Exception)
-            tasks = reply.owned_task_info_entries
-            for task in tasks:
-                data = self._message_to_dict(
-                    message=task,
-                    fields_to_decode=["task_id", "job_id", "node_id", "actor_id"],
-                )
-
-                if data["task_id"] in running_task_id:
-                    data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
-                        TaskStatus.RUNNING
-                    ].name
-                result.append(data)
-        num_after_truncation = len(result)
-        result = self._filter(result, option.filters, TaskState, option.detail)
-        num_filtered = len(result)
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["task_id"])
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            partial_failure_warning=partial_failure_warning,
-            total=total_tasks,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
