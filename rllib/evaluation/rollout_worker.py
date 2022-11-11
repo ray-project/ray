@@ -1107,7 +1107,8 @@ class RolloutWorker(ParallelIteratorWorker):
         # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
         # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
-            # SampleBatch -> Calculate gradients for the default policy.
+            if self.config.get("enable_connectors"):
+                samples = samples.policy_batches[DEFAULT_POLICY_ID]
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
