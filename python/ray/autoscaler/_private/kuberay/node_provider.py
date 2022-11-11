@@ -257,7 +257,11 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
                 continue
             group_index = _worker_group_index(raycluster, node_type)
             path = f"/spec/workerGroupSpecs/{group_index}/scaleStrategy"
-            patch = {"op": "replace", "path": path, "value": {"workersToDelete": nodes_to_delete}}
+            patch = {
+                "op": "replace",
+                "path": path,
+                "value": {"workersToDelete": nodes_to_delete},
+            }
             patch_payload.append(patch)
 
         return patch_payload
