@@ -60,6 +60,9 @@ def get_cliff_walking_wall_policy_and_data(
     n_eps = 0
     while n_eps < num_episodes:
         batch = synchronous_parallel_sample(worker_set=workers)
+        if config.get("enable_connectors"):
+            # We assume there is only CliffWalkingWallPolicy
+            batch = batch.policy_batches["default_policy"]
         for episode in batch.split_by_episode():
             ret = 0
             for r in episode[SampleBatch.REWARDS][::-1]:
