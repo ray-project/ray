@@ -1,7 +1,7 @@
 Pattern: Using a supervisor actor to manage a tree of actors
 ============================================================
 
-In this pattern, a collection of Ray worker actors is managed by a supervisory Ray actor.
+In this pattern, a collection of Ray worker actors is managed by a supervising Ray actor.
 A single call to the supervisor actor triggers the dispatch of multiple method calls to child actors.
 The supervisor can process results or update child actors prior to returning.
 
