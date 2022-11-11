@@ -136,8 +136,7 @@ class AgentCollector:
                 # TODO (Artur): Enforce dtype as well
                 assert vr.space.shape == np.shape(data), (
                     f"Provided tensor\n{data}\n does not match space of view "
-                    f"requirements/n"
-                    f" {vr}.\n"
+                    f"requirements {vr_name}.\n"
                     f"Make sure dimensions match to resolve this error.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
