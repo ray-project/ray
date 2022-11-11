@@ -42,7 +42,7 @@ class TestAlgorithm(unittest.TestCase):
         ).multi_agent(
             # Start with a single policy.
             policies={"p0"},
-            policy_mapping_fn=lambda aid, eps, worker, **kwargs: "p0",
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             # And only two policies that can be stored in memory at a
             # time.
             policy_map_capacity=2,
