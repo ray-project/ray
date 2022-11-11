@@ -723,19 +723,7 @@ def test_scheduling_class_depth(ray_start_regular):
 
     # We expect the 2 calls to `infeasible` to be separate scheduling classes
     # because one has depth=1, and the other has depth=2.
-
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
-
-    def make_condition(n):
-        def condition():
-            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name == metric_name and sample.value == n:
-                        return True
-            return False
-
-        return condition
 
     # timeout=60 necessary to pass on windows debug/asan builds.
     wait_for_condition(metric_check_condition({metric_name: 2}), timeout=60)

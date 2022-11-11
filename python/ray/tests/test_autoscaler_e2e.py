@@ -18,7 +18,11 @@ import yaml
 import ray
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray._private.test_utils import same_elements, wait_for_condition, metric_check_condition
+from ray._private.test_utils import (
+    same_elements,
+    wait_for_condition,
+    metric_check_condition,
+)
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
     NodeAvailabilitySummary,
@@ -74,6 +78,7 @@ import platform
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
+
 
 def test_ray_status_e2e(shutdown_only):
     cluster = AutoscalingCluster(
@@ -155,12 +160,22 @@ def test_metrics(shutdown_only):
             def ping(self):
                 return True
 
-        wait_for_condition(metric_check_condition({"autoscaler_cluster_resources": 0, "autoscaler_pending_resources": 0}, export_addr=autoscaler_export_addr))
+        wait_for_condition(
+            metric_check_condition(
+                {"autoscaler_cluster_resources": 0, "autoscaler_pending_resources": 0},
+                export_addr=autoscaler_export_addr,
+            )
+        )
 
         actors = [Foo.remote() for _ in range(2)]
         ray.get([actor.ping.remote() for actor in actors])
 
-        wait_for_condition(metric_check_condition({"autoscaler_cluster_resources": 2, "autoscaler_pending_resources": 0}, export_addr=autoscaler_export_addr))
+        wait_for_condition(
+            metric_check_condition(
+                {"autoscaler_cluster_resources": 2, "autoscaler_pending_resources": 0},
+                export_addr=autoscaler_export_addr,
+            )
+        )
         # TODO (Alex): Ideally we'd also assert that pending_resources
         # eventually became 1 or 2, but it's difficult to do that in a
         # non-racey way. (Perhaps we would need to artificially delay the fake
