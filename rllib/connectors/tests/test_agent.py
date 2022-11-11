@@ -394,14 +394,23 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # without reward-to-go.
         view_rq_dict = {
             # obs[t-context_len+1:t]
-            "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
+            "context_obs": ViewRequirement(
+                "obs",
+                shift=f"-{context_len-1}:0",
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
+            ),
             # next_obs[t-context_len+1:t]
             "context_next_obs": ViewRequirement(
-                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+                "obs",
+                shift=f"-{context_len}:1",
+                used_for_compute_actions=False,
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 

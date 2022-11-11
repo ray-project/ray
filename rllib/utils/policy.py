@@ -1,7 +1,10 @@
 import gym
 import logging
+import numpy as np
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Mapping
+import tree
+
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec
@@ -161,6 +164,9 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
+    reward: float = None,
+    done: bool = None,
+    info: Mapping = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -185,6 +191,24 @@ def local_policy_inference(
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
 
+    # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
+    #  connectors (and don't auto-wrap in RW anymore)
+    if any(
+        [
+            o.shape == (210, 160, 3) if isinstance(o, np.ndarray) else False
+            for o in tree.flatten(obs)
+        ]
+    ):
+        if log_once("warn_about_possibly_non_wrapped_atari_env"):
+            logger.warning(
+                "The observation you fed into local_policy_inference() has "
+                "dimensions (210, 160, 3), which is the standard for atari "
+                "environments. If RLlib raises an error including a related "
+                "dimensionality mismatch, please use "
+                "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
+                "you environment."
+            )
+
     # Put policy in inference mode, so we don't spend time on training
     # only transformations.
     policy.agent_connectors.in_eval()
@@ -192,6 +216,13 @@ def local_policy_inference(
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
+    if reward is not None:
+        input_dict[SampleBatch.REWARDS] = reward
+    if done is not None:
+        input_dict[SampleBatch.DONES] = done
+    if info is not None:
+        input_dict[SampleBatch.INFOS] = info
+
     acd_list: List[AgentConnectorDataType] = [
         AgentConnectorDataType(env_id, agent_id, input_dict)
     ]
@@ -199,6 +230,10 @@ def local_policy_inference(
     outputs = []
     for ac in ac_outputs:
         policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
+        # not be batched during inference. This is the assumption made in AgentCollector
+        policy_output = tree.map_structure(lambda x: x[0], policy_output)
 
         action_connector_data = ActionConnectorDataType(
             env_id, agent_id, ac.data.raw_dict, policy_output

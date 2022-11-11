@@ -95,9 +95,15 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         self.config["model"] = {"max_seq_len": 50}
 
         class _fake_model:
-            pass
+            def __init__(self, state_space):
+                self.state_space = state_space
 
-        self.model = _fake_model()
+            # We need to provide at least an initial state if we want agent collector
+            # to build episodes with state_in_ and state_out_
+            def get_initial_state(self):
+                return [self.state_space.sample()]
+
+        self.model = _fake_model(self.state_space)
         self.model.view_requirements = {
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
@@ -121,6 +127,10 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         self.view_requirements = dict(
             super()._get_default_view_requirements(), **self.model.view_requirements
         )
+
+    @override(Policy)
+    def get_initial_state(self):
+        return self.model.get_initial_state()
 
     @override(Policy)
     def is_recurrent(self):

@@ -1110,7 +1110,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if single_agent is True:
             # SampleBatch -> Calculate gradients for the default policy.
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
-                samples
+                samples[DEFAULT_POLICY_ID]
             )
             info_out["batch_count"] = samples.count
             return grad_out, info_out

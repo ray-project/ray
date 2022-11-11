@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -16,7 +18,10 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -71,7 +76,7 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states or []
+        self.intial_states = intial_states
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
 
@@ -120,6 +125,30 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
+    def _check_view_requirement(self, vr_name: str, data: TensorType):
+        """Raises an AssertionError if data does not fit all view requirements that
+        have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
+        return
+
+        if (
+            log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
+            and vr_name in self.view_requirements
+        ):
+            vr = self.view_requirements[vr_name]
+            # We only check for the shape here, because conflicting dtypes are often
+            # because of float conversion
+            if vr.space.shape:
+                # TODO (Artur): Enforce dtype as well
+                assert vr.space.shape == np.shape(data), (
+                    f"Provided tensor\n{data}\n does not match space of view "
+                    f"requirements/n"
+                    f" {vr}.\n"
+                    f"Make sure dimensions match to resolve this error.\n"
+                    f"Provided tensor has shape {np.shape(data)} and view requirement "
+                    f"has shape shape {vr.space.shape}."
+                    f"Make sure dimensions and dtype match to resolve this error."
+                )
+
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -147,6 +176,9 @@ class AgentCollector:
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
+
+        # There must be an OBS view requirement and we can use it to check init_obs
+        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -204,8 +236,11 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            self._check_view_requirement(k, v)
+
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
+
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
@@ -542,15 +577,29 @@ class AgentCollector:
                     f"policy.get_initial_states()?"
                 )
             state_ind = int(data_col.split("_")[-1])
-            self._build_buffers({data_col: self.intial_states[state_ind]})
+            if self.intial_states:
+                initial_state = self.intial_states[state_ind]
+            else:
+                # Some models and policies don't provide initial states and
+                if log_once("initial_state_not_provided_in_agent_collector"):
+                    logger.info(
+                        "Agent collector was not provided an initial state "
+                        "but policy is recurrent. We infer initial state by "
+                        "sampling from the view requirement."
+                    )
+                initial_state = self.view_requirements[data_col].space.sample()
+
+            self._build_buffers({data_col: initial_state})
         else:
             is_state = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
+                    #  state_out_x assumes the values do not have a batch dimension
+                    #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space
