@@ -214,7 +214,7 @@ class TorchPredictor(DLPredictor):
             .. testoutput::
 
                 Standard model predictions: {'predictions': array([[1.5487633],
-                  [3.8037925]], dtype=float32)}
+                [3.8037925]], dtype=float32)}
                 ---
                 Custom model predictions:     predictions
                 0  [0.61623406]
