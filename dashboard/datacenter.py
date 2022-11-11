@@ -2,7 +2,12 @@ import asyncio
 import logging
 import ray.dashboard.consts as dashboard_consts
 
-from ray.dashboard.utils import Dict, Signal, async_loop_forever
+from ray.dashboard.utils import (
+    Dict,
+    Signal,
+    async_loop_forever,
+    MutableNotificationDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +27,8 @@ class DataSource:
     node_physical_stats = Dict()
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
-    actors = Dict()
+    actors = MutableNotificationDict()
+    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
@@ -34,11 +40,7 @@ class DataSource:
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
-    node_actors = Dict()
-    # {job id hex(str): worker list}
-    job_workers = Dict()
-    # {job id hex(str): {actor id hex(str): actor table data}}
-    job_actors = Dict()
+    node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
@@ -72,20 +74,16 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
     async def organize(cls):
-        job_workers = {}
         node_workers = {}
         core_worker_stats = {}
         # await inside for loop, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
-                job_id = worker["jobId"]
-                job_workers.setdefault(job_id, []).append(worker)
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
-        DataSource.job_workers.reset(job_workers)
         DataSource.node_workers.reset(node_workers)
         DataSource.core_worker_stats.reset(core_worker_stats)
 
