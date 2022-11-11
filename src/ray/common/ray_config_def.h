@@ -506,7 +506,8 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
-RAY_CONFIG(bool, enable_timeline, true)
+/// TODO(rickyx): toggle this back after release test.
+RAY_CONFIG(bool, enable_timeline, false)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
