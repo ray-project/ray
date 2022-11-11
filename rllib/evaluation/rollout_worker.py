@@ -52,6 +52,7 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
@@ -1104,9 +1105,7 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
         if single_agent is True:
-            if self.config.get("enable_connectors"):
-                # We always sample MA batches from EnvRunnerV2
-                samples = samples.policy_batches[DEFAULT_POLICY_ID]
+            samples = convert_ma_batch_to_sample_batch(samples)
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
