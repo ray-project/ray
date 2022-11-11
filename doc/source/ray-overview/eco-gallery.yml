@@ -107,7 +107,7 @@ projects:
       It allows you to easily define, track and schedule workflows in Python. This
       integration makes it easy to run a Prefect workflow on a Ray cluster in a
       distributed way.
-    website: https://www.prefect.io/opensource/
+    website: https://github.com/PrefectHQ/prefect-ray
     repo: https://github.com/PrefectHQ/prefect-ray
     image: ../images/prefect.png
   - name: PyCaret Integration
