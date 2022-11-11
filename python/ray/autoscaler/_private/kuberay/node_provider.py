@@ -15,11 +15,11 @@ from ray.autoscaler.batching_node_provider import (
     ScaleRequest,
 )
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
-    NODE_KIND_HEAD,
-    NODE_KIND_WORKER,
 )
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
@@ -203,8 +203,10 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
     def submit_scale_request(self, scale_request: ScaleRequest):
         payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
         path = "rayclusters/{}".format(self.cluster_name)
-        logger.info("Autoscaler is submitting the following patch to RayCluster"
-                    f"{self.cluster_name} in namespace {self.namespace}.")
+        logger.info(
+            "Autoscaler is submitting the following patch to RayCluster"
+            f"{self.cluster_name} in namespace {self.namespace}."
+        )
         logger.info(payload)
         self._patch(path, payload)
 
