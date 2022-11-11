@@ -16,6 +16,7 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class ResultOrError:
     """A wrapper around a result or an error.
 
@@ -50,6 +51,7 @@ class ResultOrError:
             return self._result
 
 
+@DeveloperAPI
 @dataclass
 class CallResult:
     """Represents a single result from a call to an actor.
@@ -71,6 +73,7 @@ class CallResult:
         return self.result_or_error.get()
 
 
+@DeveloperAPI
 class RemoteCallResults:
     """Represents a list of results from calls to a set of actors.
 
@@ -180,6 +183,7 @@ class FaultAwareApply:
                 raise e
 
 
+@DeveloperAPI
 class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
 
