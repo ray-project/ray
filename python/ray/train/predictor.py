@@ -77,6 +77,9 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         self._preprocessor: Optional[Preprocessor] = preprocessor
+        # Whether tensor columns should be automatically cast from/to the tensor
+        # extension type at UDF boundaries. This can be overridden by subclasses.
+        self._cast_tensor_columns = False
 
     @classmethod
     @abc.abstractmethod
