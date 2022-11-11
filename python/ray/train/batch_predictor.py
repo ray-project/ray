@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -181,7 +181,16 @@ class BatchPredictor:
             )
             predictor_kwargs["use_gpu"] = True
 
-        batch_format: BatchFormat = self._predictor_cls.preferred_batch_format()
+        # In case of [arrow block] -> [X] -> [Pandas UDF] -> [Y] -> [TorchPredictor]
+        # We have two places where we can chose data format with less conversion cost.
+        # This is the [X], between data block and first preprocessor.
+        preprocessor_batch_format: BatchFormat = (
+            self._determine_preprocessor_batch_format(data)
+        )
+        # This is the [Y] in case of separated GPU stage prediction
+        separated_stage_prediction_batch_format: BatchFormat = (
+            self._predictor_cls._batch_format_to_use()
+        )
         ctx = DatasetContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
@@ -211,14 +220,11 @@ class BatchPredictor:
                         f"Column name(s) {select_columns} should not be provided "
                         "for prediction input data type of ``numpy.ndarray``"
                     )
-                elif batch_format == BatchFormat.NUMPY:
-                    if isinstance(batch_data, dict):
-                        return {
-                            k: v for k, v in batch_data.items() if k in select_columns
-                        }
-                    elif isinstance(batch_data, np.ndarray):
-                        return batch_data
-                elif batch_format == BatchFormat.PANDAS:
+                if isinstance(batch_data, dict):
+                    return {k: v for k, v in batch_data.items() if k in select_columns}
+                elif isinstance(batch_data, np.ndarray):
+                    return batch_data
+                elif isinstance(batch_data, pd.DataFrame):
                     # Select a subset of the pandas columns.
                     return batch_data[select_columns]
 
@@ -238,11 +244,11 @@ class BatchPredictor:
                         f"Column name(s) {keep_columns} should not be provided "
                         "for prediction input data type of ``numpy.ndarray``"
                     )
-                elif batch_format == BatchFormat.NUMPY:
+                elif isinstance(input_batch, dict):
                     for column in keep_columns:
                         prediction_output_batch[column] = input_batch[column]
                     return prediction_output_batch
-                elif batch_format == BatchFormat.PANDAS:
+                elif isinstance(input_batch, pd.DataFrame):
                     prediction_output_batch[keep_columns] = input_batch[keep_columns]
                     return prediction_output_batch
 
@@ -280,12 +286,14 @@ class BatchPredictor:
                 # preprocessor.transform will break for DatasetPipeline due to
                 # missing _dataset_format()
                 batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format=batch_format)
+                data = data.map_batches(
+                    batch_fn, batch_format=separated_stage_prediction_batch_format
+                )
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format=batch_format,
+            batch_format=preprocessor_batch_format,
             batch_size=batch_size,
             **ray_remote_args,
         )
@@ -392,3 +400,35 @@ class BatchPredictor:
             ray_remote_args=ray_remote_args,
             **predict_kwargs,
         )
+
+    def _determine_preprocessor_batch_format(
+        self, ds: Union[ray.data.Dataset, ray.data.DatasetPipeline]
+    ) -> BatchFormat:
+        """Determine batch format we use for the first preprocessor.
+
+        In case of [arrow block] -> [X] -> [Pandas/Numpy UDF] -> [Predictor]
+        We choose the best X based on dataset block format and preprocessor's
+        transform type to avoid unnecessary data conversion.
+
+        Args:
+            ds (Union[ray.data.Dataset, ray.data.DatasetPipeline]): Input
+                dataset or dataset pipeline.
+
+        Returns:
+            BatchFormat: Batch format to use for the preprocessor.
+        """
+        preprocessor = self.get_preprocessor()
+        dataset_block_format = ds.dataset_format()
+        if not preprocessor:
+            # No preprocessor, just use the dataset format.
+            return (
+                BatchFormat.NUMPY
+                if dataset_block_format == BlockFormat.ARROW
+                else BatchFormat.PANDAS
+            )
+        elif dataset_block_format == BlockFormat.SIMPLE:
+            # Naive case that we cast to pandas for compatibility.
+            return BatchFormat.PANDAS
+        else:
+            # Use same batch format as first preprocessor to minimize data copies.
+            return preprocessor.determine_transform_to_use(dataset_block_format)

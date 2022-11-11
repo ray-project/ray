@@ -16,7 +16,7 @@ from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])

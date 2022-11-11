@@ -10,6 +10,7 @@ from ray.air.util.data_batch_conversion import (
     BatchFormat,
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
+    _convert_batch_type_to_numpy,
 )
 from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -137,6 +138,18 @@ class Predictor(abc.ABC):
         """
         return BatchFormat.PANDAS
 
+    @classmethod
+    def _batch_format_to_use(cls) -> BatchFormat:
+        # Use this in BatchPredictor
+        has_pandas_implemented = cls._predict_pandas != Predictor._predict_pandas
+        has_numpy_implemented = cls._predict_numpy != Predictor._predict_numpy
+        if has_pandas_implemented and has_numpy_implemented:
+            return cls.preferred_batch_format()
+        elif has_pandas_implemented:
+            return BatchFormat.PANDAS
+        else:
+            return BatchFormat.NUMPY
+
     def _set_cast_tensor_columns(self):
         """Enable automatic tensor column casting.
 
@@ -173,25 +186,32 @@ class Predictor(abc.ABC):
             )
 
         has_predict_numpy = self.__class__._predict_numpy != Predictor._predict_numpy
+        has_predict_pandas = self.__class__._predict_pandas != Predictor._predict_pandas
 
         if batch_format == BatchFormat.PANDAS:
-            return self._predict_pandas(data, **kwargs)
-        elif batch_format == BatchFormat.NUMPY and has_predict_numpy:
-            return self._predict_numpy(data, **kwargs)
-        else:
-            # Fallback to convert to pandas batch and call _predict_pandas
-            # ex: xgboost predict with np.ndarray batch data
-            predict_data = convert_batch_type_to_pandas(data)
-            predictions = self._predict_pandas(predict_data, **kwargs)
-            # Base predictor's return value are used by both BatchPredictor
-            # and Ray Serve, thus keep return value as raw DataFrame or Numpy
-            # without any TensorArray casting and leave it to caller to decide.
-            return convert_pandas_to_batch_type(
-                predictions,
-                # Output format should be the same as input format.
-                TYPE_TO_ENUM[type(data)],
-                cast_tensor_columns=False,
-            )
+            if has_predict_pandas:
+                return self._predict_pandas(data, **kwargs)
+            elif has_predict_numpy:
+                predict_data = _convert_batch_type_to_numpy(data)
+                predictions = self._predict_numpy(predict_data, **kwargs)
+                return convert_batch_type_to_pandas(predictions)
+        elif batch_format == BatchFormat.NUMPY:
+            if has_predict_numpy:
+                return self._predict_numpy(data, **kwargs)
+            elif has_predict_pandas:
+                # Fallback to convert to pandas batch and call _predict_pandas
+                # ex: xgboost predict with np.ndarray batch data
+                predict_data = convert_batch_type_to_pandas(data)
+                predictions = self._predict_pandas(predict_data, **kwargs)
+                # Base predictor's return value are used by both BatchPredictor
+                # and Ray Serve, thus keep return value as raw DataFrame or Numpy
+                # without any TensorArray casting and leave it to caller to decide.
+                return convert_pandas_to_batch_type(
+                    predictions,
+                    # Output format should be the same as input format.
+                    TYPE_TO_ENUM[type(data)],
+                    cast_tensor_columns=False,
+                )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

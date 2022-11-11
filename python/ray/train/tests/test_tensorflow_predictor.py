@@ -18,7 +18,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 def build_raw_model() -> tf.keras.Model:

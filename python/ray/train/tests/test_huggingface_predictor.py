@@ -17,7 +17,7 @@ from transformers.pipelines import pipeline
 import ray
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 test_strings = ["Complete me", "And me", "Please complete"]
 prompts = pd.DataFrame(test_strings, columns=["sentences"])

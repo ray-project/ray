@@ -17,7 +17,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 class DummyModelSingleTensor(torch.nn.Module):

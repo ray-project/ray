@@ -211,9 +211,9 @@ def test_batch_prediction_various_combination():
             DummyWithNumpyPreprocessor(),
             DummyWithNumpyPredictor,
             ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
-            # Output dataset format should be arrow given numpy path is taken
-            # for both preprocessor and predictor.
-            "arrow",
+            # Preprocessing and prediction is done in numpy, but preprocessor
+            # batch format is still pandas, thus output is casted back.
+            "pandas",
         ),
         (
             DummyPreprocessor(),
@@ -243,9 +243,9 @@ def test_batch_prediction_various_combination():
             DummyWithNumpyPreprocessor(),
             DummyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
-            # Output dataset format should be pandas given panda path is
-            # taken for predictor.
-            "pandas",
+            # Preprocessing and prediction is done in pandas, but preprocessor
+            # batch format is still numpy, thus output is casted back.
+            "arrow",
         ),
     ]
 

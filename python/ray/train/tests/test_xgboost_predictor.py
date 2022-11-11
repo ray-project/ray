@@ -15,8 +15,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor
-
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
 dummy_target = np.array([0, 1, 0])
