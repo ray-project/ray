@@ -215,6 +215,7 @@ def test_deadlock_two_sets_of_actor_with_nested_task(
 
     with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref1)
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref2)
 
 
@@ -223,7 +224,7 @@ def task_with_nested_task(task_bytes, nested_task_bytes, barrier=None):
     dummy = alloc_mem(task_bytes)
     if barrier:
         ray.get(barrier.wait_all_done.remote())
-    ray.get(allocate_memory.options(max_retries=0).remote(nested_task_bytes))
+    ray.get(allocate_memory.options(max_retries=0).remote(nested_task_bytes, post_allocate_sleep_s=0.1))
 
 
 @pytest.mark.skipif(
@@ -251,16 +252,10 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         max_restarts=0, max_task_retries=0, max_concurrency=2
     ).remote(2)
 
-    ref1 = task_with_nested_task.remote(parent_bytes, nested_bytes, barrier)
-    ref2 = task_with_nested_task.remote(parent_bytes, nested_bytes, barrier)
+    ref1 = task_with_nested_task.options(max_retries=0).remote(parent_bytes, nested_bytes, barrier)
+    ref2 = task_with_nested_task.options(max_retries=0).remote(parent_bytes, nested_bytes, barrier)
 
-    num_failed = 0
-    try:
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref1)
-    except ray.exceptions.OutOfMemoryError:
-        num_failed += 1
-    try:
+    with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref2)
-    except ray.exceptions.OutOfMemoryError:
-        num_failed += 1
-    assert num_failed == 1
