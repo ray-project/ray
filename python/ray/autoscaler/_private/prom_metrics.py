@@ -203,17 +203,17 @@ try:
                 registry=self.registry,
             )
             self.cluster_resources: Counter = Gauge(
-                "cluster_resoruces",
+                "cluster_resources",
                 "Total logical resources in the cluster.",
-                unit="logical",
+                unit="resources",
                 namespace="autoscaler",
                 registry=self.registry,
                 labelnames=["resource"],
             )
             self.pending_resources: Counter = Gauge(
-                "pending_resoruces",
+                "pending_resources",
                 "Pending logical resources in the cluster.",
-                unit="logical",
+                unit="resources",
                 namespace="autoscaler",
                 registry=self.registry,
                 labelnames=["resource"],

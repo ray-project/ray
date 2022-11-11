@@ -18,8 +18,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.test_utils import (
     Semaphore,
     SignalActor,
-    fetch_prometheus,
     object_memory_usage,
+    metric_check_condition,
     wait_for_condition,
 )
 
@@ -738,11 +738,11 @@ def test_scheduling_class_depth(ray_start_regular):
         return condition
 
     # timeout=60 necessary to pass on windows debug/asan builds.
-    wait_for_condition(make_condition(2), timeout=60)
+    wait_for_condition(metric_check_condition({metric_name: 2}), timeout=60)
     start_infeasible.remote(2)
-    wait_for_condition(make_condition(3), timeout=60)
+    wait_for_condition(metric_check_condition({metric_name: 3}), timeout=60)
     start_infeasible.remote(4)
-    wait_for_condition(make_condition(4), timeout=60)
+    wait_for_condition(metric_check_condition({metric_name: 4}), timeout=60)
 
 
 if __name__ == "__main__":

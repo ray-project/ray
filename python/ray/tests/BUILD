@@ -208,6 +208,7 @@ py_test_module_list(
   files = [
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
+    "test_autoscaler_e2e.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
