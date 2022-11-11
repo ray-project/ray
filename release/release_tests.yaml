@@ -4805,8 +4805,8 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: data_ingest_benchmark_compute.yaml
+    cluster_env: dataset/app_config.yaml
+    cluster_compute: dataset/data_ingest_benchmark_compute.yaml
 
   run:
     timeout: 300
