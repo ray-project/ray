@@ -17,10 +17,9 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-from ray.util.debug import log_once
 
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -128,17 +127,25 @@ class AgentCollector:
 
     def _check_view_requirement(self, vr_name: str, data: TensorType):
         """Raises an AssertionError if data does not fit all view requirements that
-        have a view on data_col."""
-        vr = self.view_requirements[vr_name]
-        # We only check for the shape here, because conflicting dtypes are often
-        # because of float conversion
-        # TODO (Kourosh/Artur): Turn this into an error
-        if not vr.space.contains(data):
-            if log_once("view_requirement_not_satisfied"):
-                logger.info(
-                    f"Provided tensor {data} does not match space of view requirements "
-                    f"{vr}. Make sure dimensions and dtype match to resolve this "
-                    f"info."
+        have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
+
+        if (
+            log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
+            and vr_name in self.view_requirements
+        ):
+            vr = self.view_requirements[vr_name]
+            # We only check for the shape here, because conflicting dtypes are often
+            # because of float conversion
+            if vr.space.shape and not vr.space.shape == np.shape(data):
+                # TODO (Artur): Enforce VR shape
+                # TODO (Artur): Enforce dtype as well
+                logger.warning(
+                    f"Provided tensor\n{data}\n does not match space of view "
+                    f"requirements {vr_name}.\n"
+                    f"Make sure dimensions match to resolve this error.\n"
+                    f"Provided tensor has shape {np.shape(data)} and view requirement "
+                    f"has shape shape {vr.space.shape}."
+                    f"Make sure dimensions and dtype match to resolve this warning."
                 )
 
     def add_init_obs(
@@ -169,15 +176,8 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        for k, vr in self.view_requirements.items():
-            if vr.data_col == SampleBatch.OBS:
-                # Check this on the first view requirement we find that has a view on
-                # OBS because they should all be the same
-                # TODO(Artur): This assumption is not supported by proper checks ->
-                #  introduce a helper method that checks that view requirements
-                #  spaces don't contradict themselves
-                self._check_view_requirement(k, init_obs)
-                break
+        # There must be an OBS view requirement and we can use it to check init_obs
+        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -209,11 +209,6 @@ class AgentCollector:
             Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
-
-        # TODO (Kourosh): Error out when one of the keys are missing.
-        # TODO (Kourosh): Error out when the the new input_values shapes do not match
-        # the existing ones in the buffer.
-
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
@@ -240,8 +235,7 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            if k in self.view_requirements.keys() and not isinstance(v, (dict, tuple)):
-                self._check_view_requirement(k, v)
+            self._check_view_requirement(k, v)
 
             if k not in self.buffers:
                 self._build_buffers(single_row=values)

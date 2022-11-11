@@ -1,3 +1,4 @@
+import tree
 import gym
 import numpy as np
 import unittest
@@ -507,10 +508,12 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             policy_output = policy.compute_actions_from_input_dict(
                 agent_obs.data.sample_batch
             )
+            policy_output = tree.map_structure(lambda x: x[0], policy_output)
+
             agent_connector.on_policy_output(
                 ActionConnectorDataType(0, 1, {}, policy_output)
             )
-            action = policy_output[0][0]
+            action = policy_output[0]
 
             next_obs, rewards, dones, info = env.step(action)
             env_out_dict = {
