@@ -310,7 +310,7 @@ class DT(Algorithm):
         # the division makes it so the total number of transitions per train
         # step is consistent.
         num_steps = train_batch.env_steps()
-        batch_size = int(math.ceil(num_steps / self.config["model"]["max_seq_len"]))
+        batch_size = int(math.ceil(num_steps / self.config.model["max_seq_len"]))
 
         # Add the batch of episodes to the segmentation buffer.
         self.local_replay_buffer.add(train_batch)

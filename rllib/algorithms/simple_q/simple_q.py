@@ -48,7 +48,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity":  40000,
@@ -65,16 +65,16 @@ class SimpleQConfig(AlgorithmConfig):
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "SimpleQ",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "SimpleQ",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.5,
@@ -87,7 +87,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "softq",
@@ -310,7 +310,7 @@ class SimpleQ(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-        batch_size = self.config["train_batch_size"]
+        batch_size = self.config.train_batch_size
         local_worker = self.workers.local_worker()
 
         # Sample n MultiAgentBatches from n workers.
@@ -335,7 +335,7 @@ class SimpleQ(Algorithm):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Use deprecated replay() to support old replay buffers for now
             train_batch = self.local_replay_buffer.sample(batch_size)
 
@@ -356,7 +356,7 @@ class SimpleQ(Algorithm):
             )
 
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            if cur_ts - last_update >= self.config.target_network_update_freq:
                 with self._timers[TARGET_NET_UPDATE_TIMER]:
                     to_update = local_worker.get_policies_to_train()
                     local_worker.foreach_policy_to_train(
