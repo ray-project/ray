@@ -17,6 +17,11 @@ from ray.data._internal.stats import DatasetStats
 def _naive_task_execute(
     inputs: List[RefBundle], op: OneToOneOperator
 ) -> List[RefBundle]:
+    """Naively execute a 1:1 operation using Ray tasks.
+
+    TODO: This should be reconciled with ComputeStrategy.
+    """
+
     @ray.remote(num_returns=2)
     def transform_one(block: Block) -> (Block, BlockMetadata):
         [out] = list(op.execute_one([block], {}))
