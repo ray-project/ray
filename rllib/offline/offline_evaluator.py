@@ -2,11 +2,6 @@ import logging
 from typing import Dict, Any
 
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 
@@ -54,4 +49,3 @@ class OfflineEvaluator:
             Any optional metrics to return from the evaluator
         """
         return {}
-
