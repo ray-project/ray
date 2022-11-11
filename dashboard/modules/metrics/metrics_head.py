@@ -194,6 +194,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 success=False,
                 message=e.message,
             )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
+            )
 
     @routes.get("/api/progress_by_task_name")
     async def get_progress_by_task_name(self, req):
@@ -223,6 +228,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=False,
                 message=e.message,
+            )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
             )
 
     @staticmethod

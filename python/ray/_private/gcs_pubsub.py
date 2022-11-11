@@ -3,7 +3,7 @@ from collections import deque
 import logging
 import random
 import threading
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import time
 
 import grpc
@@ -144,11 +144,16 @@ class _SubscriberBase:
         return msg.key_id.decode(), msg.node_resource_usage_message.json
 
     @staticmethod
-    def _pop_actor(queue):
+    def _pop_actors(queue, batch_size=100):
         if len(queue) == 0:
-            return None, None
-        msg = queue.popleft()
-        return msg.key_id, msg.actor_message
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.actor_message))
+            popped += 1
+        return msgs
 
 
 class GcsPublisher(_PublisherBase):
@@ -386,6 +391,7 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
             return self._pop_function_key(self._queue)
 
 
+# Test-only
 class GcsActorSubscriber(_SyncSubscriber):
     """Subscriber to actor updates. Thread safe.
 
@@ -408,7 +414,7 @@ class GcsActorSubscriber(_SyncSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
-    def poll(self, timeout=None) -> Optional[bytes]:
+    def poll(self, timeout=None) -> List[Tuple[bytes, str]]:
         """Polls for new actor messages.
 
         Returns:
@@ -417,7 +423,7 @@ class GcsActorSubscriber(_SyncSubscriber):
         """
         with self._lock:
             self._poll_locked(timeout=timeout)
-            return self._pop_actor(self._queue)
+            return self._pop_actors(self._queue, batch_size=1)
 
 
 class GcsAioPublisher(_PublisherBase):
@@ -503,8 +509,8 @@ class _AioSubscriber(_SubscriberBase):
         return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
 
     async def _poll(self, timeout=None) -> None:
-        req = self._poll_request()
         while len(self._queue) == 0:
+            req = self._poll_request()
             poll = asyncio.get_event_loop().create_task(
                 self._poll_call(req, timeout=timeout)
             )
@@ -607,11 +613,15 @@ class GcsAioActorSubscriber(_AioSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
-    async def poll(self, timeout=None) -> Tuple[bytes, str]:
+    @property
+    def queue_size(self):
+        return len(self._queue)
+
+    async def poll(self, timeout=None, batch_size=500) -> List[Tuple[bytes, str]]:
         """Polls for new actor message.
 
         Returns:
             A tuple of binary actor ID and actor table data.
         """
         await self._poll(timeout=timeout)
-        return self._pop_actor(self._queue)
+        return self._pop_actors(self._queue, batch_size=batch_size)

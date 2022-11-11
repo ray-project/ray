@@ -1081,7 +1081,9 @@ def start_api_server(
 
         command = [
             *_build_python_executable_command_memory_profileable(
-                ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
+                ray_constants.PROCESS_TYPE_DASHBOARD,
+                session_dir,
+                unbuffered=False,
             ),
             dashboard_filepath,
             f"--host={host}",
