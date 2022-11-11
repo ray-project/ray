@@ -131,7 +131,7 @@ class TestEpisodeLastValues(unittest.TestCase):
             .callbacks(LastInfoCallback)
             .multi_agent(
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},
-                policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
+                policy_mapping_fn=lambda agent_id, episode, **kwargs: str(agent_id),
             ),
         )
         ev.sample()

@@ -354,7 +354,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid),
+            policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id),
             count_steps_by="agent_steps",
         )
 
