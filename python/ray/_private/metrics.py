@@ -33,6 +33,6 @@ class monitor(ContextDecorator):
         self.start = time.time()
 
     def __exit__(self, exc, value, tb):
-        self.latency_ms.observe(int(1000 * (time.time() - self.start)))
+        self.latency_ms.set(int(1000 * (time.time() - self.start)))
         if not exc:
             self.success_calls.inc()
