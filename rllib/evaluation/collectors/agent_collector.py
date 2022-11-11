@@ -136,6 +136,9 @@ class AgentCollector:
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
+            # TODO (Artur): Revisit rock_paper_scissors_multiagent and
+            #  test_multi_agent_env for cases where we accept a space that is not a
+            #  gym.Space
             if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
