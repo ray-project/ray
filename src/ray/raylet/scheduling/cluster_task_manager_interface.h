@@ -36,11 +36,6 @@ class ClusterTaskManagerInterface {
       rpc::ResourcesData &data,
       const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) = 0;
 
-  /// Populate the list of pending or infeasible actor tasks for node stats.
-  ///
-  /// \param Output parameter.
-  virtual void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const = 0;
-
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
