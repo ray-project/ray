@@ -60,7 +60,6 @@ def get_cliff_walking_wall_policy_and_data(
     n_eps = 0
     while n_eps < num_episodes:
         batch = synchronous_parallel_sample(worker_set=workers)
-
         for episode in batch.split_by_episode():
             ret = 0
             for r in episode[SampleBatch.REWARDS][::-1]:
