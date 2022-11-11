@@ -348,6 +348,10 @@ class Dreamer(Algorithm):
             < self.config.prefill_timesteps
         ):
             samples = self.workers.local_worker().sample()
+            # Dreamer only ever has one policy and we receive MA batches when
+            # connectors are on
+            if self.config.get("enable_connectors"):
+                samples = samples.policy_batches[DEFAULT_POLICY_ID]
             self.local_replay_buffer.add(samples)
 
     @override(Algorithm)
