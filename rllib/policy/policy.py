@@ -1788,8 +1788,6 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             batch_size: The size of the batch to create.
-            original_space: If True, sample from the original space and in order to
-                let connectors transform into model input space
 
         Returns:
             Dict[str, TensorType]: The dummy batch containing all zero values.
