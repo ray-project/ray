@@ -11,6 +11,7 @@ import ray.experimental.tf_utils
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
@@ -148,7 +149,20 @@ class ESTFPolicy(Policy):
         )
 
     @override(Policy)
-    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
+    def compute_actions(self, obs_batch=None, add_noise=False, update=True, **kwargs):
+        if "observation" in kwargs:
+            assert obs_batch is None, (
+                "You can not use both arguments, "
+                "`observation` and `obs_batch`. `observation` "
+                "is deprecated."
+            )
+            deprecation_warning(
+                old="ESTFPolicy.compute_actions(observation=...)`",
+                new="ESTFPolicy.compute_actions(obs_batch=...)",
+            )
+            obs_batch = kwargs["observation"]
+        else:
+            assert obs_batch is not None
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = obs_batch[0]

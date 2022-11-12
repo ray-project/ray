@@ -390,9 +390,7 @@ class Policy(metaclass=ABCMeta):
                 action (default: None -> use self.config["explore"]).
             agent_ids: Agent IDs of observations in input_dict
             env_ids: Environment IDs of observations in input_dict
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -500,9 +498,7 @@ class Policy(metaclass=ABCMeta):
                 observations.
             env_ids: Batch of env_ids, matching the environments that generated the
                 observations.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -535,6 +531,24 @@ class Policy(metaclass=ABCMeta):
                 "connectors and can not be "
                 "provided as an argument.".format(old_kwarg)
             )
+
+        # TODO(Artur): Remove this after we have migrated deepmind style
+        #  preprocessing into connectors (and don't auto-wrap in RW anymore)
+        if any(
+            [
+                o.shape == (210, 160, 3) if isinstance(o, np.ndarray) else False
+                for o in tree.flatten(next_obs_batch)
+            ]
+        ):
+            if log_once("warn_about_possibly_non_wrapped_atari_env"):
+                logger.warning(
+                    "The observation you fed into local_policy_inference() has "
+                    "dimensions (210, 160, 3), which is the standard for atari "
+                    "environments. If RLlib raises an error including a related "
+                    "dimensionality mismatch, you may need to use "
+                    "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
+                    "you environment."
+                )
 
         # Turn all None default args into lists to zip further down
         if not self._check_compute_action_agent_id_arg(agent_ids):
@@ -790,9 +804,7 @@ class Policy(metaclass=ABCMeta):
                 exploration action
                 (default: None -> use self.config["explore"]).
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Tuple consisting of the action, the list of RNN state outputs (if
@@ -885,9 +897,7 @@ class Policy(metaclass=ABCMeta):
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms. (Only relevant without connectors)
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -942,9 +952,7 @@ class Policy(metaclass=ABCMeta):
                 Set to None (default) for using the value of
                 `self.config["explore"]`.
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like

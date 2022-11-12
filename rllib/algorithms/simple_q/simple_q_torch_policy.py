@@ -60,6 +60,10 @@ class SimpleQTorchPolicy(
         return model
 
     @override(TorchPolicyV2)
+    def compute_actions(self, *args, **kwargs):
+        return self.compute_actions_from_input_dict(*args, **kwargs)
+
+    @override(TorchPolicyV2)
     def compute_actions_from_input_dict(
         self,
         input_dict: Dict[str, TensorType],
