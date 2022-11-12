@@ -142,10 +142,9 @@ class AgentCollector:
                 logger.warning(
                     f"Provided tensor\n{data}\n does not match space of view "
                     f"requirements {vr_name}.\n"
-                    f"Make sure dimensions match to resolve this error.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions and dtype match to resolve this warning."
+                    f"Make sure dimensions (and dtype) match to resolve this warning."
                 )
 
     def add_init_obs(
@@ -176,7 +175,7 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        # There must be an OBS view requirement and we can use it to check init_obs
+        # There must be an OBS view requirement
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
