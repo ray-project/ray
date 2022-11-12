@@ -170,7 +170,17 @@ class BatchingNodeProvider(NodeProvider):
             desired_num_workers=self.cur_num_workers(),  # Current scale
             workers_to_delete=set(),  # No workers to delete yet
         )
-        return list(self.node_data_dict.keys())
+        all_nodes = list(self.node_data_dict.keys())
+        # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
+        # TAG_RAY_USER_NODE_TYPE.
+        # The autoscaler only uses tag_filters={},
+        # but filtering by the these keys is useful for testing.
+        filtered_nodes = [
+            node
+            for node in all_nodes
+            if tag_filters.items() <= self.node_tags(node).items()
+        ]
+        return filtered_nodes
 
     def cur_num_workers(self):
         """Returns dict mapping node type to the number of nodes of that type."""
