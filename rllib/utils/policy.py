@@ -211,7 +211,7 @@ def local_policy_inference(
                 "The observation you fed into local_policy_inference() has "
                 "dimensions (210, 160, 3), which is the standard for atari "
                 "environments. If RLlib raises an error including a related "
-                "dimensionality mismatch, please use "
+                "dimensionality mismatch, you may need to use "
                 "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
                 "you environment."
             )

@@ -20,15 +20,13 @@ class AlwaysSameHeuristic(Policy):
                 "state_in_0": ViewRequirement(
                     "state_out_0",
                     shift=-1,
-                    # We have to choose this shape here because we construct view
-                    # requirements
                     space=gym.spaces.Box(ROCK, SCISSORS, shape=(1,), dtype=np.int32),
                 )
             }
         )
 
     def get_initial_state(self):
-        return [[random.choice([ROCK, PAPER, SCISSORS])]]
+        return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(
         self,
@@ -40,7 +38,7 @@ class AlwaysSameHeuristic(Policy):
         episodes=None,
         **kwargs
     ):
-        return state_batches[0][0], state_batches, {}
+        return [state_batches[0][0] for x in obs_batch], state_batches, {}
 
 
 class BeatLastHeuristic(Policy):

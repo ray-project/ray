@@ -136,7 +136,9 @@ class AgentCollector:
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
-            if vr.space.shape and not vr.space.shape == np.shape(data):
+            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
+            #  space that is not a gym.Space
+            if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
@@ -144,7 +146,7 @@ class AgentCollector:
                     f"requirements {vr_name}.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions (and dtype) match to resolve this warning."
+                    f"Make sure dimensions match to resolve this warning."
                 )
 
     def add_init_obs(
