@@ -7,7 +7,7 @@ class Trainer:
         self.hyperparameter = hyperparameter
         self.data = data
 
-    # Train the model on the given training data.
+    # Train the model on the given training data shard.
     def fit(self):
         return self.data * self.hyperparameter
 
