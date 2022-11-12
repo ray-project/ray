@@ -171,7 +171,8 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
-        # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, TAG_RAY_USER_NODE_TYPE
+        # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
+        # TAG_RAY_USER_NODE_TYPE.
         # The autoscaler only uses tag_filters={},
         # but filtering by the these keys is useful for testing.
         filtered_nodes = [
