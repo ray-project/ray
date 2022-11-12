@@ -1564,3 +1564,30 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
 
 def _concat_key(*values, time_major=None):
     return concat_aligned(list(values), time_major)
+
+
+@DeveloperAPI
+def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
+    """Converts a MultiAgentBatch to a SampleBatch if neccessary.
+
+    Args:
+        batch: The SampleBatchType to convert.
+
+    Returns:
+        batch: the converted SampleBatch
+
+    Raises:
+        ValueError if the MultiAgentBatch has more than one policy_id
+        or if the policy_id is not `DEFAULT_POLICY_ID`
+    """
+    if isinstance(batch, MultiAgentBatch):
+        policy_keys = batch.policy_batches.keys()
+        if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
+            batch = batch.policy_batches[DEFAULT_POLICY_ID]
+        else:
+            raise ValueError(
+                "Off-Policy Estimation is not implemented for "
+                "multi-agent batches. You can set "
+                "`off_policy_estimation_methods: {}` to resolve this."
+            )
+    return batch

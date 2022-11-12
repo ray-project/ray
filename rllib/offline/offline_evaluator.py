@@ -2,11 +2,6 @@ import logging
 from typing import Dict, Any
 
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 
@@ -54,30 +49,3 @@ class OfflineEvaluator:
             Any optional metrics to return from the evaluator
         """
         return {}
-
-    @DeveloperAPI
-    def convert_ma_batch_to_sample_batch(self, batch: SampleBatchType) -> SampleBatch:
-        """Converts a MultiAgentBatch to a SampleBatch if neccessary.
-
-        Args:
-            batch: The SampleBatchType to convert.
-
-        Returns:
-            batch: the converted SampleBatch
-
-        Raises:
-            ValueError if the MultiAgentBatch has more than one policy_id
-            or if the policy_id is not `DEFAULT_POLICY_ID`
-        """
-        # TODO: Make this a util to sample_batch.py
-        if isinstance(batch, MultiAgentBatch):
-            policy_keys = batch.policy_batches.keys()
-            if len(policy_keys) == 1 and DEFAULT_POLICY_ID in policy_keys:
-                batch = batch.policy_batches[DEFAULT_POLICY_ID]
-            else:
-                raise ValueError(
-                    "Off-Policy Estimation is not implemented for "
-                    "multi-agent batches. You can set "
-                    "`off_policy_estimation_methods: {}` to resolve this."
-                )
-        return batch

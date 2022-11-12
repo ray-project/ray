@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 import logging
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
@@ -150,7 +151,7 @@ class OffPolicyEstimator(OfflineEvaluator):
             - v_gain: v_target / max(v_behavior, 1e-8)
             - v_delta: The difference between v_target and v_behavior.
         """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
+        batch = convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = []
         if split_batch_by_episode:
