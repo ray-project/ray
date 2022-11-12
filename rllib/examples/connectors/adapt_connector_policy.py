@@ -118,17 +118,24 @@ def run(checkpoint_path):
     env = MyCartPole()
     obs = env.reset()
     done = False
+    info = {}
+    reward = 0
     step = 0
     while not done:
         step += 1
         actions, state_out, info = policy.compute_actions_from_raw_input_dict(
             env_ids=["env_1"],
             agent_ids=["agent_1"],
-            input_dict={SampleBatch.OBS: [obs]},
+            input_dict={
+                SampleBatch.OBS: [obs],
+                SampleBatch.DONES: [done],
+                SampleBatch.INFOS: [info],
+                SampleBatch.REWARDS: [reward],
+            },
         )
         print(f"step {step}", obs, actions)
 
-        obs, _, done, _ = env.step(actions)
+        obs, reward, done, info = env.step(actions)
 
 
 # __sphinx_doc_end__
