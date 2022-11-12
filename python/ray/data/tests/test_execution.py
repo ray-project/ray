@@ -1,5 +1,6 @@
 import pytest
 
+import time
 from typing import List, Any
 
 import ray
@@ -46,14 +47,22 @@ def test_basic_bulk():
     assert output == expected, (output, expected)
 
 
+def s(s, f):
+    def func(x):
+        time.sleep(s)
+        return f(x)
+
+    return func
+
+
 def test_basic_pipelined():
     executor = PipelinedExecutor(ExecutionOptions())
     inputs = make_ref_bundles([[x] for x in range(100)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
-    o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
-    o4 = MapOperator(lambda block: [b * 1 for b in block], o3)
-    o5 = MapOperator(lambda block: [b * 1 for b in block], o4)
+    o2 = MapOperator(s(0.5, lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(s(3, lambda block: [b * 2 for b in block]), o2)
+    o4 = MapOperator(s(0.5, lambda block: [b * 1 for b in block]), o3)
+    o5 = MapOperator(s(2, lambda block: [b * 1 for b in block]), o4)
     it = executor.execute(o5)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(100)]

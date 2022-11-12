@@ -29,6 +29,7 @@ class _OpState:
         self.op = op
         self.progress_bar = None
         self.num_active_tasks = 0
+        self.num_completed_tasks = 0
 
     def initialize_progress_bar(self, index: int) -> None:
         self.progress_bar = ProgressBar(
@@ -40,6 +41,7 @@ class _OpState:
 
     def add_output(self, ref: RefBundle) -> None:
         self.outqueue.append(ref)
+        self.num_completed_tasks += 1
         if self.progress_bar:
             self.progress_bar.update(1)
 
@@ -187,13 +189,13 @@ class PipelinedExecutor(Executor):
         The objective of this function is to maximize the throughput of the overall
         pipeline, subject to defined memory and parallelism limits.
         """
-        PARALLELISM_LIMIT = 4
+        PARALLELISM_LIMIT = 8
         if len(self._active_tasks) >= PARALLELISM_LIMIT:
             return None
 
         # TODO: improve the prioritization.
         pairs = list(self._operator_state.items())
-        pairs.sort(key=lambda p: p[1].num_active_tasks)
+        pairs.sort(key=lambda p: len(p[1].outqueue) + p[1].num_active_tasks)
 
         for op, state in pairs:
             if isinstance(op, OneToOneOperator):
