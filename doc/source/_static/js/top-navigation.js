@@ -4,8 +4,6 @@
 // navigation bar.
 document.getElementsByClassName("announcement")[0].classList.remove("header-item")
 
-documentation_root = document.getElementsByClassName("navbar-brand")[0].href
-
 // Get the right relative URL for a given path
 function getNavURL(url) {
     references = document.getElementsByClassName("reference internal")
