@@ -390,9 +390,7 @@ class Policy(metaclass=ABCMeta):
                 action (default: None -> use self.config["explore"]).
             agent_ids: Agent IDs of observations in input_dict
             env_ids: Environment IDs of observations in input_dict
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -500,9 +498,7 @@ class Policy(metaclass=ABCMeta):
                 observations.
             env_ids: Batch of env_ids, matching the environments that generated the
                 observations.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -790,9 +786,7 @@ class Policy(metaclass=ABCMeta):
                 exploration action
                 (default: None -> use self.config["explore"]).
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Tuple consisting of the action, the list of RNN state outputs (if
@@ -885,9 +879,7 @@ class Policy(metaclass=ABCMeta):
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms. (Only relevant without connectors)
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -942,9 +934,7 @@ class Policy(metaclass=ABCMeta):
                 Set to None (default) for using the value of
                 `self.config["explore"]`.
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
