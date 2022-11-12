@@ -1763,12 +1763,17 @@ class AutoscalingTest(unittest.TestCase):
         """Test autoscaling with node launcher in the foreground."""
         self.helperDynamicScaling(foreground_node_launcher=True)
 
+    def testDynamicScalingBatchingNodeProvider(self):
+        """Test autoscaling with BatchingNodeProvider"""
+        self.helperDynamicScaling(batching_node_provider=True)
+
     def _helperDynamicScaling(
         self,
         mock_metrics,
         mock_node_info_stub,
         foreground_node_launcher=False,
         disable_drain=False,
+        batching_node_provider=False,
     ):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 2

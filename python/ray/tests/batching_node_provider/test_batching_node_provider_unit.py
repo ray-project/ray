@@ -218,14 +218,46 @@ class BatchingNodeProviderTester:
                 del self.expected_node_counts[k]
         assert actual_node_counts == self.expected_node_counts
 
+        # Get node counts again using tag filters.
+        actual_node_counts_again = {}
+        for node_type in actual_node_counts:
+            actual_node_counts_again[node_type] = len(
+                self.node_provider.non_terminated_nodes(
+                    tag_filters={TAG_RAY_USER_NODE_TYPE: node_type}
+                )
+            )
+        assert actual_node_counts_again == self.expected_node_counts
+
+        # Check filtering by node kind.
+        workers = self.node_provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+        )
+        heads = self.node_provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
+        )
+        assert len(heads) == 1
+        assert set(nodes) == set(workers) | set(heads)
+
+        # Check filtering by status.
+        up_to_date_nodes = self.node_provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE}
+        )
+        assert set(up_to_date_nodes) == set(nodes)
+
         # Make some assertions about internal structure of the node provider.
         expected_node_counts_without_head = copy(self.expected_node_counts)
         del expected_node_counts_without_head["head-group"]
+        # Desired number of workers immediately after calling non_terminated_nodes is
+        # current number of workers.
         assert (
             self.node_provider.scale_request.desired_num_workers
             == expected_node_counts_without_head
         )
+        # scale_change_needed should be reset after calling non_terminated_nodes
+        # (meaning: we've just obtained cluster state and have no indication
+        # from create_node or terminate_node calls that scale needs to change.)
         assert self.node_provider.scale_change_needed is False
+        # We've submitted the expected number of scale requests:
         assert (
             self.node_provider._scale_request_submitted_count
             == self.expected_scale_request_submitted_count
