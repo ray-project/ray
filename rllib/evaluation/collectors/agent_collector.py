@@ -145,10 +145,9 @@ class AgentCollector:
                 logger.warning(
                     f"Provided tensor\n{data}\n does not match space of view "
                     f"requirements {vr_name}.\n"
-                    f"Make sure dimensions match to resolve this error.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions and dtype match to resolve this warning."
+                    f"Make sure dimensions match to resolve this warning."
                 )
 
     def add_init_obs(
