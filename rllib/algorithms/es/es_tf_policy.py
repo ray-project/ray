@@ -161,6 +161,8 @@ class ESTFPolicy(Policy):
                 new="ESTFPolicy.compute_actions(obs_batch=...)",
             )
             obs_batch = kwargs["observation"]
+        else:
+            assert obs_batch is not None
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = obs_batch[0]
