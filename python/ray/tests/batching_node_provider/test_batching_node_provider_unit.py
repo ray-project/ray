@@ -47,12 +47,15 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         # Fake cluster manager state:
         self._node_data_dict: Dict[NodeID, NodeData] = {}
 
-        self._add_node(node_type="head-group", node_kind=NODE_KIND_HEAD)
+        self._add_node(node_type="head", node_kind=NODE_KIND_HEAD)
         # Allow unit test to the control output of safe_to_scale.
         self._safe_to_scale_test_flag = True
         self._scale_request_submitted_count = 0
+        # Track non_terminated_nodes_calls for use in test_autoscaler.py
+        self.num_non_terminated_nodes_calls = 0
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
+        self.num_non_terminated_nodes_calls += 1
         return self._node_data_dict
 
     def submit_scale_request(self, scale_request: ScaleRequest) -> None:
@@ -82,6 +85,13 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
             kind=node_kind, ip=str(uuid4()), status=STATUS_UP_TO_DATE, type=node_type
         )
 
+    def non_terminated_node_ips(self, tag_filters):
+        """This method is used in test_autoscaler.py."""
+        return [
+            node_data.ip for node_id, node_data in self._node_data_dict.items()
+            if tag_filters.items() <= self.node_tags(node_id).items()
+        ]
+
     def safe_to_scale(self) -> bool:
         return self._safe_to_scale_test_flag
 
@@ -106,7 +116,7 @@ class BatchingNodeProviderTester:
         )
         # Maps node types to expected node counts.
         self.expected_node_counts = defaultdict(int)
-        self.expected_node_counts["head-group"] = 1
+        self.expected_node_counts["head"] = 1
         # Tracks how many times we expect a scale request to have been submitted.
         self.expected_scale_request_submitted_count = 0
 
@@ -203,7 +213,7 @@ class BatchingNodeProviderTester:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             node_kind = tags[TAG_RAY_NODE_KIND]
             node_status = tags[TAG_RAY_NODE_STATUS]
-            if node_type == "head-group":
+            if node_type == "head":
                 assert node_kind == NODE_KIND_HEAD
             else:
                 assert node_kind == NODE_KIND_WORKER
@@ -246,7 +256,7 @@ class BatchingNodeProviderTester:
 
         # Make some assertions about internal structure of the node provider.
         expected_node_counts_without_head = copy(self.expected_node_counts)
-        del expected_node_counts_without_head["head-group"]
+        del expected_node_counts_without_head["head"]
         # Desired number of workers immediately after calling non_terminated_nodes is
         # current number of workers.
         assert (
