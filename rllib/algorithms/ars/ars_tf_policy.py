@@ -11,6 +11,7 @@ from ray.rllib.algorithms.es.es_tf_policy import make_session
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
@@ -92,6 +93,10 @@ class ARSTFPolicy(Policy):
                 "You can not use both arguments, "
                 "`observation` and `obs_batch`. `observation` "
                 "is deprecated."
+            )
+            deprecation_warning(
+                old="ARSTFPolicy.compute_actions(observation=...)`",
+                new="ARSTFPolicy.compute_actions(obs_batch=...)",
             )
             obs_batch = kwargs["observation"]
         # Squeeze batch dimension (we always calculate actions for only a
