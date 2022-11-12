@@ -1415,33 +1415,75 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
 
-        # Input-dict.
-        if input_dict is not None:
-            input_dict[SampleBatch.OBS] = observation
-            action, state, extra = policy.compute_single_action(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-        # Individual args.
+            # Input-dict.
+            if input_dict is not None:
+                input_dict[SampleBatch.OBS] = observation
+                action, state, extra = policy.compute_single_action(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
+            # Individual args.
+            else:
+                action, state, extra = policy.compute_single_action(
+                    obs=observation,
+                    state=state,
+                    prev_action=prev_action,
+                    prev_reward=prev_reward,
+                    info=info,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
         else:
-            action, state, extra = policy.compute_single_action(
-                obs=observation,
-                state=state,
-                prev_action=prev_action,
-                prev_reward=prev_reward,
-                info=info,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
+            for old_kwarg in [
+                "state",
+                "prev_action",
+                "prev_reward",
+                "episodes",
+            ]:
+                if old_kwarg is not None:
+                    if log_once(f"deprecating_{old_kwarg}"):
+                        logger.warning(
+                            "Within the context of connectors, "
+                            "{} is internally built by "
+                            "connectors and can not be "
+                            "provided as an argument.".format(old_kwarg)
+                        )
+            if input_dict is not None:
+                input_dict[SampleBatch.OBS] = observation
+                action, state, extra = policy.compute_actions_from_raw_input_dict(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
+                # We compute batched data here, se reduce dimension
+                action = action[0]
+                state = state[0] if len(state) else state
+                extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
+            else:
+                action, state, extra = policy.compute_actions_from_raw_input(
+                    next_obs_batch=[observation],
+                    reward_batch=[prev_reward],
+                    dones_batch=[False],
+                    info_batch=[{}],
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
+                # We compute batched data here, se reduce dimension
+                action = action[0]
+                state = state[0] if len(state) else state
+                extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
 
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
@@ -1452,7 +1494,7 @@ class Algorithm(Trainable):
             action = space_utils.clip_action(action, policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
-        if state or full_fetch:
+        if len(state) or full_fetch:
             return action, state, extra
         # Ensure backward compatibility.
         else:
