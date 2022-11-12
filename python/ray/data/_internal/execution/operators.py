@@ -1,4 +1,4 @@
-from typing import List, Iterator
+from typing import List, Iterator, Optional
 
 from ray.data.block import Block
 from ray.data._internal.execution.interfaces import (
@@ -15,7 +15,8 @@ class InputDataBuffer(BufferOperator):
 
     def __init__(self, input_data: List[RefBundle]):
         self._input_data = input_data
-        super().__init__([])
+        self._num_outputs = len(input_data)
+        super().__init__("Input", [])
 
     def has_next(self) -> bool:
         return len(self._input_data) > 0
@@ -23,13 +24,16 @@ class InputDataBuffer(BufferOperator):
     def get_next(self) -> RefBundle:
         return self._input_data.pop(0)
 
+    def num_outputs_total(self) -> Optional[int]:
+        return self._num_outputs
+
 
 class MapOperator(OneToOneOperator):
     """Defines a simple map operation over blocks."""
 
     def __init__(self, block_transform: BlockTransform, input_op: PhysicalOperator):
         self._block_transform = block_transform
-        super().__init__([input_op])
+        super().__init__("Map", [input_op])
 
     def execute_one(self, block_bundle: Iterator[Block], _) -> Iterator[Block]:
         def apply_transform(fn, block_bundle):

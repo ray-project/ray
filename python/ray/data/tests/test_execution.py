@@ -31,31 +31,30 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     for bundle in bundles:
         for block, _ in bundle.blocks:
             output.append(ray.get(block))
-            print("Output", output[-1])
     return output
 
 
 def test_basic_bulk():
     executor = BulkExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(10)])
+    inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
     o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
     it = executor.execute(o3)
     output = ref_bundles_to_list(it)
-    expected = [[x * -2] for x in range(10)]
+    expected = [[x * -2] for x in range(20)]
     assert output == expected, (output, expected)
 
 
 def test_basic_pipelined():
     executor = PipelinedExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(10)])
+    inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
     o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
     it = executor.execute(o3)
     output = ref_bundles_to_list(it)
-    expected = [[x * -2] for x in range(10)]
+    expected = [[x * -2] for x in range(20)]
     assert sorted(output) == sorted(expected), (output, expected)
 
 

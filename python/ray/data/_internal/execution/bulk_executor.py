@@ -16,7 +16,6 @@ from ray.data._internal.stats import DatasetStats
 
 @ray.remote(num_returns=2)
 def _transform_one(op: OneToOneOperator, block: Block) -> (Block, BlockMetadata):
-    print("Processing", block)
     import time
 
     time.sleep(0.5)

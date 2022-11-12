@@ -12,20 +12,47 @@ from ray.data._internal.execution.interfaces import (
     BufferOperator,
 )
 from ray.data._internal.execution.bulk_executor import _transform_one
+from ray.data._internal.execution.operators import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 from ray.types import ObjectRef
 
+
 class _OpState:
     """Execution state for a PhysicalOperator."""
-    def __init__(self, num_inputs: int):
-        self.inqueues: List[List[RefBundle]] = [[] for _ in range(num_inputs)]
+
+    def __init__(self, op: PhysicalOperator):
+        self.inqueues: List[List[RefBundle]] = [
+            [] for _ in range(len(op.input_dependencies))
+        ]
         self.outqueue: List[RefBundle] = []
+        self.op = op
+        self.progress_bar = None
+        self.num_active_tasks = 0
+
+    def initialize_progress_bar(self, index: int) -> None:
+        self.progress_bar = ProgressBar(
+            self.op.name, self.op.num_outputs_total(), index
+        )
+
+    def add_output(self, ref: RefBundle) -> None:
+        self.outqueue.append(ref)
+        if self.progress_bar:
+            self.progress_bar.update(1)
+        self.refresh_progress_bar()
+
+    def refresh_progress_bar(self) -> None:
+        if self.progress_bar:
+            queued = len(self.inqueues[0]) if self.inqueues else 0
+            self.progress_bar.set_description(
+                f"{self.op.name}: {self.num_active_tasks} active, {queued} queued"
+            )
 
 
 # TODO: reconcile with ComputeStrategy
 class _OneToOneTask:
     """Execution state for OneToOneOperator task."""
+
     def __init__(self, op: OneToOneOperator, state: _OpState, inputs: RefBundle):
         self._op: OneToOneOperator = op
         self._state: _OpState = state
@@ -39,11 +66,14 @@ class _OneToOneTask:
         self._block_ref, self._meta_ref = _transform_one.remote(
             self._op, self._inputs.blocks[0][0]
         )
+        self._state.num_active_tasks += 1
+        self._state.refresh_progress_bar()
         return self._meta_ref
 
     def completed(self):
         meta = ray.get(self._meta_ref)
-        self._state.outqueue.append(RefBundle([(self._block_ref, meta)]))
+        self._state.num_active_tasks -= 1
+        self._state.add_output(RefBundle([(self._block_ref, meta)]))
 
 
 # TODO: optimize memory usage by deleting intermediate results.
@@ -76,7 +106,7 @@ class PipelinedExecutor(Executor):
 
     def _scheduling_loop_step(self) -> None:
         """Run one step of the pipeline scheduling loop.
-        
+
         This runs a few general phases:
             1. Waiting for the next task completion using `ray.wait()`.
             2. Pushing updates through operator inqueues / outqueues.
@@ -103,7 +133,7 @@ class PipelinedExecutor(Executor):
                 return self._operator_state[node]
 
             # Create state if it doesn't exist.
-            state = _OpState(len(node.input_dependencies))
+            state = _OpState(node)
             self._operator_state[node] = state
 
             # Wire up the input outqueues to this node's inqueues.
@@ -115,6 +145,12 @@ class PipelinedExecutor(Executor):
 
         setup_state(dag)
         self._output_node = dag
+
+        i = 0
+        for state in list(self._operator_state.values())[::-1]:
+            if not isinstance(state.op, InputDataBuffer):
+                state.initialize_progress_bar(i)
+                i += 1
 
     def _process_completed_tasks(self) -> None:
         """Process any newly completed tasks and update operator state.
@@ -135,7 +171,7 @@ class PipelinedExecutor(Executor):
                     while inqueue:
                         op.add_next(state.inqueue.pop(0), input_index=i)
                 while op.has_next():
-                    state.outqueue.append(op.get_next())
+                    state.add_output(op.get_next())
             elif isinstance(op, AllToAllOperator):
                 pass
             elif isinstance(op, OneToOneOperator):

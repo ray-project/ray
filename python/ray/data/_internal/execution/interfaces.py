@@ -80,10 +80,15 @@ class PhysicalOperator:
     BufferOperators transform the *structure* of one or more input streams.
     """
 
-    def __init__(self, input_dependencies: List["PhysicalOperator"]):
+    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
+        self._name = name
         self._input_dependencies = input_dependencies
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
@@ -92,6 +97,15 @@ class PhysicalOperator:
             self, "_input_dependencies"
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
+
+    def num_outputs_total(self) -> Optional[int]:
+        """Returns the total number of output bundles of this operator, if known.
+
+        This is useful for reporting progress.
+        """
+        if len(self.input_dependencies) == 1:
+            return self.input_dependencies[0].num_outputs_total()
+        return None
 
 
 class Executor:
