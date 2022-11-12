@@ -14,6 +14,16 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
 
+@ray.remote(num_returns=2)
+def _transform_one(op: OneToOneOperator, block: Block) -> (Block, BlockMetadata):
+    print("Processing", block)
+    import time
+
+    time.sleep(1)
+    [out] = list(op.execute_one([block], {}))
+    return out, BlockAccessor.for_block(out).get_metadata([], None)
+
+
 def _naive_task_execute(
     inputs: List[RefBundle], op: OneToOneOperator
 ) -> List[RefBundle]:
@@ -22,11 +32,6 @@ def _naive_task_execute(
     TODO: This should be reconciled with ComputeStrategy.
     """
 
-    @ray.remote(num_returns=2)
-    def transform_one(block: Block) -> (Block, BlockMetadata):
-        [out] = list(op.execute_one([block], {}))
-        return out, BlockAccessor.for_block(out).get_metadata([], None)
-
     input_blocks = []
     for bundle in inputs:
         for block, _ in bundle.blocks:
@@ -34,7 +39,7 @@ def _naive_task_execute(
 
     out_blocks, out_meta = [], []
     for in_b in input_blocks:
-        out_b, out_m = transform_one.remote(in_b)
+        out_b, out_m = _transform_one.remote(op, in_b)
         out_blocks.append(out_b)
         out_meta.append(out_m)
 
