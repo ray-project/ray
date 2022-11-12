@@ -20,8 +20,6 @@ class AlwaysSameHeuristic(Policy):
                 "state_in_0": ViewRequirement(
                     "state_out_0",
                     shift=-1,
-                    # We have to choose this shape here because we construct view
-                    # requirements
                     space=gym.spaces.Box(ROCK, SCISSORS, shape=(1,), dtype=np.int32),
                 )
             }

@@ -135,19 +135,17 @@ class AgentCollector:
             vr = self.view_requirements[vr_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
-            # TODO (Artur): Revisit rock_paper_scissors_multiagent and
-            #  test_multi_agent_env for cases where we accept a space that is not a
-            #  gym.Space
+            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
+            #  space that is not a gym.Space
             if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
                     f"Provided tensor\n{data}\n does not match space of view "
                     f"requirements {vr_name}.\n"
-                    f"Make sure dimensions match to resolve this error.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions and dtype match to resolve this warning."
+                    f"Make sure dimensions match to resolve this warning."
                 )
 
     def add_init_obs(
@@ -178,7 +176,7 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        # There must be an OBS view requirement and we can use it to check init_obs
+        # There must be an OBS view requirement
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
