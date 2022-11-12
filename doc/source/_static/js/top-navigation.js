@@ -1,4 +1,7 @@
-// Remove the black background from the announcement banner
+// Remove the black background from the announcement banner. We abuse the
+// sphinx-book-theme announcement feature to place a navigation bar on top of the
+// documentation. This javascript file replaces the announcement banner with the
+// navigation bar.
 document.getElementsByClassName("announcement")[0].classList.remove("header-item")
 
 documentation_root = document.getElementsByClassName("navbar-brand")[0].href
