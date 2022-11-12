@@ -86,7 +86,14 @@ class ARSTFPolicy(Policy):
             for _, variable in self.variables.variables.items()
         )
 
-    def compute_actions(self, obs_batch, add_noise=False, update=True, **kwargs):
+    def compute_actions(self, obs_batch=None, add_noise=False, update=True, **kwargs):
+        if "observation" in kwargs:
+            assert obs_batch is None, (
+                "You can not use both arguments, "
+                "`observation` and `obs_batch`. `observation` "
+                "is deprecated."
+            )
+            obs_batch = kwargs["observation"]
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = obs_batch[0]
