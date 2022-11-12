@@ -125,26 +125,31 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
-    def _check_view_requirement(self, vr_name: str, data: TensorType):
-        """Raises an AssertionError if data does not fit all view requirements that
-        have a view on data_col. Excludes ENV_ID that don't have a ViewRequirements."""
+    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
+        """Warns if data does not fit the view requirement.
+
+        Should raise an AssertionError if data does not fit the view requirement in the
+        future.
+        """
 
         if (
-            log_once(f"view_requirement_{vr_name}_checked_in_agent_collector")
-            and vr_name in self.view_requirements
+            log_once(
+                f"view_requirement_"
+                f"{view_requirement_name}_checked_in_agent_collector"
+            )
+            and view_requirement_name in self.view_requirements
         ):
-            vr = self.view_requirements[vr_name]
+            vr = self.view_requirements[view_requirement_name]
             # We only check for the shape here, because conflicting dtypes are often
             # because of float conversion
-            # TODO (Artur): Revisit rock_paper_scissors_multiagent and
-            #  test_multi_agent_env for cases where we accept a space that is not a
-            #  gym.Space
-            if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
+            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
+            #  space that is not a gym.Space
+            if hasattr(vr.space, "shape") and not vr.space.shape == data.shape:
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
                     f"Provided tensor\n{data}\n does not match space of view "
-                    f"requirements {vr_name}.\n"
+                    f"requirements {view_requirement_name}.\n"
                     f"Provided tensor has shape {np.shape(data)} and view requirement "
                     f"has shape shape {vr.space.shape}."
                     f"Make sure dimensions match to resolve this warning."
@@ -178,7 +183,8 @@ class AgentCollector:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
 
-        # There must be an OBS view requirement and we can use it to check init_obs
+        # When adding initial observation, it's expected that the view_requirement
+        # dict has the SampleBatch.OBS key
         self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
