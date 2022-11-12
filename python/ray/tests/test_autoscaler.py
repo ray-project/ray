@@ -62,7 +62,9 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2
-from ray.tests.batching_node_provider.test_batching_node_provider_unit import MockBatchingNodeProvider
+from ray.tests.batching_node_provider.test_batching_node_provider_unit import (
+    MockBatchingNodeProvider,
+)
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -445,9 +447,8 @@ class MockAutoscaler(StandardAutoscaler):
 
     def _update(self):
         # Only works with MockProvider or MockBatchingNodeProvider.
-        assert (
-            isinstance(self.provider, MockProvider)
-            or isinstance(self.provider, MockBatchingNodeProvider)
+        assert isinstance(self.provider, MockProvider) or isinstance(
+            self.provider, MockBatchingNodeProvider
         )
         start_calls = self.provider.num_non_terminated_nodes_calls
         super()._update()
@@ -1774,7 +1775,8 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScalingBatchingNodeProvider(self):
         """Test autoscaling with BatchingNodeProvider"""
         self.helperDynamicScaling(
-            foreground_node_launcher=True, batching_node_provider=True)
+            foreground_node_launcher=True, batching_node_provider=True
+        )
 
     def _helperDynamicScaling(
         self,
@@ -1785,9 +1787,9 @@ class AutoscalingTest(unittest.TestCase):
         disable_drain=False,
     ):
         if batching_node_provider:
-            assert foreground_node_launcher, (
-                "BatchingNodeProvider requires foreground node launch."
-            )
+            assert (
+                foreground_node_launcher
+            ), "BatchingNodeProvider requires foreground node launch."
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 2
         if foreground_node_launcher:

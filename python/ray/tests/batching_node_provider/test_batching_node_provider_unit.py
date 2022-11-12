@@ -88,7 +88,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
     def non_terminated_node_ips(self, tag_filters):
         """This method is used in test_autoscaler.py."""
         return [
-            node_data.ip for node_id, node_data in self._node_data_dict.items()
+            node_data.ip
+            for node_id, node_data in self._node_data_dict.items()
             if tag_filters.items() <= self.node_tags(node_id).items()
         ]
 
