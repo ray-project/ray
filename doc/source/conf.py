@@ -202,12 +202,13 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
-    "show_navbar_depth": 0,
+    "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
         "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
+    "announcement": "<div class='topnav'></div>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -322,7 +323,7 @@ def setup(app):
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
-    app.add_js_file("js/try-anyscale.js", defer="defer")
+    app.add_js_file("js/top-navigation.js", defer="defer")
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
