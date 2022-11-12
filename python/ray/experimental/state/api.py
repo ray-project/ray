@@ -8,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
+from ray._private.usage.usage_lib import TagKey, record_usage
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -525,6 +526,7 @@ class StateApiClient(SubmissionClient):
         return summary_api_response["result"]["node_id_to_summary"]
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_actor")
 def get_actor(
     id: str,
     address: Optional[str] = None,
@@ -555,6 +557,7 @@ def get_actor(
 
 
 # TODO(rickyyx:alpha-obs)
+@record_usage(TagKey.CORE_STATE_API, "get_job")
 def get_job(
     id: str,
     address: Optional[str] = None,
@@ -564,6 +567,7 @@ def get_job(
     raise NotImplementedError("Get Job by id is currently not supported")
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_placement_group")
 def get_placement_group(
     id: str,
     address: Optional[str] = None,
@@ -596,6 +600,7 @@ def get_placement_group(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_node")
 def get_node(
     id: str,
     address: Optional[str] = None,
@@ -628,6 +633,7 @@ def get_node(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_worker")
 def get_worker(
     id: str,
     address: Optional[str] = None,
@@ -660,6 +666,7 @@ def get_worker(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_task")
 def get_task(
     id: str,
     address: Optional[str] = None,
@@ -692,6 +699,7 @@ def get_task(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_objects")
 def get_objects(
     id: str,
     address: Optional[str] = None,
@@ -726,6 +734,7 @@ def get_objects(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_actors")
 def list_actors(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -773,6 +782,7 @@ def list_actors(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_placement_groups")
 def list_placement_groups(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -817,6 +827,7 @@ def list_placement_groups(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_nodes")
 def list_nodes(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -861,6 +872,7 @@ def list_nodes(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_jobs")
 def list_jobs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -905,6 +917,7 @@ def list_jobs(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_workers")
 def list_workers(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -949,6 +962,7 @@ def list_workers(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_tasks")
 def list_tasks(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -993,6 +1007,7 @@ def list_tasks(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_objects")
 def list_objects(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1037,6 +1052,7 @@ def list_objects(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_runtime_envs")
 def list_runtime_envs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1081,6 +1097,7 @@ def list_runtime_envs(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_cluster_events")
 def list_cluster_events(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1105,6 +1122,7 @@ Log APIs
 """
 
 
+@record_usage(TagKey.CORE_STATE_API, "get_log")
 def get_log(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1196,6 +1214,7 @@ def get_log(
             yield logs
 
 
+@record_usage(TagKey.CORE_STATE_API, "list_logs")
 def list_logs(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1259,6 +1278,7 @@ Summary APIs
 """
 
 
+@record_usage(TagKey.CORE_STATE_API, "summarize_tasks")
 def summarize_tasks(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1291,6 +1311,7 @@ def summarize_tasks(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "summarize_actors")
 def summarize_actors(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1323,6 +1344,7 @@ def summarize_actors(
     )
 
 
+@record_usage(TagKey.CORE_STATE_API, "summarize_objects")
 def summarize_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,

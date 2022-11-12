@@ -1,7 +1,7 @@
 """This is the module that is in charge of Ray usage report (telemetry) APIs.
 
-NOTE: Ray's usage report is currently "off by default".
-      But we are planning to make it opt-in by default.
+NOTE: Ray's usage report is currently "on by default".
+      One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
 https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
@@ -50,6 +50,7 @@ import re
 import sys
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -262,6 +263,9 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
+    # Ray Core State API
+    CORE_STATE_API = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
@@ -322,6 +326,12 @@ def record_library_usage(library_usage: str):
         or ray.util.client.ray.is_connected()
     ):
         _put_library_usage(library_usage)
+
+
+@contextmanager
+def record_usage(tag_key: TagKey, tag_value: str):
+    record_extra_usage_tag(tag_key, tag_value)
+    yield
 
 
 def _put_pre_init_library_usages():
