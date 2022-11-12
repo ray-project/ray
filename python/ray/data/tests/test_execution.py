@@ -48,13 +48,15 @@ def test_basic_bulk():
 
 def test_basic_pipelined():
     executor = PipelinedExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(100)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
     o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
-    it = executor.execute(o3)
+    o4 = MapOperator(lambda block: [b * 1 for b in block], o3)
+    o5 = MapOperator(lambda block: [b * 1 for b in block], o4)
+    it = executor.execute(o5)
     output = ref_bundles_to_list(it)
-    expected = [[x * -2] for x in range(20)]
+    expected = [[x * -2] for x in range(100)]
     assert sorted(output) == sorted(expected), (output, expected)
 
 

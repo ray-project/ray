@@ -35,15 +35,17 @@ class _OpState:
             self.op.name, self.op.num_outputs_total(), index
         )
 
+    def num_queued(self) -> int:
+        return sum(len(q) for q in self.inqueues)
+
     def add_output(self, ref: RefBundle) -> None:
         self.outqueue.append(ref)
         if self.progress_bar:
             self.progress_bar.update(1)
-        self.refresh_progress_bar()
 
     def refresh_progress_bar(self) -> None:
         if self.progress_bar:
-            queued = len(self.inqueues[0]) if self.inqueues else 0
+            queued = self.num_queued()
             self.progress_bar.set_description(
                 f"{self.op.name}: {self.num_active_tasks} active, {queued} queued"
             )
@@ -67,7 +69,6 @@ class _OneToOneTask:
             self._op, self._inputs.blocks[0][0]
         )
         self._state.num_active_tasks += 1
-        self._state.refresh_progress_bar()
         return self._meta_ref
 
     def completed(self):
@@ -178,6 +179,7 @@ class PipelinedExecutor(Executor):
                 pass
             else:
                 assert False, "Unknown operator type: {}".format(op)
+            state.refresh_progress_bar()
 
     def _select_operator_to_run(self) -> Optional[PhysicalOperator]:
         """Select an operator to run, if possible.
@@ -185,12 +187,15 @@ class PipelinedExecutor(Executor):
         The objective of this function is to maximize the throughput of the overall
         pipeline, subject to defined memory and parallelism limits.
         """
-        PARALLELISM_LIMIT = 2
+        PARALLELISM_LIMIT = 4
         if len(self._active_tasks) >= PARALLELISM_LIMIT:
             return None
 
-        # TODO: pipeline scheduling and prioritization.
-        for op, state in self._operator_state.items():
+        # TODO: improve the prioritization.
+        pairs = list(self._operator_state.items())
+        pairs.sort(key=lambda p: p[1].num_active_tasks)
+
+        for op, state in pairs:
             if isinstance(op, OneToOneOperator):
                 assert len(state.inqueues) == 1, "OneToOne takes exactly 1 input"
                 if state.inqueues[0]:
