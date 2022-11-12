@@ -330,6 +330,18 @@ def record_library_usage(library_usage: str):
 
 @contextmanager
 def record_usage(tag_key: TagKey, tag_value: str):
+    """A simple contextmanager fo recording extra usage tag
+
+    Args:
+        tag_key: TagKey defined
+        tag_value: string value
+
+    Example:
+        @record_usage(TagKey.MY_KEY, "MY_VAL")
+        def func(a, b):
+            ...
+
+    """
     record_extra_usage_tag(tag_key, tag_value)
     yield
 
