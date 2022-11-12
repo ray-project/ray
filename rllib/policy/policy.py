@@ -532,6 +532,24 @@ class Policy(metaclass=ABCMeta):
                 "provided as an argument.".format(old_kwarg)
             )
 
+        # TODO(Artur): Remove this after we have migrated deepmind style
+        #  preprocessing into connectors (and don't auto-wrap in RW anymore)
+        if any(
+            [
+                o.shape == (210, 160, 3) if isinstance(o, np.ndarray) else False
+                for o in tree.flatten(next_obs_batch)
+            ]
+        ):
+            if log_once("warn_about_possibly_non_wrapped_atari_env"):
+                logger.warning(
+                    "The observation you fed into local_policy_inference() has "
+                    "dimensions (210, 160, 3), which is the standard for atari "
+                    "environments. If RLlib raises an error including a related "
+                    "dimensionality mismatch, you may need to use "
+                    "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
+                    "you environment."
+                )
+
         # Turn all None default args into lists to zip further down
         if not self._check_compute_action_agent_id_arg(agent_ids):
             # Assume there is only one agent
