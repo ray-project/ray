@@ -4,6 +4,7 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data._internal.execution.interfaces import (
     Executor,
+    ExecutionOptions,
     RefBundle,
     PhysicalOperator,
     OneToOneOperator,
@@ -15,8 +16,8 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 from ray.types import ObjectRef
 
-
 class _OpState:
+    """Execution state for a PhysicalOperator."""
     def __init__(self, num_inputs: int):
         self.inqueues: List[List[RefBundle]] = [[] for _ in range(num_inputs)]
         self.outqueue: List[RefBundle] = []
@@ -24,6 +25,7 @@ class _OpState:
 
 # TODO: reconcile with ComputeStrategy
 class _OneToOneTask:
+    """Execution state for OneToOneOperator task."""
     def __init__(self, op: OneToOneOperator, state: _OpState, inputs: RefBundle):
         self._op: OneToOneOperator = op
         self._state: _OpState = state
@@ -44,32 +46,65 @@ class _OneToOneTask:
         self._state.outqueue.append(RefBundle([(self._block_ref, meta)]))
 
 
+# TODO: optimize memory usage by deleting intermediate results.
+# TODO: implement order preservation.
 class PipelinedExecutor(Executor):
+    def __init__(self, options: ExecutionOptions):
+        # Operator state for the executing pipeline, populated on execution start.
+        self._operator_state: Dict[PhysicalOperator, _OpState] = {}
+        self._output_node: Optional[PhysicalOperator] = None
+        self._active_tasks: List[ObjectRef, _OneToOneTask] = {}
+        super().__init__(options)
+
     def execute(self, dag: PhysicalOperator) -> Iterator[RefBundle]:
-        """Executes the DAG using a fully pipelined strategy.
+        """Executes the DAG using a pipelined execution strategy.
 
-        TODO: optimize memory usage by deleting intermediate results and marking
-        the `owned` field in the ref bundles correctly.
-
-        TODO: implement order preservation.
+        We take an event-loop approach to scheduling. We block on the next scheduling
+        event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+        self._init_operator_state(dag)
+        i = 0
+        while self._active_tasks or i == 0:
+            self._scheduling_loop_step()
+            i += 1
+            output = self._operator_state[self._output_node]
+            while output.outqueue:
+                yield output.outqueue.pop(0)
 
-        # TODO: implement parallelism control and autoscaling strategies.
-        PARALLELISM_LIMIT = 2
+    def get_stats() -> DatasetStats:
+        raise NotImplementedError
 
-        # TODO: make these class members so we can unit test this.
-        operator_state: Dict[PhysicalOperator, _OpState] = {}
-        candidate_tasks: Dict[PhysicalOperator, _OneToOneTask] = {}
-        active_tasks: List[ObjectRef, _OneToOneTask] = {}
+    def _scheduling_loop_step(self) -> None:
+        """Run one step of the pipeline scheduling loop.
+        
+        This runs a few general phases:
+            1. Waiting for the next task completion using `ray.wait()`.
+            2. Pushing updates through operator inqueues / outqueues.
+            3. Selecting and dispatching new operator tasks.
+        """
+        self._process_completed_tasks()
+        op = self._select_operator_to_run()
+        while op is not None:
+            self._dispatch_next_task(op)
+            op = self._select_operator_to_run()
 
-        # Setup the streaming topology.
+    def _init_operator_state(self, dag: PhysicalOperator) -> None:
+        """Initialize operator state for the given DAG.
+
+        This involves creating the operator state for each operator in the DAG,
+        registering it with this class, and wiring up the inqueues/outqueues of
+        dependent operator states.
+        """
+        if self._operator_state:
+            raise ValueError("Cannot init operator state twice.")
+
         def setup_state(node) -> _OpState:
-            if node in operator_state:
-                return operator_state[node]
+            if node in self._operator_state:
+                return self._operator_state[node]
 
             # Create state if it doesn't exist.
             state = _OpState(len(node.input_dependencies))
-            operator_state[node] = state
+            self._operator_state[node] = state
 
             # Wire up the input outqueues to this node's inqueues.
             for i, parent in enumerate(node.input_dependencies):
@@ -79,48 +114,70 @@ class PipelinedExecutor(Executor):
             return state
 
         setup_state(dag)
-        buffer_state_change = True
+        self._output_node = dag
 
-        while candidate_tasks or active_tasks or buffer_state_change:
-            buffer_state_change = False
+    def _process_completed_tasks(self) -> None:
+        """Process any newly completed tasks and update operator state.
 
-            # Process completed tasks.
-            if active_tasks:
-                [ref], _ = ray.wait(list(active_tasks), num_returns=1, fetch_local=True)
-                task = active_tasks.pop(ref)
-                task.completed()
+        This does not dispatch any new tasks, but pushes RefBundles through the
+        DAG topology (i.e., operator state inqueues/outqueues).
+        """
+        if self._active_tasks:
+            [ref], _ = ray.wait(
+                list(self._active_tasks), num_returns=1, fetch_local=True
+            )
+            task = self._active_tasks.pop(ref)
+            task.completed()
 
-            # Generate new tasks.
-            for op, state in operator_state.items():
-                if isinstance(op, OneToOneOperator):
-                    assert len(state.inqueues) == 1, "OneToOne takes exactly 1 input"
-                    inqueue = state.inqueues[0]
-                    if inqueue and op not in candidate_tasks:
-                        candidate_tasks[op] = _OneToOneTask(op, state, inqueue.pop(0))
-                elif isinstance(op, AllToAllOperator):
-                    assert len(state.inqueues) == 1, "AllToAll takes exactly 1 input"
-                    raise NotImplementedError
-                elif isinstance(op, BufferOperator):
-                    for i, inqueue in enumerate(state.inqueues):
-                        while inqueue:
-                            op.add_next(state.inqueue.pop(0), input_index=i)
-                            buffer_state_change = True
-                    while op.has_next():
-                        state.outqueue.append(op.get_next())
-                        buffer_state_change = True
-                else:
-                    assert False, "Unknown operator type: {}".format(op)
+        for op, state in self._operator_state.items():
+            if isinstance(op, BufferOperator):
+                for i, inqueue in enumerate(state.inqueues):
+                    while inqueue:
+                        op.add_next(state.inqueue.pop(0), input_index=i)
+                while op.has_next():
+                    state.outqueue.append(op.get_next())
+            elif isinstance(op, AllToAllOperator):
+                pass
+            elif isinstance(op, OneToOneOperator):
+                pass
+            else:
+                assert False, "Unknown operator type: {}".format(op)
 
-            # Yield outputs.
-            output = operator_state[dag]
-            while output.outqueue:
-                yield output.outqueue.pop(0)
+    def _select_operator_to_run(self) -> Optional[PhysicalOperator]:
+        """Select an operator to run, if possible.
 
-            # Dispatch new tasks.
-            for op, task in list(candidate_tasks.items()):
-                if len(active_tasks) < PARALLELISM_LIMIT:
-                    active_tasks[task.execute()] = task
-                    del candidate_tasks[op]
+        The objective of this function is to maximize the throughput of the overall
+        pipeline, subject to defined memory and parallelism limits.
+        """
+        PARALLELISM_LIMIT = 2
+        if len(self._active_tasks) >= PARALLELISM_LIMIT:
+            return None
 
-    def get_stats() -> DatasetStats:
-        raise NotImplementedError
+        # TODO: pipeline scheduling and prioritization.
+        for op, state in self._operator_state.items():
+            if isinstance(op, OneToOneOperator):
+                assert len(state.inqueues) == 1, "OneToOne takes exactly 1 input"
+                if state.inqueues[0]:
+                    return op
+            elif isinstance(op, AllToAllOperator):
+                assert len(state.inqueues) == 1, "AllToAll takes exactly 1 input"
+                raise NotImplementedError
+            elif isinstance(op, BufferOperator):
+                pass
+            else:
+                assert False, "Unknown operator type: {}".format(op)
+
+    def _dispatch_next_task(self, op: PhysicalOperator) -> None:
+        """Schedule the next task for the given operator.
+
+        It is an error to call this if the given operator has no next tasks.
+
+        Args:
+            op: The operator to schedule a task for.
+        """
+        if isinstance(op, OneToOneOperator):
+            state = self._operator_state[op]
+            task = _OneToOneTask(op, state, state.inqueues[0].pop(0))
+            self._active_tasks[task.execute()] = task
+        else:
+            raise NotImplementedError

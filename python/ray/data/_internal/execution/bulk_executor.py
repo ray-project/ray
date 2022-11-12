@@ -19,7 +19,7 @@ def _transform_one(op: OneToOneOperator, block: Block) -> (Block, BlockMetadata)
     print("Processing", block)
     import time
 
-    time.sleep(1)
+    time.sleep(0.5)
     [out] = list(op.execute_one([block], {}))
     return out, BlockAccessor.for_block(out).get_metadata([], None)
 

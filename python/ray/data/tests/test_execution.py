@@ -56,7 +56,7 @@ def test_basic_pipelined():
     it = executor.execute(o3)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(10)]
-    assert output == expected, (output, expected)
+    assert sorted(output) == sorted(expected), (output, expected)
 
 
 if __name__ == "__main__":
