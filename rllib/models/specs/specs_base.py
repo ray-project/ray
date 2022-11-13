@@ -210,13 +210,6 @@ class TensorSpec(SpecsAbstract):
                 sampled_shape += (1,)
         return sampled_shape
 
-    def _get_feature_shape(self) -> Tuple[int]:
-        sampled_shape = tuple()
-        for d in self._expected_shape:
-            if isinstance(d, int):
-                sampled_shape += (d,)
-        return sampled_shape
-
     def _parse_expected_shape(self, shape: str, shape_vals: Dict[str, int]) -> tuple:
         """Converts the input shape to a tuple of integers and strings."""
 
