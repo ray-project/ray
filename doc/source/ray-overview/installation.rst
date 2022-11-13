@@ -3,13 +3,16 @@
 Installing Ray
 ==============
 
-Ray currently supports Linux, MacOS and Windows.
+Ray currently officially supports x86_64 hardware.
 Ray on Windows is currently in beta.
 
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows.
+From Wheels
+~~~~~~~~~~~
+You can install the latest official version of Ray from PyPI on linux, windows
+and macos as follows:
 
 .. code-block:: bash
 
@@ -27,6 +30,32 @@ To install Ray libraries:
   pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
   pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
   pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
+
+From conda-forge
+~~~~~~~~~~~~~~~~
+Ray can also be installed as a conda package on linux and windows
+
+.. code-block:: bash
+
+  conda create -c conda-forge python=3.9 -n ray_dev
+  conda activate ray_dev
+
+  # Install Ray with support for the dashboard + cluster launcher
+  conda install -c condaforge "ray[default]"
+
+  # Install Ray with minimal dependencies
+  # conda install -c conda-forge ray
+
+To install Ray libraries:
+
+.. code-block:: bash
+
+  conda install -c conda-forge "ray[air]" # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray[tune]"  # installs Ray + dependencies for Ray Tune
+  conda install -c conda-forge "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
+  conda install -c conda-forge "ray[serve]"  # installs Ray + dependencies for Ray Serve
+
+  
 
 .. _install-nightlies:
 
