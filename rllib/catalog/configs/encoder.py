@@ -36,7 +36,8 @@ class EncoderConfig:
 
 @dataclass
 class VectorEncoderConfig(EncoderConfig):
-    """A basic MLP encoder.
+    """A basic MLP encoder that maps input tensors with shape [..., feature]
+    to [..., output].
 
     Attributes:
         activation: The type of activation function to use between hidden layers.
@@ -55,6 +56,15 @@ class VectorEncoderConfig(EncoderConfig):
     output_key: str = "encoding"
 
     def build(self, input_spec: ModelSpec) -> TorchVectorEncoder:
+        """Build the config into a VectorEncoder model instance.
+
+        Args:
+            input_spec: The output spec of the previous module(s) that will feed
+            inputs to this encoder.
+
+        Returns:
+            A VectorEncoder of the specified framework.
+        """
         assert (
             len(self.hidden_layer_sizes) > 1
         ), "Must have at least a single hidden layer"
