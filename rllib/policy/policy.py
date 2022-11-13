@@ -455,6 +455,7 @@ class Policy(metaclass=ABCMeta):
             return False
 
     def _check_compute_action_env_id_arg(self, env_id_arg):
+        """Informs that we use a default env id if None is provided."""
         if env_id_arg is None:
             if log_once("policy_{}_called_without_env_ids".format(self)):
                 logger.info(
@@ -484,6 +485,41 @@ class Policy(metaclass=ABCMeta):
         This can be used to implement a direct policy/environment loop.
         Calls to policy models and action distribution functions are wrapped with
         connectors.
+
+        Simple example:
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> algo = PPOConfig().build(env="CartPole-v1")
+            >>> algo.train()
+            >>> policy = algo.get_policy()
+            >>> env = gym.make("CartPole-v1")
+            >>> obs = env.reset()
+            >>> reward, done, info = 0, False, {}
+            >>> while not done:
+            >>>     [action], _, _ = policy.compute_actions_from_raw_input(
+            >>>         next_obs_batch=[obs],
+            >>>         reward_batch=[reward],
+            >>>         dones_batch=[done],
+            >>>         info_batch=[info]
+            >>>     )
+            >>>     obs, reward, done, info = env.step(action)
+
+        Batched example:
+            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+            >>> algo = PPOConfig().build(env=MultiAgentCartPole)
+            >>> algo.train()
+            >>> policy = algo.get_policy()
+            >>> env = MultiAgentCartPole({"num_agents": 2})
+            >>> obses = env.reset()
+            >>> rewards, dones, infos = {0: 0, 1: 0}, {0: False, 1: False}, {0: {},
+            >>>                             1: {}}
+            >>> while not all(dones.values()):
+            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input(
+            >>>         next_obs_batch=[obses[0], obses[1]],
+            >>>         reward_batch=[rewards[0], rewards[1]],
+            >>>         dones_batch=[dones[0], dones[1]],
+            >>>         info_batch=[infos[0], infos[1]]
+            >>>     )
+            >>>     obs, reward, done, info = env.step({0: action1, 1: action2})
 
         Args:
             next_obs_batch: Batch of observations, one per agent.
