@@ -20,7 +20,6 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
@@ -158,6 +157,7 @@ class ForwardHealthCheckToEnvWorker(RolloutWorker):
 
     So we take a short-cut, and simply forward ping() to env.sample().
     """
+
     def ping(self) -> str:
         # See if Env wants to throw error.
         _ = self.env.step(self.env.action_space_sample())
@@ -227,7 +227,9 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
             if fail_eval:
                 # One of the eval workers failed.
-                self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
+                self.assertEqual(
+                    algo.evaluation_workers.num_healthy_remote_workers(), 1
+                )
 
             algo.stop()
 
@@ -277,6 +279,9 @@ class TestWorkerFailures(unittest.TestCase):
         }
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            # Reset interaction counter.
+            ray.wait([counter.reset.remote()])
+
             a = config.build()
 
             a.train()
@@ -293,7 +298,7 @@ class TestWorkerFailures(unittest.TestCase):
 
             self.assertEqual(a.workers.num_healthy_remote_workers(), 1)
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
- 
+
             a.stop()
 
     def test_fatal(self):

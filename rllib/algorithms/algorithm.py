@@ -33,7 +33,6 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
-from ray.exceptions import GetTimeoutError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -1140,7 +1139,8 @@ class Algorithm(Trainable):
             _round += 1
             # Get ready evaluation results and metrics asynchronously.
             self.evaluation_workers.foreach_worker_async(
-                func=remote_fn, healthy_only=True,
+                func=remote_fn,
+                healthy_only=True,
             )
             eval_results = self.evaluation_workers.fetch_ready_async_reqs()
 
@@ -1253,9 +1253,7 @@ class Algorithm(Trainable):
             state = ray.put(from_worker.get_state())
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
-            workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state))
-            )
+            workers.foreach_worker(func=lambda w: w.set_state(ray.get(state)))
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
@@ -2726,7 +2724,9 @@ class Algorithm(Trainable):
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
-        results["num_remote_worker_restarts"] = self.workers.num_remote_worker_restarts()
+        results[
+            "num_remote_worker_restarts"
+        ] = self.workers.num_remote_worker_restarts()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [

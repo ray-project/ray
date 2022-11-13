@@ -151,7 +151,7 @@ class WorkerSet:
         # See if we should use a custom RolloutWorker class for testing purpose.
         worker_cls = RolloutWorker if config.worker_cls is None else config.worker_cls
         self._cls = worker_cls.as_remote(**self._remote_args).remote
-            
+
         self._logdir = logdir
         self._ignore_worker_failures = config["ignore_worker_failures"]
 
