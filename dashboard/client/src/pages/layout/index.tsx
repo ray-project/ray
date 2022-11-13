@@ -17,6 +17,7 @@ import React, { PropsWithChildren, useContext } from "react";
 import { RouteComponentProps } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
+import { ClusterMetadata } from "../../common/ClusterMetadata";
 
 import SpeedTools from "../../components/SpeedTools";
 import Logo from "../../logo.svg";
@@ -179,8 +180,11 @@ const BasicLayout = (
               </Tooltip>
             </IconButton>
           </ListItem>
-          <SpeedTools />
+          <ListItem>
+            <ClusterMetadata />
+          </ListItem>
         </List>
+        <SpeedTools />
       </Drawer>
       <div className={classes.child}>
         {children}
