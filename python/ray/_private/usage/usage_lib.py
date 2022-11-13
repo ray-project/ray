@@ -263,6 +263,8 @@ class TagKey(Enum):
     GCS_STORAGE = auto()
 
     # Dashboard
+    # Whether a user is running ray with some third party metrics
+    # services (Ex: "True", "False")
     DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
     DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
 

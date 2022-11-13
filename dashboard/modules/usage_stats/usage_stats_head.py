@@ -38,6 +38,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     if ray._private.utils.check_dashboard_dependencies_installed():
         import aiohttp
+        import ray.dashboard.optional_utils
 
         routes = ray.dashboard.optional_utils.ClassMethodRouteTable
 
@@ -100,7 +101,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             # Don't need to update the tag ever again
             self._prometheus_ran_before = True
 
-    def _fetch_and_record_extra_telemetry(self):
+    def _fetch_and_record_extra_usage_stats_data(self):
         logger.debug("Recording dashboard metrics extra telemetry data...")
         self._check_grafana_running()
         self._check_prometheus_running()
@@ -116,7 +117,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return
 
         try:
-            self._fetch_and_record_extra_telemetry()
+            self._fetch_and_record_extra_usage_stats_data()
 
             data = ray_usage_lib.generate_report_data(
                 self.cluster_config_to_report,

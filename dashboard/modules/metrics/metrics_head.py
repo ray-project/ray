@@ -161,7 +161,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
 
         except Exception as e:
-            logger.warning(
+            logger.debug(
                 "Error fetching grafana endpoint. Is grafana running?", exc_info=e
             )
 
@@ -197,6 +197,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     message="prometheus running",
                 )
         except Exception as e:
+            logger.debug(
+                "Error fetching prometheus endpoint. Is prometheus running?", exc_info=e
+            )
             return dashboard_optional_utils.rest_response(
                 success=False, message="prometheus healthcheck failed.", reason=str(e)
             )
