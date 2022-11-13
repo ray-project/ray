@@ -544,10 +544,10 @@ class Policy(metaclass=ABCMeta):
             info: Dictionary of extra feature batches, if any, with shape like
                 {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
-        if not self.connectors_created:
+        if self.action_connectors is None or self.agent_connectors is None:
             logger.warning(
                 "Trying to compute action with connectors, "
-                "but no connectors where initialized on this "
+                "but not all connectors where initialized on this "
                 "policy. This creates the connectors from the "
                 "policy config but will not synchronize them."
             )
@@ -734,18 +734,6 @@ class Policy(metaclass=ABCMeta):
             convert_to_numpy(rnn_states),
             convert_to_numpy(fetches),
         )
-
-    @property
-    def action_connectors_created(self):
-        return self.agent_connectors is not None
-
-    @property
-    def agent_connectors_created(self):
-        return self.action_connectors is not None
-
-    @property
-    def connectors_created(self):
-        return self.agent_connectors_created and self.action_connectors_created
 
     @PublicAPI(stability="alpha")
     def init_connectors(self, config: TrainerConfigDict):
