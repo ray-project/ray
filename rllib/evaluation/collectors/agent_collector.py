@@ -144,7 +144,7 @@ class AgentCollector:
             # because of float conversion
             # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
             #  space that is not a gym.Space
-            if hasattr(vr.space, "shape") and not vr.space.shape == data.shape:
+            if hasattr(vr.space, "shape") and not vr.space.shape == np.shape(data):
                 # TODO (Artur): Enforce VR shape
                 # TODO (Artur): Enforce dtype as well
                 logger.warning(
