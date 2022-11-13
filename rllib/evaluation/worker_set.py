@@ -147,7 +147,11 @@ class WorkerSet:
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
         }
-        self._cls = RolloutWorker.as_remote(**self._remote_args).remote
+
+        # See if we should use a custom RolloutWorker class for testing purpose.
+        worker_cls = RolloutWorker if config.worker_cls is None else config.worker_cls
+        self._cls = worker_cls.as_remote(**self._remote_args).remote
+            
         self._logdir = logdir
         self._ignore_worker_failures = config["ignore_worker_failures"]
 
@@ -370,6 +374,11 @@ class WorkerSet:
         return self.__worker_manager.num_outstanding_async_reqs()
 
     @DeveloperAPI
+    def num_remote_worker_restarts(self) -> int:
+        """Total number of times managed remote workers get restarted."""
+        return self.__worker_manager.total_num_restarts()
+
+    @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
@@ -407,7 +416,14 @@ class WorkerSet:
                 w.set_weights(ray.get(weights_ref), global_vars)
 
             # Sync to specified remote workers in this WorkerSet.
-            self.foreach_worker(func=set_weight, remote_worker_ids=to_worker_indices)
+            self.foreach_worker(
+                func=set_weight,
+                remote_worker_ids=to_worker_indices,
+                # We can only sync to healthy remote workers.
+                # Restored workers need to have local work state synced over first,
+                # before they will have all the policies to receive these weights.
+                healthy_only=True,
+            )
 
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.

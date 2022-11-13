@@ -110,10 +110,6 @@ def collect_episodes(
     Returns:
         List of RolloutMetrics.
     """
-    if not remote_worker_ids:
-        # There are no remote workers left for metrics.
-        return []
-
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.

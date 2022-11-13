@@ -893,7 +893,7 @@ class Algorithm(Trainable):
                 )
 
             # Evaluation worker set only has local worker.
-            elif self.config["evaluation_num_workers"] == 0:
+            elif self.evaluation_workers.num_remote_workers() == 0:
                 # If unit=episodes -> Run n times `sample()` (each sample
                 # produces exactly 1 episode).
                 # If unit=ts -> Run 1 `sample()` b/c the
@@ -907,34 +907,35 @@ class Algorithm(Trainable):
                         all_batches.append(batch)
 
             # Evaluation worker set has n remote workers.
-            elif len(self.evaluation_workers.healthy_worker_ids()) > 0:
+            elif self.evaluation_workers.num_healthy_remote_workers() > 0:
                 # How many episodes have we run (across all eval workers)?
                 num_units_done = 0
                 _round = 0
-                while True:
+                # In case all of the remote evaluation workers die during a round
+                # of evaluation, we need to stop.
+                while True and self.evaluation_workers.num_healthy_remote_workers() > 0:
                     units_left_to_do = duration_fn(num_units_done)
                     if units_left_to_do <= 0:
                         break
 
                     _round += 1
-                    try:
-                        unit_per_remote_worker = (
-                            1 if unit == "episodes" else rollout * num_envs
+                    unit_per_remote_worker = (
+                        1 if unit == "episodes" else rollout * num_envs
+                    )
+                    # Select proper number of evaluation workers for this round.
+                    selected_eval_worker_ids = [
+                        worker_id
+                        for i, worker_id in enumerate(
+                            self.evaluation_workers.healthy_worker_ids()
                         )
-                        # Select proper number of evaluation workers for this round.
-                        selected_eval_worker_ids = [
-                            worker_id
-                            for i, worker_id in enumerate(
-                                self.evaluation_workers.healthy_worker_ids()
-                            )
-                            if i * unit_per_remote_worker < units_left_to_do
-                        ]
-                        batches = self.evaluation_workers.foreach_worker(
-                            func=lambda w: w.sample(),
-                            remote_worker_ids=selected_eval_worker_ids,
-                            timeout_seconds=self.config["evaluation_sample_timeout_s"],
-                        )
-                    except GetTimeoutError:
+                        if i * unit_per_remote_worker < units_left_to_do
+                    ]
+                    batches = self.evaluation_workers.foreach_worker(
+                        func=lambda w: w.sample(),
+                        remote_worker_ids=selected_eval_worker_ids,
+                        timeout_seconds=self.config["evaluation_sample_timeout_s"],
+                    )
+                    if len(batches) != len(selected_eval_worker_ids):
                         logger.warning(
                             "Calling `sample()` on your remote evaluation worker(s) "
                             "resulted in a timeout (after the configured "
@@ -1118,7 +1119,9 @@ class Algorithm(Trainable):
         def remote_fn(worker):
             # Pass in seq-no so that eval workers may ignore this call if no update has
             # happened since the last call to `remote_fn` (sample).
-            worker.set_weights(weights=weights_ref, weights_seq_no=weights_seq_no)
+            worker.set_weights(
+                weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
+            )
             batch = worker.sample()
             metrics = worker.get_metrics()
             return batch, metrics, weights_seq_no
@@ -1136,12 +1139,14 @@ class Algorithm(Trainable):
 
             _round += 1
             # Get ready evaluation results and metrics asynchronously.
-            self.evaluation_workers.foreach_worker_async(func=remote_fn)
+            self.evaluation_workers.foreach_worker_async(
+                func=remote_fn, healthy_only=True,
+            )
             eval_results = self.evaluation_workers.fetch_ready_async_reqs()
 
             batches = []
             i = 0
-            for result in eval_results:
+            for _, result in eval_results:
                 batch, metrics, seq_no = result
                 # Ignore results, if the weights seq-number does not match (is
                 # from a previous evaluation step) OR if we have already reached
@@ -1229,9 +1234,14 @@ class Algorithm(Trainable):
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
                 workers.
         """
-        if not workers or not workers.local_worker():
-            # If workers does not exist, or we don't have a local worker
-            # to sync weights from, simply skip.
+        if not workers or (
+            not workers.local_worker() and not self.workers.local_worker()
+        ):
+            # If workers does not exist, or
+            # 1. this WorkerSet does not have a local worker, and
+            # 2. self.workers (rollout worker set) does not have a local worker,
+            # we don't have a local worker to get state from.
+            # We can't recover remote worker in this case.
             return
 
         # This is really cheap, since probe_unhealthy_workers() is a no-op
@@ -1239,12 +1249,12 @@ class Algorithm(Trainable):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
-            # By default, all policy weights are synced after restoration
+            from_worker = workers.local_worker() or self.workers.local_worker()
+            state = ray.put(from_worker.get_state())
+            # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
-            workers.sync_weights(
-                policies=None,  # Sync over all policies to restore state.
-                from_worker=self.workers.local_worker(),
-                to_worker_indices=restored,
+            workers.foreach_worker(
+                func=lambda w: w.set_state(ray.get(state))
             )
 
     @OverrideToImplementCustomLogic
@@ -2612,6 +2622,9 @@ class Algorithm(Trainable):
         eval_results["evaluation"][
             "num_in_flight_async_reqs"
         ] = self.evaluation_workers.num_in_flight_async_reqs()
+        eval_results["evaluation"][
+            "num_remote_worker_restarts"
+        ] = self.evaluation_workers.num_remote_worker_restarts()
 
         return eval_results
 
@@ -2713,6 +2726,7 @@ class Algorithm(Trainable):
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
+        results["num_remote_worker_restarts"] = self.workers.num_remote_worker_restarts()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [

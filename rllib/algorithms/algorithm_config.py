@@ -6,8 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
-from ray.tune.result import TRIAL_INFO
-from ray.util import log_once
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -40,6 +39,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRIAL_INFO
+from ray.util import log_once
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -325,6 +326,7 @@ class AlgorithmConfig:
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        self.worker_cls = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -1794,6 +1796,7 @@ class AlgorithmConfig:
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -1814,6 +1817,7 @@ class AlgorithmConfig:
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1830,6 +1834,8 @@ class AlgorithmConfig:
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if worker_cls is not NotProvided:
+            self.worker_cls = worker_cls
 
         return self
 

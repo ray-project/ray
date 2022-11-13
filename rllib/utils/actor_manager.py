@@ -262,6 +262,9 @@ class FaultTolerantActorManager:
             max_remote_requests_in_flight_per_actor
         )
 
+        # Useful metric.
+        self._num_actor_restarts = 0
+
     @DeveloperAPI
     def actors(self):
         """Access the underlying actors being managed.
@@ -337,6 +340,11 @@ class FaultTolerantActorManager:
     def num_healthy_actors(self) -> int:
         """Return the number of healthy remote actors."""
         return sum([s.is_healthy for s in self.__remote_actor_states.values()])
+
+    @DeveloperAPI
+    def total_num_restarts(self) -> int:
+        """Return the number of remote actors that have been restarted."""
+        return self._num_actor_restarts
 
     @DeveloperAPI
     def num_outstanding_async_reqs(self) -> int:
@@ -719,5 +727,6 @@ class FaultTolerantActorManager:
                 logger.info(f"brining actor {actor_id} back into service.")
                 restored.append(actor_id)
                 self.set_actor_state(actor_id, healthy=True)
+                self._num_actor_restarts += 1
 
         return restored

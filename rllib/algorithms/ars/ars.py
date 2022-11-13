@@ -512,8 +512,7 @@ class ARS(Algorithm):
             self.reward_list.append(eval_returns.mean())
 
         # Bring restored workers back if necessary.
-        # We will sync filters right next.
-        self.workers.probe_unhealthy_workers()
+        self.restore_workers(self.workers)
 
         # Now sync the filters
         FilterManager.synchronize(
@@ -542,6 +541,12 @@ class ARS(Algorithm):
         self.workers.stop()
 
     @override(Algorithm)
+    def restore_workers(self, workers: WorkerSet):
+        restored = self.workers.probe_unhealthy_workers()
+        if restored:
+            self._sync_weights_to_workers(worker_set=self.workers, worker_ids=restored)
+
+    @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=True)
         if kwargs.get("full_fetch"):
@@ -549,12 +554,17 @@ class ARS(Algorithm):
         return action[0]
 
     @override(Algorithm)
-    def _sync_weights_to_workers(self, *, worker_set=None):
+    def _sync_weights_to_workers(self, *, worker_set=None, worker_ids=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        worker_set.foreach_policy(lambda p, _: p.set_flat_weights(ray.get(weights)))
+        worker_set.foreach_worker(
+            lambda w: w.foreach_policy(
+                lambda p, _: p.set_flat_weights(ray.get(weights))
+            ),
+            remote_worker_ids=worker_ids,
+        )
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0

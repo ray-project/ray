@@ -515,6 +515,7 @@ class ApexDQN(DQN):
                         func=lambda w: w.set_weights(
                             ray.get(curr_weights), {"timestep": timestep}
                         ),
+                        healthy_only=True,
                         local_worker=False,
                         timeout_seconds=0,  # Do not wait for results.
                     )

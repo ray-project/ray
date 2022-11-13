@@ -527,6 +527,12 @@ class ES(Algorithm):
         return result
 
     @override(Algorithm)
+    def restore_workers(self, workers: WorkerSet):
+        restored = self.workers.probe_unhealthy_workers()
+        if restored:
+            self._sync_weights_to_workers(worker_set=self.workers, worker_ids=restored)
+
+    @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=False)
         if kwargs.get("full_fetch"):
@@ -538,12 +544,17 @@ class ES(Algorithm):
         return self.compute_single_action(observation, *args, **kwargs)
 
     @override(Algorithm)
-    def _sync_weights_to_workers(self, *, worker_set=None):
+    def _sync_weights_to_workers(self, *, worker_set=None, worker_ids=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        worker_set.foreach_policy(lambda p, _: p.set_flat_weights(ray.get(weights)))
+        worker_set.foreach_worker(
+            lambda w: w.foreach_policy(
+                lambda p, _: p.set_flat_weights(ray.get(weights))
+            ),
+            remote_worker_ids=worker_ids,
+        )
 
     @override(Algorithm)
     def cleanup(self):
