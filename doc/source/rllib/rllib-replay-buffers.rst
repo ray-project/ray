@@ -10,7 +10,7 @@ Quick Intro to Replay Buffers in RL
 When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences collected from interactions of our agent(s) with the environment.
 In python, a simple buffer can be implemented by a list to which elements are added and later sampled from.
 Such buffers are used mostly in off-policy learning algorithms. This makes sense intuitively because these algorithms can learn from
-experiences that are stored in the buffer, but where produced by a previous version of the policy (or even a completely different "behavior policy").
+experiences that are stored in the buffer, but were produced by a previous version of the policy (or even a completely different "behavior policy").
 
 Sampling Strategy
 -----------------
