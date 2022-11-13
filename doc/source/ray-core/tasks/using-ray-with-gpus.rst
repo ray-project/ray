@@ -67,19 +67,9 @@ Fractional GPUs
 If you want two tasks to share the same GPU, then the tasks can each request
 half (or some other fraction) of a GPU.
 
-.. code-block:: python
+.. tabbed:: Python
 
-  import ray
-  import time
-
-  ray.init(num_cpus=4, num_gpus=1)
-
-  @ray.remote(num_gpus=0.25)
-  def f():
-      time.sleep(1)
-
-  # The four tasks created here can execute concurrently.
-  ray.get([f.remote() for _ in range(4)])
+    .. literalinclude:: doc_code/fraction-gpus.py
 
 It is the developer's responsibility to make sure that the individual tasks
 don't use more than their share of the GPU memory. TensorFlow can be configured
@@ -101,5 +91,5 @@ in the ``ray.remote`` decorator.
 
     .. literalinclude:: doc_code/gpus.py
         :language: python
-        :start-after: __generator_start__
-        :end-before: __generator_end__
+        :start-after: __leak_gpu_start__
+        :end-before: __leak_gpu_end__
