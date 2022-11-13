@@ -64,8 +64,8 @@ class TaskStateBuffer {
   /// \param task_status Current task status to be recorded.
   void AddTaskEvent(TaskID task_id,
                     rpc::TaskStatus task_status,
-                    std::unique_ptr<rpc::TaskInfoEntry> &&task_info,
-                    std::unique_ptr<rpc::TaskStateEntry> &&task_state_update)
+                    std::unique_ptr<rpc::TaskInfoEntry> task_info,
+                    std::unique_ptr<rpc::TaskStateEntry> task_state_update)
       LOCKS_EXCLUDED(mutex_);
 
   /// Flush all of the events that have been added since last flush to the GCS.

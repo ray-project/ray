@@ -38,8 +38,8 @@ TaskStateBuffer::TaskStateBuffer(instrumented_io_context &io_service,
 void TaskStateBuffer::AddTaskEvent(
     TaskID task_id,
     rpc::TaskStatus task_status,
-    std::unique_ptr<rpc::TaskInfoEntry> &&task_info,
-    std::unique_ptr<rpc::TaskStateEntry> &&task_state_update) {
+    std::unique_ptr<rpc::TaskInfoEntry> task_info,
+    std::unique_ptr<rpc::TaskStateEntry> task_state_update) {
   if (!recording_on_) {
     return;
   }
@@ -104,9 +104,9 @@ void TaskStateBuffer::FlushEvents(bool forced) {
   std::unique_ptr<rpc::TaskStateEventData> cur_task_state_data = nullptr;
   {
     absl::MutexLock lock(&mutex_);
-    RAY_LOG_EVERY_MS(INFO, 30000)
-        << "Pushed [total_bytes=" << (1.0 * total_events_bytes_) / 1024 / 1024
-        << "MiB][total_count=" << total_num_events_ << "]";
+    RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
+                                  << (1.0 * total_events_bytes_) / 1024 / 1024
+                                  << "MiB][total_count=" << total_num_events_ << "]";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
