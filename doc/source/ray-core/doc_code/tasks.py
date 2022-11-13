@@ -97,7 +97,6 @@ assert ray.get(object_ref2) == 2
 # __multiple_returns_end__
 # fmt: on 
 
-
 # fmt: off
 # __generator_start__
 @ray.remote(num_returns=3)
@@ -126,4 +125,29 @@ try:
 except ray.exceptions.TaskCancelledError:
     print("Object reference was cancelled.")
 # __cancel_end__
+# fmt: on
+
+
+# fmt: off
+# __resource_start__
+# Specify required resources.
+@ray.remote(num_cpus=4, num_gpus=2)
+def my_function():
+    return 1
+# __resource_end__
+# fmt: on
+
+# fmt: off
+# __fraction_resource_start__
+
+# Ray also supports fractional resource requirements.
+@ray.remote(num_gpus=0.5)
+def h():
+    return 1
+
+# Ray support custom resources too.
+@ray.remote(resources={'Custom': 1})
+def f():
+    return 1
+# __fraction_resource_end__
 # fmt: on
