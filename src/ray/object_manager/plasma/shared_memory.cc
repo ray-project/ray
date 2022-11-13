@@ -33,6 +33,24 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
     RAY_LOG(FATAL) << "mmap failed";
   }
   close(fd.first);  // Closing this fd has an effect on performance.
+
+  RAY_LOG(ERROR) << "[CADE] madvise call! region is of size " << length_;
+  // int madvise(void *addr, size_t length, int advice);
+  // MADV_DONTDUMP madvise
+
+  // TODO make sure strerror works
+  // TODO make sure this works on macos
+  // TODO add test
+  // TODO clean up logs
+  // TODO add some config to disable this.
+  auto rval = madvise(pointer_, length_, MADV_DONTDUMP);
+
+  if (rval) {
+    RAY_LOG(ERROR) << "[CADE] madvise call failed: " << rval << strerror(errno);
+  } else {
+    RAY_LOG(ERROR) << "[CADE] madvise call succeeded.";
+  } 
+
 #endif
 }
 
