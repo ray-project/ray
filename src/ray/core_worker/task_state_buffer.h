@@ -80,9 +80,6 @@ class TaskStateBuffer {
   TaskIdEventMap::iterator GetOrInitTaskEvents(TaskID task_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  std::unique_ptr<rpc::TaskStateEventData> GetAndResetBuffer()
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Mutex guarding task_events_map_.
   absl::Mutex mutex_;
 

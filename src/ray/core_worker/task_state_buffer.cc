@@ -82,31 +82,15 @@ TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(TaskID task_id) {
   return task_events_map_.find(task_id);
 }
 
-std::unique_ptr<rpc::TaskStateEventData> TaskStateBuffer::GetAndResetBuffer() {
-  // TODO(rickyx): Measure and see if we need to cap the number of events in a single
-  // batch.
-  auto task_state_data = std::make_unique<rpc::TaskStateEventData>();
-  // Fill up the task events
-  for (auto &[task_id, task_events] : task_events_map_) {
-    auto events_of_task = task_state_data->add_events_by_task();
-    events_of_task->Swap(&task_events);
-  }
-
-  // Clear the buffer
-  task_events_map_.clear();
-
-  return task_state_data;
-}
-
 void TaskStateBuffer::FlushEvents(bool forced) {
   RAY_CHECK(recording_on_) << "Task state events recording should have be on. Set "
                               "RAY_task_state_events_report_interval_ms > 0 to turn on";
-  std::unique_ptr<rpc::TaskStateEventData> cur_task_state_data = nullptr;
+  TaskIdEventMap cur_task_events_map;
+  RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
+                                << (1.0 * total_events_bytes_) / 1024 / 1024
+                                << "MiB][total_count=" << total_num_events_ << "]";
   {
     absl::MutexLock lock(&mutex_);
-    RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
-                                  << (1.0 * total_events_bytes_) / 1024 / 1024
-                                  << "MiB][total_count=" << total_num_events_ << "]";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
@@ -121,9 +105,17 @@ void TaskStateBuffer::FlushEvents(bool forced) {
       return;
     }
 
-    cur_task_state_data = GetAndResetBuffer();
+    task_events_map_.swap(cur_task_events_map);
   }
   // mutex released. Below operations should be lock-free.
+
+  // Construct gRPC data
+  auto cur_task_state_data = std::make_unique<rpc::TaskStateEventData>();
+  // Fill up the task events
+  for (auto &[task_id, task_events] : cur_task_events_map) {
+    auto events_of_task = cur_task_state_data->add_events_by_task();
+    events_of_task->Swap(&task_events);
+  }
 
   // Some debug tracking.
   auto num_events = cur_task_state_data->events_by_task_size();
