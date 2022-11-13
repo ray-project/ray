@@ -455,6 +455,7 @@ class Policy(metaclass=ABCMeta):
             return False
 
     def _check_compute_action_env_id_arg(self, env_id_arg):
+        """Informs that we use a default env id if None is provided."""
         if env_id_arg is None:
             if log_once("policy_{}_called_without_env_ids".format(self)):
                 logger.info(
@@ -485,6 +486,41 @@ class Policy(metaclass=ABCMeta):
         Calls to policy models and action distribution functions are wrapped with
         connectors.
 
+        Simple example:
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> algo = PPOConfig().build(env="CartPole-v1")
+            >>> algo.train()
+            >>> policy = algo.get_policy()
+            >>> env = gym.make("CartPole-v1")
+            >>> obs = env.reset()
+            >>> reward, done, info = 0, False, {}
+            >>> while not done:
+            >>>     [action], _, _ = policy.compute_actions_from_raw_input(
+            >>>         next_obs_batch=[obs],
+            >>>         reward_batch=[reward],
+            >>>         dones_batch=[done],
+            >>>         info_batch=[info]
+            >>>     )
+            >>>     obs, reward, done, info = env.step(action)
+
+        Batched example:
+            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+            >>> algo = PPOConfig().build(env=MultiAgentCartPole)
+            >>> algo.train()
+            >>> policy = algo.get_policy()
+            >>> env = MultiAgentCartPole({"num_agents": 2})
+            >>> obses = env.reset()
+            >>> rewards, dones, infos = {0: 0, 1: 0}, {0: False, 1: False}, {0: {},
+            >>>                             1: {}}
+            >>> while not all(dones.values()):
+            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input(
+            >>>         next_obs_batch=[obses[0], obses[1]],
+            >>>         reward_batch=[rewards[0], rewards[1]],
+            >>>         dones_batch=[dones[0], dones[1]],
+            >>>         info_batch=[infos[0], infos[1]]
+            >>>     )
+            >>>     obs, reward, done, info = env.step({0: action1, 1: action2})
+
         Args:
             next_obs_batch: Batch of observations, one per agent.
             reward_batch: Batch of rewards, one per agent.
@@ -508,10 +544,10 @@ class Policy(metaclass=ABCMeta):
             info: Dictionary of extra feature batches, if any, with shape like
                 {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
-        if not self.connectors_created:
+        if self.action_connectors is None or self.agent_connectors is None:
             logger.warning(
                 "Trying to compute action with connectors, "
-                "but no connectors where initialized on this "
+                "but not all connectors where initialized on this "
                 "policy. This creates the connectors from the "
                 "policy config but will not synchronize them."
             )
@@ -698,18 +734,6 @@ class Policy(metaclass=ABCMeta):
             convert_to_numpy(rnn_states),
             convert_to_numpy(fetches),
         )
-
-    @property
-    def action_connectors_created(self):
-        return self.agent_connectors is not None
-
-    @property
-    def agent_connectors_created(self):
-        return self.action_connectors is not None
-
-    @property
-    def connectors_created(self):
-        return self.agent_connectors_created and self.action_connectors_created
 
     @PublicAPI(stability="alpha")
     def init_connectors(self, config: TrainerConfigDict):
