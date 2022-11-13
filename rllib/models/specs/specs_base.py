@@ -1,4 +1,5 @@
 import abc
+from copy import deepcopy
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -81,6 +82,33 @@ class TensorSpec(SpecsAbstract):
     def full_shape(self) -> Tuple[int]:
         """Returns a `tuple` specifying the concrete tensor shape (only ints)."""
         return self._full_shape
+
+    def rdrop(self, n: int) -> "TensorSpec":
+        """Returns of copy of TensorSpec with the rightmost
+        n dimensions removed.
+
+        Args:
+            n: The number of dimensions to remove from the right
+
+        Raises:
+            IndexError: If n is greater than the number of indices in self
+        """
+        self = deepcopy(self)
+        self._expected_shape = self.shape[:-n]
+        self.full_shape = self._get_full_shape()
+        return self
+
+    def append(self, shape: Tuple[int]) -> "TensorSpec":
+        """Returns a copy of the TensorSpec with the shape
+        appended to the end of the current shape.
+
+        Args:
+            shape: The shape to append to the current TensorSpec.shape
+        """
+        self = deepcopy(self)
+        self._expected_shape = (*self.shape, *shape)
+        self.full_shape = self._get_full_shape()
+        return self
 
     @property
     def dtype(self) -> Any:
@@ -180,6 +208,13 @@ class TensorSpec(SpecsAbstract):
                 sampled_shape += (d,)
             else:
                 sampled_shape += (1,)
+        return sampled_shape
+
+    def _get_feature_shape(self) -> Tuple[int]:
+        sampled_shape = tuple()
+        for d in self._expected_shape:
+            if isinstance(d, int):
+                sampled_shape += (d,)
         return sampled_shape
 
     def _parse_expected_shape(self, shape: str, shape_vals: Dict[str, int]) -> tuple:

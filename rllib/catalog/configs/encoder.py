@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from rllib.catalog.torch.encoders.vector import Encoder
 
 
-@dataclass(frozen=True)
+@dataclass
 class EncoderConfig:
     """The base config for encoder models. Each config should define a `build` method
     that builds a model from the config.
@@ -34,7 +34,7 @@ class EncoderConfig:
         """Builds the config into a model instance"""
 
 
-@dataclass(frozen=True)
+@dataclass
 class VectorEncoderConfig(EncoderConfig):
     """A basic MLP encoder.
 
@@ -58,22 +58,14 @@ class VectorEncoderConfig(EncoderConfig):
         assert (
             len(self.hidden_layer_sizes) > 1
         ), "Must have at least a single hidden layer"
-        # TODO: This requires modification/implementation in specs_base.py
-        # Do spec surgery:
-        #   input_spec == {"bork": (a, b, c, d), d=3}
-        # should produce:
-        #   output_spec == {"encoding": (a, b, c, d), d=self.hidden_layer_sizes[-1]}
-        output_spec = ModelSpec.output_from_input(
-            input_spec,
-            out_key=self.output_key,
-            feature_size=self.hidden_layer_sizes[-1],
-        )
+        assert len(input_spec) == 1, "Multiple inputs not yet supported"
         for k in input_spec.shallow_keys():
             assert isinstance(
                 input_spec[k].shape()[-1], int
-            ), "All input specs must define the size of the feature (last) dimension"
+            ), "Input spec {k} does not define the size of the feature (last) dimension"
+
         if self.framework == "torch":
-            return TorchVectorEncoder(input_spec, output_spec, self)
+            return TorchVectorEncoder(input_spec, self)
         else:
             raise NotImplementedError(
                 "{self.__class__.__name__} not implemented"
