@@ -380,15 +380,22 @@ class StateAPIManager:
                 # Note(rickyx): some tasks don't have the spec, the driver script?
                 num_missing_spec += 1
                 continue
-            task_state = task_info
+            state = task_info
+
+            # Update scheduling_state
             task_state_events = data.get("task_events", None)
             if task_state_events:
                 most_recent_state = max(
                     task_state_events, key=lambda e: e["event_time"]
                 )
-                task_state["scheduling_state"] = most_recent_state["task_status"]
+                state["scheduling_state"] = most_recent_state["task_status"]
 
-            result.append(task_state)
+            # Update node id
+            task_state = data.get("task_state", None)
+            if task_state:
+                state["node_id"] = task_state.get("node_id", None)
+
+            result.append(state)
 
         num_after_truncation = len(result)
         result = self._filter(result, option.filters, TaskState, option.detail)

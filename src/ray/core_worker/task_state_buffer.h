@@ -20,6 +20,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"             // absl::flat_hash_map
 #include "absl/synchronization/mutex.h"               // absl::Mutex
+#include "absl/types/optional.h"                      // std::unique_ptr
 #include "ray/common/asio/instrumented_io_context.h"  // instrumented_io_context
 #include "ray/common/asio/periodical_runner.h"        // PeriodicRunner
 #include "ray/common/id.h"                            // TaskID
@@ -56,14 +57,16 @@ class TaskStateBuffer {
   TaskStateBuffer(instrumented_io_context &io_service,
                   const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
-  /// Add a task event with optional task metadata info delta.
+  /// Add a task event with optional task metadata info.
   ///
   /// \param task_id Task ID of the task.
-  /// \param task_info_update Changed TaskInfoEntry delta to be updated for the task.
+  /// \param task_info Immutable TaskInfoEntry of metadata for the task.
   /// \param task_status Current task status to be recorded.
   void AddTaskEvent(TaskID task_id,
-                    rpc::TaskInfoEntry &&task_info_update,
-                    rpc::TaskStatus task_status) LOCKS_EXCLUDED(mutex_);
+                    rpc::TaskStatus task_status,
+                    std::unique_ptr<rpc::TaskInfoEntry> &&task_info,
+                    std::unique_ptr<rpc::TaskStateEntry> &&task_state_update)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Flush all of the events that have been added since last flush to the GCS.
   /// If previous flush's gRPC hasn't been replied and `forced` is false, the flush will

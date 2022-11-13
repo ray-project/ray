@@ -1154,13 +1154,15 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   if (worker_context_.GetCurrentTask() == nullptr) {
     task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
-                                     rpc::TaskInfoEntry(),
-                                     rpc::TaskStatus::RUNNING_IN_RAY_GET);
+                                     rpc::TaskStatus::RUNNING_IN_RAY_GET,
+                                     /* task_info */ nullptr,
+                                     /* task_state_update */ nullptr);
   } else {
     task_state_buffer_->AddTaskEvent(
         worker_context_.GetCurrentTaskID(),
+        rpc::TaskStatus::RUNNING_IN_RAY_GET,
         task_manager_->MakeTaskInfoEntry(*worker_context_.GetCurrentTask()),
-        rpc::TaskStatus::RUNNING_IN_RAY_GET);
+        /* task_state_update */ nullptr);
   }
 
   results->resize(ids.size(), nullptr);
@@ -2275,8 +2277,9 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
     task_state_buffer_->AddTaskEvent(task_spec.TaskId(),
+                                     rpc::TaskStatus::RUNNING,
                                      task_manager_->MakeTaskInfoEntry(task_spec),
-                                     rpc::TaskStatus::RUNNING);
+                                     /* task_state_update */ nullptr);
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }

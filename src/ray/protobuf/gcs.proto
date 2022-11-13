@@ -209,14 +209,22 @@ message TaskStateEventEntry {
   int64 event_time = 2;
 }
 
+// Represents task states which could be changed during task execution.
+message TaskStateEntry {
+  // The node of the associated task
+  bytes node_id = 1;
+}
+
 // Represents state envents for a single task.
 message TaskStateEvents {
   // Mirror info in task_info
   bytes task_id = 1;
-  // Task metadata info
+  // Task immutable metadata info
   TaskInfoEntry task_info = 2;
-  // Task events
-  repeated TaskStateEventEntry task_events = 3;
+  // Task mutable state info, which could be changed during task execution
+  TaskStateEntry task_state = 3;
+  // List of task status events (e.g. PENDING, RUNNING)
+  repeated TaskStateEventEntry task_events = 4;
 }
 
 // Represents a compact list of task state events by different tasks,

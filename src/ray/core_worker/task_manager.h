@@ -294,7 +294,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_spec TaskSpecification of the task.
   /// \return TaskInfoEntry based on the spec.
-  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
+  std::unique_ptr<rpc::TaskInfoEntry> MakeTaskInfoEntry(
+      const TaskSpecification &task_spec) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.

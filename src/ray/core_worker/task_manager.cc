@@ -784,34 +784,34 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   RecordTaskStatusEvent(it->second, rpc::TaskStatus::SUBMITTED_TO_WORKER);
 }
 
-rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
+std::unique_ptr<rpc::TaskInfoEntry> TaskManager::MakeTaskInfoEntry(
     const TaskSpecification &task_spec) const {
-  rpc::TaskInfoEntry task_info;
+  auto task_info = std::make_unique<rpc::TaskInfoEntry>();
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
   } else if (task_spec.IsActorCreationTask()) {
     type = rpc::TaskType::ACTOR_CREATION_TASK;
-    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
   } else {
     RAY_CHECK(task_spec.IsActorTask());
     type = rpc::TaskType::ACTOR_TASK;
-    task_info.set_actor_id(task_spec.ActorId().Binary());
+    task_info->set_actor_id(task_spec.ActorId().Binary());
   }
-  task_info.set_type(type);
-  task_info.set_name(task_spec.GetName());
-  task_info.set_language(task_spec.GetLanguage());
-  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  task_info->set_type(type);
+  task_info->set_name(task_spec.GetName());
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
   // NOTE(rickyx): we will have scheduling states recorded in the events list.
-  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
-  task_info.set_job_id(task_spec.JobId().Binary());
+  task_info->set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info->set_job_id(task_spec.JobId().Binary());
 
-  task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_parent_task_id(task_spec.ParentTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
-  task_info.mutable_required_resources()->insert(resources_map.begin(),
-                                                 resources_map.end());
-  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
 
   return task_info;
 }
@@ -822,7 +822,8 @@ void TaskManager::RecordMetrics() {
 }
 
 void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus status) {
-  rpc::TaskInfoEntry task_info;
+  std::unique_ptr<rpc::TaskInfoEntry> task_info = nullptr;
+  std::unique_ptr<rpc::TaskStateEntry> task_state_update = nullptr;
   switch (status) {
   case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
     // Initialize a new TaskInfoEntry
@@ -834,16 +835,18 @@ void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus s
         << "Node ID should have been set on the TaskEntry before updating it's status to "
            "SUBMITTED_TO_WORKER.";
     // Update the node id
-    task_info.set_node_id(task_entry.GetNodeId().Binary());
+    task_state_update = std::make_unique<rpc::TaskStateEntry>(rpc::TaskStateEntry());
+    task_state_update->set_node_id(task_entry.GetNodeId().Binary());
     break;
   }
   default: {
-    // Do nothing.
+    // Do nothing
   }
   }
-
-  task_state_buffer_->AddTaskEvent(
-      task_entry.spec.TaskId(), std::move(task_info), status);
+  task_state_buffer_->AddTaskEvent(task_entry.spec.TaskId(),
+                                   status,
+                                   std::move(task_info),
+                                   std::move(task_state_update));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
