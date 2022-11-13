@@ -1547,6 +1547,7 @@ def init(
         job_id=None,
         namespace=namespace,
         job_config=job_config,
+        entrypoint=ray._private.utils.get_entrypoint_name(),
     )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1876,6 +1877,7 @@ def connect(
     runtime_env_hash: int = 0,
     startup_token: int = 0,
     ray_debugger_external: bool = False,
+    entrypoint: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1895,6 +1897,8 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
+        entrypoint: The name of the entrypoint script. Ignored unless the
+            mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2040,6 +2044,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        "" if mode != SCRIPT_MODE else entrypoint,
     )
 
     # Notify raylet that the core worker is ready.
