@@ -11,7 +11,11 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 
 
@@ -60,6 +64,8 @@ def get_cliff_walking_wall_policy_and_data(
     n_eps = 0
     while n_eps < num_episodes:
         batch = synchronous_parallel_sample(worker_set=workers)
+        batch = convert_ma_batch_to_sample_batch(batch)
+
         for episode in batch.split_by_episode():
             ret = 0
             for r in episode[SampleBatch.REWARDS][::-1]:
