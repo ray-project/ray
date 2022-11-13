@@ -26,14 +26,12 @@ Using Remote Functions with GPUs
 If a remote function requires GPUs, indicate the number of required GPUs in the
 remote decorator.
 
-.. code-block:: python
+.. tabbed:: Python
 
-  import os
-
-  @ray.remote(num_gpus=1)
-  def use_gpu():
-      print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-      print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+    .. literalinclude:: doc_code/gpus.py
+        :language: python
+        :start-after: __gpu_start__
+        :end-before: __gpu_end__
 
 Inside of the remote function, a call to ``ray.get_gpu_ids()`` will return a
 list of strings indicating which GPUs the remote function is allowed to use.
@@ -48,15 +46,13 @@ external library like TensorFlow. Here is an example that actually uses GPUs.
 Note that for this example to work, you will need to install the GPU version of
 TensorFlow.
 
-.. code-block:: python
+.. tabbed:: Python
 
-  import tensorflow as tf
+    .. literalinclude:: doc_code/gpus.py
+        :language: python
+        :start-after: __tf_start__
+        :end-before: _tf_end__
 
-  @ray.remote(num_gpus=1)
-  def use_gpu():
-      # Create a TensorFlow session. TensorFlow will restrict itself to use the
-      # GPUs specified by the CUDA_VISIBLE_DEVICES environment variable.
-      tf.Session()
 
 **Note:** It is certainly possible for the person implementing ``use_gpu`` to
 ignore ``ray.get_gpu_ids`` and to use all of the GPUs on the machine. Ray does
@@ -101,13 +97,9 @@ the task process exists. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
 in the ``ray.remote`` decorator.
 
-.. code-block:: python
+.. tabbed:: Python
 
-  import tensorflow as tf
-
-  # By default, ray will not reuse workers for GPU tasks to prevent
-  # GPU resource leakage.
-  @ray.remote(num_gpus=1)
-  def leak_gpus():
-      # This task will allocate memory on the GPU and then never release it.
-      sess = tf.Session()
+    .. literalinclude:: doc_code/gpus.py
+        :language: python
+        :start-after: __generator_start__
+        :end-before: __generator_end__
