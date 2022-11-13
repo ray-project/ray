@@ -430,7 +430,7 @@ class FaultTolerantActorManager:
         remote_actor_ids: List[int],
         remote_calls: List[ray.ObjectRef],
         timeout_seconds: int = None,
-        return_objref: bool = False,
+        return_obj_refs: bool = False,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -441,7 +441,7 @@ class FaultTolerantActorManager:
                 calls were fired against.
             remote_calls: list of remote calls to fetch.
             timeout_seconds: timeout for the ray.wait() call. Default is None.
-            return_objref: whether to return ObjectRef instead of actual results.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
 
         Returns:
             A list of ready ObjectRefs mapping to the results of those calls.
@@ -455,7 +455,7 @@ class FaultTolerantActorManager:
             num_returns=len(remote_calls),
             timeout=timeout,
             # Make sure remote results are fetched locally in parallel.
-            fetch_local=not return_objref,
+            fetch_local=not return_obj_refs,
         )
 
         # Remote data should already be fetched to local object store at this point.
@@ -465,7 +465,7 @@ class FaultTolerantActorManager:
             actor_id = remote_actor_ids[remote_calls.index(r)]
 
             # If caller wants ObjectRefs, return directly without resolve them.
-            if return_objref:
+            if return_obj_refs:
                 remote_results.add_result(actor_id, ResultOrError(result=r))
                 continue
 
@@ -536,7 +536,7 @@ class FaultTolerantActorManager:
         healthy_only=True,
         remote_actor_ids: List[int] = None,
         timeout_seconds=None,
-        return_objref: bool = False,
+        return_obj_refs: bool = False,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
 
@@ -551,7 +551,7 @@ class FaultTolerantActorManager:
                 Note(jungong) : setting timeout_seconds to 0 effectively makes all the
                 remote calls fire-and-forget, while setting timeout_seconds to None
                 make them synchronous calls.
-            return_objref: whether to return ObjectRef instead of actual results.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
 
@@ -575,7 +575,7 @@ class FaultTolerantActorManager:
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
             timeout_seconds=timeout_seconds,
-            return_objref=return_objref,
+            return_obj_refs=return_obj_refs,
         )
 
         return remote_results
@@ -661,7 +661,7 @@ class FaultTolerantActorManager:
         self,
         *,
         timeout_seconds: Union[None, int] = 0,
-        return_objref: bool = False,
+        return_obj_refs: bool = False,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
 
@@ -670,7 +670,7 @@ class FaultTolerantActorManager:
         Args:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
-            return_objref: whether to return ObjectRef instead of actual results.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
 
         Returns:
             A list of return values of all calls to `func(actor)` that are ready.
@@ -682,7 +682,7 @@ class FaultTolerantActorManager:
             remote_actor_ids=list(self.__in_flight_req_to_actor_id.values()),
             remote_calls=list(self.__in_flight_req_to_actor_id.keys()),
             timeout_seconds=timeout_seconds,
-            return_objref=return_objref,
+            return_obj_refs=return_obj_refs,
         )
 
         for obj_ref, result in zip(ready, remote_results):

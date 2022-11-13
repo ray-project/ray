@@ -208,6 +208,7 @@ class A3C(Algorithm):
             # returned gradient calculation results.
             self.workers.foreach_worker_async(
                 func=sample_and_compute_grads,
+                healthy_only=True,
             )
             async_results = self.workers.fetch_ready_async_reqs()
 

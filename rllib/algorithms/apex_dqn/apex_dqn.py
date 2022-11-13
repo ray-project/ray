@@ -464,7 +464,10 @@ class ApexDQN(DQN):
 
         # Sample and Store in the Replay Actors on the sampling workers.
         with self._timers[SAMPLE_TIMER]:
-            self.workers.foreach_worker_async(func=remote_worker_sample_and_store)
+            self.workers.foreach_worker_async(
+                func=remote_worker_sample_and_store,
+                healthy_only=True,
+            )
             num_samples_ready = self.workers.fetch_ready_async_reqs(
                 timeout_seconds=self._sample_req_tiemeout_s
             )

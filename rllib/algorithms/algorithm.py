@@ -707,8 +707,8 @@ class Algorithm(Trainable):
         # meaning that e. g. the first time this function is called,
         # self.iteration will be 0.
         evaluate_this_iter = (
-            self.config["evaluation_interval"] is not None
-            and (self.iteration + 1) % self.config["evaluation_interval"] == 0
+            self.config.evaluation_interval is not None
+            and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
 
         # Results dict for training (and if appolicable: evaluation).
@@ -931,6 +931,7 @@ class Algorithm(Trainable):
                     ]
                     batches = self.evaluation_workers.foreach_worker(
                         func=lambda w: w.sample(),
+                        local_worker=False,
                         remote_worker_ids=selected_eval_worker_ids,
                         timeout_seconds=self.config["evaluation_sample_timeout_s"],
                     )
@@ -1253,7 +1254,10 @@ class Algorithm(Trainable):
             state = ray.put(from_worker.get_state())
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
-            workers.foreach_worker(func=lambda w: w.set_state(ray.get(state)))
+            workers.foreach_worker(
+                func=lambda w: w.set_state(ray.get(state)),
+                local_worker=False,
+            )
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
@@ -1805,9 +1809,11 @@ class Algorithm(Trainable):
                 policies_to_train=policies_to_train,
             )
 
-        self.workers.foreach_worker(fn, healthy_only=True)
+        self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
         if evaluation_workers and self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(fn)
+            self.evaluation_workers.foreach_worker(
+                fn, local_worker=True, healthy_only=True,
+            )
 
     @DeveloperAPI
     def export_policy_model(
@@ -2552,7 +2558,7 @@ class Algorithm(Trainable):
                 # Try to train one step.
                 # TODO (avnishn): Remove the execution plan API by q1 2023
                 with self._timers[TRAINING_ITERATION_TIMER]:
-                    if self.config["_disable_execution_plan_api"]:
+                    if self.config._disable_execution_plan_api:
                         results = self.training_step()
                     else:
                         results = next(self.train_exec_impl)
@@ -2586,22 +2592,22 @@ class Algorithm(Trainable):
 
         eval_func_to_use = (
             self._evaluate_async
-            if self.config["enable_async_evaluation"]
+            if self.config.enable_async_evaluation
             else self.evaluate
         )
 
-        if self.config["evaluation_duration"] == "auto":
+        if self.config.evaluation_duration == "auto":
             assert (
                 train_future is not None
-                and self.config["evaluation_parallel_to_training"]
+                and self.config.evaluation_parallel_to_training
             )
-            unit = self.config["evaluation_duration_unit"]
+            unit = self.config.evaluation_duration_unit
             eval_results = eval_func_to_use(
                 duration_fn=functools.partial(
                     self._automatic_evaluation_duration_fn,
                     unit,
-                    self.config["evaluation_num_workers"],
-                    self.config["evaluation_config"],
+                    self.config.evaluation_num_workers,
+                    self.evaluation_config,
                     train_future,
                 )
             )

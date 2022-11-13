@@ -210,8 +210,8 @@ def set_worker_tasks(workers, use_meta_env):
         funcs = [lambda env: env.set_task(tasks[i]) for i in worker_ids]
         workers.foreach_worker(
             func=funcs,
-            remote_worker_ids=worker_ids,
             local_worker=False,
+            remote_worker_ids=worker_ids,
         )
 
 

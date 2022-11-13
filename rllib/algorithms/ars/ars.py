@@ -563,6 +563,7 @@ class ARS(Algorithm):
             lambda w: w.foreach_policy(
                 lambda p, _: p.set_flat_weights(ray.get(weights))
             ),
+            local_worker=False,
             remote_worker_ids=worker_ids,
         )
 
@@ -577,6 +578,7 @@ class ARS(Algorithm):
             )
             rollout_ids = self.workers.foreach_worker(
                 func=lambda w: w.do_rollouts(ray.get(theta_id)),
+                local_worker=False,
             )
             # Get the results of the rollouts.
             for result in rollout_ids:

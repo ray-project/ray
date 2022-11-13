@@ -261,7 +261,7 @@ class DDPPO(PPO):
         ]
         # Set up torch distributed on all workers. The assumption here is that
         # all workers should be healthy at this point.
-        self.workers.foreach_worker(func=funcs, healthy_only=False, local_worker=False)
+        self.workers.foreach_worker(func=funcs, local_worker=False, healthy_only=False)
 
         logger.info("Torch process group init completed")
 
@@ -298,8 +298,8 @@ class DDPPO(PPO):
             global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
             self.workers.foreach_worker(
                 func=lambda w: w.set_global_vars(global_vars),
-                remote_worker_ids=[worker_id],
                 local_worker=False,
+                remote_worker_ids=[worker_id],
                 timeout_seconds=0,  # Don't wait for workers to finish.
             )
 
@@ -312,8 +312,8 @@ class DDPPO(PPO):
         if self.config.keep_local_weights_in_sync and worker_ids[0] in sampled_workers:
             weights = self.workers.foreach_worker(
                 func=lambda w: w.get_weights(),
-                remote_worker_ids=[worker_ids[0]],
                 local_worker=False,
+                remote_worker_ids=[worker_ids[0]],
             )
             self.workers.local_worker().set_weights(weights[0])
         # Return merged laarner into results.

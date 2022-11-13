@@ -130,11 +130,11 @@ class TestActorManager(unittest.TestCase):
         # Some of these calls still failed, but 15 good results in total.
         # Note that we can hardcode 15 here because we are using deterministic
         # sequences of random numbers.
-        self.assertEqual(len([r for r in results if r.ok]), 16)
+        self.assertEqual(len([r for r in results if r.ok]), 15)
 
         manager.clear()
 
-    def test_sync_call_return_objrefs(self):
+    def test_sync_call_return_obj_refs(self):
         """Test synchronous remote calls to all actors asking for raw ObjectRefs."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
         manager = FaultTolerantActorManager(actors=actors)
@@ -143,7 +143,7 @@ class TestActorManager(unittest.TestCase):
             manager.foreach_actor(
                 lambda w: w.call(),
                 healthy_only=False,
-                return_objref=True,
+                return_obj_refs=True,
             )
         )
 

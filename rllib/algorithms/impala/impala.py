@@ -531,8 +531,8 @@ class Impala(Algorithm):
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
-            self.config.num_aggregation_workers > 0
-            and self._aggregator_actor_manager.num_healthy_actors() > 0
+            self._aggregator_actor_manager and
+            self._aggregator_actor_manager.num_healthy_actors() > 0
         )
 
         # Get references to sampled SampleBatches from our workers.
@@ -667,18 +667,25 @@ class Impala(Algorithm):
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.num_healthy_remote_workers() > 0:
-            self.workers.foreach_worker_async(lambda worker: worker.sample())
+            self.workers.foreach_worker_async(
+                lambda worker: worker.sample(),
+                healthy_only=True,
+            )
             sample_batches: List[
                 Tuple[int, ObjectRef]
             ] = self.workers.fetch_ready_async_reqs(
                 timeout_seconds=self._timeout_s_sampler_manager,
-                return_objref=return_object_refs,
+                return_obj_refs=return_object_refs,
             )
-        else:
-            # only sampling on the local worker
-            sample_batches = [(0, self.workers.local_worker().sample())]
+        elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+            # Sampling from the local worker
+            sample_batch = self.workers.local_worker().sample()
             if return_object_refs:
-                sample_batches = ray.put(sample_batches)
+                sample_batch = ray.put(sample_batch)
+            sample_batches = [(0, sample_batch)]
+        else:
+            # Not much we can do. Return empty list and wait.
+            return []
 
         return sample_batches
 
@@ -819,7 +826,7 @@ class Impala(Algorithm):
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            weights = ray.put(local_worker.get_weights(policy_ids))
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
@@ -827,6 +834,7 @@ class Impala(Algorithm):
 
             self.workers.foreach_worker(
                 func=lambda w: w.set_weights(ray.get(weights), global_vars),
+                local_worker=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )

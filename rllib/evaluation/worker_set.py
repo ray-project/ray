@@ -656,7 +656,7 @@ class WorkerSet:
         healthy_only=False,
         remote_worker_ids: List[int] = None,
         timeout_seconds=None,
-        return_objref: bool = False,
+        return_obj_refs: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
 
@@ -667,7 +667,7 @@ class WorkerSet:
                 this will apply func on all workers regardless of their states.
             remote_worker_ids: Apply func on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
-            return_objref: whether to return ObjectRef instead of actual results.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
 
@@ -675,7 +675,7 @@ class WorkerSet:
              The list of return values of all calls to `func([worker])`.
         """
         assert (
-            not return_objref or not local_worker
+            not return_obj_refs or not local_worker
         ), "Can not return ObjectRef from local worker."
 
         local_result = []
@@ -687,7 +687,7 @@ class WorkerSet:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
-            return_objref=return_objref,
+            return_obj_refs=return_obj_refs,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -778,7 +778,7 @@ class WorkerSet:
         self,
         *,
         timeout_seconds=0,
-        return_objref: bool = False,
+        return_obj_refs: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
@@ -792,7 +792,7 @@ class WorkerSet:
         """
         remote_results = self.__worker_manager.fetch_ready_async_reqs(
             timeout_seconds=timeout_seconds,
-            return_objref=return_objref,
+            return_obj_refs=return_obj_refs,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
