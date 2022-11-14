@@ -128,8 +128,8 @@ You can specify a runtime environment for your whole job, whether running a scri
 
 .. code-block:: bash
     
-    # Option 3: Using Ray Jobs API (CLI). (Note: can use --runtime-env-json to pass a file instead of an inline JSON string.)
-    $ ray job submit --address="http://<head-node-ip>:8265" --runtime-env='{"working_dir": "/data/my_files", "pip": ["emoji"]}' -- python my_ray_script.py
+    # Option 3: Using Ray Jobs API (CLI). (Note: can use --runtime-env to pass a YAML file instead of an inline JSON string.)
+    $ ray job submit --address="http://<head-node-ip>:8265" --runtime-env-json='{"working_dir": "/data/my_files", "pip": ["emoji"]}' -- python my_ray_script.py
 
 .. warning::
 
