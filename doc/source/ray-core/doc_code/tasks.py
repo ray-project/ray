@@ -127,7 +127,6 @@ except ray.exceptions.TaskCancelledError:
 # __cancel_end__
 # fmt: on
 
-
 # fmt: off
 # __resource_start__
 # Specify required resources.
