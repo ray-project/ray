@@ -6,7 +6,8 @@ Execution (Tuner, tune.Experiment)
 Tuner
 -----
 
-.. autofunction:: ray.tune.Tuner
+.. autoclass:: ray.tune.Tuner
+    :members:
 
 tune.run_experiments
 --------------------
