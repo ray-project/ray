@@ -7,8 +7,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
     OneToOneOperator,
-    AllToAllOperator,
-    BufferOperator,
+    ExchangeOperator,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -68,10 +67,7 @@ class BulkExecutor(Executor):
             if isinstance(node, OneToOneOperator):
                 assert len(inputs) == 1, "OneToOne takes exactly 1 input stream"
                 output = _naive_task_execute(inputs[0], node)
-            elif isinstance(node, AllToAllOperator):
-                assert len(inputs) == 1, "AllToAll takes exactly 1 input stream"
-                output = node.execute_all(inputs[0])
-            elif isinstance(node, BufferOperator):
+            elif isinstance(node, ExchangeOperator):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         node.add_input(r, input_index=i)

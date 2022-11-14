@@ -8,8 +8,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
     OneToOneOperator,
-    AllToAllOperator,
-    BufferOperator,
+    ExchangeOperator,
 )
 from ray.data._internal.execution.bulk_executor import _transform_one
 from ray.data._internal.execution.operators import InputDataBuffer
@@ -169,14 +168,12 @@ class PipelinedExecutor(Executor):
             task.completed()
 
         for op, state in self._operator_state.items():
-            if isinstance(op, BufferOperator):
+            if isinstance(op, ExchangeOperator):
                 for i, inqueue in enumerate(state.inqueues):
                     while inqueue:
                         op.add_next(state.inqueue.pop(0), input_index=i)
                 while op.has_next():
                     state.add_output(op.get_next())
-            elif isinstance(op, AllToAllOperator):
-                pass
             elif isinstance(op, OneToOneOperator):
                 pass
             else:
@@ -202,10 +199,7 @@ class PipelinedExecutor(Executor):
                 assert len(state.inqueues) == 1, "OneToOne takes exactly 1 input"
                 if state.inqueues[0]:
                     return op
-            elif isinstance(op, AllToAllOperator):
-                assert len(state.inqueues) == 1, "AllToAll takes exactly 1 input"
-                raise NotImplementedError
-            elif isinstance(op, BufferOperator):
+            elif isinstance(op, ExchangeOperator):
                 pass
             else:
                 assert False, "Unknown operator type: {}".format(op)

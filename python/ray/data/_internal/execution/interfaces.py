@@ -72,12 +72,8 @@ class PhysicalOperator:
     must be aware of in operator DAGs.
 
     Subclasses:
-        OneToOneOperator: handles one-to-one operations (e.g., map)
-        AllToAllOperator: handles all-to-all operations (e.g., sort)
-        BufferOperator: handles stream manipulation operations (e.g., union)
-
-    In summary, OneToOne and AllToAll transform the *data* of a single input stream.
-    BufferOperators transform the *structure* of one or more input streams.
+        OneToOneOperator: handles one-to-one operations (e.g., map, filter)
+        ExchangeOperator: for stream manipulation operations (e.g., shuffle, union)
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
@@ -159,48 +155,17 @@ class OneToOneOperator(PhysicalOperator):
         raise NotImplementedError
 
 
-class AllToAllOperator(PhysicalOperator):
-    """Abstract class for operators defining their entire distributed execution.
-
-    Used to implement all:all transformations.
-
-    This also defines a barrier between operators in the DAG. Operators
-    before and after an AllToAllOperator will not run concurrently.
-
-    Subclasses:
-         SortMap
-    """
-
-    def __init__(self, preprocessor: Optional[OneToOneOperator] = None):
-        self._preprocessor = preprocessor
-
-    def execute_all(self, inputs: List[RefBundle]) -> List[RefBundle]:
-        """Execute distributedly from a driver process.
-
-        This is a synchronous call that blocks until the computation is completed.
-
-        Args:
-             inputs: List of ref bundles.
-        """
-        raise NotImplementedError
-
-
-class BufferOperator(PhysicalOperator):
-    """A streaming operator that buffers blocks for downstream operators.
+class ExchangeOperator(PhysicalOperator):
+    """A streaming operator that does not map inputs 1:1 with outputs.
 
     For example, this can take two operators and combine their blocks
     pairwise for zip, group adjacent blocks for repartition, etc.
 
-    Buffers do not read or transform any block data; they only operate
-    on block metadata.
+    Exchanges can be metadata-only (i.e., not transforming any block data), or can
+    also manipulate data (e.g., for sort / shuffle).
 
-    Examples:
-        Zip = ZipBuffer + DoZip
-        Union = UnionBuffer
-        Repartition(False) = SplitBuf + Splitter + CombineBuf + Combiner
-        Cache = CacheBuffer
-        Limit = LimitBuffer + MaybeTruncate
-        RandomizeBlockOrder = RandomizeBlockOrderBuffer
+    Subclasses:
+        AllToAllOperator
     """
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
@@ -217,4 +182,43 @@ class BufferOperator(PhysicalOperator):
 
     def get_next(self) -> RefBundle:
         """Get the next downstream output."""
+        raise NotImplementedError
+
+
+class AllToAllOperator(ExchangeOperator):
+    """A type of ExchangeOperator that doesn't execute until all inputs are available.
+
+    Used to implement all:all transformations such as sort / shuffle.
+
+    Subclasses:
+         SortMap
+    """
+
+    def __init__(self, preprocessor: Optional[OneToOneOperator] = None):
+        self._preprocessor = preprocessor
+        self._buffer = []
+        self._outbox = None
+
+    def add_input(self, refs: RefBundle, input_index: int) -> None:
+        assert input_index == 0, "AllToAll only supports one input."
+        self._buffer.append(refs)
+
+    def inputs_done(self, input_index: int) -> None:
+        # Note: blocking synchronous execution for now.
+        self._outbox = self.execute_all(self._buffer)
+
+    def has_next(self) -> bool:
+        return bool(self._outbox)
+
+    def get_next(self) -> RefBundle:
+        return self._outbox.pop(0)
+
+    def execute_all(self, inputs: List[RefBundle]) -> List[RefBundle]:
+        """Execute distributedly from a driver process.
+
+        This is a synchronous call that blocks until the computation is completed.
+
+        Args:
+             inputs: List of ref bundles.
+        """
         raise NotImplementedError

@@ -4,13 +4,13 @@ from ray.data.block import Block
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     OneToOneOperator,
-    BufferOperator,
+    ExchangeOperator,
     PhysicalOperator,
 )
 from ray.data._internal.compute import BlockTransform
 
 
-class InputDataBuffer(BufferOperator):
+class InputDataBuffer(ExchangeOperator):
     """Defines the input data for the operator DAG."""
 
     def __init__(self, input_data: List[RefBundle]):
