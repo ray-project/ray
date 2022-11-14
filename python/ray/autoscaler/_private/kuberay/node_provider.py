@@ -186,7 +186,11 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         # Store the raycluster CR
         self._raycluster = self._get(f"rayclusters/{self.cluster_name}")
 
-        pod_list = self._get("pods")
+        # Get pods filtered by cluster_name.
+        label_selector = requests.utils.quote(f"ray.io/cluster={self.cluster_name}")
+        pod_list = self._get("pods?labelSelector=" + label_selector)
+
+        # Extract node data from the pod list.
         node_data_dict = {}
         for pod in pod_list["items"]:
             # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
