@@ -245,6 +245,8 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            # Check if view requirement dict has k and warn once if
+            # view requirement does not match v
             self._check_view_requirement(k, v)
 
             if k not in self.buffers:
