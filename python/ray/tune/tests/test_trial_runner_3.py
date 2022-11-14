@@ -861,10 +861,8 @@ class TrialRunnerTest3(unittest.TestCase):
         from ray.tune.execution.trial_runner import logger
 
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
-            while True:
+            while not runner.is_finished():
                 runner.step()
-                if runner.is_finished():
-                    break
         assert any("syncing has been triggered multiple" in x for x in buffer)
 
         # we should sync 4 times - every 2 checkpoints, but the last sync will not
