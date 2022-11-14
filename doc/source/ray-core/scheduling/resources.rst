@@ -34,6 +34,10 @@ The resources being logical has several implications:
 - Ray does provide :ref:`GPU <gpu-support>` isolation in forms of visible devices by automatically setting the ``CUDA_VISIBLE_DEVICES`` envrionment variable,
   but it is still up to the task or actor to actually honor it or override it.
 
+.. figure:: ../images/physical_resources_vs_logical_resources.svg
+
+  Physcial resources vs logical resources
+
 .. _custom-resources:
 
 Custom Resources
