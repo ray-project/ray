@@ -24,7 +24,7 @@ Although it's actively developed and maintained, [KubeRay] is still considered a
 ## Installing the KubeRay operator
 
 This guide assumes that you have a running Kubernetes cluster and have `kubectl` configured to run commands on it.
-See the [Kubernetes documentation](https://kubernetes.io/docs/setup/) or the [KubeRay quickstart guide](kuberay-quickstart) if you need help getting started.
+See the [Kubernetes documentation](https://kubernetes.io/docs/setup/) or the [KubeRay quickstart guide](kuberay-quickstart) if you need help getting started. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
 
 The first step is to install the `KubeRay` operator into your Kubernetes cluster.
 This creates a pod that runs the `KubeRay` controller. The `KubeRay` controller manages resources based on the `RayService` CRs you create.
