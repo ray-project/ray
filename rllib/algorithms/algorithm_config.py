@@ -1477,15 +1477,15 @@ class AlgorithmConfig:
 
         Args:
             input_: Specify how to generate experiences:
-             - "sampler": Generate experiences via online (env) simulation (default).
-             - A local directory or file glob expression (e.g., "/tmp/*.json").
-             - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-               "s3://bucket/2.json"]).
-             - A dict with string keys and sampling probabilities as values (e.g.,
-               {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-             - A callable that takes an `IOContext` object as only arg and returns a
+                - "sampler": Generate experiences via online (env) simulation (default).
+                - A local directory or file glob expression (e.g., "/tmp/*.json").
+                - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+                "s3://bucket/2.json"]).
+                - A dict with string keys and sampling probabilities as values (e.g.,
+                {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+                - A callable that takes an `IOContext` object as only arg and returns a
                ray.rllib.offline.InputReader.
-             - A string key that indexes a callable with tune.registry.register_input
+                - A string key that indexes a callable with tune.registry.register_input
             input_config: Arguments that describe the settings for reading the input.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -1503,10 +1503,10 @@ class AlgorithmConfig:
                 data is not in random enough order. Input is delayed until the shuffle
                 buffer is filled.
             output: Specify where experiences should be saved:
-                 - None: don't save any experiences
-                 - "logdir" to save to the agent log dir
-                 - a path/URI to save to a custom output directory (e.g., "s3://bckt/")
-                 - a function that returns a rllib.offline.OutputWriter
+                - None: don't save any experiences
+                - "logdir" to save to the agent log dir
+                - a path/URI to save to a custom output directory (e.g., "s3://bckt/")
+                - a function that returns a rllib.offline.OutputWriter
             output_config: Arguments accessible from the IOContext for configuring
                 custom output.
             output_compress_columns: What sample batch columns to LZ4 compress in the
