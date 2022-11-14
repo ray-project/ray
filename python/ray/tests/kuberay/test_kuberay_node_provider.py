@@ -23,8 +23,7 @@ SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
 
 
 def _get_basic_ray_cr_workers_to_delete():
-    """Generate a Ray cluster with non-empty workersToDelete field.
-    """
+    """Generate a Ray cluster with non-empty workersToDelete field."""
     raycluster = get_basic_ray_cr()
     raycluster["spec"]["workerGroupSpecs"][1]["scaleStrategy"] = {
         "workersToDelete": ["random-worker"]
@@ -115,10 +114,8 @@ def test_get_node_data(pod_list, expected_node_data):
             return get_basic_ray_cr()
 
     with mock.patch.object(
-            KuberayNodeProvider, "__init__", return_value=None
-    ), mock.patch.object(
-            KuberayNodeProvider, "_get", mock_get
-    ):
+        KuberayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(KuberayNodeProvider, "_get", mock_get):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
@@ -143,10 +140,7 @@ def test_submit_scale_request(scale_request, expected_patch_payload):
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
     "raycluster,expected",
-    [
-        (_get_basic_ray_cr_workers_to_delete(), False),
-        (get_basic_ray_cr(), True)
-    ],
+    [(_get_basic_ray_cr_workers_to_delete(), False), (get_basic_ray_cr(), True)],
 )
 def test_safe_to_scale(raycluster: Dict[str, Any], expected: bool):
     """Test method KuberayNodeProvider.safe_to_scale()"""
