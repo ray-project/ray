@@ -53,7 +53,7 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline import get_dataset_and_shards, get_offline_io_resource_bundles
+from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
     ImportanceSampling,
@@ -2047,7 +2047,9 @@ class Algorithm(Trainable):
             # Note (Kourosh): we should not claim extra workers for
             # training on the offline dataset, since rollout workers have already
             # claimed it. (The mysterious 1 extra worker was due to this.)
-            evaluation_bundle = get_offline_io_resource_bundles(eval_cf)
+            # Another Note (Kourosh): dataset reader will not use placement groups so
+            # what ever we specify here won't matter because dataset won't even use it.
+            evaluation_bundle = []
 
         bundles += rollout_workers + evaluation_bundle
 
