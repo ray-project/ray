@@ -194,10 +194,12 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            with_parameters: If the original Trainable was wrapped with
-                `tune.with_parameters`, then the attached objects need to be
-                re-specified through this argument in order for training to
-                continue.
+            with_parameters: If the trainable was wrapped with
+                :meth:`tune.with_parameters <ray.tune.with_parameters>`,
+                then the attached objects need to be re-specified through this
+                argument in order for training to continue. See the note on restoration
+                under the ``tune.with_parameters`` docs for details on why these
+                parameters need to be passed in again.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.

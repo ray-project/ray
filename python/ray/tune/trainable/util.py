@@ -301,10 +301,35 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
         data = HugeDataset(download=True)
 
-        tuner = Tuner(
+        tuner = tune.Tuner(
             tune.with_parameters(MyTrainable, data=data),
             # ...
         )
+
+    .. note::
+        When restoring a Tune experiment from a different Ray cluster, you need
+        to re-specify the parameters attached by ``tune.with_parameters``.
+        The reason for this is as follows:
+
+        #. The parameters are stored in the Ray object store, so the objects may not exist anymore if restoring from a different Ray cluster.
+
+        #. The attached objects could be arbitrarily large, so Tune does not save the object data along with the trainable.
+
+        To restore, Tune allows the parameters to be re-specified in
+        :meth:`Tuner.restore(path, with_parameters=...) <ray.tune.tuner.Tuner.restore>`.
+
+        Continuing from the previous examples, here's an example of restoration:
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            data = HugeDataset(download=True)
+
+            tuner = Tuner.restore(
+                "/path/to/experiment/",
+                with_parameters=dict(data=data)
+            )
 
     """
     from ray.tune.trainable import Trainable

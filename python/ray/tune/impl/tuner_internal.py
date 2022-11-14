@@ -58,10 +58,12 @@ class TunerInternal:
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
             if applicable. Refer to ray.air.config.RunConfig for more info.
-        with_parameters: If the original Trainable was wrapped with
-            `tune.with_parameters`, then the attached objects need to be
-            re-specified through this argument on restore in order for training to
-            continue.
+        with_parameters: If the trainable was wrapped with
+            :meth:`tune.with_parameters <ray.tune.with_parameters>`,
+            then the attached objects need to be re-specified through this
+            argument in order for training to continue. See the note on restoration
+            under the ``tune.with_parameters`` docs for details on why these
+            parameters need to be passed in again.
     """
 
     def __init__(
