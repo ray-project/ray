@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, Optional, List
+import math
 import numpy as np
 
 from ray.data import Dataset
@@ -158,12 +159,17 @@ class DirectMethod(OffPolicyEstimator):
 
         v_behavior = updated_ds.mean("rewards")
         v_target = updated_ds.mean("v_values")
-        v_gain = v_target / v_behavior
-        v_std = updated_ds.std("v_values")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("v_values")
+            / v_behavior
+            / math.sqrt(dataset.count())
+        )
+        
 
         return {
             "v_behavior": v_behavior,
             "v_target": v_target,
-            "v_gain": v_gain,
-            "v_std": v_std,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
         }

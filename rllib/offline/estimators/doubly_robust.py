@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import math
 import pandas as pd
 
 from typing import Dict, Any, Optional, List
@@ -224,21 +225,26 @@ class DoublyRobust(OffPolicyEstimator):
             batch["v_behavior"] = batch["rewards"]
             return batch
 
-        normamizer = updated_ds.mean("weights") if self._normalize_weights else 1.0
+        normalizer = updated_ds.mean("weights") if self._normalize_weights else 1.0
         updated_ds = updated_ds.map_batches(
             compute_v_target,
             batch_size=batch_size,
-            fn_kwargs={"normalizer": normamizer},
+            fn_kwargs={"normalizer": normalizer},
         )
 
         v_behavior = updated_ds.mean("v_behavior")
         v_target = updated_ds.mean("v_target")
-        v_gain = v_target / v_behavior
-        v_std = updated_ds.std("v_target")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("v_target")
+            / normalizer
+            / v_behavior
+            / math.sqrt(dataset.count())
+        )
 
         return {
             "v_behavior": v_behavior,
             "v_target": v_target,
-            "v_gain": v_gain,
-            "v_std": v_std,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
         }
