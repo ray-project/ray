@@ -59,7 +59,7 @@ void TaskStateBuffer::AddTaskEvent(
   // Add the event.
   auto event = task_events_itr->second.add_task_events();
   event->set_task_status(task_status);
-  event->set_event_time(absl::GetCurrentTimeNanos());
+  event->set_start_time(absl::GetCurrentTimeNanos());
 }
 
 TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(TaskID task_id) {

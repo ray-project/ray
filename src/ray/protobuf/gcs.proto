@@ -201,12 +201,24 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
-// Represents a single task event entry
+// Represents a single task event entry.
+//  - It could be a task status event that represents a TaskStatus change, which
+//    only has a corresponding start_time.
+//  - It could also be other events with duration and customized event naming, such
+//    as profiling events. For such events, `task_status` should be set to
+//    TaskStatus::NIL.
 message TaskStateEventEntry {
-  // The task status name.
+  // The task status associated with this event.
   TaskStatus task_status = 1;
-  // The event time.
-  int64 event_time = 2;
+  // The start timestamp of the event time.
+  int64 start_time = 2;
+  // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus change.
+  int64 end_time = 3;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  string extra_data = 4;
+  // Customized event name if not a TaskStatus change point event.
+  string event_name = 5;
 }
 
 // Represents task states which could be changed during task execution.
