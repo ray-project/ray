@@ -212,6 +212,21 @@ class MockErrorInfoAccessor : public ErrorInfoAccessor {
 namespace ray {
 namespace gcs {
 
+class MockTaskInfoAccessor : public TaskInfoAccessor {
+ public:
+  MOCK_METHOD(Status,
+              AsyncAddTaskStateEventData,
+              (const std::shared_ptr<rpc::TaskStateEventData> &data_ptr,
+               const StatusCallback &callback),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray
+
+namespace ray {
+namespace gcs {
+
 class MockStatsInfoAccessor : public StatsInfoAccessor {
  public:
   MOCK_METHOD(Status,
