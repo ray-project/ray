@@ -76,12 +76,13 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dash
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
-To submit the Ray Job, we use ``ray job submit``. Make sure to run this from inside the working directory created earlier, or specify the
-path to the working directory in the ``--working-dir`` argument.
+To submit the Ray Job, we use ``ray job submit``. Make sure to specify the
+path to the working directory in the ``--working-dir`` argument. (For local clusters this is not strictly necessary, but for remote clusters
+this is required in order to upload the working directory to the cluster.)
 
 .. code-block:: bash
 
-    $ ray job submit --working-dir . -- python script.py 
+    $ ray job submit --working-dir your_working_directory -- python script.py 
 
     # Job submission server address: http://127.0.0.1:8265
 
@@ -136,7 +137,7 @@ Now let's submit the Ray Job:
 
 .. code-block:: shell
 
-	$ ray job submit --no-wait -- python script.py 
+	$ ray job submit --no-wait --working-dir your_working_directory -- python script.py 
 	# Job submission server address: http://127.0.0.1:8265
 
 	# -------------------------------------------------------
