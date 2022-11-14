@@ -131,8 +131,6 @@ class BatchPredictor:
 
                 import pandas as pd
                 import ray
-                from ray.air import Checkpoint
-                from ray.train.predictor import Predictor
                 from ray.train.batch_predictor import BatchPredictor
 
                 def calculate_accuracy(df):
@@ -310,8 +308,6 @@ class BatchPredictor:
 
                 import pandas as pd
                 import ray
-                from ray.air import Checkpoint
-                from ray.train.predictor import Predictor
                 from ray.train.batch_predictor import BatchPredictor
 
                 # Create a batch predictor that always returns `42` for each input.
