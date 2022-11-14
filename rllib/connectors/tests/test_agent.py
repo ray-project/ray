@@ -508,6 +508,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             policy_output = policy.compute_actions_from_input_dict(
                 agent_obs.data.sample_batch
             )
+            # Removes batch dimension
             policy_output = tree.map_structure(lambda x: x[0], policy_output)
 
             agent_connector.on_policy_output(
