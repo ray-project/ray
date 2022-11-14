@@ -207,7 +207,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
+                policy_mapping_fn=(
+                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                ),
             ),
         )
         batch = ev.sample()
@@ -225,7 +227,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
+                policy_mapping_fn=(
+                    lambda agent_id, **kwarg: "p{}".format(agent_id % 2)
+                ),
             ),
         )
         batch = ev.sample()
@@ -243,7 +247,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
+                policy_mapping_fn=(
+                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                ),
             ),
         )
         # This used to raise an Error due to the EarlyDoneMultiAgent
@@ -480,7 +486,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     "policy_1": gen_policy(),
                     "policy_2": gen_policy(),
                 },
-                policy_mapping_fn=lambda aid, **kwargs: "policy_1",
+                policy_mapping_fn=lambda agent_id, **kwargs: "policy_1",
             )
             .framework("tf")
         )

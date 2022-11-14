@@ -633,7 +633,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: bash out_of_core_benchmark.sh
     type: sdk_command
     file_manager: sdk
@@ -1778,6 +1778,8 @@
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
     type: client
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 
@@ -3416,6 +3418,7 @@
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
+  env: staging
   legacy:
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
@@ -3856,7 +3859,7 @@
 
   run:
     timeout: 500
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.6
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20 --mem-pct-per-task 0.5
 
     type: sdk_command
     file_manager: sdk
@@ -3957,6 +3960,7 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
   legacy:
     test_name: single_node
     test_suite: benchmark_tests
@@ -4802,7 +4806,7 @@
   group: core-observability-test
   working_dir: dashboard
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -4812,7 +4816,6 @@
 
   run:
     timeout: 14400
-    prepare: rllib train file atari.yaml &
     script: python mem_check.py
     type: sdk_command
     file_manager: sdk

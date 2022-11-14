@@ -695,7 +695,7 @@ class TestWorkerFailures(unittest.TestCase):
                     "main_agent": PolicySpec(),
                 },
                 policies_to_train=["main_agent"],
-                policy_mapping_fn=lambda _: "main_agent",
+                policy_mapping_fn=lambda *args, **kwargs: "main_agent",
             )
             .evaluation(
                 evaluation_num_workers=2,

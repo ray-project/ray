@@ -279,7 +279,9 @@ if __name__ == "__main__":
                     },
                 ),
             },
-            policy_mapping_fn=lambda aid, **kwargs: "pol1" if aid == 0 else "pol2",
+            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+import sys
 from pathlib import Path
 
 import logging
@@ -45,7 +46,9 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
 
     async def trace_dump(self, pid: int) -> (bool, str):
-        cmd = f"$(which py-spy) dump --native -p {pid}"
+        cmd = f"$(which py-spy) dump -p {pid}"
+        if sys.platform == "linux":
+            cmd += " --native"
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd
         process = await asyncio.create_subprocess_shell(
@@ -71,9 +74,11 @@ class CpuProfilingManager:
             self.profile_dir_path / f"{format}_{pid}_cpu_profiling.{extension}"
         )
         cmd = (
-            f"$(which py-spy) record --native "
+            f"$(which py-spy) record "
             f"-o {profile_file_path} -p {pid} -d {duration} -f {format}"
         )
+        if sys.platform == "linux":
+            cmd += " --native"
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd
         process = await asyncio.create_subprocess_shell(

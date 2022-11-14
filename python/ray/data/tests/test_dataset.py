@@ -2612,9 +2612,14 @@ def test_map_batches_block_bundling_auto(
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size)
+    assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+
+    # Blocks should not be bundled up when batch_size is not specified.
+    ds2 = ds.map_batches(lambda x: x)
+    assert ds2.num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -4767,14 +4772,10 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_unsupported_pyarrow_versions_check(
-    shutdown_only, unsupported_pyarrow_version_that_exists
-):
+def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(
-        runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"]}
-    )
+    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
     # Test Arrow-native creation APIs.
     # Test range_table.
@@ -4796,14 +4797,14 @@ def test_unsupported_pyarrow_versions_check(
 
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
-    unsupported_pyarrow_version_that_exists,
+    unsupported_pyarrow_version,
     disable_pyarrow_version_check,
 ):
     # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
     # initial pyarrow use when the version check is disabled.
     ray.init(
         runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"],
+            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
             "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
         },
     )

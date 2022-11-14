@@ -19,6 +19,7 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
+    check_off_policyness,
     check_train_results,
     framework_iterator,
 )
@@ -96,14 +97,15 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .training(
-                num_sgd_iter=2,
                 # Setup lr schedule for testing.
-                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                lr_schedule=[[0, 5e-5], [256, 0.0]],
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
-                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
-                train_batch_size=128,
+                entropy_coeff_schedule=[[0, 0.1], [512, 0.0]],
+                train_batch_size=256,
+                sgd_minibatch_size=128,
+                num_sgd_iter=2,
                 model=dict(
                     # Settings in case we use an LSTM.
                     lstm_cell_size=10,
@@ -146,8 +148,14 @@ class TestPPO(unittest.TestCase):
 
                     for i in range(num_iterations):
                         results = algo.train()
-                        check_train_results(results)
                         print(results)
+                        check_train_results(results)
+                        # 2 sgd iters per update, 2 minibatches per trainbatch -> 4x
+                        # avg(0.0, 1.0, 2.0, 3.0) -> 1.5
+                        off_policy_ness = check_off_policyness(
+                            results, lower_limit=1.5, upper_limit=1.5
+                        )
+                        print(f"off-policy'ness={off_policy_ness}")
 
                     check_compute_single_action(
                         algo, include_prev_action_reward=True, include_state=lstm
