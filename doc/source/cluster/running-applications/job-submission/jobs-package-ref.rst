@@ -16,10 +16,11 @@ JobSubmissionClient
 
     ray.job_submission.JobSubmissionClient
     ray.job_submission.JobSubmissionClient.submit_job
+    ray.job_submission.JobSubmissionClient.stop_job
     ray.job_submission.JobSubmissionClient.get_job_status
+    ray.job_submission.JobSubmissionClient.get_job_info
     ray.job_submission.JobSubmissionClient.get_job_logs
     ray.job_submission.JobSubmissionClient.list_jobs
-    ray.job_submission.JobSubmissionClient.stop_job
     ray.job_submission.JobSubmissionClient.tail_job_logs
 
 .. autoclass:: ray.job_submission.JobSubmissionClient
