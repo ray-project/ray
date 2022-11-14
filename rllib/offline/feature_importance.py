@@ -1,5 +1,6 @@
 from typing import Callable, Dict, Any
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
@@ -80,7 +81,7 @@ class FeatureImportance(OfflineEvaluator):
         Returns:
             A dict mapping each feature index string to its importance.
         """
-
+        batch = convert_ma_batch_to_sample_batch(batch)
         obs_batch = batch["obs"]
         n_features = obs_batch.shape[-1]
         importance = np.zeros((self.repeat, n_features))

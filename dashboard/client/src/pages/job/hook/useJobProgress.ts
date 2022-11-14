@@ -1,3 +1,4 @@
+import _ from "lodash";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getJobProgress, getJobProgressByTaskName } from "../../../service/job";
 import { JobProgressByTaskName, TaskProgress } from "../../../type/job";
@@ -104,7 +105,30 @@ export const useJobProgressByTaskName = (jobId: string) => {
   }, [getProgress]);
 
   const tasks = progress?.tasks ?? [];
-  const paginatedTasks = tasks.slice((page - 1) * 10, page * 10);
+  const tasksWithTotals = tasks.map((task) => {
+    const {
+      numFailed = 0,
+      numPendingArgsAvail = 0,
+      numPendingNodeAssignment = 0,
+      numRunning = 0,
+      numSubmittedToWorker = 0,
+      numFinished = 0,
+    } = task.progress;
+
+    const numActive =
+      numPendingArgsAvail +
+      numPendingNodeAssignment +
+      numRunning +
+      numSubmittedToWorker;
+
+    return { ...task, numFailed, numActive, numFinished };
+  });
+  const sortedTasks = _.orderBy(
+    tasksWithTotals,
+    ["numFailed", "numActive", "numFinished"],
+    ["desc", "desc", "desc"],
+  );
+  const paginatedTasks = sortedTasks.slice((page - 1) * 10, page * 10);
 
   return {
     progress: paginatedTasks,

@@ -2,17 +2,15 @@ from typing import List, Optional
 
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     ResultDict,
 )
-from ray.util.iter import LocalIterator
 
 
 class ApexDDPGConfig(DDPGConfig):
@@ -21,10 +19,10 @@ class ApexDDPGConfig(DDPGConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Trainer object from the config and run one training iteration.
         >>> algo = config.build(env="Pendulum-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
@@ -40,7 +38,7 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "APEX_DDPG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -111,10 +109,10 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_replay_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_replay_manager: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
     ) -> "ApexDDPGConfig":
         """Sets the training related configuration.
@@ -154,17 +152,17 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_replay_worker is not None:
+        if max_requests_in_flight_per_replay_worker is not NotProvided:
             self.max_requests_in_flight_per_replay_worker = (
                 max_requests_in_flight_per_replay_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_replay_manager is not None:
+        if timeout_s_replay_manager is not NotProvided:
             self.timeout_s_replay_manager = timeout_s_replay_manager
 
         return self
@@ -195,18 +193,11 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        super().on_worker_failures(removed_workers, new_workers)
         self._sampling_actor_manager.remove_workers(
             removed_workers, remove_in_flight_requests=True
         )
         self._sampling_actor_manager.add_workers(new_workers)
-
-    @staticmethod
-    @override(DDPG)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Use APEX-DQN's execution plan."""
-        return ApexDQN.execution_plan(workers, config, **kwargs)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!

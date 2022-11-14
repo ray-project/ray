@@ -43,7 +43,6 @@ def setup_static_dir():
             "from source, please follow the additional steps "
             "required to build the dashboard"
             f"(cd python/ray/{module_name}/client "
-            "&& npm install "
             "&& npm ci "
             "&& npm run build)",
             build_dir,
@@ -122,6 +121,7 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
+
         try:
             response = await handler(request)
             status_tag = f"{floor(response.status / 100)}xx"
@@ -133,14 +133,14 @@ class HttpServerDashboardHead:
             resp_time = time.monotonic() - start_time
             try:
                 self.metrics.metrics_request_duration.labels(
-                    endpoint=request.path,
+                    endpoint=handler.__name__,
                     http_status=status_tag,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
                 self.metrics.metrics_request_count.labels(
                     method=request.method,
-                    endpoint=request.path,
+                    endpoint=handler.__name__,
                     http_status=status_tag,
                     SessionName=self._session_name,
                     Component="dashboard",
@@ -152,6 +152,7 @@ class HttpServerDashboardHead:
         # Bind http routes of each module.
         for c in modules:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(

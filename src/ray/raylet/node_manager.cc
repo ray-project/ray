@@ -170,6 +170,7 @@ void HeartbeatSender::Heartbeat() {
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
         if (status.IsDisconnected()) {
+          RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD") << "This node has beem marked as dead.";
           RAY_LOG(FATAL) << "This node has beem marked as dead.";
         }
       }));
@@ -424,6 +425,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   if (RayConfig::instance().use_ray_syncer()) {
+    periodical_runner_.RunFnPeriodically(
+        [this]() {
+          auto now = absl::Now();
+          auto threshold =
+              now - absl::Milliseconds(
+                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+          auto &resource_manager =
+              cluster_resource_scheduler_->GetClusterResourceManager();
+          for (auto &[node_id, resource] : resource_message_udpated_) {
+            auto modified_ts = resource_manager.GetNodeResourceModifiedTs(
+                scheduling::NodeID(node_id.Binary()));
+            if (modified_ts && *modified_ts < threshold) {
+              UpdateResourceUsage(node_id, resource);
+            }
+          }
+        },
+        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
@@ -462,7 +480,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
 ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeat here to ensure it happening after raylet being registered.
-  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
+  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -1026,6 +1046,14 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   if (node_id == self_node_id_) {
     if (!is_node_drained_) {
+      // TODO(iycheng): Don't duplicate log here once we enable event by default.
+      RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
+          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+             "dead by the "
+          << "GCS: GCS didn't receive heartbeats from this node for "
+          << RayConfig::instance().num_heartbeats_timeout() *
+                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
+          << " ms. This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
@@ -1044,6 +1072,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
+
+  // Remove the messages received
+  resource_message_udpated_.erase(node_id);
 
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
@@ -1299,6 +1330,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
+  std::string entrypoint = string_from_flatbuf(*message->entrypoint());
   StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
@@ -1377,11 +1409,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                pid,
                job_id,
                job_config,
+               entrypoint,
                send_reply_callback = std::move(send_reply_callback)](const Status &status,
                                                                      int assigned_port) {
       if (status.ok()) {
         auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, worker_ip_address, pid, job_config);
+            job_id, /*is_dead*/ false, worker_ip_address, pid, entrypoint, job_config);
         RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
             job_data_ptr,
             [send_reply_callback = std::move(send_reply_callback), assigned_port](
@@ -2518,7 +2551,6 @@ void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
 void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  cluster_task_manager_->FillPendingActorInfo(reply);
   // Report object spilling stats.
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
@@ -2803,6 +2835,9 @@ void NodeManager::ConsumeSyncMessage(
     if (UpdateResourceUsage(node_id, data)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
+    // Message view shouldn't carry this field.
+    RAY_CHECK(!data.should_global_gc());
+    resource_message_udpated_[node_id] = std::move(data);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
@@ -2818,6 +2853,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
   rpc::ResourcesData resources_data;
   resources_data.set_should_global_gc(true);
+  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
