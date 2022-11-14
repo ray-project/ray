@@ -241,8 +241,12 @@ class BackendExecutor:
                 )
         ray.get(futures)
 
-    def _create_local_rank_map(self) -> Dict:
-        """Create mapping from worker world_rank to local_rank.
+    def _create_rank_world_size_mappings(self) -> List[Dict]:
+        """Create rank and world size mappings for workers.
+        There are three maps returned:
+            - local_rank_map, which maps from worker world_rank to local_rank.
+            - local_world_size_map, which maps from world_rank to local_world_size
+            - node_rank_map, which maps from world rank to node rank
 
         Example:
             Worker 0: 0.0.0.0
@@ -254,7 +258,7 @@ class BackendExecutor:
             Workers 0, 1, 3 are on 0.0.0.0.
             Workers 2, 4 are on 0.0.0.1.
 
-            Expected Output:
+            Expected local_rank_map:
             {
                 0 -> 0,
                 1 -> 1,
@@ -262,15 +266,50 @@ class BackendExecutor:
                 3 -> 2,
                 4 -> 1
             }
+
+            Expected local_world_size_map:
+            {
+                0 -> 3,
+                1 -> 3,
+                2 -> 2,
+                3 -> 3,
+                4 -> 2
+            }
+
+            Expected node_rank_map:
+            {
+                0 -> 0,
+                1 -> 0,
+                2 -> 1,
+                3 -> 0,
+                4 -> 1
+            }
+
         """
-        rank_mapping = {}
-        ip_dict = defaultdict(int)
+        local_rank_map = {}  # map from world rank to local rank
+        local_world_size_map = {}  # map from world rank to local world size
+        node_rank_map = {}  # map from world rank to node rank
+        node_ips = {}  # map from node ip to node index
+        node_cnt = 0  # count the number of nodes
+
+        ip_dict = defaultdict(int)  # map from node ip to the number of workers on it.
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
             node_ip = worker.metadata.node_ip
-            rank_mapping[world_rank] = ip_dict[node_ip]
+            local_rank_map[world_rank] = ip_dict[node_ip]
             ip_dict[node_ip] += 1
-        return rank_mapping
+
+            if node_ip not in node_ips:
+                node_ips[node_ip] = node_cnt
+                node_cnt += 1
+            node_rank_map[world_rank] = node_ips[node_ip]
+
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata.node_ip
+            local_world_size_map[world_rank] = ip_dict[node_ip]
+
+        return local_rank_map, local_world_size_map, node_rank_map
 
     def start_training(
         self,
@@ -301,6 +340,8 @@ class BackendExecutor:
             train_func,
             world_rank,
             local_rank,
+            node_rank,
+            local_world_size,
             world_size,
             trial_info,
             checkpoint,
@@ -312,6 +353,8 @@ class BackendExecutor:
                     training_func=train_func,
                     world_rank=world_rank,
                     local_rank=local_rank,
+                    node_rank=node_rank,
+                    local_world_size=local_world_size,
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
@@ -331,7 +374,11 @@ class BackendExecutor:
             actors = [worker.actor for worker in self.worker_group.workers]
             self.dataset_shards = dataset_spec.get_dataset_shards(actors)
 
-        local_rank_map = self._create_local_rank_map()
+        (
+            local_rank_map,
+            local_world_size_map,
+            node_rank_map,
+        ) = self._create_rank_world_size_mappings()
 
         futures = []
         for index in range(len(self.worker_group)):
@@ -341,6 +388,8 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=index,
                     local_rank=local_rank_map[index],
+                    node_rank=node_rank_map[index],
+                    local_world_size=local_world_size_map[index],
                     world_size=len(self.worker_group),
                     trial_info=self._trial_info,
                     train_func=train_func,

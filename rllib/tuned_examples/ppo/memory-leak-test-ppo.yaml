@@ -9,7 +9,7 @@ memory-leak-test-ppo:
         env_config:
             config:
                 static_samples: true
-        rollout_fragment_length: 20
+        rollout_fragment_length: 50
         num_workers: 4
         num_envs_per_worker: 5
         train_batch_size: 1000
