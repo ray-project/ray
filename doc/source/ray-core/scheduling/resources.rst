@@ -151,7 +151,9 @@ You can also explicitly specify a task's or actor's resource requirements (for e
 
 .. note::
 
-  Ray supports fractional resource requirements. For example, if your task or actor is IO bound and has low CPU usage, you can specify fractional CPU ``num_cpus=0.5`` or even zero CPU ``num_cpus=0``.
+  Ray supports fractional resource requirements.
+  For example, if your task or actor is IO bound and has low CPU usage, you can specify fractional CPU ``num_cpus=0.5`` or even zero CPU ``num_cpus=0``.
+  The precision of the fractional resource requirement is 0.0001 so you should avoid specifying a double that's beyond that precision.
 
 .. tip::
 
