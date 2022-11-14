@@ -311,9 +311,11 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         to re-specify the parameters attached by ``tune.with_parameters``.
         The reason for this is as follows:
 
-        #. The parameters are stored in the Ray object store, so the objects may not exist anymore if restoring from a different Ray cluster.
+        1. The parameters are stored in the Ray object store, so the objects may not
+        exist anymore if restoring from a different Ray cluster.
 
-        #. The attached objects could be arbitrarily large, so Tune does not save the object data along with the trainable.
+        2. The attached objects could be arbitrarily large, so Tune does not save the
+        object data along with the trainable.
 
         To restore, Tune allows the parameters to be re-specified in
         :meth:`Tuner.restore(path, with_parameters=...) <ray.tune.tuner.Tuner.restore>`.
