@@ -8,7 +8,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
@@ -35,13 +39,13 @@ class DreamerConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
-        >>> config = DreamerConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = DreamerConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray import air
@@ -49,14 +53,15 @@ class DreamerConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
         >>> config = DreamerConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "Dreamer",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -287,7 +292,7 @@ class DreamerIteration:
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Dreamer training loop.
             for n in range(self.dreamer_train_iters):
                 print(f"sub-iteration={n}/{self.dreamer_train_iters}")
@@ -344,9 +349,12 @@ class Dreamer(Algorithm):
         # Prefill episode buffer with initial exploration (uniform sampling)
         while (
             total_sampled_timesteps(self.workers.local_worker())
-            < self.config["prefill_timesteps"]
+            < self.config.prefill_timesteps
         ):
             samples = self.workers.local_worker().sample()
+            # Dreamer only ever has one policy and we receive MA batches when
+            # connectors are on
+            samples = convert_ma_batch_to_sample_batch(samples)
             self.local_replay_buffer.add(samples)
 
     @override(Algorithm)
@@ -354,8 +362,8 @@ class Dreamer(Algorithm):
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer
-        dreamer_train_iters = self.config["dreamer_train_iters"]
-        batch_size = self.config["batch_size"]
+        dreamer_train_iters = self.config.dreamer_train_iters
+        batch_size = self.config.batch_size
 
         # Collect SampleBatches from rollout workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
@@ -371,7 +379,7 @@ class Dreamer(Algorithm):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Dreamer training loop.
             # Run multiple sub-iterations for each training iteration.
             for n in range(dreamer_train_iters):
