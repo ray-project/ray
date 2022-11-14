@@ -368,6 +368,8 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
+    # TODO: (Artur) this function should become deprecated once we have completely
+    #  transitioned to connectors
     @PublicAPI(stability="alpha")
     def compute_actions_from_raw_input_dict(
         self,
@@ -420,12 +422,24 @@ class Policy(metaclass=ABCMeta):
             >>>     obs, reward, done, info = env.step({0: action1, 1: action2}) # doctest: +SKIP # noqa
 
         Args:
-            input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions. These inputs are not assumed to abide to the
-                model's view requirements or to be preprocessed but are instead fed
-                to connectors.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
+            input_dict: A SampleBatch or input dict containing tensors to compute
+                actions. The inputs are assumed to be raw (i.e. unprocessed) outputs of
+                the environment and are fed to policy's connectors before model
+                inference. The policy's connector pre-processes the incoming input_dict
+                into a proper expected format required for inference by the model. These
+                preprocessing stages may include but are not limited to normalization of
+                observations, observation- and state-buffering for recurrent policies,
+                reward-clipping, etc. Shapes are expected to include a batch
+                dimension (i.e. for the multi-agent case observations are of shape
+                [BATCH_SIZE, OBS_SHAPE], where BATCH_SIZE could be the number of
+                agents we want to compute actions for).
+            explore: Whether to pick an exploitation or exploration action. The
+                resulting behaviour depends on the algorithm a policy implements.
+                Generally, exploration happens during training and means choosing
+                random (accrdoing to the current policy possibly suboptimal) actions.
+                Exploitation means choosing actions that are optimal according to the
+                learnt policy.
+                (None -> Rllib will default to AlgorithmConfig.explore).
             agent_ids: Agent IDs of observations in input_dict
             env_ids: Environment IDs of observations in input_dict
             **kwargs: Forward compatibility placeholder.
@@ -447,16 +461,13 @@ class Policy(metaclass=ABCMeta):
             input_dict.get(SampleBatch.OBS) is None
             and input_dict.get(SampleBatch.NEXT_OBS) is None
         ):
-            if log_once("compute_actions_obs_and_next_obs_provided"):
-                logger.debug(
-                    "compute_actions_from_input_dict() expects "
-                    "either SampleBatch.OBS or "
-                    "SampleBatch.NEXT_OBS to be present in the "
-                    "input_dict arg and interprets it as the "
-                    "latest observations returned by the "
-                    "environment. We subsequently default to the content of "
-                    "SampleBatch.NEXT_OBS."
-                )
+            logger.debug(
+                "compute_actions_from_input_dict() expects "
+                "either SampleBatch.OBS or SampleBatch.NEXT_OBS to be present in the "
+                "input_dict arg and interprets it as the latest observations returned "
+                "by the environment. If both are provided, we default to the content "
+                "of SampleBatch.NEXT_OBS."
+            )
             # Agent connectors require this field to be empty
             del input_dict[SampleBatch.OBS]
         elif input_dict.get(SampleBatch.NEXT_OBS) is None:
@@ -482,6 +493,7 @@ class Policy(metaclass=ABCMeta):
         )
 
     def _check_compute_action_agent_id_arg(self, agent_id_arg):
+        """Checks if agent_id_arg is None and warns that we default to agent_id='0'"""
         if agent_id_arg is None:
             if log_once("policy_{}_called_without_agent_ids".format(self)):
                 logger.info(
