@@ -100,6 +100,6 @@ algo.workers.foreach_worker(lambda worker: worker.get_policy().get_weights())
 
 # Same as above, but with index.
 algo.workers.foreach_worker_with_id(
-    lambda worker, _: worker.get_policy().get_weights()
+    lambda _id, worker: worker.get_policy().get_weights()
 )
 # __rllib-get-state-end__
