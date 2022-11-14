@@ -1812,7 +1812,9 @@ class Algorithm(Trainable):
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
         if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(
-                fn, local_worker=True, healthy_only=True,
+                fn,
+                local_worker=True,
+                healthy_only=True,
             )
 
     @DeveloperAPI
@@ -2598,8 +2600,7 @@ class Algorithm(Trainable):
 
         if self.config.evaluation_duration == "auto":
             assert (
-                train_future is not None
-                and self.config.evaluation_parallel_to_training
+                train_future is not None and self.config.evaluation_parallel_to_training
             )
             unit = self.config.evaluation_duration_unit
             eval_results = eval_func_to_use(

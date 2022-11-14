@@ -2,7 +2,9 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.pg import pg
-from ray.rllib.algorithms.tests.test_worker_failures import ForwardHealthCheckToEnvWorker
+from ray.rllib.algorithms.tests.test_worker_failures import (
+    ForwardHealthCheckToEnvWorker,
+)
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.error import EnvError
 

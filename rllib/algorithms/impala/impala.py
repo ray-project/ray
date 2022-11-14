@@ -531,8 +531,8 @@ class Impala(Algorithm):
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
-            self._aggregator_actor_manager and
-            self._aggregator_actor_manager.num_healthy_actors() > 0
+            self._aggregator_actor_manager
+            and self._aggregator_actor_manager.num_healthy_actors() > 0
         )
 
         # Get references to sampled SampleBatches from our workers.
