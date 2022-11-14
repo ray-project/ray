@@ -141,7 +141,7 @@ class BatchPredictor:
                 # Create a batch predictor that returns identity as the predictions.
                 batch_pred = BatchPredictor.from_pandas_udf(
                     lambda data: pd.DataFrame({"predictions": data["feature_1"]}))
-                    
+
                 # Create a dummy dataset.
                 ds = ray.data.from_pandas(pd.DataFrame({
                     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
@@ -149,12 +149,12 @@ class BatchPredictor:
                 # Execute batch prediction using this predictor.
                 predictions = batch_pred.predict(ds,
                     feature_columns=["feature_1"], keep_columns=["label"])
-                                
+
                 # print predictions and calculate final accuracy
                 print(predictions)
                 correct = predictions.map_batches(calculate_accuracy)
                 print(f"Final accuracy: {correct.sum(on='correct') / correct.count()}")
-            
+
             .. testoutput::
 
                 Dataset(num_blocks=1, num_rows=3, schema={predictions: int64, label: int64})
@@ -320,12 +320,12 @@ class BatchPredictor:
 
                 # Create a dummy dataset.
                 ds = ray.data.range_tensor(1000, parallelism=4)
-                
+
                 # Setup a prediction pipeline.
                 print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
 
              .. testoutput::
-            
+
                 DatasetPipeline(num_windows=4, num_stages=3)
         """
 
