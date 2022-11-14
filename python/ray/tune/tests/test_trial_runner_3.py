@@ -835,7 +835,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 pass
 
         num_to_keep = 2
-        checkpoint_config = CheckpointConfig(num_to_keep=num_to_keep)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep, checkpoint_frequency=1
+        )
         syncer = CustomSyncer()
 
         runner = TrialRunner(
