@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -45,13 +45,14 @@ class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
-        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> from ray.rllib.algorithms.cql import CQLConfig
+        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
+        >>> config = config.resources(num_gpus=0)
+        >>> config = config.rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -81,12 +82,12 @@ class CQLConfig(SACConfig):
     def training(
         self,
         *,
-        bc_iters: Optional[int] = None,
-        temperature: Optional[float] = None,
-        num_actions: Optional[int] = None,
-        lagrangian: Optional[bool] = None,
-        lagrangian_thresh: Optional[float] = None,
-        min_q_weight: Optional[float] = None,
+        bc_iters: Optional[int] = NotProvided,
+        temperature: Optional[float] = NotProvided,
+        num_actions: Optional[int] = NotProvided,
+        lagrangian: Optional[bool] = NotProvided,
+        lagrangian_thresh: Optional[float] = NotProvided,
+        min_q_weight: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CQLConfig":
         """Sets the training-related configuration.
@@ -105,17 +106,17 @@ class CQLConfig(SACConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if bc_iters is not None:
+        if bc_iters is not NotProvided:
             self.bc_iters = bc_iters
-        if temperature is not None:
+        if temperature is not NotProvided:
             self.temperature = temperature
-        if num_actions is not None:
+        if num_actions is not NotProvided:
             self.num_actions = num_actions
-        if lagrangian is not None:
+        if lagrangian is not NotProvided:
             self.lagrangian = lagrangian
-        if lagrangian_thresh is not None:
+        if lagrangian_thresh is not NotProvided:
             self.lagrangian_thresh = lagrangian_thresh
-        if min_q_weight is not None:
+        if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
 
         return self
@@ -198,7 +199,7 @@ class CQL(SAC):
             else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.config.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(

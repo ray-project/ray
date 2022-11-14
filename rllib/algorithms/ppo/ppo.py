@@ -14,7 +14,7 @@ from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -48,13 +48,14 @@ class PPOConfig(PGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = PPOConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -62,14 +63,16 @@ class PPOConfig(PGConfig):
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config.training(  # doctest: +SKIP
+        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -114,23 +117,23 @@ class PPOConfig(PGConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        sgd_minibatch_size: Optional[int] = None,
-        num_sgd_iter: Optional[int] = None,
-        shuffle_sequences: Optional[bool] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-        clip_param: Optional[float] = None,
-        vf_clip_param: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        sgd_minibatch_size: Optional[int] = NotProvided,
+        num_sgd_iter: Optional[int] = NotProvided,
+        shuffle_sequences: Optional[bool] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         # Deprecated.
-        vf_share_layers=None,
+        vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
     ) -> "PPOConfig":
         """Sets the training related configuration.
@@ -166,51 +169,50 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        # Pass kwargs onto super's `training()` method.
-        super().training(**kwargs)
-
-        if lr_schedule is not None:
-            self.lr_schedule = lr_schedule
-        if use_critic is not None:
-            self.use_critic = use_critic
-        if use_gae is not None:
-            self.use_gae = use_gae
-        if lambda_ is not None:
-            self.lambda_ = lambda_
-        if kl_coeff is not None:
-            self.kl_coeff = kl_coeff
-        if sgd_minibatch_size is not None:
-            self.sgd_minibatch_size = sgd_minibatch_size
-        if num_sgd_iter is not None:
-            self.num_sgd_iter = num_sgd_iter
-        if shuffle_sequences is not None:
-            self.shuffle_sequences = shuffle_sequences
-        if vf_loss_coeff is not None:
-            self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
-            if isinstance(entropy_coeff, int):
-                entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
-            self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not None:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
-        if clip_param is not None:
-            self.clip_param = clip_param
-        if vf_clip_param is not None:
-            self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
-            self.grad_clip = grad_clip
-        if kl_target is not None:
-            self.kl_target = kl_target
-
-        if vf_share_layers is not None:
-            self.model["vf_share_layers"] = vf_share_layers
+        if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ppo.DEFAULT_CONFIG['vf_share_layers']",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
                 error=True,
             )
+
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if use_critic is not NotProvided:
+            self.use_critic = use_critic
+        if use_gae is not NotProvided:
+            self.use_gae = use_gae
+        if lambda_ is not NotProvided:
+            self.lambda_ = lambda_
+        if kl_coeff is not NotProvided:
+            self.kl_coeff = kl_coeff
+        if sgd_minibatch_size is not NotProvided:
+            self.sgd_minibatch_size = sgd_minibatch_size
+        if num_sgd_iter is not NotProvided:
+            self.num_sgd_iter = num_sgd_iter
+        if shuffle_sequences is not NotProvided:
+            self.shuffle_sequences = shuffle_sequences
+        if vf_loss_coeff is not NotProvided:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not NotProvided:
+            if isinstance(entropy_coeff, int):
+                entropy_coeff = float(entropy_coeff)
+            if entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0")
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if clip_param is not NotProvided:
+            self.clip_param = clip_param
+        if vf_clip_param is not NotProvided:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not NotProvided:
+            self.grad_clip = grad_clip
+        if kl_target is not NotProvided:
+            self.kl_target = kl_target
 
         return self
 
@@ -224,12 +226,13 @@ class PPOConfig(PGConfig):
         # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size > 0:
+        if self.sgd_minibatch_size > self.train_batch_size:
             raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    self.sgd_minibatch_size, self.train_batch_size
-                )
+                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                "times."
             )
 
         # Episodes may only be truncated (and passed into PPO's
@@ -309,11 +312,11 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -322,13 +325,19 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config["simple_optimizer"]:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        policies_to_update = list(train_results.keys())
+
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
         }
 
         # Update weights - after learning on the local worker - on all remote
@@ -336,7 +345,7 @@ class PPO(Algorithm):
         if self.workers.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
-                    policies=list(train_results.keys()),
+                    policies=policies_to_update,
                     global_vars=global_vars,
                 )
 
@@ -349,7 +358,7 @@ class PPO(Algorithm):
 
             # Warn about excessively high value function loss
             scaled_vf_loss = (
-                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+                self.config.vf_loss_coeff * policy_info[LEARNER_STATS_KEY]["vf_loss"]
             )
             policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
             if (
@@ -369,7 +378,7 @@ class PPO(Algorithm):
             mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
-                and mean_reward > self.config["vf_clip_param"]
+                and mean_reward > self.config.vf_clip_param
             ):
                 self.warned_vf_clip = True
                 logger.warning(

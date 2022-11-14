@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -17,10 +17,10 @@ class DDPGConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> algo = config.build(env="Pendulum-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="Pendulum-v1") # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
@@ -31,12 +31,12 @@ class DDPGConfig(SimpleQConfig):
         >>> print(config.lr) # doctest: +SKIP
         0.0004
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="Pendulum-v1")
+        >>> config = config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "DDPG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -134,24 +134,24 @@ class DDPGConfig(SimpleQConfig):
     def training(
         self,
         *,
-        twin_q: Optional[bool] = None,
-        policy_delay: Optional[int] = None,
-        smooth_target_policy: Optional[bool] = None,
-        target_noise: Optional[bool] = None,
-        target_noise_clip: Optional[float] = None,
-        use_state_preprocessor: Optional[bool] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        n_step: Optional[int] = None,
-        critic_lr: Optional[float] = None,
-        actor_lr: Optional[float] = None,
-        tau: Optional[float] = None,
-        use_huber: Optional[bool] = None,
-        huber_threshold: Optional[float] = None,
-        l2_reg: Optional[float] = None,
-        training_intensity: Optional[float] = None,
+        twin_q: Optional[bool] = NotProvided,
+        policy_delay: Optional[int] = NotProvided,
+        smooth_target_policy: Optional[bool] = NotProvided,
+        target_noise: Optional[bool] = NotProvided,
+        target_noise_clip: Optional[float] = NotProvided,
+        use_state_preprocessor: Optional[bool] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        use_huber: Optional[bool] = NotProvided,
+        huber_threshold: Optional[float] = NotProvided,
+        l2_reg: Optional[float] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -214,41 +214,41 @@ class DDPGConfig(SimpleQConfig):
         """
         super().training(**kwargs)
 
-        if twin_q is not None:
+        if twin_q is not NotProvided:
             self.twin_q = twin_q
-        if policy_delay is not None:
+        if policy_delay is not NotProvided:
             self.policy_delay = policy_delay
-        if smooth_target_policy is not None:
+        if smooth_target_policy is not NotProvided:
             self.smooth_target_policy = smooth_target_policy
-        if target_noise is not None:
+        if target_noise is not NotProvided:
             self.target_noise = target_noise
-        if target_noise_clip is not None:
+        if target_noise_clip is not NotProvided:
             self.target_noise_clip = target_noise_clip
-        if use_state_preprocessor is not None:
+        if use_state_preprocessor is not NotProvided:
             self.use_state_preprocessor = use_state_preprocessor
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if critic_lr is not None:
+        if critic_lr is not NotProvided:
             self.critic_lr = critic_lr
-        if actor_lr is not None:
+        if actor_lr is not NotProvided:
             self.actor_lr = actor_lr
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if use_huber is not None:
+        if use_huber is not NotProvided:
             self.use_huber = use_huber
-        if huber_threshold is not None:
+        if huber_threshold is not NotProvided:
             self.huber_threshold = huber_threshold
-        if l2_reg is not None:
+        if l2_reg is not NotProvided:
             self.l2_reg = l2_reg
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
 
         return self

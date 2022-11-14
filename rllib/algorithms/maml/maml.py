@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
@@ -32,10 +32,10 @@ class MAMLConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
@@ -43,14 +43,15 @@ class MAMLConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = MAMLConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     grad_clip=tune.grid_search([10.0, 40.0]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "MAML",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -100,19 +101,19 @@ class MAMLConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        clip_param: Optional[float] = None,
-        vf_clip_param: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        kl_target: Optional[float] = None,
-        inner_adaptation_steps: Optional[int] = None,
-        maml_optimizer_steps: Optional[int] = None,
-        inner_lr: Optional[float] = None,
-        use_meta_env: Optional[bool] = None,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
+        inner_adaptation_steps: Optional[int] = NotProvided,
+        maml_optimizer_steps: Optional[int] = NotProvided,
+        inner_lr: Optional[float] = NotProvided,
+        use_meta_env: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "MAMLConfig":
         """Sets the training related configuration.
@@ -143,31 +144,31 @@ class MAMLConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if use_gae is not None:
+        if use_gae is not NotProvided:
             self.use_gae = use_gae
-        if lambda_ is not None:
+        if lambda_ is not NotProvided:
             self.lambda_ = lambda_
-        if kl_coeff is not None:
+        if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-        if vf_loss_coeff is not None:
+        if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
+        if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if clip_param is not None:
+        if clip_param is not NotProvided:
             self.clip_param = clip_param
-        if vf_clip_param is not None:
+        if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if kl_target is not None:
+        if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if inner_adaptation_steps is not None:
+        if inner_adaptation_steps is not NotProvided:
             self.inner_adaptation_steps = inner_adaptation_steps
-        if maml_optimizer_steps is not None:
+        if maml_optimizer_steps is not NotProvided:
             self.maml_optimizer_steps = maml_optimizer_steps
-        if inner_lr is not None:
+        if inner_lr is not NotProvided:
             self.inner_lr = inner_lr
-        if use_meta_env is not None:
+        if use_meta_env is not NotProvided:
             self.use_meta_env = use_meta_env
 
         return self
