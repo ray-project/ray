@@ -4,11 +4,13 @@
 Quickstart Using the Ray Jobs CLI
 =================================
 
-In this guide, we will walk through the Ray Jobs CLIs available for submitting and interacting with a Ray Job.
-
 .. note::
 
   The Jobs API is in beta and may change before becoming stable.
+
+In this guide, we will walk through the Ray Jobs CLI commands available for submitting and interacting with a Ray Job.
+
+To use the Jobs API programmatically via a Python SDK instead of a CLI, see :ref:`ray-job-sdk`.
 
 Setup
 -----
@@ -50,6 +52,7 @@ Let's start with a sample script that can be run locally. The following script u
     def hello_world():
         return "hello world"
 
+    # Automatically connect to the running Ray cluster.
     ray.init()
     print(ray.get(hello_world.remote()))
 
@@ -233,6 +236,7 @@ Ray Jobs provides an option to specify the runtime environment when submitting a
     def get_requests_version():
         return requests.__version__
 
+    # Note: No need to specify the runtime_env in ray.init() in the driver script.
     ray.init()
     print("requests version:", ray.get(get_requests_version.remote()))
 
@@ -287,6 +291,10 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # ------------------------------------------
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
+
+.. warning::
+
+    When using the Ray Jobs API, the runtime environment should be specified only in the Jobs API (e.g. in `ray job submit --runtime-env=...` or `JobSubmissionClient.submit_job(runtime_env=...)`), not via `ray.init(runtime_env=...)` in the driver script.
 
 - The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
 - The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-sdk-ref>`.
