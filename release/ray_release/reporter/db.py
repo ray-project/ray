@@ -32,8 +32,8 @@ class DBReporter(Reporter):
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
+            "prometheus_metrics": result.prometheus_metrics or {},
         }
-        result_json.update(result.prometheus_metrics)
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
 
