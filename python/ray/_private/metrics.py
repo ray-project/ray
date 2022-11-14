@@ -1,7 +1,7 @@
 import time
 
 from contextlib import ContextDecorator
-from ray.util.metrics import Histogram, Counter, Gauge
+from ray.util.metrics import Counter, Gauge
 
 
 class monitor(ContextDecorator):
@@ -23,9 +23,6 @@ class monitor(ContextDecorator):
         super().__init__()
         self.total_calls = Counter(f"{name}.total")
         self.success_calls = Counter(f"{name}.success")
-  #      self.latency_ms = Histogram(
-  #          f"{name}.latency_ms", boundaries=[1, 10, 100, 1000, 10000]
-  #      )
         self.latency_ms = Gauge(f"{name}.latency_ms")
 
     def __enter__(self):
