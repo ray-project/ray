@@ -73,7 +73,7 @@ class PhysicalOperator:
 
     Subclasses:
         OneToOneOperator: handles one-to-one operations (e.g., map, filter)
-        ExchangeOperator: for stream manipulation operations (e.g., shuffle, union)
+        ExchangeOperator: handles other types of operations (e.g., shuffle, union)
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
@@ -126,11 +126,11 @@ class Executor:
 
 
 class OneToOneOperator(PhysicalOperator):
-    """Abstract class for operators that run on a single process.
+    """A streaming operator that maps inputs 1:1 to outputs.
 
-    Used to implement 1:1 transformations. The executor will need to
-    wrap the operator in Ray tasks or actors for actual execution,
-    e.g., using TaskPoolStrategy or ActorPoolStrategy.
+    Subclasses need only define a single `execute_one` method that runs in a single
+    process, leaving the implementation of parallel and distributed execution to the
+    Executor implementation.
 
     Subclasses:
         Read
@@ -143,7 +143,7 @@ class OneToOneOperator(PhysicalOperator):
     def execute_one(
         self, block_bundle: Iterator[Block], input_metadata: Dict[str, Any]
     ) -> Iterator[Block]:
-        """Execute locally on a worker process.
+        """Execute a block transformation locally on a worker process.
 
         Args:
             block_bundle: Iterator over input blocks of a RefBundle. Typically, this
@@ -156,13 +156,11 @@ class OneToOneOperator(PhysicalOperator):
 
 
 class ExchangeOperator(PhysicalOperator):
-    """A streaming operator that does not map inputs 1:1 with outputs.
+    """A streaming operator for more complex parallel transformations.
 
-    For example, this can take two operators and combine their blocks
-    pairwise for zip, group adjacent blocks for repartition, etc.
-
-    Exchanges can be metadata-only (i.e., not transforming any block data), or can
-    also manipulate data (e.g., for sort / shuffle).
+    Subclasses have full control over how to buffer and transform input blocks, which
+    enables them to implement metadata-only stream transformations (e.g., union),
+    as well as all-to-all transformations (e.g., shuffle, zip).
 
     Subclasses:
         AllToAllOperator
@@ -186,7 +184,7 @@ class ExchangeOperator(PhysicalOperator):
 
 
 class AllToAllOperator(ExchangeOperator):
-    """A type of ExchangeOperator that doesn't execute until all inputs are available.
+    """An ExchangeOperator that doesn't execute until all inputs are available.
 
     Used to implement all:all transformations such as sort / shuffle.
 
