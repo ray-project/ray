@@ -619,6 +619,7 @@ void CoreWorker::Shutdown() {
 
 void CoreWorker::ConnectToRaylet() {
   RAY_CHECK(!options_.connect_on_start);
+  RAY_LOG(DEBUG) << "Connecting to the raylet.";
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
