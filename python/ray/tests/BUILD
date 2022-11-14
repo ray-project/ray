@@ -33,7 +33,6 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
-    "test_actor_resources.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
@@ -120,6 +119,7 @@ py_test_module_list(
     "test_metrics.py",
     "test_task_metrics.py",
     "test_actor_state_metrics.py",
+    "test_placement_group_metrics.py",
     "test_object_store_metrics.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
@@ -260,6 +260,7 @@ py_test_module_list(
   files = [
     "test_actor.py",
     "test_actor_failures.py",
+    "test_actor_resources.py",
     "test_failure.py",
     "test_actor_advanced.py",
     "test_multi_node.py",
