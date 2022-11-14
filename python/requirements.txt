@@ -66,4 +66,3 @@ gpustat>=1.0.0
 pydantic
 prometheus_client<0.14.0,>=0.7.1
 opentelemetry-sdk==1.1.0
-ipdb
