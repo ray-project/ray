@@ -7,6 +7,7 @@ import tree
 
 
 import ray.cloudpickle as pickle
+from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
@@ -191,23 +192,7 @@ def local_policy_inference(
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
 
-    # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
-    #  connectors (and don't auto-wrap in RW anymore)
-    if any(
-        [
-            o.shape == (210, 160, 3) if isinstance(o, np.ndarray) else False
-            for o in tree.flatten(obs)
-        ]
-    ):
-        if log_once("warn_about_possibly_non_wrapped_atari_env"):
-            logger.warning(
-                "The observation you fed into local_policy_inference() has "
-                "dimensions (210, 160, 3), which is the standard for atari "
-                "environments. If RLlib raises an error including a related "
-                "dimensionality mismatch, you may need to use "
-                "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
-                "you environment."
-            )
+    __check_atari_obs_space(obs)
 
     # Put policy in inference mode, so we don't spend time on training
     # only transformations.
@@ -293,3 +278,23 @@ def load_policies_from_checkpoint(
 ) -> Dict[PolicyID, "Policy"]:
 
     return Policy.from_checkpoint(path, policy_ids)
+
+
+def __check_atari_obs_space(obs):
+    # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
+    #  connectors (and don't auto-wrap in RW anymore)
+    if any(
+        [
+            o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
+            for o in tree.flatten(obs)
+        ]
+    ):
+        if log_once("warn_about_possibly_non_wrapped_atari_env"):
+            logger.warning(
+                "The observation you fed into local_policy_inference() has "
+                "dimensions (210, 160, 3), which is the standard for atari "
+                "environments. If RLlib raises an error including a related "
+                "dimensionality mismatch, you may need to use "
+                "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
+                "you environment."
+            )
