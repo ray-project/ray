@@ -487,39 +487,40 @@ class Policy(metaclass=ABCMeta):
         connectors.
 
         Simple example:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig
-            >>> algo = PPOConfig().build(env="CartPole-v1")
-            >>> algo.train()
-            >>> policy = algo.get_policy()
-            >>> env = gym.make("CartPole-v1")
-            >>> obs = env.reset()
-            >>> reward, done, info = 0, False, {}
-            >>> while not done:
-            >>>     [action], _, _ = policy.compute_actions_from_raw_input(
-            >>>         next_obs_batch=[obs],
-            >>>         reward_batch=[reward],
-            >>>         dones_batch=[done],
-            >>>         info_batch=[info]
-            >>>     )
-            >>>     obs, reward, done, info = env.step(action)
+            >>> from ray.rllib.algorithms.ppo import PPOConfig # doctest: +SKIP
+            >>> algo = PPOConfig().build(env="CartPole-v1") # doctest: +SKIP
+            >>> algo.train() # doctest: +SKIP
+            >>> policy = algo.get_policy() # doctest: +SKIP
+            >>> env = gym.make("CartPole-v1") # doctest: +SKIP
+            >>> obs = env.reset() # doctest: +SKIP
+            >>> reward, done, info = 0, False, {} # doctest: +SKIP
+            >>> while not done: # doctest: +SKIP
+            >>>     [action], _, _ = policy.compute_actions_from_raw_input( # doctest: +SKIP # noqa
+            >>>         next_obs_batch=[obs], # doctest: +SKIP
+            >>>         reward_batch=[reward], # doctest: +SKIP
+            >>>         dones_batch=[done], # doctest: +SKIP
+            >>>         info_batch=[info] # doctest: +SKIP
+            >>>     ) # doctest: +SKIP
+            >>>     obs, reward, done, info = env.step(action) # doctest: +SKIP
 
         Batched example:
-            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-            >>> algo = PPOConfig().build(env=MultiAgentCartPole)
-            >>> algo.train()
-            >>> policy = algo.get_policy()
-            >>> env = MultiAgentCartPole({"num_agents": 2})
-            >>> obses = env.reset()
-            >>> rewards, dones, infos = {0: 0, 1: 0}, {0: False, 1: False}, {0: {},
-            >>>                             1: {}}
-            >>> while not all(dones.values()):
-            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input(
-            >>>         next_obs_batch=[obses[0], obses[1]],
-            >>>         reward_batch=[rewards[0], rewards[1]],
-            >>>         dones_batch=[dones[0], dones[1]],
-            >>>         info_batch=[infos[0], infos[1]]
-            >>>     )
-            >>>     obs, reward, done, info = env.step({0: action1, 1: action2})
+            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole # doctest: +SKIP # noqa
+            >>> algo = PPOConfig().build(env=MultiAgentCartPole) # doctest: +SKIP
+            >>> algo.train() # doctest: +SKIP
+            >>> policy = algo.get_policy() # doctest: +SKIP
+            >>> env = MultiAgentCartPole({"num_agents": 2}) # doctest: +SKIP
+            >>> obses = env.reset() # doctest: +SKIP
+            >>> rewards, dones, infos = {0: 0, 1: 0}, # doctest: +SKIP
+            >>>                         {0: False, 1: False}, # doctest: +SKIP
+            >>>                         {0: {}, 1: {}} # doctest: +SKIP
+            >>> while not all(dones.values()): # doctest: +SKIP
+            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input( # doctest: +SKIP # noqa
+            >>>         next_obs_batch=[obses[0], obses[1]], # doctest: +SKIP
+            >>>         reward_batch=[rewards[0], rewards[1]], # doctest: +SKIP
+            >>>         dones_batch=[dones[0], dones[1]], # doctest: +SKIP
+            >>>         info_batch=[infos[0], infos[1]] # doctest: +SKIP
+            >>>     ) # doctest: +SKIP
+            >>>     obs, reward, done, info = env.step({0: action1, 1: action2}) # doctest: +SKIP # noqa
 
         Args:
             next_obs_batch: Batch of observations, one per agent.
