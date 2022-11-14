@@ -136,7 +136,7 @@ class BatchPredictor:
                 from ray.train.batch_predictor import BatchPredictor
 
                 def calculate_accuracy(df):
-                    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
+                    return pd.DataFrame({"correct": df["preds"] == df["label"]})
 
                 # Create a batch predictor that returns identity as the predictions.
                 batch_pred = BatchPredictor.from_pandas_udf(
@@ -157,7 +157,7 @@ class BatchPredictor:
 
             .. testoutput::
 
-                Dataset(num_blocks=1, num_rows=3, schema={predictions: int64, label: int64})
+                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
                 Final accuracy:  1.0
         """
         if num_gpus_per_worker is None:
