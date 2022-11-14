@@ -102,14 +102,14 @@ class MultiAgentEnv(gym.Env):
             Tuple containing 1) new observations for
             each ready agent, 2) reward values for each ready agent. If
             the episode is just started, the value will be None.
-            3) Done values for each ready agent. The special key
+            3) Terminated values for each ready agent. The special key
             "__all__" (required) is used to indicate env termination.
             4) Truncated values for each ready agent.
             5) Info values for each agent id (may be empty dicts).
 
         Examples:
             >>> env = ... # doctest: +SKIP
-            >>> obs, rewards, dones, truncated, infos = env.step( # doctest: +SKIP
+            >>> obs, rewards, terminateds, truncateds, infos = env.step( # doctest: +SKIP
             ...    action_dict={ # doctest: +SKIP
             ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
             ...    }) # doctest: +SKIP
@@ -119,11 +119,11 @@ class MultiAgentEnv(gym.Env):
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
-            >>> print(dones) # doctest: +SKIP
+            >>> print(terminateds) # doctest: +SKIP
             {
                 "car_0": False,    # car_0 is still running
-                "car_1": True,     # car_1 is done
-                "__all__": False,  # the env is not done
+                "car_1": True,     # car_1 is terminated
+                "__all__": False,  # the env is not terminated
             }
             >>> print(infos) # doctest: +SKIP
             {
@@ -491,7 +491,7 @@ def make_multi_agent(
                 self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
             else:
                 self.envs = [env_name_or_creator(config) for _ in range(num)]
-            self.dones = set()
+            self.terminateds = set()
             self.truncateds = set()
             self.observation_space = self.envs[0].observation_space
             self.action_space = self.envs[0].action_space
@@ -527,7 +527,7 @@ def make_multi_agent(
 
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-            self.dones = set()
+            self.terminateds = set()
             self.truncateds = set()
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
@@ -541,18 +541,18 @@ def make_multi_agent(
 
         @override(MultiAgentEnv)
         def step(self, action_dict):
-            obs, rew, done, truncated, info = {}, {}, {}, {}, {}
+            obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
                 results = self.envs[i].step(action)
-                obs[i], rew[i], done[i], truncated[i], info[i] = results
+                obs[i], rew[i], terminated[i], truncated[i], info[i] = results
 
-                if done[i]:
-                    self.dones.add(i)
+                if terminated[i]:
+                    self.terminateds.add(i)
                 if truncated[i]:
                     self.truncateds.add(i)
-            done["__all__"] = len(self.dones) == len(self.envs)
+            terminated["__all__"] = len(self.terminateds) == len(self.envs)
             truncated["__all__"] = len(self.truncateds) == len(self.envs)
-            return obs, rew, done, truncated, info
+            return obs, rew, terminated, truncated, info
 
         @override(MultiAgentEnv)
         def render(self):
@@ -595,7 +595,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         self.num_envs = num_envs
         self.restart_failed_sub_environments = restart_failed_sub_environments
 
-        self.dones = set()
+        self.terminateds = set()
         self.truncateds = set()
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
@@ -615,29 +615,29 @@ class MultiAgentEnvWrapper(BaseEnv):
         MultiEnvDict,
         MultiEnvDict,
     ]:
-        obs, rewards, dones, truncateds, infos = {}, {}, {}, {}, {}
+        obs, rewards, terminateds, truncateds, infos = {}, {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
-            obs[i], rewards[i], dones[i], truncateds[i], infos[i] = env_state.poll()
-        return obs, rewards, dones, truncateds, infos, {}
+            obs[i], rewards[i], terminateds[i], truncateds[i], infos[i] = env_state.poll()
+        return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, agent_dict in action_dict.items():
-            if env_id in self.dones:
+            if env_id in self.terminateds or env_id in self.truncateds:
                 raise ValueError(
                     f"Env {env_id} is already done and cannot accept new actions"
                 )
             env = self.envs[env_id]
             try:
-                obs, rewards, dones, truncateds, infos = env.step(agent_dict)
+                obs, rewards, terminateds, truncateds, infos = env.step(agent_dict)
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.try_restart(env_id=env_id)
                     obs = e
                     rewards = {}
-                    dones = {"__all__": True}
-                    truncateds = {"__all__": True}
+                    terminateds = {"__all__": True}
+                    truncateds = {"__all__": False}
                     infos = {}
                 else:
                     raise e
@@ -646,7 +646,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                 obs, (dict, Exception)
             ), "Not a multi-agent obs dict or an Exception!"
             assert isinstance(rewards, dict), "Not a multi-agent reward dict!"
-            assert isinstance(dones, dict), "Not a multi-agent done dict!"
+            assert isinstance(terminateds, dict), "Not a multi-agent terminateds dict!"
             assert isinstance(truncateds, dict), "Not a multi-agent truncateds dict!"
             assert isinstance(infos, dict), "Not a multi-agent info dict!"
             if isinstance(obs, dict) and set(infos).difference(set(obs)):
@@ -654,17 +654,22 @@ class MultiAgentEnvWrapper(BaseEnv):
                     "Key set for infos must be a subset of obs: "
                     "{} vs {}".format(infos.keys(), obs.keys())
                 )
-            if "__all__" not in dones:
+            if "__all__" not in terminateds:
                 raise ValueError(
                     "In multi-agent environments, '__all__': True|False must "
-                    "be included in the 'done' dict: got {}.".format(dones)
+                    "be included in the 'terminateds' dict: got {}.".format(terminateds)
+                )
+            elif "__all__" not in truncateds:
+                raise ValueError(
+                    "In multi-agent environments, '__all__': True|False must "
+                    "be included in the 'truncateds' dict: got {}.".format(truncateds)
                 )
 
-            if dones["__all__"]:
-                self.dones.add(env_id)
+            if terminateds["__all__"]:
+                self.terminateds.add(env_id)
             if truncateds["__all__"]:
                 self.truncateds.add(env_id)
-            self.env_states[env_id].observe(obs, rewards, dones, truncateds, infos)
+            self.env_states[env_id].observe(obs, rewards, terminateds, truncateds, infos)
 
     @override(BaseEnv)
     def try_reset(
@@ -691,8 +696,8 @@ class MultiAgentEnvWrapper(BaseEnv):
             else:
                 assert isinstance(obs, dict), "Not a multi-agent obs dict!"
             if obs is not None:
-                if idx in self.dones:
-                    self.dones.remove(idx)
+                if idx in self.terminateds:
+                    self.terminateds.remove(idx)
                 if idx in self.truncateds:
                     self.truncateds.remove(idx)
             ret_obs[idx] = obs
@@ -787,7 +792,7 @@ class _MultiAgentEnvState:
         self.initialized = False
         self.last_obs = {}
         self.last_rewards = {}
-        self.last_dones = {"__all__": False}
+        self.last_terminateds = {"__all__": False}
         self.last_truncateds = {"__all__": False}
         self.last_infos = {}
 
@@ -807,47 +812,47 @@ class _MultiAgentEnvState:
 
         observations = self.last_obs
         rewards = {}
-        dones = {"__all__": self.last_dones["__all__"]}
+        terminateds = {"__all__": self.last_terminateds["__all__"]}
         truncateds = {"__all__": self.last_truncateds["__all__"]}
         infos = self.last_infos
 
         # If episode is done or we have an error, release everything we have.
-        if dones["__all__"] or isinstance(observations, Exception):
+        if terminateds["__all__"] or truncateds["__all__"] or isinstance(observations, Exception):
             rewards = self.last_rewards
             self.last_rewards = {}
-            dones = self.last_dones
+            terminateds = self.last_terminateds
             if isinstance(observations, Exception):
-                dones["__all__"] = True
-                truncateds["__all__"] = True
-            self.last_dones = {}
+                terminateds["__all__"] = True
+                truncateds["__all__"] = False
+            self.last_terminateds = {}
             truncateds = self.last_truncateds
             self.last_truncateds = {}
             self.last_obs = {}
             infos = self.last_infos
             self.last_infos = {}
-        # Only release those agents' rewards/dones/truncateds/infos, whose
+        # Only release those agents' rewards/terminateds/truncateds/infos, whose
         # observations we have.
         else:
             for ag in observations.keys():
                 if ag in self.last_rewards:
                     rewards[ag] = self.last_rewards[ag]
                     del self.last_rewards[ag]
-                if ag in self.last_dones:
-                    dones[ag] = self.last_dones[ag]
-                    del self.last_dones[ag]
+                if ag in self.last_terminateds:
+                    terminateds[ag] = self.last_terminateds[ag]
+                    del self.last_terminateds[ag]
                 if ag in self.last_truncateds:
                     truncateds[ag] = self.last_truncateds[ag]
                     del self.last_truncateds[ag]
 
-        self.last_dones["__all__"] = False
+        self.last_terminateds["__all__"] = False
         self.last_truncateds["__all__"] = False
-        return observations, rewards, dones, truncateds, infos
+        return observations, rewards, terminateds, truncateds, infos
 
     def observe(
         self,
         obs: MultiAgentDict,
         rewards: MultiAgentDict,
-        dones: MultiAgentDict,
+        terminateds: MultiAgentDict,
         truncateds: MultiAgentDict,
         infos: MultiAgentDict,
     ):
@@ -857,11 +862,11 @@ class _MultiAgentEnvState:
                 self.last_rewards[ag] += r
             else:
                 self.last_rewards[ag] = r
-        for ag, d in dones.items():
-            if ag in self.last_dones:
-                self.last_dones[ag] = self.last_dones[ag] or d
+        for ag, d in terminateds.items():
+            if ag in self.last_terminateds:
+                self.last_terminateds[ag] = self.last_terminateds[ag] or d
             else:
-                self.last_dones[ag] = d
+                self.last_terminateds[ag] = d
         for ag, t in truncateds.items():
             if ag in self.last_truncateds:
                 self.last_truncateds[ag] = self.last_truncateds[ag] or t
@@ -886,7 +891,7 @@ class _MultiAgentEnvState:
 
         self.last_obs, self.last_infos = obs_and_infos
         self.last_rewards = {}
-        self.last_dones = {"__all__": False}
+        self.last_terminateds = {"__all__": False}
         self.last_truncateds = {"__all__": False}
 
         return self.last_obs, self.last_infos

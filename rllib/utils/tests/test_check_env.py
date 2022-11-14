@@ -294,14 +294,14 @@ class TestCheckBaseEnv:
 
     def test_check_env_step_incorrect_error(self):
         good_reward = {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}}
-        good_done = {0: {0: False, 1: False}, 1: {0: False, 1: False}}
+        good_terminated = {0: {0: False, 1: False}, 1: {0: False, 1: False}}
         good_info = {0: {0: {}, 1: {}}, 1: {0: {}, 1: {}}}
 
         env = self._make_base_env()
         bad_multi_env_dict_obs = {0: 1, 1: {0: np.zeros(4)}}
-        poll = MagicMock(
-            return_value=(bad_multi_env_dict_obs, good_reward, good_done, good_info, {})
-        )
+        poll = MagicMock(return_value=(
+            bad_multi_env_dict_obs, good_reward, good_terminated, good_info, {}
+        ))
         env.poll = poll
         with pytest.raises(
             ValueError,
@@ -313,22 +313,24 @@ class TestCheckBaseEnv:
 
         bad_reward = {0: {0: "not_reward", 1: 1}}
         good_obs = env.observation_space_sample()
-        poll = MagicMock(return_value=(good_obs, bad_reward, good_done, good_info, {}))
+        poll = MagicMock(return_value=(
+            good_obs, bad_reward, good_terminated, good_info, {}
+        ))
         env.poll = poll
         with pytest.raises(
             ValueError, match="Your step function must return rewards that are"
         ):
             check_env(env)
-        bad_done = {0: {0: "not_done", 1: False}}
-        poll = MagicMock(return_value=(good_obs, good_reward, bad_done, good_info, {}))
+        bad_terminated = {0: {0: "not_terminated", 1: False}}
+        poll = MagicMock(return_value=(good_obs, good_reward, bad_terminated, good_info, {}))
         env.poll = poll
         with pytest.raises(
             ValueError,
-            match="Your step function must return dones that are boolean.",
+            match="Your step function must return `terminateds` that are boolean.",
         ):
             check_env(env)
         bad_info = {0: {0: "not_info", 1: {}}}
-        poll = MagicMock(return_value=(good_obs, good_reward, good_done, bad_info, {}))
+        poll = MagicMock(return_value=(good_obs, good_reward, good_terminated, bad_info, {}))
         env.poll = poll
         with pytest.raises(
             ValueError,

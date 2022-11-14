@@ -25,8 +25,9 @@ class DebugCounterEnv(gym.Env):
 
     def step(self, action):
         self.i += 1
-        done = truncated = self.i >= 15 + self.start_at_t
-        return self._get_obs(), float(self.i % 3), done, truncated, {}
+        terminated = False
+        truncated = self.i >= 15 + self.start_at_t
+        return self._get_obs(), float(self.i % 3), terminated, truncated, {}
 
     def _get_obs(self):
         return np.array([self.i], dtype=np.float32)
@@ -48,12 +49,12 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         # 3=ts (of the agent).
         self.observation_space = gym.spaces.Box(float("-inf"), float("inf"), (4,))
         self.timesteps = [0] * self.num_agents
-        self.dones = set()
+        self.terminateds = set()
         self.truncateds = set()
 
     def reset(self, *, seed=None, options=None):
         self.timesteps = [0] * self.num_agents
-        self.dones = set()
+        self.terminateds = set()
         self.truncateds = set()
         return {
             i: np.array([i, 0.0, 0.0, 0.0], dtype=np.float32)
@@ -61,16 +62,16 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         }, {}
 
     def step(self, action_dict):
-        obs, rew, done, truncated = {}, {}, {}, {}
+        obs, rew, terminated, truncated = {}, {}, {}, {}
         for i, action in action_dict.items():
             self.timesteps[i] += 1
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
-            done[i] = True if self.timesteps[i] > self.base_episode_len + i else False
-            truncated[i] = done[i]
-            if done[i]:
-                self.dones.add(i)
+            terminated[i] = truncated[i]
+            truncated[i] = True if self.timesteps[i] > self.base_episode_len + i else False
+            if terminated[i]:
+                self.terminateds.add(i)
                 self.truncateds.add(i)
-        done["__all__"] = len(self.dones) == self.num_agents
+        terminated["__all__"] = len(self.terminateds) == self.num_agents
         truncated["__all__"] = len(self.truncateds) == self.num_agents
-        return obs, rew, done, truncated, {}
+        return obs, rew, terminated, truncated, {}

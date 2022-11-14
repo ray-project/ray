@@ -47,7 +47,6 @@ class TestPettingZooEnv(unittest.TestCase):
                 rollout_fragment_length=30,
                 # After n steps, force reset simulation.
                 horizon=200,
-                no_done_at_end=False,
             )
             # Training batch size -> Fragments are concatenated up to this point.
             .training(train_batch_size=200)

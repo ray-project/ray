@@ -33,7 +33,9 @@ class BaseEnv:
     Examples:
         >>> MyBaseEnv = ... # doctest: +SKIP
         >>> env = MyBaseEnv() # doctest: +SKIP
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+        ...     env.poll()
+        ... ) # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
@@ -55,7 +57,9 @@ class BaseEnv:
         ...     "car_1": 1, # doctest: +SKIP
         ...   }, ... # doctest: +SKIP
         ... }) # doctest: +SKIP
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+        ...     env.poll()
+        ... ) # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
@@ -63,7 +67,7 @@ class BaseEnv:
                 "car_1": [3.2, -4.2],
             }, ...
         }
-        >>> print(dones) # doctest: +SKIP
+        >>> print(terminateds) # doctest: +SKIP
         {
             "env_0": {
                 "__all__": False,

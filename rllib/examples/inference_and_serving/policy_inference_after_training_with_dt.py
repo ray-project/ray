@@ -157,11 +157,11 @@ if __name__ == "__main__":
         # Compute an action (`a`).
         a, _, extra = algo.compute_single_action(input_dict=input_dict)
         # Send the computed action `a` to the env.
-        obs, reward, done, truncated, _ = env.step(a)
+        obs, reward, terminated, truncated, _ = env.step(a)
         # Add to total rewards.
         total_rewards += reward
         # Is the episode `done`? -> Reset.
-        if done:
+        if terminated or truncated:
             print(f"Episode {num_episodes+1} - return: {total_rewards}")
             obs, info = env.reset()
             input_dict = algo.get_initial_input_dict(obs)

@@ -97,14 +97,14 @@ class TestEnvRunnerV2(unittest.TestCase):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.view_requirements["rewards"].used_for_compute_actions = True
-                self.view_requirements["dones"].used_for_compute_actions = True
+                self.view_requirements["terminateds"].used_for_compute_actions = True
 
         # Create 2 policies that have different inference batch shapes.
         class RandomPolicyTwo(RandomPolicy):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.view_requirements["rewards"].used_for_compute_actions = False
-                self.view_requirements["dones"].used_for_compute_actions = False
+                self.view_requirements["terminateds"].used_for_compute_actions = False
 
         config = (
             PPOConfig()
@@ -139,7 +139,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         local_worker = algo.workers.local_worker()
         env = local_worker.env
 
-        obs, rewards, dones, truncated, infos = local_worker.env.step(
+        obs, rewards, terminateds, truncated, infos = local_worker.env.step(
             {0: env.action_space.sample(), 1: env.action_space.sample()}
         )
 
@@ -147,7 +147,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         env_runner = local_worker.sampler._env_runner_obj
         env_runner.create_episode(env_id)
         to_eval, _ = env_runner._process_observations(
-            {0: obs}, {0: rewards}, {0: dones}, {0: truncated}, {0: infos}
+            {0: obs}, {0: rewards}, {0: terminateds}, {0: truncated}, {0: infos}
         )
 
         # We should have 2 separate batches for both policies.
@@ -339,7 +339,8 @@ class TestEnvRunnerV2(unittest.TestCase):
         to_eval, outputs = env_runner._process_observations(
             unfiltered_obs={0: AttributeError("mock error")},
             rewards={0: {}},
-            dones={0: {"__all__": True}},
+            terminateds={0: {"__all__": True}},
+            truncateds={0: {"__all__": False}},
             infos={0: {}},
         )
 

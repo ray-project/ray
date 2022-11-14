@@ -96,16 +96,20 @@ less_sampled_buffer = LessSampledReplayBuffer(**config.replay_buffer_config)
 
 # Gather some random experiences
 env = RandomEnv()
-done = False
+terminated = truncated = False
 batch = SampleBatch({})
 t = 0
-while not done:
-    obs, reward, done, truncated, info = env.step([0, 0])
+while not terminated and not truncated:
+    obs, reward, terminated, truncated, info = env.step([0, 0])
     # Note that in order for RLlib to find out about start and end of an episode,
-    # "t" and "dones" have to properly mark an episode's trajectory
-    one_step_batch = SampleBatch(
-        {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
-    )
+    # "t" and "terminateds" have to properly mark an episode's trajectory
+    one_step_batch = SampleBatch({
+        "obs": [obs],
+        "t": [t],
+        "reward": [reward],
+        "terminateds": [terminated],
+        "truncateds": [truncated],
+    })
     batch = concat_samples([batch, one_step_batch])
     t += 1
 

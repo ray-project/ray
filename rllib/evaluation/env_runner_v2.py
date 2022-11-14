@@ -207,7 +207,6 @@ class EnvRunnerV2:
         callbacks: "DefaultCallbacks",
         perf_stats: _PerfStats,
         soft_horizon: bool,
-        no_done_at_end: bool,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
         render: bool = None,
@@ -224,8 +223,6 @@ class EnvRunnerV2:
             perf_stats: Record perf stats into this object.
             soft_horizon: Calculate rewards but don't reset the
                 environment when the horizon is hit.
-            no_done_at_end: Ignore the done=True at the end of the episode
-                and instead record done=False.
             rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -244,7 +241,6 @@ class EnvRunnerV2:
         self._callbacks = callbacks
         self._perf_stats = perf_stats
         self._soft_horizon = soft_horizon
-        self._no_done_at_end = no_done_at_end
         self._rollout_fragment_length = rollout_fragment_length
         self._count_steps_by = count_steps_by
         self._render = render
@@ -404,7 +400,7 @@ class EnvRunnerV2:
         (
             unfiltered_obs,
             rewards,
-            dones,
+            terminateds,
             truncateds,
             infos,
             off_policy_actions,
@@ -418,7 +414,7 @@ class EnvRunnerV2:
         to_eval, outputs = self._process_observations(
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
             truncateds=truncateds,
             infos=infos,
         )
@@ -477,7 +473,7 @@ class EnvRunnerV2:
         self,
         unfiltered_obs: MultiEnvDict,
         rewards: MultiEnvDict,
-        dones: MultiEnvDict,
+        terminateds: MultiEnvDict,
         truncateds: MultiEnvDict,
         infos: MultiEnvDict,
     ) -> Tuple[
@@ -493,8 +489,8 @@ class EnvRunnerV2:
                 (vectorized, possibly multi-agent). Dict of dict: By env index,
                 then agent ID, then mapped to actual obs.
             rewards: The rewards MultiEnvDict of the BaseEnv.
-            dones: The dones flags MultiEnvDict of the BaseEnv.
-            truncateds: The truncateds flags MultiEnvDict of the BaseEnv.
+            terminateds: The `terminated` flags MultiEnvDict of the BaseEnv.
+            truncateds: The `truncated` flags MultiEnvDict of the BaseEnv.
             infos: The MultiEnvDict of infos dicts of the BaseEnv.
 
         Returns:
@@ -514,9 +510,10 @@ class EnvRunnerV2:
             # one of its sub-environments is faulty and should be restarted (and the
             # ongoing episode should not be used for training).
             if isinstance(env_obs, Exception):
-                assert dones[env_id]["__all__"] is True, (
+                assert terminateds[env_id]["__all__"] is True, (
                     f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
-                    "as observation, the dones[__all__] flag must also be set to True!"
+                    "as observation, the terminateds[__all__] flag must also be set to "
+                    "True!"
                 )
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
@@ -541,10 +538,10 @@ class EnvRunnerV2:
             # Episode length after this step.
             next_episode_length = episode.length + 1
             # Check episode termination conditions.
-            if dones[env_id]["__all__"] or next_episode_length >= self._horizon:
+            if terminateds[env_id]["__all__"] or truncateds["__all__"] or next_episode_length >= self._horizon:
                 hit_horizon = (
                     next_episode_length >= self._horizon
-                    and not dones[env_id]["__all__"]
+                    and not terminateds[env_id]["__all__"]
                 )
                 all_agents_done = True
                 # Add rollout metrics.
@@ -559,7 +556,7 @@ class EnvRunnerV2:
             # Agent sample batches grouped by policy. Each set of sample batches will
             # go through agent connectors together.
             sample_batches_by_policy = defaultdict(list)
-            # Whether an agent is done, regardless of no_done_at_end or soft_horizon.
+            # Whether an agent is done, regardless of soft_horizon.
             agent_dones = {}
             for agent_id, obs in env_obs.items():
                 assert agent_id != "__all__"
@@ -583,13 +580,7 @@ class EnvRunnerV2:
                     # Reward received after taking action at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (
-                        False
-                        if (
-                            self._no_done_at_end or (hit_horizon and self._soft_horizon)
-                        )
-                        else agent_done
-                    ),
+                    SampleBatch.TERMINATEDS: agent_truncated,
                     # Was the episode truncated artificially
                     # (e.g. b/c of some time limit)?
                     SampleBatch.TRUNCATEDS: agent_truncated,
@@ -740,7 +731,7 @@ class EnvRunnerV2:
         episode: EpisodeV2 = self._active_episodes[env_id]
         batch_builder = self._batch_builders[env_id]
 
-        check_dones = is_done and not self._no_done_at_end
+        check_dones = is_done
 
         episode.postprocess_episode(
             batch_builder=batch_builder,

@@ -79,11 +79,15 @@ For your custom RLlib `MultiAgentEnv` classes:
    'def reset(self, *, seed=None, options=None)'
  - Return an additional per-agent info dict (empty dict should be fine) from your
    `reset()` method.
+ - Rename `dones` into `terminateds` and only set this to True, if the episode is really
+   done (as opposed to has been terminated prematurely due to some horizon/time-limit
+   setting).
  - Return an additional `truncateds` per-agent dictionary flag from your `step()`
-   method, including the `__all__` key (100% analogous to your `dones` per-agent dict).
-   Return this new `truncateds` dict between `dones` and `infos`. This flag should
-   indicate, whether the episode (for some agent or all agents) was terminated
-   prematurely due to some time constraint or other kind of horizon setting.
+   method, including the `__all__` key (100% analogous to your `dones/terminateds`
+   per-agent dict).
+   Return this new `truncateds` dict between `dones/terminateds` and `infos`. This
+   flag should indicate, whether the episode (for some agent or all agents) was
+   terminated prematurely due to some time constraint or other kind of horizon setting.
 """
 
 

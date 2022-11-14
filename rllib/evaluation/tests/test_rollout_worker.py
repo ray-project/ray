@@ -108,7 +108,9 @@ class TestRolloutWorker(unittest.TestCase):
             "obs",
             "actions",
             "rewards",
-            "dones",
+            "terminateds",
+            "truncateds",
+            "terminateds",
             "advantages",
             "prev_rewards",
             "prev_actions",
@@ -119,7 +121,7 @@ class TestRolloutWorker(unittest.TestCase):
         def to_prev(vec):
             out = np.zeros_like(vec)
             for i, v in enumerate(vec):
-                if i + 1 < len(out) and not batch["dones"][i]:
+                if i + 1 < len(out) and not batch["terminateds"][i]:
                     out[i + 1] = v
             return out.tolist()
 
@@ -234,7 +236,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -266,7 +268,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -297,7 +299,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -326,7 +328,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -360,7 +362,8 @@ class TestRolloutWorker(unittest.TestCase):
             data = {
                 "type": "SampleBatch",
                 "actions": [[2.0], [-2.0]],
-                "dones": [0.0, 0.0],
+                "terminateds": [0.0, 0.0],
+                "truncateds": [0.0, 0.0],
                 "rewards": [0.0, 0.0],
                 "obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
                 "new_obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
@@ -463,7 +466,7 @@ class TestRolloutWorker(unittest.TestCase):
                     test_case=self,
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -502,7 +505,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: RandomEnv(
                 dict(
                     reward_space=gym.spaces.Box(low=-10, high=10, shape=()),
-                    p_done=0.0,
+                    p_terminated=0.0,
                     max_episode_len=10,
                 )
             ),
@@ -550,8 +553,8 @@ class TestRolloutWorker(unittest.TestCase):
         for i in range(4):
             self.assertEqual(np.argmax(samples["obs"][i]), i)
         self.assertEqual(np.argmax(samples["obs"][4]), 0)
-        # 3 done values.
-        self.assertEqual(sum(samples["dones"]), 3)
+        # 3 `terminated` values.
+        self.assertEqual(sum(samples["terminateds"]), 3)
         ev.stop()
 
         # A gym env's max_episode_steps is smaller than Algorithm's horizon.
@@ -572,9 +575,9 @@ class TestRolloutWorker(unittest.TestCase):
         # Two logical episodes and correct episode resets (always after 6(!)
         # steps).
         self.assertEqual(len(set(samples["eps_id"])), 2)
-        # 2 done values after 6 and 12 steps.
+        # 2 `terminated` values after 6 and 12 steps.
         check(
-            samples["dones"],
+            samples["terminateds"],
             [
                 False,
                 False,
@@ -607,8 +610,8 @@ class TestRolloutWorker(unittest.TestCase):
         samples = ev.sample()
         # three logical episodes
         self.assertEqual(len(set(samples["eps_id"])), 3)
-        # only 1 hard done value
-        self.assertEqual(sum(samples["dones"]), 1)
+        # only 1 hard `terminated` value
+        self.assertEqual(sum(samples["terminateds"]), 1)
         ev.stop()
 
     def test_metrics(self):
@@ -644,7 +647,7 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
         )
         batch = ev.sample()
-        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+        for key in ["obs", "actions", "rewards", "terminateds", "truncateds", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
         ev.stop()
@@ -971,9 +974,9 @@ class TestRolloutWorker(unittest.TestCase):
             def step(self, action_dict):
                 obs = {1: [0, 0], 2: [1, 1]}
                 rewards = {1: 0, 2: 0}
-                dones = truncated = {1: False, 2: False, "__all__": False}
+                terminateds = truncated = {1: False, 2: False, "__all__": False}
                 infos = {1: {}, 2: {}}
-                return obs, rewards, dones, truncated, infos
+                return obs, rewards, terminateds, truncated, infos
 
         ev = RolloutWorker(
             env_creator=lambda _: MockMultiAgentEnv(),
@@ -1012,13 +1015,13 @@ class TestRolloutWorker(unittest.TestCase):
                 self.training_enabled = training_enabled
 
             def step(self, action):
-                obs, rew, done, truncated, info = super(NoTrainingEnv, self).step(
+                obs, rew, terminated, truncated, info = super(NoTrainingEnv, self).step(
                     action
                 )
                 return (
                     obs,
                     rew,
-                    done,
+                    terminated,
                     truncated,
                     {**info, "training_enabled": self.training_enabled},
                 )

@@ -172,7 +172,8 @@ class AgentConnectorDataType:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
         data: A payload (``data``). With RLlib's default sampler, the payload
-            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+            is a dictionary of arbitrary data columns (obs, rewards, terminateds,
+            truncateds, etc).
     """
 
     def __init__(self, env_id: str, agent_id: str, data: Any):

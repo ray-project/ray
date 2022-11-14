@@ -164,13 +164,13 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             "dict_agent": 0,
             "tuple_agent": 0,
         }
-        dones = {"__all__": self.steps >= 5}
+        terminateds = {"__all__": self.steps >= 5}
         truncateds = {"__all__": self.steps >= 5}
         infos = {
             "dict_agent": {},
             "tuple_agent": {},
         }
-        return obs, rew, dones, truncateds, infos
+        return obs, rew, terminateds, truncateds, infos
 
 
 class InvalidModel(TorchModelV2):

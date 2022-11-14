@@ -238,7 +238,6 @@ class MultiAgentSampleBatchBuilder:
                     )
                     + "Please ensure that you include the last observations "
                     "of all live agents when setting '__all__' done to True. "
-                    "Alternatively, set no_done_at_end=True to allow this."
                 )
 
     @DeveloperAPI

@@ -122,10 +122,11 @@ class TestRLModule(unittest.TestCase):
                             )
                             check(action, action2)
 
-                        obs, reward, done, truncated, info = env.step(action)
+                        obs, reward, terminated, truncated, info = env.step(action)
                         print(
                             f"obs: {obs}, action: {action}, reward: {reward}, "
-                            f"done: {done}, truncated: {truncated}, info: {info}"
+                            f"terminated: {terminated}, truncated: {truncated}, "
+                            f"info: {info}"
                         )
                         tstep += 1
 
@@ -150,13 +151,13 @@ class TestRLModule(unittest.TestCase):
                 while tstep < 10:
                     fwd_out = module.forward_exploration({"obs": to_tensor(obs)[None]})
                     action = to_numpy(fwd_out["action_dist"].sample().squeeze(0))
-                    obs, reward, done, truncated, _ = env.step(action)
+                    obs, reward, terminated, truncated, _ = env.step(action)
                     batch.append(
                         {
                             "obs": obs,
                             "action": action[None] if action.ndim == 0 else action,
                             "reward": np.array(reward),
-                            "done": np.array(done),
+                            "terminated": np.array(terminated),
                             "truncated": np.array(truncated),
                         }
                     )

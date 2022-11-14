@@ -61,12 +61,12 @@ def rollout(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
-        observation, r, done, _, _ = env.step(ac)
+        observation, r, terminated, truncated, _ = env.step(ac)
         if offset != 0.0:
             r -= np.abs(offset)
         rewards.append(r)
         t += 1
-        if done:
+        if terminated or truncated:
             break
     rewards = np.array(rewards, dtype=np.float32)
     return rewards, t

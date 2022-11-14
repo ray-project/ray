@@ -58,15 +58,15 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
     ) -> Tuple[
         MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
     ]:
-        obs, rewards, dones, infos = self.env.step(action)
+        obs, rewards, terminateds, infos = self.env.step(action)
 
         if self.render_mode == "human":
             self.render()
 
         # Truncated should always be False by default.
-        truncateds = {k: False for k in dones.keys()}
+        truncateds = {k: False for k in terminateds.keys()}
 
-        return obs, rewards, dones, truncateds, infos
+        return obs, rewards, terminateds, truncateds, infos
 
     def render(self):
         # Use the old `render()` API, where we have to pass in the mode to each call.

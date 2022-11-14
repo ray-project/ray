@@ -261,14 +261,14 @@ class _ExternalEnvEpisode:
             self.new_observation_dict = None
             self.new_action_dict = None
             self.cur_reward_dict = {}
-            self.cur_done_dict = {"__all__": False}
+            self.cur_terminated_dict = {"__all__": False}
             self.cur_truncated_dict = {}
             self.cur_info_dict = {}
         else:
             self.new_observation = None
             self.new_action = None
             self.cur_reward = 0.0
-            self.cur_done = False
+            self.cur_terminated = False
             self.cur_truncated = False
             self.cur_info = {}
 
@@ -298,14 +298,14 @@ class _ExternalEnvEpisode:
     def done(self, observation):
         if self.multiagent:
             self.new_observation_dict = observation
-            self.cur_done_dict = {"__all__": True}
+            self.cur_terminated_dict = {"__all__": True}
             # TODO(sven): External env API does not currently support truncated,
             #  but we should deprecate external Env anyways in favor of a client-only
             #  approach.
             self.cur_truncated_dict = {}
         else:
             self.new_observation = observation
-            self.cur_done = True
+            self.cur_terminated = True
             self.cur_truncated = False
         self._send()
 
@@ -317,7 +317,7 @@ class _ExternalEnvEpisode:
             item = {
                 "obs": self.new_observation_dict,
                 "reward": self.cur_reward_dict,
-                "done": self.cur_done_dict,
+                "terminated": self.cur_terminated_dict,
                 "truncated": self.cur_truncated_dict,
                 "info": self.cur_info_dict,
             }
@@ -330,7 +330,7 @@ class _ExternalEnvEpisode:
             item = {
                 "obs": self.new_observation,
                 "reward": self.cur_reward,
-                "done": self.cur_done,
+                "terminated": self.cur_terminated,
                 "truncated": self.cur_truncated,
                 "info": self.cur_info,
             }
@@ -409,7 +409,7 @@ class ExternalEnvWrapper(BaseEnv):
     ]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
-        all_obs, all_rewards, all_dones, all_truncateds, all_infos = {}, {}, {}, {}, {}
+        all_obs, all_rewards, all_terminateds, all_truncateds, all_infos = {}, {}, {}, {}, {}
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
@@ -426,7 +426,7 @@ class ExternalEnvWrapper(BaseEnv):
                 else:
                     all_obs[eid] = data["obs"]
                 all_rewards[eid] = data["reward"]
-                all_dones[eid] = data["done"]
+                all_terminateds[eid] = data["terminated"]
                 all_truncateds[eid] = data["truncated"]
                 all_infos[eid] = data["info"]
                 if "off_policy_action" in data:
@@ -442,13 +442,13 @@ class ExternalEnvWrapper(BaseEnv):
                             d[eid][agent_id] = zero_val
 
                     fix(all_rewards, 0.0)
-                    fix(all_dones, False)
+                    fix(all_terminateds, False)
                     fix(all_truncateds, False)
                     fix(all_infos, {})
             return (
                 all_obs,
                 all_rewards,
-                all_dones,
+                all_terminateds,
                 all_truncateds,
                 all_infos,
                 off_policy_actions,
@@ -457,7 +457,7 @@ class ExternalEnvWrapper(BaseEnv):
             return (
                 with_dummy_agent_id(all_obs),
                 with_dummy_agent_id(all_rewards),
-                with_dummy_agent_id(all_dones, "__all__"),
+                with_dummy_agent_id(all_terminateds, "__all__"),
                 with_dummy_agent_id(all_truncateds),
                 with_dummy_agent_id(all_infos),
                 with_dummy_agent_id(off_policy_actions),

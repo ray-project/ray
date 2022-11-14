@@ -113,12 +113,12 @@ if __name__ == "__main__":
         # Get actions from the Policy server given our current obs.
         actions = client.get_action(eid, obs)
         # Apply actions to our env.
-        obs, rewards, dones, truncated, infos = env.step(actions)
+        obs, rewards, terminateds, truncateds, infos = env.step(actions)
         total_rewards_this_episode += sum(rewards.values())
-        # Log rewards and single-agent dones.
-        client.log_returns(eid, rewards, infos, multiagent_done_dict=dones)
+        # Log rewards and single-agent terminateds.
+        client.log_returns(eid, rewards, infos, multiagent_done_dict=terminateds)
         # Check whether all agents are done and end the episode, if necessary.
-        if dones["__all__"]:
+        if terminateds["__all__"] or truncateds["__all__"]:
             print("Episode done: Reward={}".format(total_rewards_this_episode))
             if total_rewards_this_episode >= args.stop_reward:
                 quit(0)

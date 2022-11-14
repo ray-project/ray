@@ -62,8 +62,9 @@ class AvailActionsTestEnv(MultiAgentEnv):
                 "action_mask": self.action_mask,
             },
         }
-        dones = truncateds = {"__all__": self.state >= 20}
-        return obs, rewards, dones, truncateds, {}
+        terminateds = {"__all__": self.state >= 20}
+        truncateds = {"__all__": False}
+        return obs, rewards, terminateds, truncateds, {}
 
 
 class TestQMix(unittest.TestCase):

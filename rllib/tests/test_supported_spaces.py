@@ -77,7 +77,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
                     action_space=action_space,
                     observation_space=obs_space,
                     reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                    p_done=1.0,
+                    p_terminated=1.0,
                     check_action_bounds=check_bounds,
                 )
             )

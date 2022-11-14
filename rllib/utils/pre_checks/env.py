@@ -583,15 +583,15 @@ def check_vector_env(env: "VectorEnv") -> None:
     if not isinstance(step_results, tuple) or len(step_results) != 5:
         raise ValueError(
             "The `vector_step()` method of your env must return a Tuple["
-            "List[obs], List[rewards], List[dones], List[truncateds], List[infos]] as "
-            f"of gym>=0.26! Your method returned: {step_results}."
+            "List[obs], List[rewards], List[terminateds], List[truncateds], "
+            f"List[infos]] as of gym>=0.26! Your method returned: {step_results}."
         )
 
-    obs, rewards, dones, truncateds, infos = step_results
+    obs, rewards, terminateds, truncateds, infos = step_results
 
     _check_if_vetor_env_list(env, obs, "step, obs")
     _check_if_vetor_env_list(env, rewards, "step, rewards")
-    _check_if_vetor_env_list(env, dones, "step, dones")
+    _check_if_vetor_env_list(env, terminateds, "step, terminateds")
     _check_if_vetor_env_list(env, truncateds, "step, truncateds")
     _check_if_vetor_env_list(env, infos, "step, infos")
 
@@ -603,7 +603,7 @@ def check_vector_env(env: "VectorEnv") -> None:
         raise ValueError(error)
 
     _check_reward(rewards[0], base_env=False)
-    _check_done_and_truncated(dones[0], truncateds[0], base_env=False)
+    _check_done_and_truncated(terminateds[0], truncateds[0], base_env=False)
     _check_info(infos[0], base_env=False)
 
 

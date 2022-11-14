@@ -109,10 +109,15 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID, env_id: EnvID,
-                                   policy_id: PolicyID, agent_done: bool,
-                                   values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(
+        self,
+        episode_id: EpisodeID,
+        agent_id: AgentID,
+        env_id: EnvID,
+        policy_id: PolicyID,
+        agent_done: bool,
+        values: Dict[str, TensorType],
+    ) -> None:
         """Add the given dictionary (row) of values to this collector.
 
         The incoming data (`values`) must include action, reward, done, and
@@ -127,8 +132,8 @@ class SampleCollector(metaclass=ABCMeta):
                 values for.
             env_id: The environment index (in a vectorized setup).
             policy_id: Unique id for policy controlling the agent.
-            agent_done: Whether the given agent is done with its
-                trajectory (the multi-agent episode may still be ongoing).
+            agent_done: Whether the given agent is done (terminated or truncated) with
+                its trajectory (the multi-agent episode may still be ongoing).
             values (Dict[str, TensorType]): Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, and DONE.
@@ -137,10 +142,16 @@ class SampleCollector(metaclass=ABCMeta):
             >>> obs, info = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
             >>> obs, r, done, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "done": done,
-            ...     "truncated": truncated
-            ... })
+            >>> collector.add_action_reward_next_obs(
+            ...     12345,
+            ...     0,
+            ...     "pol0",
+            ...     agent_done=False,
+            ...     values={
+            ...         "action": action, "obs": obs, "reward": r, "done": done,
+            ...         "truncated": truncated
+            ...     },
+            ... )
         """
         raise NotImplementedError
 
@@ -210,7 +221,7 @@ class SampleCollector(metaclass=ABCMeta):
 
         Examples:
             >>> obs, r, done, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })
             >>> input_dict = collector.get_inference_input_dict(policy.model)

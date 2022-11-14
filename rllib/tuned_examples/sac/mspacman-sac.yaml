@@ -26,7 +26,6 @@ mspacman-sac-tf:
         # paper uses: 0.98 * -log(1/|A|)
         target_entropy: 1.755
         clip_rewards: 1.0
-        no_done_at_end: False
         n_step: 1
         rollout_fragment_length: 1
         train_batch_size: 64

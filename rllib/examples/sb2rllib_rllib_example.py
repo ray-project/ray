@@ -43,8 +43,8 @@ env = gym.make(env_name)
 obs, info = env.reset()
 for i in range(1000):
     action = agent.compute_single_action(obs)
-    obs, reward, done, truncated, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     env.render()
-    if done:
-        print(f"Cart pole dropped after {i} steps.")
+    if terminated or truncated:
+        print(f"Cart pole ended after {i} steps.")
         break

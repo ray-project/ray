@@ -71,40 +71,40 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_vectorize_basic(self):
         env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 2)
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {"__all__": False},
                 1: {"__all__": False},
             },
         )
-        self.assertEqual(truncateds, dones)
+        self.assertEqual(truncateds, terminateds)
         for _ in range(24):
             env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-            obs, rew, dones, truncateds, _, _ = env.poll()
+            obs, rew, terminateds, truncateds, _, _ = env.poll()
             self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
             self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
             self.assertEqual(
-                dones,
+                terminateds,
                 {
                     0: {0: False, 1: False, "__all__": False},
                     1: {0: False, 1: False, "__all__": False},
                 },
             )
-            self.assertEqual(truncateds, dones)
+            self.assertEqual(truncateds, terminateds)
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {0: True, 1: True, "__all__": True},
                 1: {0: True, 1: True, "__all__": True},
             },
         )
-        self.assertEqual(truncateds, dones)
+        self.assertEqual(truncateds, terminateds)
 
         # Reset processing
         self.assertRaises(
@@ -118,33 +118,33 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(init_infos, {1: {0: {}, 1: {}}})
 
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {0: False, 1: False, "__all__": False},
                 1: {0: False, 1: False, "__all__": False},
             },
         )
-        self.assertEqual(truncateds, dones)
+        self.assertEqual(truncateds, terminateds)
 
     def test_vectorize_round_robin(self):
         env = MultiAgentEnvWrapper(lambda v: RoundRobinMultiAgent(2), [], 2)
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
         self.assertEqual(truncateds, {0: {"__all__": False}, 1: {"__all__": False}})
         env.send_actions({0: {0: 0}, 1: {0: 0}})
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
         self.assertEqual(
             truncateds,
             {0: {"__all__": False, 1: False}, 1: {"__all__": False, 1: False}},
         )
         env.send_actions({0: {1: 0}, 1: {1: 0}})
-        obs, rew, dones, truncateds, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(
             truncateds,

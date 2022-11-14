@@ -960,11 +960,7 @@ class Algorithm(Trainable):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                # TODO(sven): Differentiate properly between `done`,
-                                #  `terminated`, and `truncated` in all RLlib.
-                                assert np.sum(batch[SampleBatch.DONES]) or np.sum(
-                                    batch[SampleBatch.TRUNCATEDS]
-                                )
+                                assert np.sum(batch[SampleBatch.DONES])
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (

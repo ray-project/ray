@@ -403,9 +403,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 "soft_horizon", "config.rollouts(soft_horizon=..)", error=True
             )
         if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
-            )
+            deprecation_warning("no_done_at_end", error=True)
         if fake_sampler != DEPRECATED_VALUE:
             deprecation_warning(
                 "fake_sampler", "config.rollouts(fake_sampler=..)", error=True
@@ -799,7 +797,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
                 soft_horizon=self.config.soft_horizon,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -819,7 +816,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
                 soft_horizon=self.config.soft_horizon,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,

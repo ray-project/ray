@@ -150,7 +150,8 @@ class TestFQE(unittest.TestCase):
         actions = []
         action_prob = []
         rewards = []
-        dones = []
+        terminateds = []
+        truncateds = []
         obs, info = env.reset()
         done = False
         while not done:
@@ -158,16 +159,18 @@ class TestFQE(unittest.TestCase):
             act, _, extra = cls.policy.compute_single_action(obs)
             actions.append(act)
             action_prob.append(extra["action_prob"])
-            obs, rew, done, _, _ = env.step(act)
+            obs, rew, terminated, truncated, _ = env.step(act)
             new_obs.append(obs)
             rewards.append(rew)
-            dones.append(done)
+            terminateds.append(terminated)
+            truncateds.append(truncated)
         cls.batch = SampleBatch(
             obs=obs_batch,
             actions=actions,
             action_prob=action_prob,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
+            truncateds=truncateds,
             new_obs=new_obs,
         )
 

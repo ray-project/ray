@@ -96,21 +96,23 @@ class GroupAgentsWrapper(MultiAgentEnv):
         )
 
     def step(self, action_dict):
-        # Ungroup and send actions
+        # Ungroup and send actions.
         action_dict = self._ungroup_items(action_dict)
         results = self.env.step(action_dict)
 
         if check_old_gym_env(self.env, step_results=results):
-            obs, rewards, dones, infos = results
-            truncateds = {k: False for k in dones.keys() if k != "__all__"}
+            obs, rewards, terminateds, infos = results
+            truncateds = {k: False for k in terminateds.keys() if k != "__all__"}
         else:
-            obs, rewards, dones, truncateds, infos = results
+            obs, rewards, terminateds, truncateds, infos = results
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
         rewards = self._group_items(rewards, agg_fn=lambda gvals: list(gvals.values()))
-        # Only if all of the agents are done, the group is done as well.
-        dones = self._group_items(dones, agg_fn=lambda gvals: all(gvals.values()))
+        # Only if all of the agents are terminated, the group is terminated as well.
+        terminateds = self._group_items(
+            terminateds, agg_fn=lambda gvals: all(gvals.values())
+        )
         # If all of the agents are truncated, the group is truncated as well.
         truncateds = self._group_items(
             truncateds,
@@ -128,7 +130,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     infos[agent_id] = {}
                 infos[agent_id][GROUP_REWARDS] = rew
 
-        return obs, rewards, dones, truncateds, infos
+        return obs, rewards, terminateds, truncateds, infos
 
     def _ungroup_items(self, items):
         out = {}

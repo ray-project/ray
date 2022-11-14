@@ -145,7 +145,7 @@ class RemoteBaseEnv(BaseEnv):
     ]:
 
         # each keyed by env_id in [0, num_remote_envs)
-        obs, rewards, dones, truncateds, infos = {}, {}, {}, {}, {}
+        obs, rewards, terminateds, truncateds, infos = {}, {}, {}, {}, {}
         ready = []
 
         # Wait for at least 1 env to be ready here.
@@ -177,12 +177,13 @@ class RemoteBaseEnv(BaseEnv):
                     self.try_restart(env_id)
                     # Always return multi-agent data.
                     # Set the observation to the exception, no rewards,
-                    # done[__all__]=True (episode will be discarded anyways), no infos.
+                    # terminated[__all__]=True (episode will be discarded anyways),
+                    # no infos.
                     ret = (
                         e,
                         {},
                         {"__all__": True},
-                        {},
+                        {"__all__": False},
                         {},
                     )
                 # Do not try to restart. Just raise the error.
@@ -191,68 +192,64 @@ class RemoteBaseEnv(BaseEnv):
 
             # Our sub-envs are simple Actor-turned gym.Envs or MultiAgentEnvs.
             if self.make_env_creates_actors:
-                rew, done, truncated, info = None, None, None, None
+                rew, terminated, truncated, info = None, None, None, None
                 if self.multiagent:
                     if isinstance(ret, tuple):
-                        # Gym < 0.26: `step()` result: Obs, reward, done, info.
-                        if len(ret) == 4:
-                            ob, rew, done, info = ret
-                            truncated = False
-                        # Gym >= 0.26: `step()` result: Obs, reward, done, truncated,
-                        # info.
-                        elif len(ret) == 5:
-                            ob, rew, done, truncated, info = ret
+                        # Gym >= 0.26: `step()` result: Obs, reward, terminated,
+                        # truncated, info.
+                        if len(ret) == 5:
+                            ob, rew, terminated, truncated, info = ret
                         # Gym >= 0.26: `reset()` result: Obs and infos.
                         elif len(ret) == 2:
                             ob = ret[0]
                             info = ret[1]
                     # Gym < 0.26: `reset()` result: Only obs.
                     else:
-                        ob = ret
-                        info = {}
+                        raise AssertionError(
+                            "Your gymnasium.Env seems to only return a single value "
+                            "upon `reset()`! Must return 2 (obs and infos)."
+                        )
                 else:
                     if isinstance(ret, tuple):
-                        # `step()` result: Obs, reward, done, truncated(?), info.
-                        if len(ret) in [4, 5]:
+                        # `step()` result: Obs, reward, terminated, truncated, info.
+                        if len(ret) == 5:
                             ob = {_DUMMY_AGENT_ID: ret[0]}
                             rew = {_DUMMY_AGENT_ID: ret[1]}
-                            done = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
-                            if len(ret) == 4:
-                                truncated = {_DUMMY_AGENT_ID: False}
-                                info = {_DUMMY_AGENT_ID: ret[3]}
-                            else:
-                                truncated = {_DUMMY_AGENT_ID: ret[3]}
-                                info = {_DUMMY_AGENT_ID: ret[4]}
+                            terminated = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
+                            truncated = {_DUMMY_AGENT_ID: ret[3]}
+                            info = {_DUMMY_AGENT_ID: ret[4]}
                         # Gym >= 0.26: `reset()` result: Obs and infos.
                         elif len(ret) == 2:
                             ob = {_DUMMY_AGENT_ID: ret[0]}
                             info = {_DUMMY_AGENT_ID: ret[1]}
                     # Gym < 0.26: `reset()` result: Only obs.
                     else:
-                        ob = {_DUMMY_AGENT_ID: ret}
-                        info = {_DUMMY_AGENT_ID: {}}
+                        raise AssertionError(
+                            "Your gymnasium.Env seems to only return a single value "
+                            "upon `reset()`! Must return 2 (obs and infos)."
+                        )
 
                 # If this is a `reset()` return value, we only have the initial
-                # observations and infos: Set rewards, dones, and truncateds to
+                # observations and infos: Set rewards, terminateds, and truncateds to
                 # dummy values.
                 if rew is None:
                     rew = {agent_id: 0 for agent_id in ob.keys()}
-                    done = {"__all__": False}
-                    truncated = {}
+                    terminated = {"__all__": False}
+                    truncated = {"__all__": False}
 
             # Our sub-envs are auto-wrapped (by `_RemoteSingleAgentEnv` or
             # `_RemoteMultiAgentEnv`) and already behave like multi-agent
             # envs.
             else:
-                ob, rew, done, truncated, info = ret
+                ob, rew, terminated, truncated, info = ret
             obs[env_id] = ob
             rewards[env_id] = rew
-            dones[env_id] = done
+            terminateds[env_id] = terminated
             truncateds[env_id] = truncated
             infos[env_id] = info
 
         logger.debug(f"Got obs batch for actors {env_ids}")
-        return obs, rewards, dones, truncateds, infos, {}
+        return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
     @PublicAPI
@@ -276,13 +273,10 @@ class RemoteBaseEnv(BaseEnv):
         self,
         env_id: Optional[EnvID] = None,
         seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         actor = self.actors[env_id]
-        # Gym < 0.26 support.
-        if seed is None:
-            obj_ref = actor.reset.remote()
-        else:
-            obj_ref = actor.reset.remote(seed)
+        obj_ref = actor.reset.remote(seed=seed, options=options)
 
         self.pending[obj_ref] = actor
         # Because this env type does not support synchronous reset requests (with

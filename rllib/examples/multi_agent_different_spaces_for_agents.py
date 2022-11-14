@@ -35,7 +35,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
         self.agents = {"agent0", "agent1"}
         self._agent_ids = set(self.agents)
 
-        self.dones = set()
+        self.terminateds = set()
         self.truncateds = set()
 
         # Provide full (preferred format) observation- and action-spaces as Dicts
@@ -55,21 +55,21 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
         super().__init__()
 
     def reset(self, *, seed=None, options=None):
-        self.dones = set()
+        self.terminateds = set()
         self.truncateds = set()
         return {i: self.observation_space[i].sample() for i in self.agents}, {}
 
     def step(self, action_dict):
-        obs, rew, done, truncated, info = {}, {}, {}, {}, {}
+        obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
             obs[i] = self.observation_space[i].sample()
             rew[i] = 0.0
-            done[i] = False
+            terminated[i] = False
             truncated[i] = False
             info[i] = {}
-        done["__all__"] = len(self.dones) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.agents)
         truncated["__all__"] = len(self.truncteds) == len(self.agents)
-        return obs, rew, done, truncated, info
+        return obs, rew, terminated, truncated, info
 
 
 def get_cli_args():

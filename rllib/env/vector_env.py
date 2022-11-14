@@ -150,7 +150,7 @@ class VectorEnv:
             A tuple consisting of
             1) New observations for each sub-env.
             2) Reward values for each sub-env.
-            3) Done values for each sub-env.
+            3) Terminated values for each sub-env.
             4) Truncated values for each sub-env.
             5) Info values for each sub-env.
         """
@@ -345,7 +345,7 @@ class _VectorizedGymEnv(VectorEnv):
     ) -> Tuple[
         List[EnvObsType], List[float], List[bool], List[bool], List[EnvInfoDict]
     ]:
-        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+        obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch = (
             [],
             [],
             [],
@@ -363,7 +363,7 @@ class _VectorizedGymEnv(VectorEnv):
                 else:
                     raise e
 
-            obs, r, done, truncated, info = results
+            obs, r, terminated, truncated, info = results
 
             if not isinstance(info, dict):
                 raise ValueError(
@@ -371,10 +371,10 @@ class _VectorizedGymEnv(VectorEnv):
                 )
             obs_batch.append(obs)
             rew_batch.append(r)
-            done_batch.append(done)
+            terminated_batch.append(terminateds)
             truncated_batch.append(truncated)
             info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
+        return obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self) -> List[EnvType]:
@@ -405,7 +405,7 @@ class VectorEnvWrapper(BaseEnv):
         # Sub-environments' states.
         self.new_obs = None
         self.cur_rewards = None
-        self.cur_dones = None
+        self.cur_terminateds = None
         self.cur_truncateds = None
         self.cur_infos = None
         # At first `poll()`, reset everything (all sub-environments).
@@ -432,21 +432,21 @@ class VectorEnvWrapper(BaseEnv):
             self.new_obs, self.cur_infos = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
-        dones = dict(enumerate(self.cur_dones))
+        terminateds = dict(enumerate(self.cur_terminateds))
         truncateds = dict(enumerate(self.cur_truncateds))
         infos = dict(enumerate(self.cur_infos))
 
         # Empty all states (in case `poll()` gets called again).
         self.new_obs = []
         self.cur_rewards = []
-        self.cur_dones = []
+        self.cur_terminateds = []
         self.cur_truncateds = []
         self.cur_infos = []
 
         return (
             with_dummy_agent_id(new_obs),
             with_dummy_agent_id(rewards),
-            with_dummy_agent_id(dones, "__all__"),
+            with_dummy_agent_id(terminateds, "__all__"),
             with_dummy_agent_id(truncateds),
             with_dummy_agent_id(infos),
             {},
@@ -462,7 +462,7 @@ class VectorEnvWrapper(BaseEnv):
         (
             self.new_obs,
             self.cur_rewards,
-            self.cur_dones,
+            self.cur_terminateds,
             self.cur_truncateds,
             self.cur_infos,
         ) = self.vector_env.vector_step(action_vector)
@@ -554,7 +554,7 @@ class VectorEnvWrapper(BaseEnv):
         if idx is None:
             self.new_obs = [None for _ in range(self.num_envs)]
             self.cur_rewards = [0.0 for _ in range(self.num_envs)]
-            self.cur_dones = [False for _ in range(self.num_envs)]
+            self.cur_terminateds = [False for _ in range(self.num_envs)]
             self.cur_truncateds = [False for _ in range(self.num_envs)]
             self.cur_infos = [{} for _ in range(self.num_envs)]
         # Index provided, reset only the sub-env's state at the given index.
@@ -562,5 +562,5 @@ class VectorEnvWrapper(BaseEnv):
             self.new_obs[idx], self.cur_infos[idx] = self.vector_env.reset_at(idx)
             # Reset all other states to null values.
             self.cur_rewards[idx] = 0.0
-            self.cur_dones[idx] = False
+            self.cur_terminateds[idx] = False
             self.cur_truncateds[idx] = False

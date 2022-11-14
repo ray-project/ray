@@ -137,8 +137,9 @@ class SampleBatch(dict):
     REWARDS = "rewards"
     PREV_ACTIONS = "prev_actions"
     PREV_REWARDS = "prev_rewards"
-    DONES = "dones"
+    TERMINATEDS = "terminateds"
     TRUNCATEDS = "truncateds"
+    DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
     # This is only computed and used when RE3 exploration strategy is enabled
@@ -803,8 +804,12 @@ class SampleBatch(dict):
         if isinstance(key, slice):
             return self._slice(key)
 
+        # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
+        # the old meaning of DONES.
+        if key == SampleBatch.DONES:
+            return self[SampleBatch.TERMINATEDS] | self[SampleBatch.TRUNCATEDS]
         # Backward compatibility for when "input-dicts" were used.
-        if key == "is_training":
+        elif key == "is_training":
             if log_once("SampleBatch['is_training']"):
                 deprecation_warning(
                     old="SampleBatch['is_training']",

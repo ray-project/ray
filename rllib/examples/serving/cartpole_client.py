@@ -105,14 +105,14 @@ if __name__ == "__main__":
             action = client.get_action(eid, obs)
 
         # Perform a step in the external simulator (env).
-        obs, reward, done, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         rewards += reward
 
         # Log next-obs, rewards, and infos.
         client.log_returns(eid, reward, info=info)
 
         # Reset the episode if done.
-        if done:
+        if terminated or truncated:
             print("Total reward:", rewards)
             if rewards >= args.stop_reward:
                 print("Target reward achieved, exiting")

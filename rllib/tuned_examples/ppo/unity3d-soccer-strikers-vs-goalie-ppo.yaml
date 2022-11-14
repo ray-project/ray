@@ -37,7 +37,6 @@ unity3d-soccer-strikers-vs-goalie-ppo:
         num_workers: 10
         num_sgd_iter: 20
         rollout_fragment_length: 200
-        no_done_at_end: true
         model:
           fcnet_hiddens: [512, 512]
         # If no executable is provided (use Unity3D editor), do not evaluate,

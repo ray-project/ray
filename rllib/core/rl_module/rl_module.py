@@ -31,12 +31,12 @@ class RLModule(abc.ABC):
 
         module: RLModule = ...
         obs, info = env.reset()
-        while not done:
+        while not terminated and not truncated:
             fwd_outputs = module.forward_exploration({"obs": obs})
             # this can be deterministic or stochastic exploration
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, truncated, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, done, info)
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
             next_obs = obs
 
     # During Training (learning the policy)
@@ -53,11 +53,11 @@ class RLModule(abc.ABC):
     .. code-block:: python
         module: RLModule = ...
         obs, info = env.reset()
-        while not done:
+        while not terminated and not truncated:
             fwd_outputs = module.forward_inference({"obs": obs})
             # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, truncated, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             next_obs = obs
 
     Args:

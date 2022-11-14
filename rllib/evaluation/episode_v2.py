@@ -90,7 +90,8 @@ class EpisodeV2:
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
 
         self._has_init_obs: Dict[AgentID, bool] = {}
-        self._last_dones: Dict[AgentID, bool] = {}
+        self._last_terminateds: Dict[AgentID, bool] = {}
+        self._last_truncateds: Dict[AgentID, bool] = {}
         # Keep last info dict around, in case an environment tries to signal
         # us something.
         self._last_infos: Dict[AgentID, Dict] = {}
@@ -229,9 +230,13 @@ class EpisodeV2:
         self.agent_rewards[(agent_id, self.policy_for(agent_id))] += reward
         self._agent_reward_history[agent_id].append(reward)
 
-        # Keep track of last done info for agent.
-        if SampleBatch.DONES in values:
-            self._last_dones[agent_id] = values[SampleBatch.DONES]
+        # Keep track of last terminated info for agent.
+        if SampleBatch.TERMINATEDS in values:
+            self._last_terminateds[agent_id] = values[SampleBatch.TERMINATEDS]
+        # Keep track of last truncated info for agent.
+        if SampleBatch.TRUNCATEDS in values:
+            self._last_truncateds[agent_id] = values[SampleBatch.TRUNCATEDS]
+
         # Keep track of last info dict if available.
         if SampleBatch.INFOS in values:
             self.set_last_info(agent_id, values[SampleBatch.INFOS])
@@ -276,8 +281,7 @@ class EpisodeV2:
                     "{}). ".format(self.episode_id, agent_id, self.policy_for(agent_id))
                     + "Please ensure that you include the last observations "
                     "of all live agents when setting done[__all__] to "
-                    "True. Alternatively, set no_done_at_end=True to "
-                    "allow this."
+                    "True."
                 )
 
             # Skip a trajectory's postprocessing (and thus using it for training),

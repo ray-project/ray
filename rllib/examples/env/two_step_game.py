@@ -57,10 +57,10 @@ class TwoStepGame(MultiAgentEnv):
             else:
                 self.state = np.array([0, 0, 1])
             global_rew = 0
-            done = False
+            terminated = False
         elif state_index == 1:
             global_rew = 7
-            done = True
+            terminated = True
         else:
             if action_dict[self.agent_1] == 0 and action_dict[self.agent_2] == 0:
                 global_rew = 0
@@ -68,14 +68,14 @@ class TwoStepGame(MultiAgentEnv):
                 global_rew = 8
             else:
                 global_rew = 1
-            done = True
+            terminated = True
 
         rewards = {self.agent_1: global_rew / 2.0, self.agent_2: global_rew / 2.0}
         obs = self._obs()
-        dones = {"__all__": done}
+        terminateds = {"__all__": terminated}
         truncateds = {"__all__": False}
         infos = {}
-        return obs, rewards, dones, truncateds, infos
+        return obs, rewards, terminateds, truncateds, infos
 
     def _obs(self):
         if self.with_state:

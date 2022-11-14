@@ -159,7 +159,6 @@ class SyncSampler(SamplerInput):
         normalize_actions: bool = True,
         clip_actions: bool = False,
         soft_horizon: bool = False,
-        no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
         render: bool = False,
@@ -169,6 +168,7 @@ class SyncSampler(SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
+        no_done_at_end=None,
     ):
         """Initializes a SyncSampler instance.
 
@@ -200,8 +200,6 @@ class SyncSampler(SamplerInput):
             soft_horizon: If True, calculate bootstrapped values as if
                 episode had ended, but don't physically reset the environment
                 when the horizon is hit.
-            no_done_at_end: Ignore the done=True at the end of the
-                episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
             sample_collector_class: An optional Samplecollector sub-class to
@@ -253,7 +251,6 @@ class SyncSampler(SamplerInput):
                 callbacks=callbacks,
                 perf_stats=self.perf_stats,
                 soft_horizon=soft_horizon,
-                no_done_at_end=no_done_at_end,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
                 render=self.render,
@@ -272,7 +269,6 @@ class SyncSampler(SamplerInput):
                 callbacks,
                 self.perf_stats,
                 soft_horizon,
-                no_done_at_end,
                 observation_fn,
                 self.sample_collector,
                 self.render,
@@ -336,7 +332,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         normalize_actions: bool = True,
         clip_actions: bool = False,
         soft_horizon: bool = False,
-        no_done_at_end: bool = False,
         observation_fn: Optional["ObservationFunction"] = None,
         sample_collector_class: Optional[Type[SampleCollector]] = None,
         render: bool = False,
@@ -347,6 +342,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         preprocessors=None,
         obs_filters=None,
         tf_sess=None,
+        no_done_at_end=None,
     ):
         """Initializes an AsyncSampler instance.
 
@@ -378,8 +374,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             soft_horizon: If True, calculate bootstrapped values as if
                 episode had ended, but don't physically reset the environment
                 when the horizon is hit.
-            no_done_at_end: Ignore the done=True at the end of the
-                episode and instead record done=False.
             observation_fn: Optional multi-agent observation func to use for
                 preprocessing observations.
             sample_collector_class: An optional SampleCollector sub-class to
@@ -423,7 +417,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
-        self.no_done_at_end = no_done_at_end
         self.perf_stats = _PerfStats(
             ema_coef=worker.config.sampler_perf_stats_ema_coef,
         )
@@ -474,7 +467,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 callbacks=self.callbacks,
                 perf_stats=self.perf_stats,
                 soft_horizon=self.soft_horizon,
-                no_done_at_end=self.no_done_at_end,
                 rollout_fragment_length=self.rollout_fragment_length,
                 count_steps_by=self.count_steps_by,
                 render=self.render,
@@ -491,7 +483,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 self.callbacks,
                 self.perf_stats,
                 self.soft_horizon,
-                self.no_done_at_end,
                 self.observation_fn,
                 self.sample_collector,
                 self.render,
@@ -554,7 +545,6 @@ def _env_runner(
     callbacks: "DefaultCallbacks",
     perf_stats: _PerfStats,
     soft_horizon: bool,
-    no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: Optional[SampleCollector] = None,
     render: bool = None,
@@ -576,8 +566,6 @@ def _env_runner(
         perf_stats: Record perf stats into this object.
         soft_horizon: Calculate rewards but don't reset the
             environment when the horizon is hit.
-        no_done_at_end: Ignore the done=True at the end of the episode
-            and instead record done=False.
         observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
         sample_collector: An optional
@@ -660,7 +648,7 @@ def _env_runner(
         (
             unfiltered_obs,
             rewards,
-            dones,
+            terminateds,
             truncateds,
             infos,
             off_policy_actions,
@@ -681,14 +669,13 @@ def _env_runner(
             active_episodes=active_episodes,
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
             truncateds=truncateds,
             infos=infos,
             horizon=horizon,
             multiple_episodes_in_batch=multiple_episodes_in_batch,
             callbacks=callbacks,
             soft_horizon=soft_horizon,
-            no_done_at_end=no_done_at_end,
             observation_fn=observation_fn,
             sample_collector=sample_collector,
         )
@@ -770,14 +757,13 @@ def _process_observations(
     active_episodes: Dict[EnvID, Episode],
     unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
     rewards: Dict[EnvID, Dict[AgentID, float]],
-    dones: Dict[EnvID, Dict[AgentID, bool]],
+    terminateds: Dict[EnvID, Dict[AgentID, bool]],
     truncateds: Dict[EnvID, Dict[AgentID, bool]],
     infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
     horizon: int,
     multiple_episodes_in_batch: bool,
     callbacks: "DefaultCallbacks",
     soft_horizon: bool,
-    no_done_at_end: bool,
     observation_fn: "ObservationFunction",
     sample_collector: SampleCollector,
 ) -> Tuple[
@@ -797,10 +783,10 @@ def _process_observations(
             call.
         rewards: Doubly keyed dict of env-ids -> agent ids ->
             rewards tensor, returned by a `BaseEnv.poll()` call.
-        dones: Doubly keyed dict of env-ids -> agent ids ->
-            boolean done flags, returned by a `BaseEnv.poll()` call.
+        terminateds: Doubly keyed dict of env-ids -> agent ids ->
+            boolean `terminated` flags, returned by a `BaseEnv.poll()` call.
         truncateds: Doubly keyed dict of env-ids -> agent ids ->
-            boolean truncated flags, returned by a `BaseEnv.poll()` call.
+            boolean `truncated` flags, returned by a `BaseEnv.poll()` call.
         infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
         horizon: Horizon of the episode.
@@ -810,8 +796,6 @@ def _process_observations(
         callbacks: User callbacks to run on episode events.
         soft_horizon: Calculate rewards but don't reset the
             environment when the horizon is hit.
-        no_done_at_end: Ignore the done=True at the end of the episode
-            and instead record done=False.
         observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
         sample_collector: The SampleCollector object
@@ -839,9 +823,9 @@ def _process_observations(
         # should not be used for training).
         if isinstance(all_agents_obs, Exception):
             episode.is_faulty = True
-            assert dones[env_id]["__all__"] is True, (
-                f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
-                "as observation, the dones[__all__] flag must also be set to True!"
+            assert terminateds[env_id]["__all__"] is True, (
+                f"ERROR: When a sub-environment (env-id {env_id}) returns an error as "
+                "observation, the terminateds[__all__] flag must also be set to True!"
             )
             # This will be filled with dummy observations below.
             all_agents_obs = {}
@@ -863,9 +847,11 @@ def _process_observations(
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
-        if dones[env_id]["__all__"] or episode.length >= horizon:
-            hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
-            all_agents_done = True
+        if terminateds[env_id]["__all__"] or episode.length >= horizon:
+            hit_horizon = (
+                episode.length >= horizon and not terminateds[env_id]["__all__"]
+            )
+            all_agents_terminated = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:
                 if atari_metrics is not None:
@@ -893,9 +879,9 @@ def _process_observations(
                 outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
-            # dones[__all__]=True).
+            # terminateds[__all__]=True).
             for ag_id in episode.get_agents():
-                if not episode.last_done_for(ag_id) and ag_id not in all_agents_obs:
+                if not episode.last_terminated_for(ag_id) and ag_id not in all_agents_obs:
                     # Create a fake (all-0s) observation.
                     obs_sp = worker.policy_map[
                         episode.policy_for(ag_id)
@@ -906,7 +892,7 @@ def _process_observations(
                     )
         else:
             hit_horizon = False
-            all_agents_done = False
+            all_agents_terminated = False
             active_envs.add(env_id)
 
         # Custom observation function is applied before preprocessing.
@@ -927,11 +913,11 @@ def _process_observations(
             assert agent_id != "__all__"
 
             last_observation: EnvObsType = episode.last_observation_for(agent_id)
-            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
+            agent_terminated = bool(all_agents_terminated or terminateds[env_id].get(agent_id))
             agent_truncated = truncateds[env_id].get(agent_id, False)
 
             # A new agent (initial obs) is already done -> Skip entirely.
-            if last_observation is None and agent_done:
+            if last_observation is None and (agent_terminated or agent_truncated):
                 continue
 
             policy_id: PolicyID = episode.policy_for(agent_id)
@@ -949,7 +935,7 @@ def _process_observations(
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
             episode._set_last_observation(agent_id, filtered_obs)
-            episode._set_last_done(agent_id, agent_done)
+            episode._set_last_terminated(agent_id, agent_terminated)
             episode._set_last_truncated(agent_id, agent_truncated)
             agent_infos = infos[env_id].get(agent_id, {})
 
@@ -974,12 +960,8 @@ def _process_observations(
                     SampleBatch.ACTIONS: episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
-                    # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (
-                        False
-                        if (no_done_at_end or (hit_horizon and soft_horizon))
-                        else agent_done
-                    ),
+                    # After taking action=a, did we terminate the episode?
+                    SampleBatch.TERMINATEDS: agent_terminated,
                     # Was the episode truncated artificially
                     # (e.g. b/c of some time limit)?
                     SampleBatch.TRUNCATEDS: agent_truncated,
@@ -1000,11 +982,11 @@ def _process_observations(
                     agent_id,
                     env_id,
                     policy_id,
-                    agent_done,
+                    agent_terminated or agent_truncated,
                     values_dict,
                 )
 
-            if not agent_done:
+            if not agent_terminated and not agent_truncated:
                 item = _PolicyEvalData(
                     env_id,
                     agent_id,
@@ -1034,11 +1016,10 @@ def _process_observations(
                 env_index=env_id,
             )
 
-        # Episode is done for all agents (dones[__all__] == True)
+        # Episode is terminated for all agents (terminateds[__all__] == True)
         # or we hit the horizon.
-        if all_agents_done:
-            is_done = dones[env_id]["__all__"]
-            check_dones = is_done and not no_done_at_end
+        if all_agents_terminated:
+            is_terminated = terminateds[env_id]["__all__"]
 
             # If, we are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
@@ -1051,8 +1032,8 @@ def _process_observations(
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
-                    is_done=is_done or (hit_horizon and not soft_horizon),
-                    check_dones=check_dones,
+                    is_terminated=is_terminated,
+                    check_terminateds=is_terminated,
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )
             if not episode.is_faulty:
@@ -1089,7 +1070,7 @@ def _process_observations(
                 episode.soft_reset()
                 resetted_obs = {env_id: all_agents_obs}
                 resetted_infos = {env_id: infos[env_id]}
-            # Regular done (no horizon hit). Try to reset the sub environment.
+            # Terminated (no horizon hit). Try to reset the sub environment.
             else:
                 # Clean up old finished episode.
                 del active_episodes[env_id]

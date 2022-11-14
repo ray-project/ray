@@ -115,7 +115,7 @@ if __name__ == "__main__":
             prev_reward=prev_reward,
             full_fetch=True,
         )
-        obs, reward, done, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         prev_action = action
         prev_reward = reward
         ep_reward += reward
@@ -123,7 +123,7 @@ if __name__ == "__main__":
             env.render()
         except Exception:
             pass
-        if done:
+        if terminated or truncated:
             eps += 1
             print("Episode {}: {}".format(eps, ep_reward))
             ep_reward = 0

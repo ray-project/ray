@@ -469,8 +469,7 @@ class SimpleListCollector(SampleCollector):
                     )
                     + "Please ensure that you include the last observations "
                     "of all live agents when setting done[__all__] to "
-                    "True. Alternatively, set no_done_at_end=True to "
-                    "allow this."
+                    "True."
                 )
 
             # Skip a trajectory's postprocessing (and thus using it for training),

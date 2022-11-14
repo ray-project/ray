@@ -234,7 +234,6 @@ class AlgorithmConfig:
         self.num_consecutive_worker_failures_tolerance = 100
         self.horizon = None
         self.soft_horizon = False
-        self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
@@ -359,6 +358,7 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
+        self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -969,13 +969,13 @@ class AlgorithmConfig:
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         horizon: Optional[int] = NotProvided,
         soft_horizon: Optional[bool] = NotProvided,
-        no_done_at_end: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        no_done_at_end=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1076,17 +1076,6 @@ class AlgorithmConfig:
                 horizon is hit. This allows value estimation and RNN state to span
                 across logical episodes denoted by horizon. This only has an effect
                 if horizon != inf.
-            no_done_at_end: Don't set 'done' at the end of the episode.
-                In combination with `soft_horizon`, this works as follows:
-                - no_done_at_end=False soft_horizon=False:
-                Reset env and add `done=True` at end of each episode.
-                - no_done_at_end=True soft_horizon=False:
-                Reset env, but do NOT add `done=True` at end of the episode.
-                - no_done_at_end=False soft_horizon=True:
-                Do NOT reset env at horizon, but add `done=True` at the horizon
-                (pretending the episode has terminated).
-                - no_done_at_end=True soft_horizon=True:
-                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1167,8 +1156,6 @@ class AlgorithmConfig:
             self.horizon = horizon
         if soft_horizon is not NotProvided:
             self.soft_horizon = soft_horizon
-        if no_done_at_end is not NotProvided:
-            self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not NotProvided:
             assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
@@ -1182,6 +1169,14 @@ class AlgorithmConfig:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
+
+        # Deprecated settings.
+        if no_done_at_end != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
+                new="Your gymnasium.Env.step() should return a truncated=True flag",
+                error=True,
+            )
 
         return self
 

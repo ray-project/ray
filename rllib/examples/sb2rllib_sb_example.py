@@ -33,8 +33,8 @@ print(f"Agent loaded from saved model at {save_path}")
 obs, info = env.reset()
 for i in range(1000):
     action, _states = model.predict(obs)
-    obs, reward, done, truncated, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     env.render()
-    if done:
-        print(f"Cart pole dropped after {i} steps.")
+    if terminated or truncated:
+        print(f"Cart pole ended after {i} steps.")
         break
