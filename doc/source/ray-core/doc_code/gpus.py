@@ -39,8 +39,5 @@ def leak_gpus():
     # we include the max_calls argument to kill the worker and release the
     # resources.
     sess = tf.Session()
-
-# The four tasks created here can execute concurrently.
-ray.get([f.remote() for _ in range(4)])
 # __leak_gpu_end__
 # fmt: on
