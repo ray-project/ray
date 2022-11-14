@@ -38,8 +38,8 @@ class GymnasiumNewAPIButOldSpaces(gym.Env):
         return self.observation_space.sample(), {}
 
     def step(self, action):
-        done = truncated = True
-        return self.observation_space.sample(), 1.0, done, truncated, {}
+        terminated = truncated = True
+        return self.observation_space.sample(), 1.0, terminated, truncated, {}
 
     def render(self):
         pass

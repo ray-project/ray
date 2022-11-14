@@ -542,6 +542,7 @@ class EnvRunnerV2:
                 hit_horizon = (
                     next_episode_length >= self._horizon
                     and not terminateds[env_id]["__all__"]
+                    and not truncateds[env_id]["__all__"]
                 )
                 all_agents_done = True
                 # Add rollout metrics.
@@ -557,18 +558,20 @@ class EnvRunnerV2:
             # go through agent connectors together.
             sample_batches_by_policy = defaultdict(list)
             # Whether an agent is done, regardless of soft_horizon.
-            agent_dones = {}
+            agent_terminateds = {}
+            agent_truncateds = {}
             for agent_id, obs in env_obs.items():
                 assert agent_id != "__all__"
 
                 policy_id: PolicyID = episode.policy_for(agent_id)
 
-                agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-                agent_dones[agent_id] = agent_done
-                agent_truncated = truncateds[env_id].get(agent_id, False)
+                agent_terminated = bool(terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id))
+                agent_terminateds[agent_id] = agent_terminated
+                agent_truncated = bool(truncateds[env_id]["__all__"] or truncateds[env_id].get(agent_id, False))
+                agent_truncateds[agent_id] = agent_truncated
 
                 # A completely new agent is already done -> Skip entirely.
-                if not episode.has_init_obs(agent_id) and agent_done:
+                if not episode.has_init_obs(agent_id) and (agent_terminated or agent_truncated):
                     continue
 
                 values_dict = {
@@ -594,13 +597,13 @@ class EnvRunnerV2:
             # The entire episode is done.
             if all_agents_done:
                 # Let's check to see if there are any agents that haven't got the
-                # last "done" obs yet. If there are, we have to create fake-last
+                # last obs yet. If there are, we have to create fake-last
                 # observations for them. (the environment is not required to do so if
                 # dones[__all__]=True).
                 for agent_id in episode.get_agents():
                     # If the latest obs we got for this agent is done, or if its
                     # episode state is already done, nothing to do.
-                    if agent_dones.get(agent_id, False) or episode.is_done(agent_id):
+                    if agent_terminateds.get(agent_id, False) or agent_truncateds.get(agent_id, False) or episode.is_done(agent_id):
                         continue
 
                     policy_id: PolicyID = episode.policy_for(agent_id)
@@ -616,7 +619,7 @@ class EnvRunnerV2:
                         # TODO(sven): These should be the summed-up(!) rewards since the
                         #  last observation received for this agent.
                         SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
-                        SampleBatch.DONES: True,
+                        SampleBatch.TERMINATEDS: True,
                         SampleBatch.TRUNCATEDS: truncateds[env_id].get(agent_id, False),
                         SampleBatch.INFOS: {},
                         SampleBatch.NEXT_OBS: tree.map_structure(
@@ -659,7 +662,7 @@ class EnvRunnerV2:
                             d.agent_id, d.data.raw_dict
                         )
 
-                    if not all_agents_done and not agent_dones[d.agent_id]:
+                    if not all_agents_done and not agent_terminateds[d.agent_id] and not not agent_truncateds[d.agent_id]:
                         # Add to eval set if env is not done and this particular agent
                         # is also not done.
                         item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
@@ -682,10 +685,10 @@ class EnvRunnerV2:
                     env_index=env_id,
                 )
 
-            # Episode is done for all agents (dones[__all__] == True)
-            # or we hit the horizon.
+            # Episode is terminated/truncated for all agents
+            # (terminateds[__all__] == True or truncateds[__all__] == True) or
+            # we hit the horizon.
             if all_agents_done:
-                is_done = dones[env_id]["__all__"]
                 # _handle_done_episode will build a MultiAgentBatch for all
                 # the agents that are done during this step of rollout in
                 # the case of _multiple_episodes_in_batch=False.
@@ -693,7 +696,7 @@ class EnvRunnerV2:
                     env_id,
                     env_obs,
                     infos[env_id],
-                    is_done,
+                    terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"],
                     hit_horizon,
                     to_eval,
                     outputs,

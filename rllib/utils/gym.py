@@ -38,8 +38,8 @@ def check_old_gym_env(
             raise ValueError(
                 "The number of values returned from `gym.Env.step([action])` must be "
                 "5 (new gym.Env API including `truncated` flags)! Make sure your "
-                "`step()` method returns: [obs], [reward], [done], ([truncated])?, and "
-                "[infos]!"
+                "`step()` method returns: [obs], [reward], [terminated], "
+                "[truncated], and [infos]!"
             )
 
     else:

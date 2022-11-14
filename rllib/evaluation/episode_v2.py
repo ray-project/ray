@@ -353,7 +353,13 @@ class EpisodeV2:
             return any(list(self._has_init_obs.values()))
 
     def is_done(self, agent_id: AgentID) -> bool:
-        return self._last_dones.get(agent_id, False)
+        return self.is_terminated(agent_id) or self.is_truncated(agent_id)
+
+    def is_terminated(self, agent_id: AgentID) -> bool:
+        return self._last_terminateds.get(agent_id, False)
+
+    def is_truncated(self, agent_id: AgentID) -> bool:
+        return self._last_truncateds.get(agent_id, False)
 
     def set_last_info(self, agent_id: AgentID, info: Dict):
         self._last_infos[agent_id] = info

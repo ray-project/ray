@@ -58,7 +58,7 @@ class EpisodeEnv(MultiAgentEnv):
                 self.terminateds.add(i)
             if truncated[i]:
                 self.truncateds.add(i)
-        terminated["__all__"] = len(self.dones) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.agents)
         truncated["__all__"] = len(self.truncateds) == len(self.agents)
         return obs, rew, terminated, truncated, info
 

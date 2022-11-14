@@ -468,8 +468,8 @@ class SimpleListCollector(SampleCollector):
                         self.agent_key_to_policy_id[(episode_id, agent_id)],
                     )
                     + "Please ensure that you include the last observations "
-                    "of all live agents when setting done[__all__] to "
-                    "True."
+                    "of all live agents when setting truncated[__all__] or "
+                    "terminated[__all__] to True."
                 )
 
             # Skip a trajectory's postprocessing (and thus using it for training),

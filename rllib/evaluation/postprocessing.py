@@ -19,7 +19,7 @@ class Postprocessing:
 
 @DeveloperAPI
 def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
-    """Rewrites `batch` to encode n-step rewards, dones, and next-obs.
+    """Rewrites `batch` to encode n-step rewards, terminateds, truncateds, and next-obs.
 
     Observations and actions remain unaffected. At the end of the trajectory,
     n is truncated to fit in the traj length.
@@ -47,7 +47,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
 
     len_ = len(batch)
 
-    # Shift NEXT_OBS and DONES.
+    # Shift NEXT_OBS, TERMINATEDS, and TRUNCATEDS.
     batch[SampleBatch.NEXT_OBS] = np.concatenate(
         [
             batch[SampleBatch.OBS][n_step:],
@@ -55,10 +55,17 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         ],
         axis=0,
     )
-    batch[SampleBatch.DONES] = np.concatenate(
+    batch[SampleBatch.TERMINATEDS] = np.concatenate(
         [
-            batch[SampleBatch.DONES][n_step - 1 :],
-            np.tile(batch[SampleBatch.DONES][-1], min(n_step - 1, len_)),
+            batch[SampleBatch.TERMINATEDS][n_step - 1 :],
+            np.tile(batch[SampleBatch.TERMINATEDS][-1], min(n_step - 1, len_)),
+        ],
+        axis=0,
+    )
+    batch[SampleBatch.TRUNCATEDS] = np.concatenate(
+        [
+            batch[SampleBatch.TRUNCATEDS][n_step - 1 :],
+            np.tile(batch[SampleBatch.TRUNCATEDS][-1], min(n_step - 1, len_)),
         ],
         axis=0,
     )

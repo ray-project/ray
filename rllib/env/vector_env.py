@@ -371,7 +371,7 @@ class _VectorizedGymEnv(VectorEnv):
                 )
             obs_batch.append(obs)
             rew_batch.append(r)
-            terminated_batch.append(terminateds)
+            terminated_batch.append(terminated)
             truncated_batch.append(truncated)
             info_batch.append(info)
         return obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch
@@ -447,7 +447,7 @@ class VectorEnvWrapper(BaseEnv):
             with_dummy_agent_id(new_obs),
             with_dummy_agent_id(rewards),
             with_dummy_agent_id(terminateds, "__all__"),
-            with_dummy_agent_id(truncateds),
+            with_dummy_agent_id(truncateds, "__all__"),
             with_dummy_agent_id(infos),
             {},
         )

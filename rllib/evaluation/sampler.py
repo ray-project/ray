@@ -394,6 +394,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 deprecation_warning(old="obs_filters")
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
+            if no_done_at_end is not None:
+                deprecation_warning(old="no_done_at_end")
 
         self.worker = worker
 
@@ -847,11 +849,11 @@ def _process_observations(
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
-        if terminateds[env_id]["__all__"] or episode.length >= horizon:
+        if terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"] or episode.length >= horizon:
             hit_horizon = (
                 episode.length >= horizon and not terminateds[env_id]["__all__"]
             )
-            all_agents_terminated = True
+            all_agents_done = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:
                 if atari_metrics is not None:
@@ -892,7 +894,7 @@ def _process_observations(
                     )
         else:
             hit_horizon = False
-            all_agents_terminated = False
+            all_agents_done = False
             active_envs.add(env_id)
 
         # Custom observation function is applied before preprocessing.
@@ -913,8 +915,8 @@ def _process_observations(
             assert agent_id != "__all__"
 
             last_observation: EnvObsType = episode.last_observation_for(agent_id)
-            agent_terminated = bool(all_agents_terminated or terminateds[env_id].get(agent_id))
-            agent_truncated = truncateds[env_id].get(agent_id, False)
+            agent_terminated = bool(terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id))
+            agent_truncated = bool(truncateds[env_id]["__all__"] or truncateds[env_id].get(agent_id, False))
 
             # A new agent (initial obs) is already done -> Skip entirely.
             if last_observation is None and (agent_terminated or agent_truncated):
@@ -1018,8 +1020,8 @@ def _process_observations(
 
         # Episode is terminated for all agents (terminateds[__all__] == True)
         # or we hit the horizon.
-        if all_agents_terminated:
-            is_terminated = terminateds[env_id]["__all__"]
+        if all_agents_done:
+            is_done = terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"]
 
             # If, we are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
@@ -1032,8 +1034,8 @@ def _process_observations(
             if not episode.is_faulty or episode.length > 0:
                 ma_sample_batch = sample_collector.postprocess_episode(
                     episode,
-                    is_terminated=is_terminated,
-                    check_terminateds=is_terminated,
+                    is_done=is_done,
+                    check_dones=is_done,
                     build=episode.is_faulty or not multiple_episodes_in_batch,
                 )
             if not episode.is_faulty:

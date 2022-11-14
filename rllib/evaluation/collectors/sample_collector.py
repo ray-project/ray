@@ -231,11 +231,13 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def postprocess_episode(self,
-                            episode: Episode,
-                            is_done: bool = False,
-                            check_dones: bool = False,
-                            build: bool = False) -> Optional[MultiAgentBatch]:
+    def postprocess_episode(
+        self,
+        episode: Episode,
+        is_done: bool = False,
+        check_dones: bool = False,
+        build: bool = False,
+    ) -> Optional[MultiAgentBatch]:
         """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -249,7 +251,7 @@ class SampleCollector(metaclass=ABCMeta):
             episode: The Episode object for which
                 to post-process data.
             is_done: Whether the given episode is actually terminated
-                (all agents are done OR we hit a hard horizon). If True, the
+                (all agents are terminated OR truncated). If True, the
                 episode will no longer be used/continued and we may need to
                 recycle/erase it internally. If a soft-horizon is hit, the
                 episode will continue to be used and `is_done` should be set
