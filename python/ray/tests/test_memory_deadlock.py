@@ -55,6 +55,7 @@ def task_with_nested_actor(
     else:
         dummy = alloc_mem(first_bytes)
         ray.get(leaker.allocate.remote(second_bytes))
+    return dummy[0]
 
 
 @pytest.mark.skipif(
@@ -229,6 +230,7 @@ def task_with_nested_task(task_bytes, nested_task_bytes, barrier=None):
             nested_task_bytes, post_allocate_sleep_s=0.1
         )
     )
+    return dummy[0]
 
 
 @pytest.mark.skipif(
