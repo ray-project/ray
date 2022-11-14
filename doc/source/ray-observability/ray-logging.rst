@@ -150,19 +150,19 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``dashboard.log``: A log file of a Ray dashboard.
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
+- ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``log_monitor.log``: The log monitor is in charge of streaming logs to the driver.
-- ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
 - ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
+- ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
 - ``plasma_store.[out|err]``: Deprecated.
 - ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
 - ``raylet.[out|err]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
 - ``redis.[out|err]``: Redis log files.
-- ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.
-- ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
+- ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
 
 Log rotation
 ------------
