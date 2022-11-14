@@ -215,7 +215,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         queue before submitting another scale request.
         """
         for group_spec in self._raycluster["spec"].get("workerGroupSpecs", []):
-            if group_spec.get("workersToDelete", []):
+            if group_spec.get("scaleStrategy", {}).get("workersToDelete", []):
                 logger.warning(
                     "workersToDelete has not been processed yet."
                     " Autoscaler backing off submitting scale request."

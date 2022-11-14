@@ -11,8 +11,25 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KuberayNodeProvider,
     ScaleRequest,
 )
+from typing import Any, Dict
 
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
+
+SAMPLE_POD_LIST = []
+SAMPLE_NODE_DATA = {}
+
+SAMPLE_SCALE_REQUEST = ScaleRequest
+SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
+
+
+def _get_basic_ray_cr_workers_to_delete():
+    """Generate a Ray cluster with non-empty workersToDelete field.
+    """
+    raycluster = get_basic_ray_cr()
+    raycluster["spec"]["workerGroupSpecs"][1]["scaleStrategy"] = {
+        "workersToDelete": ["random-worker"]
+    }
+    return raycluster
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
@@ -72,10 +89,6 @@ def test_create_node_cap_at_max(
         expected_target_replica_count: The actual requested replicaCount. Should be
             capped at maxReplicas (300, for the config in this test.)
     """
-
-    def mock_init(node_provider, provider_config, cluster_name):
-        pass
-
     raycluster = get_basic_ray_cr()
     with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
@@ -83,11 +96,63 @@ def test_create_node_cap_at_max(
             workers_to_delete=set(),
             desired_num_workers={"small-group": attempted_target_replica_count},
         )
-        kr_node_provider.node_data_dict = {}
         patch = kr_node_provider._scale_request_to_patch_payload(
             scale_request=scale_request, raycluster=raycluster
         )
         assert patch[0]["value"] == expected_target_replica_count
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
+@pytest.mark.parametrize(
+    "pod_list,expected_node_data",
+    [(SAMPLE_POD_LIST, SAMPLE_NODE_DATA)],
+)
+def test_get_node_data(pod_list, expected_node_data):
+    def mock_get(node_provider, path):
+        if path == "pods":
+            return pod_list
+        else:
+            return get_basic_ray_cr()
+
+    with mock.patch.object(
+            KuberayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(
+            KuberayNodeProvider, "_get", mock_get
+    ):
+        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        nodes = kr_node_provider.non_terminated_nodes({})
+        assert kr_node_provider.node_data_dict == expected_node_data
+        assert set(nodes) == set(expected_node_data.keys())
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
+@pytest.mark.parametrize(
+    "scale_request,expected_patch_payload",
+    [(SAMPLE_SCALE_REQUEST, SAMPLE_RAYCLUSTER_PATCH_PAYLOAD)],
+)
+def test_submit_scale_request(scale_request, expected_patch_payload):
+    raycluster = get_basic_ray_cr()
+    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        patch_payload = kr_node_provider._scale_request_to_patch_payload(
+            scale_request=scale_request, raycluster=raycluster
+        )
+        assert patch_payload == expected_patch_payload
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
+@pytest.mark.parametrize(
+    "raycluster,expected",
+    [
+        (_get_basic_ray_cr_workers_to_delete(), False),
+        (get_basic_ray_cr(), True)
+    ],
+)
+def test_safe_to_scale(raycluster: Dict[str, Any], expected: bool):
+    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        kr_node_provider._raycluster = raycluster
+        assert kr_node_provider.safe_to_scale() is expected
 
 
 if __name__ == "__main__":
