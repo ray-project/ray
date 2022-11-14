@@ -439,7 +439,7 @@ class Policy(metaclass=ABCMeta):
                 random (accrdoing to the current policy possibly suboptimal) actions.
                 Exploitation means choosing actions that are optimal according to the
                 learnt policy.
-                (None -> Rllib will default to AlgorithmConfig.explore).
+                (None -> RLlib will default to AlgorithmConfig.explore).
             agent_ids: Agent IDs of observations in input_dict
             env_ids: Environment IDs of observations in input_dict
             **kwargs: Forward compatibility placeholder.
