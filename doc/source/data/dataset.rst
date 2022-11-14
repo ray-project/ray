@@ -237,6 +237,9 @@ Supported Input Formats
    * - 🤗 (Hugging Face) Dataset
      - :func:`ray.data.from_huggingface()`
      - ✅
+   * - MongoDB
+     - :func:`ray.data.read_mongo()`
+     - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
      - ✅

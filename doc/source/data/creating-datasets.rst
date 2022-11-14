@@ -564,6 +564,39 @@ converts it into a Ray Dataset directly.
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
+.. _dataset_mongo_db:
+
+------------
+From MongoDB
+------------
+
+The Dataset can also be created from MongoDB with :py:class:`~ray.data.read_mongo`.
+This interacts with MongoDB in a way similar to filesystems, except here you will
+need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
+`database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
+and specify `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
+the collection. The execution results are then used to create a Dataset.
+
+.. code-block:: python
+
+    import ray
+
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
 .. _datasets_custom_datasource:
 
 ------------------

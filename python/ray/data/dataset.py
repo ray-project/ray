@@ -2461,16 +2461,18 @@ class Dataset(Generic[T]):
         To control the number of parallel write tasks, use ``.repartition()``
         before calling this method.
 
-        Notes:
-        - Currently, this supports only a subset of the pyarrow's types, due to the
-          limitation of pymongoarrow which is used underneath. Writing unsupported
-          types will fail on type checking. See all the supported types at:
-          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
-        - The records will be inserted into MongoDB as new documents. If a record has
-          the _id field, this _id must be non-existent in MongoDB, otherwise the write
-          will be rejected and fail (hence preexisting documents are protected from
-          being mutated). It's fine to not have _id field in record and MongoDB will
-          auto generate one at insertion.
+        .. note::
+            Currently, this supports only a subset of the pyarrow's types, due to the
+            limitation of pymongoarrow which is used underneath. Writing unsupported
+            types will fail on type checking. See all the supported types at:
+            https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+
+        .. note::
+            The records will be inserted into MongoDB as new documents. If a record has
+            the _id field, this _id must be non-existent in MongoDB, otherwise the write
+            will be rejected and fail (hence preexisting documents are protected from
+            being mutated). It's fine to not have _id field in record and MongoDB will
+            auto generate one at insertion.
 
         Examples:
             >>> import ray
