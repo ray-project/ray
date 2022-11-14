@@ -149,6 +149,7 @@ def test_submit_scale_request(scale_request, expected_patch_payload):
     ],
 )
 def test_safe_to_scale(raycluster: Dict[str, Any], expected: bool):
+    """Test method KuberayNodeProvider.safe_to_scale()"""
     with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider._raycluster = raycluster
