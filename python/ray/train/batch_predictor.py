@@ -140,7 +140,7 @@ class BatchPredictor:
 
                 # Create a batch predictor that returns identity as the predictions.
                 batch_pred = BatchPredictor.from_pandas_udf(
-                    lambda data: pd.DataFrame({"predictions": data["feature_1"]}))
+                    lambda data: pd.DataFrame({"preds": data["feature_1"]}))
 
                 # Create a dummy dataset.
                 ds = ray.data.from_pandas(pd.DataFrame({
