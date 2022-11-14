@@ -23,7 +23,12 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -544,6 +549,7 @@ class MBMPO(Algorithm):
             for samples in itr:
                 print("Collecting Samples, Inner Adaptation {}".format(len(split)))
                 # Processing Samples (Standardize Advantages)
+                samples = [convert_ma_batch_to_sample_batch(batch) for batch in samples]
                 samples, split_lst = post_process_samples(samples, config)
 
                 buf.extend(samples)

@@ -3418,6 +3418,7 @@
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
+  env: staging
   legacy:
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
@@ -3959,6 +3960,7 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
   legacy:
     test_name: single_node
     test_suite: benchmark_tests
@@ -4804,7 +4806,7 @@
   group: core-observability-test
   working_dir: dashboard
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -4814,7 +4816,6 @@
 
   run:
     timeout: 14400
-    prepare: rllib train file atari.yaml &
     script: python mem_check.py
     type: sdk_command
     file_manager: sdk

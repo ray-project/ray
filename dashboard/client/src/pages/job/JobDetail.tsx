@@ -47,6 +47,15 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
         <MetadataSection
           metadataList={[
             {
+              label: "Entrypoint",
+              content: job.entrypoint
+                ? {
+                    value: job.entrypoint,
+                    copyableValue: job.entrypoint,
+                  }
+                : { value: "-" },
+            },
+            {
               label: "Status",
               content: <StatusChip type="job" status={job.status} />,
             },
