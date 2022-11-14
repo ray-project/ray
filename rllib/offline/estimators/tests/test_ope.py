@@ -170,10 +170,6 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_workers=num_rollout_workers,
-                off_policy_estimation_methods={
-                    "is": {"type": ImportanceSampling},
-                    "wis": {"type": WeightedImportanceSampling},
-                },
                 ope_split_batch_by_episode=False,
             )
             # make the policy deterministic
@@ -242,12 +238,18 @@ class TestOPE(unittest.TestCase):
 
     def test_is_wis_on_estimate_on_dataset(self):
         """Test that the IS and WIS estimators work.
-        
-        First we compute the estimates with RLlib's algorithm and then compare the 
-        results to the estimates that are manually computed on raw data frame version 
+
+        First we compute the estimates with RLlib's algorithm and then compare the
+        results to the estimates that are manually computed on raw data frame version
         of the dataset to check correctness.
         """
         config = self.dqn_on_fake_ds.copy()
+        config = config.evaluation(
+            off_policy_estimation_methods={
+                "is": {"type": ImportanceSampling},
+                "wis": {"type": WeightedImportanceSampling},
+            },
+        )
         num_actions = config.action_space.n
         algo = config.build()
 
@@ -268,7 +270,8 @@ class TestOPE(unittest.TestCase):
         check(is_gain, ope_results["is"]["v_gain_mean"])
         check(is_ste, ope_results["is"]["v_gain_ste"])
 
-    def test_dm_dr_on_estimate_on_dataset(self):
+    def test_dr_on_estimate_on_dataset(self):
+        # TODO (Kourosh): How can we unittest this without querying into the model?
         pass
 
 

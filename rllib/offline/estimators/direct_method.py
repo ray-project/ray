@@ -5,10 +5,7 @@ import numpy as np
 from ray.data import Dataset
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.offline.offline_evaluation_utils import (
-    compute_is_weights,
-    compute_q_and_v_values,
-)
+from ray.rllib.offline.offline_evaluation_utils import compute_q_and_v_values
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
@@ -146,20 +143,9 @@ class DirectMethod(OffPolicyEstimator):
                     policy.
                 v_std: The standard deviation of the estimated value of the target.
         """
-        # step 1: compute the weights and weighted rewards
+        # compute v_values
         batch_size = max(dataset.count() // n_parallelism, 1)
         updated_ds = dataset.map_batches(
-            compute_is_weights,
-            batch_size=batch_size,
-            fn_kwargs={
-                "policy_state": self.policy.get_state(),
-                "estimator_class": self.__class__,
-            },
-        )
-
-        # step 2: compute v_values
-        batch_size = max(updated_ds.count() // n_parallelism, 1)
-        updated_ds = updated_ds.map_batches(
             compute_q_and_v_values,
             batch_size=batch_size,
             fn_kwargs={
