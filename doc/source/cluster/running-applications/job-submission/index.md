@@ -30,8 +30,8 @@ Finally, if you would like to run an application *interactively* and see the out
 
 quickstart
 sdk
-rest
 jobs-package-ref
 cli
+rest
 ray-client
 ```

@@ -174,7 +174,7 @@ class JobSubmissionClient(SubmissionClient):
 
         Raises:
             RuntimeError: If the request to the job server fails, or if the specified
-            submission_id has already been used by a job on this cluster.
+                submission_id has already been used by a job on this cluster.
         """
         if job_id:
             logger.warning(
@@ -246,7 +246,7 @@ class JobSubmissionClient(SubmissionClient):
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         logger.debug(f"Stopping job with job_id={job_id}.")
         r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
@@ -274,14 +274,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose information
-            is being requested.
+                is being requested.
 
         Returns:
             The JobInfo for the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
@@ -344,14 +344,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose status is being
-            requested.
+                requested.
 
         Returns:
             The JobStatus of the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         return self.get_job_info(job_id).status
 
@@ -368,14 +368,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose logs are being
-            requested.
+                requested.
 
         Returns:
             A string containing the full logs of the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
@@ -401,14 +401,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             job_id: The job ID or submission ID of the job whose logs are being
-            requested.
+                requested.
 
         Returns:
             The iterator.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+                job server fails.
         """
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers
