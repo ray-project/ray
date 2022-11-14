@@ -728,5 +728,9 @@ class FaultTolerantActorManager:
                 restored.append(actor_id)
                 self.set_actor_state(actor_id, healthy=True)
                 self._num_actor_restarts += 1
+            else:
+                # foreach_actor() already marked actors that failed to respond
+                # as unhealthy. Do not have to do anything here.
+                pass
 
         return restored

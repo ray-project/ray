@@ -201,18 +201,10 @@ class MAMLConfig(AlgorithmConfig):
 # @mluo: TODO
 def set_worker_tasks(workers, use_meta_env):
     if use_meta_env:
-        worker_ids = workers.remote_worker_ids()
-        tasks = (
-            workers.local_worker()
-            .foreach_env(lambda x: x)[0]
-            .sample_tasks(len(worker_ids))
-        )
-        funcs = [lambda env: env.set_task(tasks[i]) for i in worker_ids]
-        workers.foreach_worker(
-            func=funcs,
-            local_worker=False,
-            remote_worker_ids=worker_ids,
-        )
+        n_tasks = len(workers.remote_workers())
+        tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(n_tasks)
+        for i, worker in enumerate(workers.remote_workers()):
+            worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
 
 
 class MetaUpdate:
@@ -272,7 +264,7 @@ def post_process_metrics(adapt_iter, workers, metrics):
     name = "_adapt_" + str(adapt_iter) if adapt_iter > 0 else ""
 
     # Only workers are collecting data
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
 
     metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
     metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]

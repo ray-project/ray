@@ -75,7 +75,7 @@ class CollectMetrics:
                 timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
         res.update(
             {
-                "num_healthy_workers": len(self.workers.num_healthy_workers()),
+                "num_healthy_workers": self.workers.num_healthy_workers(),
                 "timesteps_total": (
                     metrics.counters[STEPS_TRAINED_COUNTER]
                     if self.by_steps_trained

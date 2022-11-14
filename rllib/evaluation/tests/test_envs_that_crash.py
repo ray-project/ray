@@ -2,6 +2,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.pg import pg
+from ray.rllib.algorithms.tests.test_worker_failures import ForwardHealthCheckToEnvWorker
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.error import EnvError
 
@@ -82,6 +83,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "skip_env_checking": True,
                 },
             )
+            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
         # Pre-checking disables, so building the Algorithm is save.
         algo = config.build()
@@ -115,6 +117,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "skip_env_checking": True,
                 },
             )
+            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
         # Pre-checking disables, so building the Algorithm is save.
         algo = config.build()
@@ -125,8 +128,8 @@ class TestEnvsThatCrash(unittest.TestCase):
             # Expect some errors being logged here, but in general, should continue
             # as we recover from all worker failures.
             algo.train()
-            # One worker has been removed, then re-created -> Still 2 left.
-            self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)
+            # One worker has been removed.
+            self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
         algo.stop()
 
     def test_crash_sub_envs_during_sampling_but_restart_sub_envs(self):
