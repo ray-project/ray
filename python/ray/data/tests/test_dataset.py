@@ -4200,6 +4200,26 @@ def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
     assert result.equals(expected)
 
 
+def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(group):
+        # Test output type is NumPy format.
+        return {"group": group["group"] + 1, "value": group["value"] + 1}
+
+    ds = ds.groupby("group").map_groups(func, batch_format="numpy")
+    expected = pa.Table.from_pydict({"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]})
+    result = pa.Table.from_pandas(ds.to_pandas())
+    assert result.equals(expected)
+
+
 def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     ds = ray.data.from_items(
         [
