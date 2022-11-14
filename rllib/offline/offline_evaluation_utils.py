@@ -66,9 +66,10 @@ def compute_is_weights(
     """Computes the importance sampling weights for the given batch of samples.
 
     For a lot of off-policy estimators, the importance sampling weights are computed as
-    the propensity score ratio between the new and old policies. This function is to be
-    used with map_batches() to perform a batch prediction on a dataset of records with
-    `obs`, `actions`, `action_prob` and `rewards` columns.
+    the propensity score ratio between the new and old policies
+    (i.e. new_pi(act|obs) / old_pi(act|obs)). This function is to be used with
+    map_batches() to perform a batch prediction on a dataset of records with `obs`,
+    `actions`, `action_prob` and `rewards` columns.
 
     Args:
         batch: A sub-batch from the dataset.

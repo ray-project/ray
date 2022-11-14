@@ -66,7 +66,9 @@ class DoublyRobust(OffPolicyEstimator):
             epsilon_greedy: The probability by which we act acording to a fully random
                 policy during deployment. With 1-epsilon_greedy we act
                 according the target policy.
-            normalize_weights: Whether to normalize the importance sampling
+            normalize_weights: If True, the inverse propensity scores are normalized to
+                their sum across the entire dataset. The effect of this is similar to
+                weighted importance sampling compared to standard importance sampling.
             q_model_config: Arguments to specify the Q-model. Must specify
                 a `type` key pointing to the Q-model class.
                 This Q-model is trained in the train() method and is used

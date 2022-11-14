@@ -63,7 +63,10 @@ class OfflineEvaluator(abc.ABC):
         n_parallelism: int = os.cpu_count(),
     ) -> Dict[str, Any]:
 
-        """Calculates the estmiate of the metrics based on the given offline dataset.
+        """Calculates the estimate of the metrics based on the given offline dataset.
+
+        Typically, the dataset is passed through only once via n_parallel tasks in
+        mini-batches to improve the run-time of metric estimation.
 
         Args:
             dataset: The ray dataset object to do offline evaluation on.

@@ -683,6 +683,13 @@ class AlgorithmConfig:
                     f"config.framework({self.framework_str})!"
                 )
 
+        if self.input_ == "sampler" and not self.off_policy_estimation_methods:
+            raise ValueError(
+                "Off-policy estimation methods can only be used if the input is a "
+                "dataset. We currently do not support applying off_policy_esitmation "
+                "method on a sampler input."
+            )
+
         if self.input_ == "dataset":
             # if we need to read a ray dataset set the parallelism and
             # num_cpus_per_read_task from rollout worker settings
