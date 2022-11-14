@@ -383,13 +383,10 @@ class ApexDQN(DQN):
         num_samples_ready = self.get_samples_and_store_to_replay_buffers()
         num_worker_samples_collected = defaultdict(int)
 
-        try:
-            for worker_id, samples_info in num_samples_ready:
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += samples_info["agent_steps"]
-                self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
-                num_worker_samples_collected[worker_id] += samples_info["agent_steps"]
-        except Exception:
-            print(num_samples_ready)
+        for worker_id, samples_info in num_samples_ready:
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += samples_info["agent_steps"]
+            self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
+            num_worker_samples_collected[worker_id] += samples_info["agent_steps"]
 
         # Update the weights of the workers that returned samples.
         # Only do this if there are remote workers (config["num_workers"] > 1).
@@ -430,14 +427,15 @@ class ApexDQN(DQN):
                     remote_actor_ids=[actor_id],
                     timeout_seconds=0,
                 )
-                batch_statistics = {
-                    local_sampling_worker: [
+                batch_statistics = [
+                    (
+                        0,
                         {
                             "agent_steps": batch.agent_steps(),
                             "env_steps": batch.env_steps(),
-                        }
-                    ]
-                }
+                        },
+                    )
+                ]
                 return batch_statistics
 
         replay_actor_manager = self._replay_actor_manager
