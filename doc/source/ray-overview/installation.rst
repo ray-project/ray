@@ -41,7 +41,7 @@ Ray can also be installed as a conda package on linux and windows
   conda activate ray_dev
 
   # Install Ray with support for the dashboard + cluster launcher
-  conda install -c condaforge "ray[default]"
+  conda install -c condaforge "ray-default"
 
   # Install Ray with minimal dependencies
   # conda install -c conda-forge ray
@@ -50,10 +50,10 @@ To install Ray libraries:
 
 .. code-block:: bash
 
-  conda install -c conda-forge "ray[air]" # installs Ray + dependencies for Ray AI Runtime
-  conda install -c conda-forge "ray[tune]"  # installs Ray + dependencies for Ray Tune
-  conda install -c conda-forge "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
-  conda install -c conda-forge "ray[serve]"  # installs Ray + dependencies for Ray Serve
+  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
+  conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
 
   
 
