@@ -65,9 +65,8 @@ Ray Jobs are submitted to the same address used by the **Ray Dashboard**.
 By default, this uses port 8265.
 
 If you are using a local Ray Cluster (``ray start --head``), you can connect directly at ``http://127.0.0.1:8265``.
-If you are using a Ray Cluster started on VMs or Kubernetes, you can follow the instructions there for setting up network access from a client.
+If you are using a Ray Cluster started on VMs or Kubernetes, you can follow the instructions there for setting up network access from a client. See :ref:`Using a Remote Cluster <jobs-remote-cluster>` for tips.
 
-.. TODO: Add links to networking tips for VMs and kubernetes.
 
 To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dashboard address. This can be done by setting the ``RAY_ADDRESS`` environment variable:
 
@@ -182,6 +181,32 @@ Finally, if we want to cancel the job, we can use ``ray job stop``:
     $ ray job status raysubmit_tUAuCKubPAEXh6CW
     # Job submission server address: http://127.0.0.1:8265
     # Job 'raysubmit_tUAuCKubPAEXh6CW' was stopped
+
+.. _jobs-remote-cluster
+
+Using a Remote Cluster
+----------------------
+
+The example above was for a local Ray cluster.  When connecting to a `remote` cluster, you need to be able to access the dashboard port of the cluster over HTTP.
+
+One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+
+To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
+
+.. code-block:: bash
+
+    ray dashboard cluster.yaml
+
+Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
+Once you have verified this and you have set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``, you will be able to use the Jobs CLI on your local machine as in the example above to interact with your remote Ray cluster.
+
+Using the CLI on Kubernetes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The instructions above still apply, but you can achieve the dashboard port forwarding using ``kubectl port-forward``:
+https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/
+
+Alternatively, you can set up Ingress to the dashboard port of the cluster over HTTP: https://kubernetes.io/docs/concepts/services-networking/ingress/
 
 
 Dependency Management
