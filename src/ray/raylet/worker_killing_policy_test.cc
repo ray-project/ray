@@ -36,7 +36,8 @@ class WorkerKillerTest : public ::testing::Test {
          MemorySnapshot system_memory,
          float usage_threshold) { FAIL() << "Monitor should not be running"; }};
   int32_t port_ = 2389;
-  RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
+  RetriableLIFOWorkerKillingPolicy prefer_retriable_worker_killing_policy_;
+  GroupByDepthWorkingKillingPolicy groupby_depth_worker_killing_policy_;
 
   std::shared_ptr<WorkerInterface> CreateActorWorker(int32_t max_restarts) {
     rpc::TaskSpec message;
@@ -60,10 +61,11 @@ class WorkerKillerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries, int32_t depth = 1) {
     rpc::TaskSpec message;
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
+    message.set_depth(depth);
     TaskSpecification task_spec(message);
     RayTask task(task_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
@@ -75,7 +77,7 @@ class WorkerKillerTest : public ::testing::Test {
 TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   std::shared_ptr<WorkerInterface> worker_to_kill =
-      worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+      prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
@@ -108,10 +110,72 @@ TEST_F(WorkerKillerTest,
 
   for (const auto &expected : expected_order) {
     std::shared_ptr<WorkerInterface> worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+        prefer_retriable_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
     ASSERT_EQ(worker_to_kill->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
+  }
+}
+
+
+TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasks) {
+  std::vector<std::shared_ptr<WorkerInterface>> workers {
+    WorkerKillerTest::CreateTaskWorker(0, 1),
+    WorkerKillerTest::CreateTaskWorker(0, 1),
+    WorkerKillerTest::CreateTaskWorker(0, 2),
+    WorkerKillerTest::CreateTaskWorker(0, 2),
+  };
+  
+  std::vector<std::shared_ptr<WorkerInterface>> expected_order {
+    workers[3],
+    workers[1],
+    workers[2],
+    workers[0],
+  };
+  for (const auto& expected : expected_order) {
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+    ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
+    workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
+  }
+}
+
+TEST_F(WorkerKillerTest, TestDepthGroupingTwoNestedTasksOnlyOneAtHighestDepth) {
+  std::vector<std::shared_ptr<WorkerInterface>> workers {
+    WorkerKillerTest::CreateTaskWorker(0, 1),
+    WorkerKillerTest::CreateTaskWorker(0, 1),
+    WorkerKillerTest::CreateTaskWorker(0, 2),
+  };
+  
+  std::vector<std::shared_ptr<WorkerInterface>> expected_order {
+    workers[1],
+    workers[2],
+    workers[0],
+  };
+  for (const auto& expected : expected_order) {
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+    ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
+    workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
+  }
+}
+
+TEST_F(WorkerKillerTest, TestDepthGroupingOnlyOneAtAllDepths) {
+  std::vector<std::shared_ptr<WorkerInterface>> workers {
+    WorkerKillerTest::CreateTaskWorker(0, 1),
+    WorkerKillerTest::CreateTaskWorker(0, 2),
+    WorkerKillerTest::CreateTaskWorker(0, 3),
+    WorkerKillerTest::CreateTaskWorker(0, 4),
+  };
+  
+  std::vector<std::shared_ptr<WorkerInterface>> expected_order {
+    workers[3],
+    workers[2],
+    workers[1],
+    workers[0],
+  };
+  for (const auto& expected : expected_order) {
+    auto killed = groupby_depth_worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+    ASSERT_EQ(killed->WorkerId(), expected->WorkerId());
+    workers.erase(std::remove(workers.begin(), workers.end(), killed), workers.end());
   }
 }
 

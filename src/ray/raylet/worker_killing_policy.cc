@@ -60,6 +60,45 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
   return sorted.front();
 }
 
+GroupByDepthWorkingKillingPolicy::GroupByDepthWorkingKillingPolicy() {}
+const std::shared_ptr<WorkerInterface>
+GroupByDepthWorkingKillingPolicy::SelectWorkerToKill(
+    const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+    const MemoryMonitor &memory_monitor) const {
+  if (workers.empty()) {
+    RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
+    return nullptr;
+  }
+
+  std::vector<std::shared_ptr<WorkerInterface>> sorted = workers;
+  std::sort(sorted.begin(),
+            sorted.end(),
+            [](std::shared_ptr<WorkerInterface> const &left,
+               std::shared_ptr<WorkerInterface> const &right) -> bool {
+              // Sort by time in descending order
+              return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+            });
+
+  std::map<int, std::vector<std::shared_ptr<WorkerInterface>>> group_by_depth;
+  for (const auto& worker : sorted) {
+    int depth = worker->GetAssignedTask().GetTaskSpecification().GetDepth();
+    group_by_depth[depth].push_back(worker);
+  }
+
+  // Iterate in reverse order to get highest depths
+  for (auto it = group_by_depth.rbegin(); it != group_by_depth.rend(); ++it) {
+    auto& curr_workers = it->second;
+    if (curr_workers.size() > 1) {
+      // Since workers were processed in descending order of time,
+      // each vector is also sorted in descending order of time.
+      return curr_workers[0];
+    }
+  }
+  // If we've reached here, no depth has multiple workers.
+  // So, kill the worker at the greatest depth.
+  return group_by_depth.rbegin()->second[0];
+}
+
 std::string WorkerKillingPolicy::WorkersDebugString(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     int32_t num_workers,
