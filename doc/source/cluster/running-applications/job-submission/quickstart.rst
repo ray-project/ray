@@ -106,6 +106,10 @@ path to the working directory in the ``--working-dir`` argument.
 
 This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
+.. note::
+
+    The double dash (`--`) separates the arguments for the entrypoint command (e.g. `python script.py --arg1=val1`) from the arguments to `ray job submit`.
+
 Interacting with Long-running Jobs
 ----------------------------------
 
