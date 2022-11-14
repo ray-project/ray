@@ -295,7 +295,7 @@ class Algorithm(Trainable):
                 "No `algorithm_class` key was found in given `state`! "
                 "Cannot create new Algorithm."
             )
-        # algo_class = get_algorithm_class(algo_class_name)
+        # algo_class = get_trainable_cls(algo_class_name)
         # Create the new algo.
         config = state.get("config")
         if not config:
@@ -480,7 +480,7 @@ class Algorithm(Trainable):
 
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
-        update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
+        update_global_seed_if_necessary(self.config.framework_str, self.config.seed)
 
         self._record_usage(self.config)
 

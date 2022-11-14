@@ -53,10 +53,10 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> config = AlphaStarConfig().training(lr=0.0003, train_batch_size=512)\
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo.train() # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
@@ -64,14 +64,14 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> from ray import tune
         >>> config = AlphaStarConfig()
         >>> # Print out some default values.
-        >>> print(config.vtrace)
+        >>> print(config.vtrace) # doctest: +SKIP
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
         >>> # Set the config object's env.
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "AlphaStar",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -344,18 +344,9 @@ class AlphaStar(appo.APPO):
         #   one or more GPU nodes.
         # - On each such node, also locate one replay buffer shard.
 
-        # By default, set max_num_policies_to_train to the number of policy IDs
-        # provided in the multiagent config.
-        if self.config["max_num_policies_to_train"] is None:
-            self.config["max_num_policies_to_train"] = len(
-                self.workers.local_worker().get_policies_to_train()
-            )
-
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
-        num_gpus = (
-            0.01 if (self.config["num_gpus"] and not self.config["_fake_gpus"]) else 0
-        )
+        num_gpus = 0.01 if (self.config.num_gpus and not self.config._fake_gpus) else 0
         ReplayActor = ray.remote(
             num_cpus=1,
             num_gpus=num_gpus,
@@ -372,7 +363,12 @@ class AlphaStar(appo.APPO):
         # the initial first n learnable policies (found in the config).
         distributed_learners = DistributedLearners(
             config=self.config,
-            max_num_policies_to_train=self.config["max_num_policies_to_train"],
+            # By default, set max_num_policies_to_train to the number of policy IDs
+            # provided in the multiagent config.
+            max_num_policies_to_train=(
+                self.config.max_num_policies_to_train
+                or len(self.workers.local_worker().get_policies_to_train())
+            ),
             replay_actor_class=ReplayActor,
             replay_actor_args=replay_actor_args,
         )
@@ -406,7 +402,7 @@ class AlphaStar(appo.APPO):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
-            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
         )
         policy_actors = [policy_actor for _, policy_actor, _ in distributed_learners]
         self._learner_worker_manager = AsyncRequestsManager(
@@ -414,7 +410,7 @@ class AlphaStar(appo.APPO):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_learner_worker"
             ],
-            ray_wait_timeout_s=self.config["timeout_s_learner_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_learner_manager,
         )
 
     @override(Algorithm)
