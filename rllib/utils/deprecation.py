@@ -50,7 +50,6 @@ def deprecation_warning(
         )
 
 
-
 def Deprecated(old=None, *, new=None, help=None, error):
     """Decorator for documenting a deprecated class, method, or function.
 
