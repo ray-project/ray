@@ -94,6 +94,10 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
+    title: "Scheduler Placement Groups",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+  },
+  {
     title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
@@ -198,6 +202,11 @@ export const Metrics = () => {
               ))}
             </TextField>
           </Paper>
+          <Alert severity="info">
+            Tip: You can click on the legend to focus on a specific line in the
+            time-series graph. You can use control/cmd + click to filter out a
+            line in the time-series graph.
+          </Alert>
           <div className={classes.grafanaEmbedsContainer}>
             {METRICS_CONFIG.map(({ title, path }) => (
               <iframe

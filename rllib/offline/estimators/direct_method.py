@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional, List
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
@@ -112,6 +113,6 @@ class DirectMethod(OffPolicyEstimator):
         Returns:
             A dict with key "loss" and value as the mean training loss.
         """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
+        batch = convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}
