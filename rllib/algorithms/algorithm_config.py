@@ -563,7 +563,10 @@ class AlgorithmConfig:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
-                default_policy_cls = self.algo_class.get_default_policy_class(self)
+                default_policy_cls = None
+                if self.algo_class:
+                    default_policy_cls = self.algo_class.get_default_policy_class(self)
+
                 policies = self.policies
                 policy_specs = (
                     [

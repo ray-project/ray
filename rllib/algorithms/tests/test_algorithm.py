@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):

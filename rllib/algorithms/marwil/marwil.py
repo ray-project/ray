@@ -178,7 +178,7 @@ class MARWILConfig(AlgorithmConfig):
                 "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
-                error=True,
+                error=False,
             )
         return super().build(env, logger_creator)
 
