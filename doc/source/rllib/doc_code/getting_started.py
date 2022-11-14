@@ -98,8 +98,4 @@ algo.workers.local_worker().policy_map["default_policy"].get_weights()
 # Get list of weights of each worker, including remote replicas
 algo.workers.foreach_worker(lambda worker: worker.get_policy().get_weights())
 
-# Same as above, but with index.
-algo.workers.foreach_worker_with_index(
-    lambda worker, _: worker.get_policy().get_weights()
-)
 # __rllib-get-state-end__
