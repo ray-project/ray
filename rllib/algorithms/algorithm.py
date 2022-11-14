@@ -2046,9 +2046,16 @@ class Algorithm(Trainable):
             # resources for offline dataset readers during evaluation
             # Note (Kourosh): we should not claim extra workers for
             # training on the offline dataset, since rollout workers have already
-            # claimed it. (The mysterious 1 extra worker was due to this.)
+            # claimed it.
             # Another Note (Kourosh): dataset reader will not use placement groups so
             # what ever we specify here won't matter because dataset won't even use it.
+            # Disclaimer: using ray dataset in tune may cause deadlock when multiple
+            # tune trials get scheduled on the same node and do not leave any spare
+            # resources for dataset operations. The workaround is to limit the
+            # max_concurrent trials so that some spare cpus are left for dataset
+            # operations. This behavior should get fixed by the dataset team. more info
+            # found here:
+            # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
             evaluation_bundle = []
 
         bundles += rollout_workers + evaluation_bundle
