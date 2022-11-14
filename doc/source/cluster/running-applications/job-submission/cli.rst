@@ -1,7 +1,8 @@
 .. _ray-job-submission-cli-ref:
 
-Ray Job Submission CLI
-======================
+Ray Jobs CLI API Reference
+==========================
+
 This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.    
 
 .. _ray-job-submit-doc:
