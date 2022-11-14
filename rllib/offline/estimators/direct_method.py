@@ -161,11 +161,8 @@ class DirectMethod(OffPolicyEstimator):
         v_target = updated_ds.mean("v_values")
         v_gain_mean = v_target / v_behavior
         v_gain_ste = (
-            updated_ds.std("v_values")
-            / v_behavior
-            / math.sqrt(dataset.count())
+            updated_ds.std("v_values") / v_behavior / math.sqrt(dataset.count())
         )
-        
 
         return {
             "v_behavior": v_behavior,
