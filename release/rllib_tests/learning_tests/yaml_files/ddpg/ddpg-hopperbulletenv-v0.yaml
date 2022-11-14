@@ -11,6 +11,7 @@ ddpg-hopperbulletenv-v0:
         actor_hiddens: [256, 256]
         critic_hiddens: [256, 256]
         n_step: 3
+        rollout_fragment_length: auto
         model: {}
         gamma: 0.99
         env_config: {}
@@ -38,7 +39,6 @@ ddpg-hopperbulletenv-v0:
         use_huber: true
         huber_threshold: 1.0
         l2_reg: 0.000001
-        rollout_fragment_length: 1
         train_batch_size: 48
         num_gpus: 1
         num_workers: 0
