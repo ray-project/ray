@@ -406,6 +406,9 @@ install_pip_packages() {
         pip install -U pyarrow=="${ARROW_VERSION}"
       fi
     fi
+    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
+    fi
   fi
 
   # Remove this entire section once Serve dependencies are fixed.

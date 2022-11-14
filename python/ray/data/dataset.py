@@ -88,6 +88,7 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
+    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -2445,6 +2446,60 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+
+    def write_mongo(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a MongoDB datasource.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Notes:
+        - Currently, this supports only a subset of the pyarrow's types, due to the
+          limitation of pymongoarrow which is used underneath. Writing unsupported
+          types will fail on type checking. See all the supported types at:
+          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+        - The records will be inserted into MongoDB as new documents. If a record has
+          the _id field, this _id must be non-existent in MongoDB, otherwise the write
+          will be rejected and fail (hence preexisting documents are protected from
+          being mutated). It's fine to not have _id field in record and MongoDB will
+          auto generate one at insertion.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_mongo( # doctest: +SKIP
+            >>>     MongoDatasource(),
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+            >>>     database="my_db",
+            >>>     collection="my_collection",
+            >>> )
+
+        Args:
+            uri: The URI to the destination MongoDB where the dataset will be
+                written to. For the URI format, see details in
+                https://www.mongodb.com/docs/manual/reference/connection-string/.
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            collection: The name of the collection in the database. This collection
+                must exist otherwise ValueError will be raised.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+        self.write_datasource(
+            MongoDatasource(),
+            ray_remote_args=ray_remote_args,
+            uri=uri,
+            database=database,
+            collection=collection,
         )
 
     def write_datasource(

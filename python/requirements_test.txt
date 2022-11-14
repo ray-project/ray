@@ -52,6 +52,7 @@ pydantic==1.9.2
 PyOpenSSL==22.1.0
 pygame==2.1.2
 Pygments==2.13.0
+pymongo==4.3.2
 pyspark==3.1.2
 pytest==7.0.1
 pytest-asyncio==0.16.0
