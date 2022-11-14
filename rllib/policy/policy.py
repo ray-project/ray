@@ -58,9 +58,7 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
-)
-from ray.rllib.utils.typing import AgentConnectorDataType
-from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     ModelGradients,
@@ -70,8 +68,8 @@ from ray.rllib.utils.typing import (
     T,
     TensorStructType,
     TensorType,
+    TrainerConfigDict,
 )
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
@@ -379,7 +377,47 @@ class Policy(metaclass=ABCMeta):
         env_ids: Optional[List[str]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions from collected samples (across multiple-agents).
+        """Computes actions from sampled environment data.
+
+        Simple example:
+            >>> from ray.rllib.algorithms.ppo import PPOConfig # doctest: +SKIP
+            >>> algo = PPOConfig().build(env="CartPole-v1") # doctest: +SKIP
+            >>> algo.train() # doctest: +SKIP
+            >>> policy = algo.get_policy() # doctest: +SKIP
+            >>> env = gym.make("CartPole-v1") # doctest: +SKIP
+            >>> obs = env.reset() # doctest: +SKIP
+            >>> reward, done, info = 0, False, {} # doctest: +SKIP
+            >>> while not done: # doctest: +SKIP
+            >>>     [action], _, _ = policy.compute_actions_from_raw_input_dict( # doctest: +SKIP # noqa
+            >>>         { # doctest: +SKIP
+            >>>             SampleBatch.OBS: [obs], # doctest: +SKIP
+            >>>             SampleBatch.REWARDS: [reward], # doctest: +SKIP
+            >>>             SampleBatch.DONES: [done], # doctest: +SKIP
+            >>>             SampleBatch.INFOS: [info] # doctest: +SKIP
+            >>>         } # doctest: +SKIP
+            >>>     ) # doctest: +SKIP
+            >>>     obs, reward, done, info = env.step(action) # doctest: +SKIP
+
+        Batched example:
+            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole # doctest: +SKIP # noqa
+            >>> algo = PPOConfig().build(env=MultiAgentCartPole) # doctest: +SKIP
+            >>> algo.train() # doctest: +SKIP
+            >>> policy = algo.get_policy() # doctest: +SKIP
+            >>> env = MultiAgentCartPole({"num_agents": 2}) # doctest: +SKIP
+            >>> obses = env.reset() # doctest: +SKIP
+            >>> rewards, dones, infos = {0: 0, 1: 0}, # doctest: +SKIP
+            >>>                         {0: False, 1: False}, # doctest: +SKIP
+            >>>                         {0: {}, 1: {}} # doctest: +SKIP
+            >>> while not all(dones.values()): # doctest: +SKIP
+            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input_dict( # doctest: +SKIP # noqa
+            >>>         { # doctest: +SKIP
+            >>>             SampleBatch.OBS: [obses[0], obses[1]], # doctest: +SKIP
+            >>>             SampleBatch.REWARDS:[rewards[0], rewards[1]], # doctest: +SKIP
+            >>>             SampleBatch.DONES:[dones[0], dones[1]], # doctest: +SKIP
+            >>>             SampleBatch.INFOS:[infos[0], infos[1]] # doctest: +SKIP
+            >>>         } # doctest: +SKIP
+            >>>     ) # doctest: +SKIP
+            >>>     obs, reward, done, info = env.step({0: action1, 1: action2}) # doctest: +SKIP # noqa
 
         Args:
             input_dict: A SampleBatch or input dict containing the Tensors
