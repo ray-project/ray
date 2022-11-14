@@ -47,6 +47,8 @@ cc_library(
         ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
         "@com_google_protobuf//:protobuf",
     ],
 )

@@ -300,6 +300,8 @@ message JobTableData {
   uint64 start_time = 7;
   // The timestamp the job was ended at.
   uint64 end_time = 8;
+  // The entrypoint of the job.
+  string entrypoint = 9;
 }
 
 message WorkerTableData {

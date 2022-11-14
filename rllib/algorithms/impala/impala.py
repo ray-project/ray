@@ -8,7 +8,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -36,14 +36,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
-    PolicyID,
-    ResultDict,
-    SampleBatchType,
-    T,
-)
+from ray.rllib.utils.typing import PolicyID, ResultDict, SampleBatchType, T
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
@@ -55,13 +48,14 @@ class ImpalaConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> config = ImpalaConfig().training(lr=0.0003, train_batch_size=512)\
-        ...     .resources(num_gpus=4)\
-        ...     .rollouts(num_rollout_workers=64)
-        >>> print(config.to_dict())
+        >>> config = ImpalaConfig()
+        >>> config = config.training(lr=0.0003, train_batch_size=512)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=4)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=64)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
@@ -69,14 +63,16 @@ class ImpalaConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = ImpalaConfig()
         >>> # Print out some default values.
-        >>> print(config.vtrace)
+        >>> print(config.vtrace)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
+        >>> config = config.training(   # doctest: +SKIP
+        ...     lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "IMPALA",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -140,35 +136,35 @@ class ImpalaConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        vtrace: Optional[bool] = None,
-        vtrace_clip_rho_threshold: Optional[float] = None,
-        vtrace_clip_pg_rho_threshold: Optional[float] = None,
-        vtrace_drop_last_ts: Optional[bool] = None,
-        num_multi_gpu_tower_stacks: Optional[int] = None,
-        minibatch_buffer_size: Optional[int] = None,
-        num_sgd_iter: Optional[int] = None,
-        replay_proportion: Optional[float] = None,
-        replay_buffer_num_slots: Optional[int] = None,
-        learner_queue_size: Optional[int] = None,
-        learner_queue_timeout: Optional[float] = None,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
-        max_requests_in_flight_per_aggregator_worker: Optional[int] = None,
-        timeout_s_sampler_manager: Optional[float] = None,
-        timeout_s_aggregator_manager: Optional[float] = None,
-        broadcast_interval: Optional[int] = None,
-        num_aggregation_workers: Optional[int] = None,
-        grad_clip: Optional[float] = None,
-        opt_type: Optional[str] = None,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        decay: Optional[float] = None,
-        momentum: Optional[float] = None,
-        epsilon: Optional[float] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-        _separate_vf_optimizer: Optional[bool] = None,
-        _lr_vf: Optional[float] = None,
-        after_train_step: Optional[Callable[[dict], None]] = None,
+        vtrace: Optional[bool] = NotProvided,
+        vtrace_clip_rho_threshold: Optional[float] = NotProvided,
+        vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
+        vtrace_drop_last_ts: Optional[bool] = NotProvided,
+        num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
+        minibatch_buffer_size: Optional[int] = NotProvided,
+        num_sgd_iter: Optional[int] = NotProvided,
+        replay_proportion: Optional[float] = NotProvided,
+        replay_buffer_num_slots: Optional[int] = NotProvided,
+        learner_queue_size: Optional[int] = NotProvided,
+        learner_queue_timeout: Optional[float] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        max_requests_in_flight_per_aggregator_worker: Optional[int] = NotProvided,
+        timeout_s_sampler_manager: Optional[float] = NotProvided,
+        timeout_s_aggregator_manager: Optional[float] = NotProvided,
+        broadcast_interval: Optional[int] = NotProvided,
+        num_aggregation_workers: Optional[int] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        opt_type: Optional[str] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        decay: Optional[float] = NotProvided,
+        momentum: Optional[float] = NotProvided,
+        epsilon: Optional[float] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        _separate_vf_optimizer: Optional[bool] = NotProvided,
+        _lr_vf: Optional[float] = NotProvided,
+        after_train_step: Optional[Callable[[dict], None]] = NotProvided,
         **kwargs,
     ) -> "ImpalaConfig":
         """Sets the training related configuration.
@@ -266,72 +262,72 @@ class ImpalaConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if vtrace is not None:
+        if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if vtrace_clip_rho_threshold is not None:
+        if vtrace_clip_rho_threshold is not NotProvided:
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
-        if vtrace_clip_pg_rho_threshold is not None:
+        if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-        if vtrace_drop_last_ts is not None:
+        if vtrace_drop_last_ts is not NotProvided:
             self.vtrace_drop_last_ts = vtrace_drop_last_ts
-        if num_multi_gpu_tower_stacks is not None:
+        if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
-        if minibatch_buffer_size is not None:
+        if minibatch_buffer_size is not NotProvided:
             self.minibatch_buffer_size = minibatch_buffer_size
-        if num_sgd_iter is not None:
+        if num_sgd_iter is not NotProvided:
             self.num_sgd_iter = num_sgd_iter
-        if replay_proportion is not None:
+        if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
             self.replay_ratio = (
                 (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
             )
-        if replay_buffer_num_slots is not None:
+        if replay_buffer_num_slots is not NotProvided:
             self.replay_buffer_num_slots = replay_buffer_num_slots
-        if learner_queue_size is not None:
+        if learner_queue_size is not NotProvided:
             self.learner_queue_size = learner_queue_size
-        if learner_queue_timeout is not None:
+        if learner_queue_timeout is not NotProvided:
             self.learner_queue_timeout = learner_queue_timeout
-        if broadcast_interval is not None:
+        if broadcast_interval is not NotProvided:
             self.broadcast_interval = broadcast_interval
-        if num_aggregation_workers is not None:
+        if num_aggregation_workers is not NotProvided:
             self.num_aggregation_workers = num_aggregation_workers
-        if max_requests_in_flight_per_sampler_worker is not None:
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if max_requests_in_flight_per_aggregator_worker is not None:
+        if max_requests_in_flight_per_aggregator_worker is not NotProvided:
             self.max_requests_in_flight_per_aggregator_worker = (
                 max_requests_in_flight_per_aggregator_worker
             )
-        if timeout_s_sampler_manager is not None:
+        if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
-        if timeout_s_aggregator_manager is not None:
+        if timeout_s_aggregator_manager is not NotProvided:
             self.timeout_s_aggregator_manager = timeout_s_aggregator_manager
-        if grad_clip is not None:
+        if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if opt_type is not None:
+        if opt_type is not NotProvided:
             self.opt_type = opt_type
-        if lr_schedule is not None:
+        if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if decay is not None:
+        if decay is not NotProvided:
             self.decay = decay
-        if momentum is not None:
+        if momentum is not NotProvided:
             self.momentum = momentum
-        if epsilon is not None:
+        if epsilon is not NotProvided:
             self.epsilon = epsilon
-        if vf_loss_coeff is not None:
+        if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
+        if entropy_coeff is not NotProvided:
             if entropy_coeff < 0.0:
                 raise ValueError("`entropy_coeff` must be >= 0.0!")
             self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not None:
+        if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-        if _separate_vf_optimizer is not None:
+        if _separate_vf_optimizer is not NotProvided:
             self._separate_vf_optimizer = _separate_vf_optimizer
-        if _lr_vf is not None:
+        if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
-        if after_train_step is not None:
+        if after_train_step is not NotProvided:
             self.after_train_step = after_train_step
 
         return self
@@ -475,14 +471,14 @@ class Impala(Algorithm):
                 return A3CTFPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
         self.batches_to_place_on_learner = []
         self.batch_being_built = []
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
             # experiences coming from RolloutWorkers in parallel. We force
             # colocation on the same node (localhost) to maximize data bandwidth
@@ -501,7 +497,7 @@ class Impala(Algorithm):
                             self.config,
                         ],
                         {},
-                        self.config["num_aggregation_workers"],
+                        self.config.num_aggregation_workers,
                     )
                 ],
                 node=localhost,
@@ -511,31 +507,31 @@ class Impala(Algorithm):
             ]
             self._aggregator_actor_manager = AsyncRequestsManager(
                 self._aggregator_workers,
-                max_remote_requests_in_flight_per_worker=self.config[
-                    "max_requests_in_flight_per_aggregator_worker"
-                ],
-                ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
+                max_remote_requests_in_flight_per_worker=(
+                    self.config.max_requests_in_flight_per_aggregator_worker
+                ),
+                ray_wait_timeout_s=self.config.timeout_s_aggregator_manager,
             )
 
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
             self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                 capacity=(
-                    self.config["replay_buffer_num_slots"]
-                    if self.config["replay_buffer_num_slots"] > 0
+                    self.config.replay_buffer_num_slots
+                    if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config["replay_ratio"],
+                replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
 
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_sampler_worker"
-            ],
+            max_remote_requests_in_flight_per_worker=(
+                self.config.max_requests_in_flight_per_sampler_worker
+            ),
             return_object_refs=True,
-            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
         )
 
         # Create and start the learner thread.
@@ -558,7 +554,7 @@ class Impala(Algorithm):
         self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
 
         # Send the collected batches (still object refs) to our aggregation workers.
-        if self.config["num_aggregation_workers"] > 0:
+        if self.config.num_aggregation_workers > 0:
             batches = self.process_experiences_tree_aggregation(
                 unprocessed_sample_batches_refs
             )
@@ -653,7 +649,7 @@ class Impala(Algorithm):
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
-                >= self.config["train_batch_size"]
+                >= self.config.train_batch_size
             ):
                 batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
@@ -668,7 +664,9 @@ class Impala(Algorithm):
     ) -> Dict[
         Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
+        """Perform asynchronous sampling on all (remote) rollout workers."""
+
+        # Sample on all remote workers.
         if self.workers.remote_workers():
             self._sampling_actor_manager.call_on_all_available(
                 lambda worker: worker.sample()
@@ -676,8 +674,8 @@ class Impala(Algorithm):
             sample_batches: Dict[
                 ActorHandle, List[ObjectRef]
             ] = self._sampling_actor_manager.get_ready()
+        # Only sampling on the local worker.
         else:
-            # only sampling on the local worker
             sample_batches = {
                 self.workers.local_worker(): [self.workers.local_worker().sample()]
             }
@@ -748,12 +746,14 @@ class Impala(Algorithm):
             return processed_batches
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
+
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
+
         return processed_batches
 
     def process_experiences_tree_aggregation(
@@ -795,16 +795,25 @@ class Impala(Algorithm):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
+        local_worker = self.workers.local_worker()
+
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
+            "num_grad_updates_per_policy": {
+                pid: local_worker.policy_map[pid].num_grad_updates
+                for pid in policy_ids or []
+            },
+        }
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.remote_workers()
+            policy_ids != []
+            and self.workers.remote_workers()
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
-            >= self.config["broadcast_interval"]
+            >= self.config.broadcast_interval
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights(policy_ids))
+            weights = ray.put(local_worker.get_weights(policy_ids))
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
@@ -814,7 +823,7 @@ class Impala(Algorithm):
             self.workers_that_need_updates = set()
 
         # Update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(global_vars)
+        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
 
     @override(Algorithm)
     def on_worker_failures(
@@ -826,6 +835,7 @@ class Impala(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        super().on_worker_failures(removed_workers, new_workers)
         self._sampling_actor_manager.remove_workers(
             removed_workers, remove_in_flight_requests=True
         )
@@ -844,15 +854,15 @@ class Impala(Algorithm):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: AlgorithmConfigDict):
+    def __init__(self, config: AlgorithmConfig):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
-                self.config["replay_buffer_num_slots"]
-                if self.config["replay_buffer_num_slots"] > 0
+                self.config.replay_buffer_num_slots
+                if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config["replay_ratio"],
+            replay_ratio=self.config.replay_ratio,
             replay_mode=ReplayMode.LOCKSTEP,
         )
 

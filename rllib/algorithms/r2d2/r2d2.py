@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
@@ -19,20 +19,19 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.h_function_epsilon)
+        >>> print(config.h_function_epsilon)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 1000000,
         >>>         "replay_burn_in": 20,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
+        >>> config.training(replay_buffer_config=replay_config)\  # doctest: +SKIP
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> algo = R2D2(config=config)
-        >>> while True:
-        >>>     algo.train()
+        >>> algo = R2D2(config=config)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -41,16 +40,16 @@ class R2D2Config(DQNConfig):
         >>> config = R2D2Config()
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "R2D2",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "R2D2",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.0,
@@ -64,7 +63,7 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "SoftQ",
@@ -135,9 +134,9 @@ class R2D2Config(DQNConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
-        use_h_function: Optional[bool] = None,
-        h_function_epsilon: Optional[float] = None,
+        zero_init_states: Optional[bool] = NotProvided,
+        use_h_function: Optional[bool] = NotProvided,
+        h_function_epsilon: Optional[float] = NotProvided,
         **kwargs,
     ) -> "R2D2Config":
         """Sets the training related configuration.
@@ -161,11 +160,11 @@ class R2D2Config(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
-        if use_h_function is not None:
+        if use_h_function is not NotProvided:
             self.use_h_function = use_h_function
-        if h_function_epsilon is not None:
+        if h_function_epsilon is not NotProvided:
             self.h_function_epsilon = h_function_epsilon
 
         return self

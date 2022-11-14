@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, List
 from ray.data import Dataset
 
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, convert_ma_batch_to_sample_batch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -158,7 +158,7 @@ class DoublyRobust(OffPolicyEstimator):
         Returns:
             A dict with key "loss" and value as the mean training loss.
         """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
+        batch = convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
         return {"loss": np.mean(losses)}
 

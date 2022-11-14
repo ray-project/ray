@@ -4,7 +4,7 @@ from ray.rllib.algorithms.sac import (
     SAC,
     SACConfig,
 )
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -18,10 +18,10 @@ class RNNSACConfig(SACConfig):
         >>> config = RNNSACConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -59,7 +59,7 @@ class RNNSACConfig(SACConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
+        zero_init_states: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "RNNSACConfig":
         """Sets the training related configuration.
@@ -76,7 +76,7 @@ class RNNSACConfig(SACConfig):
             This updated AlgorithmConfig object.
         """
         super().training(**kwargs)
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
 
         return self
