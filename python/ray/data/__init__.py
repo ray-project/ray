@@ -32,6 +32,7 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet,
     read_parquet_bulk,
     read_text,
+    read_mongo,
     read_tfrecords,
 )
 
@@ -65,6 +66,7 @@ __all__ = [
     "read_images",
     "read_json",
     "read_numpy",
+    "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
     "read_tfrecords",

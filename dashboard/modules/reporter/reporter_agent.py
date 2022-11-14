@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import socket
-import subprocess
 import sys
 import traceback
 import warnings
@@ -319,31 +318,6 @@ class ReporterAgent(
             )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
-        )
-
-    # TODO(sang): Remove it
-    async def GetProfilingStats(self, request, context):
-        pid = request.pid
-        duration = request.duration
-        profiling_file_path = os.path.join(
-            ray._private.utils.get_ray_temp_dir(), f"{pid}_profiling.txt"
-        )
-        sudo = "sudo" if ray._private.utils.get_user() != "root" else ""
-        process = await asyncio.create_subprocess_shell(
-            f"{sudo} $(which py-spy) record "
-            f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True,
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            profiling_stats = ""
-        else:
-            with open(profiling_file_path, "r") as f:
-                profiling_stats = f.read()
-        return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, std_out=stdout, std_err=stderr
         )
 
     async def GetTraceback(self, request, context):

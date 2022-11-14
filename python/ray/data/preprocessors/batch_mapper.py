@@ -1,11 +1,16 @@
+import sys
 from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
 import warnings
 
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.util.annotations import PublicAPI
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas
@@ -76,7 +81,7 @@ class BatchMapper(Preprocessor):
             ],
         ],
         batch_format: Optional[str] = None,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         # TODO: Make batch_format required from user
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.

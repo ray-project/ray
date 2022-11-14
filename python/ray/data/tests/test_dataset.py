@@ -2612,9 +2612,14 @@ def test_map_batches_block_bundling_auto(
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size)
+    assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+
+    # Blocks should not be bundled up when batch_size is not specified.
+    ds2 = ds.map_batches(lambda x: x)
+    assert ds2.num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -4195,6 +4200,26 @@ def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
     assert result.equals(expected)
 
 
+def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(group):
+        # Test output type is NumPy format.
+        return {"group": group["group"] + 1, "value": group["value"] + 1}
+
+    ds = ds.groupby("group").map_groups(func, batch_format="numpy")
+    expected = pa.Table.from_pydict({"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]})
+    result = pa.Table.from_pandas(ds.to_pandas())
+    assert result.equals(expected)
+
+
 def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     ds = ray.data.from_items(
         [
@@ -4767,14 +4792,10 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_unsupported_pyarrow_versions_check(
-    shutdown_only, unsupported_pyarrow_version_that_exists
-):
+def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(
-        runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"]}
-    )
+    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
     # Test Arrow-native creation APIs.
     # Test range_table.
@@ -4796,14 +4817,14 @@ def test_unsupported_pyarrow_versions_check(
 
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
-    unsupported_pyarrow_version_that_exists,
+    unsupported_pyarrow_version,
     disable_pyarrow_version_check,
 ):
     # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
     # initial pyarrow use when the version check is disabled.
     ray.init(
         runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version_that_exists}"],
+            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
             "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
         },
     )
