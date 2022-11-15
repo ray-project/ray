@@ -144,7 +144,7 @@ def test_predict_numpy_with_numpy_data():
         pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
     )
 
-    # Test predcit with both Numpy and Pandas preprocessor available
+    # Test predict with both Numpy and Pandas preprocessor available
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
     )
@@ -183,7 +183,7 @@ def test_predict_pandas_with_numpy_data():
         pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
     )
 
-    # Test predcit with both Numpy and Pandas preprocessor available
+    # Test predict with both Numpy and Pandas preprocessor available
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
     )

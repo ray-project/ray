@@ -188,7 +188,7 @@ class BatchPredictor:
             self._determine_preprocessor_batch_format(data)
         )
         # This is the [Y] in case of separated GPU stage prediction
-        separated_stage_prediction_batch_format: BatchFormat = (
+        predict_stage_batch_format: BatchFormat = (
             self._predictor_cls._batch_format_to_use()
         )
         ctx = DatasetContext.get_current()
@@ -220,10 +220,8 @@ class BatchPredictor:
                         f"Column name(s) {select_columns} should not be provided "
                         "for prediction input data type of ``numpy.ndarray``"
                     )
-                if isinstance(batch_data, dict):
+                elif isinstance(batch_data, dict):
                     return {k: v for k, v in batch_data.items() if k in select_columns}
-                elif isinstance(batch_data, np.ndarray):
-                    return batch_data
                 elif isinstance(batch_data, pd.DataFrame):
                     # Select a subset of the pandas columns.
                     return batch_data[select_columns]
@@ -287,13 +285,15 @@ class BatchPredictor:
                 # missing _dataset_format()
                 batch_fn = preprocessor._transform_batch
                 data = data.map_batches(
-                    batch_fn, batch_format=separated_stage_prediction_batch_format
+                    batch_fn, batch_format=predict_stage_batch_format
                 )
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format=preprocessor_batch_format,
+            batch_format=preprocessor_batch_format
+            if self.get_preprocessor()
+            else predict_stage_batch_format,
             batch_size=batch_size,
             **ray_remote_args,
         )
@@ -421,15 +421,12 @@ class BatchPredictor:
         dataset_block_format = ds.dataset_format()
         if dataset_block_format == BlockFormat.SIMPLE:
             # Naive case that we cast to pandas for compatibility.
+            # TODO: Revisit
             return BatchFormat.PANDAS
 
         if not preprocessor:
-            # No preprocessor, just use the dataset format.
-            return (
-                BatchFormat.NUMPY
-                if dataset_block_format == BlockFormat.ARROW
-                else BatchFormat.PANDAS
-            )
+            # No preprocessor, just use the predictor format.
+            return self._predictor_cls._batch_format_to_use()
         elif hasattr(preprocessor, "preprocessors"):
             # For Chain preprocessor, we picked the first one as entry point.
             # TODO (jiaodong): We should revisit if our Chain preprocessor is

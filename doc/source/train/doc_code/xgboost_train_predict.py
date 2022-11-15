@@ -22,12 +22,11 @@ predictions = predictor.predict(np.expand_dims(np.arange(32, 64), 1))
 # __train_predict_end__
 
 # __batch_predict_start__
+import pandas as pd
 from ray.train.batch_predictor import BatchPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
-predict_dataset = ray.data.from_items(
-    [{"x": x} for x in np.expand_dims(np.arange(32), 1)]
-)
+predict_dataset = ray.data.from_pandas(pd.DataFrame({"x": np.arange(32)}))
 predictions = batch_predictor.predict(
     data=predict_dataset,
     batch_size=8,
