@@ -250,15 +250,16 @@ class DDPPO(PPO):
         # Get setup tasks in order to throw errors on failure.
         world_size = self.workers.num_remote_workers()
         backend = self.config.torch_distributed_backend
-        funcs = [
-            lambda w: w.setup_torch_data_parallel(
+
+        def get_setup_fn(world_rank):
+            return lambda w: w.setup_torch_data_parallel(
                 url=address,
-                world_rank=i,
+                world_rank=world_rank,
                 world_size=world_size,
                 backend=backend,
             )
-            for i in range(world_size)
-        ]
+
+        funcs = [get_setup_fn(i) for i in range(world_size)]
         # Set up torch distributed on all workers. The assumption here is that
         # all workers should be healthy at this point.
         self.workers.foreach_worker(func=funcs, local_worker=False, healthy_only=False)
@@ -294,14 +295,14 @@ class DDPPO(PPO):
             # Add partial learner info to builder object.
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
-            # Broadcast the local set of global vars to this worker.
-            global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-            self.workers.foreach_worker(
-                func=lambda w: w.set_global_vars(global_vars),
-                local_worker=False,
-                remote_worker_ids=[worker_id],
-                timeout_seconds=0,  # Don't wait for workers to finish.
-            )
+        # Broadcast the local set of global vars to this worker.
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+        self.workers.foreach_worker(
+            func=lambda w: w.set_global_vars(global_vars),
+            local_worker=False,
+            remote_worker_ids=list(sampled_workers),
+            timeout_seconds=0,  # Don't wait for workers to finish.
+        )
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).
