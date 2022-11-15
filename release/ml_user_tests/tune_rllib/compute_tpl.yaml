@@ -10,12 +10,12 @@ head_node_type:
 worker_node_types:
     - name: worker_node_cpu
       instance_type: m5.xlarge
-      min_workers: 0
+      min_workers: 10
       max_workers: 10
       use_spot: false
     - name: worker_node_gpu
       instance_type: g3.4xlarge
-      min_workers: 0
+      min_workers: 10
       max_workers: 10
       use_spot: false
 

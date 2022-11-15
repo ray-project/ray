@@ -7,12 +7,13 @@ python:
   pip_packages:
     - pytest
     - awscli
-    - xgboost_ray
+    - xgboost_ray  # this will install protobuf version beyond the upper bound of what Tune allows
     - pyarrow>=6.0.1,<7.0.0
   conda_packages: []
 
 post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[tune] # Needed for Ray Client to work. Installing Tune dependency so we can get protobuf version back.
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true

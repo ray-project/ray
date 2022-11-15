@@ -1108,6 +1108,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1132,6 +1134,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1156,6 +1160,8 @@
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1180,6 +1186,8 @@
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1203,6 +1211,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1226,6 +1236,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1250,6 +1262,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1274,6 +1288,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1298,6 +1314,8 @@
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
+    wait_for_nodes:
+      num_nodes: 11
     type: client
 
   alert: default
