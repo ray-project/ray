@@ -112,10 +112,12 @@ _AUTOSCALER_METRICS = [
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _DASHBOARD_METRICS = [
-    "ray_dashboard_api_requests_duration_seconds",
-    "ray_dashboard_api_requests_count",
+    "ray_dashboard_api_requests_duration_seconds_bucket",
+    "ray_dashboard_api_requests_duration_seconds_created",
+    "ray_dashboard_api_requests_count_requests_total",
+    "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
-    "ray_component_rss_mb",
+    "ray_component_uss_mb",
 ]
 
 _NODE_METRICS = [
@@ -379,22 +381,17 @@ def test_metrics_export_node_metrics(shutdown_only):
         # Run list nodes to trigger dashboard API.
         ray.experimental.state.api.list_nodes()
 
-        # Verify components
-        components = set()
-        for metric in _DASHBOARD_METRICS:
-            samples = avail_metrics[metric]
-            for sample in samples:
-                components.add(sample.labels["Component"])
-        assert components == {"dashboard"}
-
         # Verify metrics exist.
-        avail_metrics = set(avail_metrics)
+        avail_metrics = avail_metrics
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
-            assert any(
-                name.startswith(metric) for name in avail_metrics
-            ), f"{metric} not in {avail_metrics}"
+            assert len(avail_metrics[metric]) > 0
+
+            samples = avail_metrics[metric]
+            for sample in samples:
+                assert sample.labels["Component"] == "dashboard"
+
         return True
 
     wait_for_condition(verify_node_metrics)

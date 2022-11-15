@@ -76,8 +76,8 @@ try:
                 registry=self.registry,
             )
             self.metrics_dashboard_mem = Gauge(
-                "component_rss",
-                "Dashboard RSS usage.",
+                "component_uss",
+                "USS usage of all components on the node.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
                 unit="mb",
                 namespace="ray",

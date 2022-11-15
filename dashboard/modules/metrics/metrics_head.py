@@ -332,7 +332,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_info().rss) / 1.0e6)
+        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
