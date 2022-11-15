@@ -485,7 +485,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RAY_LOG_EVERY_MS(INFO, 30 * 1000)
                 << "Retrying attempt to schedule task (id: " << task_id
                 << " name: " << task_name
-                << ") at remote node. Try again "
+                << ") at remote node (id: " << raylet_address.raylet_id()
+                << " ip: " << raylet_address.ip_address()
+                << "). Try again "
                    "on a local node. Error: "
                 << status.ToString();
 
