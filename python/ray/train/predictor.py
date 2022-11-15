@@ -8,7 +8,6 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
     _convert_batch_type_to_numpy,
 )
@@ -22,6 +21,7 @@ try:
 except ImportError:
     pa_table = None
 
+# Reverse mapping from data batch type to batch format.
 TYPE_TO_ENUM: Dict[Type[DataBatchType], BatchFormat] = {
     np.ndarray: BatchFormat.NUMPY,
     dict: BatchFormat.NUMPY,
@@ -128,19 +128,20 @@ class Predictor(abc.ABC):
     @DeveloperAPI
     def preferred_batch_format(cls) -> BatchFormat:
         """Batch format hint for upstream producers to try yielding best block format.
-        Can be overriden by predictor classes depending on the framework type.
 
-        1. In case for DLPredictor that requires Numpy for neural network inference,
-        this method should return BatchFormat.NUMPY.
-        2. In case XGBoostPredictor that primarily works with tabular data, this
-        method can return BatchFormat.PANDAS.
+        The preferred batch format to use if both `_predict_pandas` and
+        `_predict_numpy` are implemented. Defaults to Pandas.
+
+        Can be overriden by predictor classes depending on the framework type,
+        e.g. TorchPredictor prefers Numpy and XGBoostPredictor prefers Pandas as
+        native batch format.
 
         """
         return BatchFormat.PANDAS
 
     @classmethod
     def _batch_format_to_use(cls) -> BatchFormat:
-        # Use this in BatchPredictor
+        """Determine the batch format to use for the predictor."""
         has_pandas_implemented = cls._predict_pandas != Predictor._predict_pandas
         has_numpy_implemented = cls._predict_numpy != Predictor._predict_numpy
         if has_pandas_implemented and has_numpy_implemented:
@@ -187,7 +188,12 @@ class Predictor(abc.ABC):
 
         has_predict_numpy = self.__class__._predict_numpy != Predictor._predict_numpy
         has_predict_pandas = self.__class__._predict_pandas != Predictor._predict_pandas
-
+        if not has_predict_numpy and not has_predict_pandas:
+            raise NotImplementedError(
+                "None of `_predict_pandas` or `_predict_numpy` are "
+                f"implemented for input data batch format `{batch_format}`."
+            )
+        # We can finish prediction as long as one predict method is implemented.
         if batch_format == BatchFormat.PANDAS:
             if has_predict_pandas:
                 return self._predict_pandas(data, **kwargs)
@@ -206,18 +212,11 @@ class Predictor(abc.ABC):
                 # Base predictor's return value are used by both BatchPredictor
                 # and Ray Serve, thus keep return value as raw DataFrame or Numpy
                 # without any TensorArray casting and leave it to caller to decide.
-                return convert_pandas_to_batch_type(
-                    predictions,
-                    # Output format should be the same as input format.
-                    TYPE_TO_ENUM[type(data)],
-                    cast_tensor_columns=False,
-                )
+                return _convert_batch_type_to_numpy(predictions)
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         """Perform inference on a Pandas DataFrame.
-
-        All predictors are expected to implement this method.
 
         Args:
             data: A pandas DataFrame to perform predictions on.
@@ -235,10 +234,11 @@ class Predictor(abc.ABC):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         """Perform inference on a Numpy data.
 
-        All DL base predictors (ex: Torch/TF) are expected to implement this method.
+        All Predictors working with tensor data (like deep learning predictors)
+        should implement this method.
 
         Args:
-            data: A Numpy ndarray or dictionary of ndarray to perform predictions on.
+            data: A Numpy ndarray or dictionary of ndarrays to perform predictions on.
             kwargs: Arguments specific to the predictor implementation.
 
         Returns:
