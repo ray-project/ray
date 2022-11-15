@@ -38,9 +38,9 @@ def run(checkpoint_path):
     # Run CartPole.
     env = gym.make("CartPole-v1")
     obs, info = env.reset()
-    done = False
+    terminated = truncated = False
     step = 0
-    while not done:
+    while not terminated and not truncated:
         step += 1
 
         # Use local_policy_inference() to run inference, so we do not have to
@@ -52,7 +52,7 @@ def run(checkpoint_path):
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
-        obs, _, done, _, _ = env.step(action[0])
+        obs, _, terminated, truncated, _ = env.step(action)
     # __sphinx_doc_end__
 
 
