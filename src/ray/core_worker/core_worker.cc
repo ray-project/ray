@@ -1153,12 +1153,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   if (worker_context_.GetCurrentTask() == nullptr) {
-    task_event_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
-                                     rpc::TaskStatus::RUNNING_IN_RAY_GET,
-                                     /* task_info */ nullptr,
-                                     /* task_state_update */ nullptr);
+    task_event_buffer_->AddTaskStatusEvent(worker_context_.GetCurrentTaskID(),
+                                           rpc::TaskStatus::RUNNING_IN_RAY_GET,
+                                           /* task_info */ nullptr,
+                                           /* task_state_update */ nullptr);
   } else {
-    task_event_buffer_->AddTaskEvent(
+    task_event_buffer_->AddTaskStatusEvent(
         worker_context_.GetCurrentTaskID(),
         rpc::TaskStatus::RUNNING_IN_RAY_GET,
         task_manager_->MakeTaskInfoEntry(*worker_context_.GetCurrentTask()),
@@ -2202,6 +2202,11 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const {
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
+  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+    RAY_CHECK(task_event_buffer_) << "Task event buffer should not be nullptr.";
+    return std::make_unique<worker::ProfileEvent>(
+        task_event_buffer_, event_type, worker_context_.GetCurrentTaskID());
+  }
   return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
 }
 
@@ -2276,10 +2281,10 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
-    task_event_buffer_->AddTaskEvent(task_spec.TaskId(),
-                                     rpc::TaskStatus::RUNNING,
-                                     task_manager_->MakeTaskInfoEntry(task_spec),
-                                     /* task_state_update */ nullptr);
+    task_event_buffer_->AddTaskStatusEvent(task_spec.TaskId(),
+                                           rpc::TaskStatus::RUNNING,
+                                           task_manager_->MakeTaskInfoEntry(task_spec),
+                                           /* task_state_update */ nullptr);
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }

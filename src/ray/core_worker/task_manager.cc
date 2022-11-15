@@ -843,10 +843,10 @@ void TaskManager::RecordTaskStatusEvent(TaskEntry &task_entry, rpc::TaskStatus s
     // Do nothing
   }
   }
-  task_event_buffer_->AddTaskEvent(task_entry.spec.TaskId(),
-                                   status,
-                                   std::move(task_info),
-                                   std::move(task_state_update));
+  task_event_buffer_->AddTaskStatusEvent(task_entry.spec.TaskId(),
+                                         status,
+                                         std::move(task_info),
+                                         std::move(task_state_update));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

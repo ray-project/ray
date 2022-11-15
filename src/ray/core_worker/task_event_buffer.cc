@@ -35,7 +35,7 @@ TaskEventBuffer::TaskEventBuffer(instrumented_io_context &io_service,
   }
 }
 
-void TaskEventBuffer::AddTaskEvent(
+void TaskEventBuffer::AddTaskStatusEvent(
     TaskID task_id,
     rpc::TaskStatus task_status,
     std::unique_ptr<rpc::TaskInfoEntry> task_info,
@@ -60,6 +60,17 @@ void TaskEventBuffer::AddTaskEvent(
   auto event = task_events_itr->second.add_task_events();
   event->set_task_status(task_status);
   event->set_start_time(absl::GetCurrentTimeNanos());
+}
+
+void TaskEventBuffer::AddTaskEvent(TaskID task_id, rpc::TaskEventEntry event) {
+  if (!recording_on_) {
+    return;
+  }
+  absl::MutexLock lock(&mutex_);
+  auto task_events_itr = GetOrInitTaskEvents(task_id);
+
+  auto event_ptr = task_events_itr->second.add_task_events();
+  event_ptr->Swap(&event);
 }
 
 TaskIdEventMap::iterator TaskEventBuffer::GetOrInitTaskEvents(TaskID task_id) {

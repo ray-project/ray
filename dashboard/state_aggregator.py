@@ -386,7 +386,7 @@ class StateAPIManager:
             task_state_events = data.get("task_events", None)
             if task_state_events:
                 most_recent_state = max(
-                    task_state_events, key=lambda e: e["event_time"]
+                    task_state_events, key=lambda e: e["start_time"]
                 )
                 state["scheduling_state"] = most_recent_state["task_status"]
 

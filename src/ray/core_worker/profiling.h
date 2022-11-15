@@ -20,6 +20,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
@@ -65,15 +66,29 @@ class ProfileEvent {
  public:
   ProfileEvent(const std::shared_ptr<Profiler> &profiler, const std::string &event_type);
 
+  ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
+               const std::string &event_type,
+               TaskID task_id);
+
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent() {
-    rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
-    profiler_->AddEvent(rpc_event_);
+    if (use_task_event_) {
+      event_.set_end_time(absl::GetCurrentTimeNanos());
+      // Add task event to the task event buffer
+      task_event_buffer_->AddTaskEvent(task_id_, std::move(event_));
+    } else {
+      rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
+      profiler_->AddEvent(rpc_event_);
+    }
   }
 
   // Set extra metadata for the event, which could change during the event.
   void SetExtraData(const std::string &extra_data) {
-    rpc_event_.set_extra_data(extra_data);
+    if (use_task_event_) {
+      event_.set_extra_data(extra_data);
+    } else {
+      rpc_event_.set_extra_data(extra_data);
+    }
   }
 
  private:
@@ -82,6 +97,19 @@ class ProfileEvent {
 
   // Underlying proto data structure that holds the event data.
   rpc::ProfileTableData::ProfileEvent rpc_event_;
+
+  // TODO(rickyx): For easy prototyping only:
+  // Flag if profiling should use the task event buffer
+  bool use_task_event_ = false;
+
+  // Shared pointer to the event buffer.
+  std::shared_ptr<TaskEventBuffer> task_event_buffer_;
+
+  // Underlying proto data structure that holds the event data.
+  rpc::TaskEventEntry event_;
+
+  // Task ID
+  TaskID task_id_;
 };
 
 }  // namespace worker
