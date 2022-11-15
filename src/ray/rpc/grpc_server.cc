@@ -46,6 +46,9 @@ GrpcServer::GrpcServer(std::string name,
 
 void GrpcServer::Shutdown() {
   if (!is_closed_) {
+    // Drain the executor threads.
+    GetServerCallExecutor().stop();
+    GetServerCallExecutor().wait();
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
     server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
