@@ -518,7 +518,7 @@ class JobManager:
                 job_status = await self._job_info_client.get_status(job_id)
                 job_error_message = None
                 if job_status.is_terminal() or job_status is None:
-                    # If the job is already in a terminal state, or already deleted, 
+                    # If the job is already in a terminal state, or already deleted,
                     # then the actor exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
