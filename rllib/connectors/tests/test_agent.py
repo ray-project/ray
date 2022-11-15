@@ -1,3 +1,4 @@
+import tree
 import gym
 import numpy as np
 import unittest
@@ -320,9 +321,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])  # env.reset() for t == -1 else env.step()
             sample_batch = processed[0].data.sample_batch
             # add cur obs to the list
@@ -357,9 +356,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
 
@@ -398,14 +395,23 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # without reward-to-go.
         view_rq_dict = {
             # obs[t-context_len+1:t]
-            "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
+            "context_obs": ViewRequirement(
+                "obs",
+                shift=f"-{context_len-1}:0",
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
+            ),
             # next_obs[t-context_len+1:t]
             "context_next_obs": ViewRequirement(
-                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+                "obs",
+                shift=f"-{context_len}:1",
+                used_for_compute_actions=False,
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 
@@ -427,7 +433,6 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 SampleBatch.ACTIONS: (
                     np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
                 ),
-                SampleBatch.T: t - 1,
             }
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
@@ -455,11 +460,11 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .rollouts(create_env_on_local_worker=True)
         )
 
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         policy = PPOTorchPolicy(
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -503,10 +508,13 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             policy_output = policy.compute_actions_from_input_dict(
                 agent_obs.data.sample_batch
             )
+            # Removes batch dimension
+            policy_output = tree.map_structure(lambda x: x[0], policy_output)
+
             agent_connector.on_policy_output(
                 ActionConnectorDataType(0, 1, {}, policy_output)
             )
-            action = policy_output[0][0]
+            action = policy_output[0]
 
             next_obs, rewards, dones, info = env.step(action)
             env_out_dict = {
@@ -515,7 +523,6 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 SampleBatch.DONES: dones,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
-                SampleBatch.T: t,
                 # state_out
             }
             env_out = AgentConnectorDataType(0, 1, env_out_dict)

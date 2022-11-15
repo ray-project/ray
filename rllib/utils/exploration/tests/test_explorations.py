@@ -16,31 +16,22 @@ import ray.rllib.algorithms.td3.td3 as td3
 from ray.rllib.utils import check, framework_iterator
 
 
-def do_test_explorations(
-    run, env, config, dummy_obs, prev_a=None, expected_mean_action=None
-):
+def do_test_explorations(config, dummy_obs, prev_a=None, expected_mean_action=None):
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
-    core_config = config.copy()
-    if run not in [a3c.A3C]:
-        core_config["num_workers"] = 0
-
     # Test all frameworks.
-    for _ in framework_iterator(core_config):
-        print("Agent={}".format(run))
+    for _ in framework_iterator(config):
+        print(f"Algorithm={config.algo_class}")
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
         for exploration in [None, "Random"]:
-            local_config = core_config.copy()
+            local_config = config.copy()
             if exploration == "Random":
-                # TODO(sven): Random doesn't work for IMPALA yet.
-                if run is impala.Impala:
-                    continue
-                local_config["exploration_config"] = {"type": "Random"}
+                local_config.exploration(exploration_config={"type": "Random"})
             print("exploration={}".format(exploration or "default"))
 
-            algo = run(config=local_config, env=env)
+            algo = local_config.build()
 
             # Make sure all actions drawn are the same, given same
             # observations.
@@ -92,19 +83,19 @@ class TestExplorations(unittest.TestCase):
         ray.shutdown()
 
     def test_a2c(self):
+        config = (
+            a2c.A2CConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            a2c.A2C,
-            "CartPole-v0",
-            a2c.A2C_DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
         )
 
     def test_a3c(self):
+        config = a3c.A3CConfig().environment("CartPole-v1")
         do_test_explorations(
-            a3c.A3C,
-            "CartPole-v0",
-            a3c.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
         )
@@ -112,86 +103,102 @@ class TestExplorations(unittest.TestCase):
     def test_ddpg(self):
         # Switch off random timesteps at beginning. We want to test actual
         # GaussianNoise right away.
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["exploration_config"]["random_timesteps"] = 0
+        config = (
+            ddpg.DDPGConfig()
+            .environment("Pendulum-v1")
+            .rollouts(num_rollout_workers=0)
+            .exploration(exploration_config={"random_timesteps": 0})
+        )
         do_test_explorations(
-            ddpg.DDPG,
-            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
 
     def test_simple_dqn(self):
+        config = (
+            simple_q.SimpleQConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            simple_q.SimpleQ,
-            "CartPole-v0",
-            simple_q.SimpleQConfig().to_dict(),
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
         )
 
     def test_dqn(self):
+        config = (
+            dqn.DQNConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            dqn.DQN,
-            "CartPole-v0",
-            dqn.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
         )
 
     def test_impala(self):
+        config = (
+            impala.ImpalaConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=0)
+            .resources(num_gpus=0)
+        )
         do_test_explorations(
-            impala.Impala,
-            "CartPole-v0",
-            dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0),
         )
 
     def test_pg(self):
+        config = (
+            pg.PGConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            pg.PG,
-            "CartPole-v0",
-            pg.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
         )
 
     def test_ppo_discr(self):
+        config = (
+            ppo.PPOConfig().environment("CartPole-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            ppo.PPO,
-            "CartPole-v0",
-            ppo.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0),
         )
 
     def test_ppo_cont(self):
+        config = (
+            ppo.PPOConfig().environment("Pendulum-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            ppo.PPO,
-            "Pendulum-v1",
-            ppo.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             prev_a=np.array([0.0]),
             expected_mean_action=0.0,
         )
 
     def test_sac(self):
+        config = (
+            sac.SACConfig().environment("Pendulum-v1").rollouts(num_rollout_workers=0)
+        )
         do_test_explorations(
-            sac.SAC,
-            "Pendulum-v1",
-            sac.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
 
     def test_td3(self):
-        config = td3.TD3_DEFAULT_CONFIG.copy()
-        # Switch off random timesteps at beginning. We want to test actual
-        # GaussianNoise right away.
-        config["exploration_config"]["random_timesteps"] = 0
+        config = (
+            td3.TD3Config()
+            .environment("Pendulum-v1")
+            .rollouts(num_rollout_workers=0)
+            # Switch off random timesteps at beginning. We want to test actual
+            # GaussianNoise right away.
+            .exploration(exploration_config={"random_timesteps": 0})
+        )
         do_test_explorations(
-            td3.TD3,
-            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,

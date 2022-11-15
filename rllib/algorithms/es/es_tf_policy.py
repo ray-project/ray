@@ -91,9 +91,10 @@ class ESTFPolicy(Policy):
         self.observation_filter = get_filter(
             self.config["observation_filter"], self.preprocessor.shape
         )
-        self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
-            self.sess = make_session(single_threaded=self.single_threaded)
+            self.sess = make_session(
+                single_threaded=self.config.get("tf_single_threaded", True)
+            )
 
             # Set graph-level seed.
             if config.get("seed") is not None:
@@ -109,10 +110,10 @@ class ESTFPolicy(Policy):
             self.sess = self.inputs = None
             if config.get("seed") is not None:
                 # Tf2.x.
-                if config.get("framework") == "tf2":
+                if tfv == 2:
                     tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
+                # Tf1.x.
+                else:
                     tf1.set_random_seed(config["seed"])
 
         # Policy network.

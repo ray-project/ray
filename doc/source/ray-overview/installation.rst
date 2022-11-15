@@ -58,10 +58,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
-  Python 3.9/3.10 support is currently experimental.
-
-.. note::
-
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
@@ -179,7 +175,7 @@ You can install and use Ray C++ API as follows.
   pip install -U ray[cpp]
 
   # Create a Ray C++ project template to start with.
-  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
 
 .. note::
 

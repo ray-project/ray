@@ -124,6 +124,8 @@ class ClusterResourceScheduler {
     return *cluster_resource_manager_;
   }
 
+  bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
+
  private:
   void Init(const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,

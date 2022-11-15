@@ -10,8 +10,8 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dt import DTConfig
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.tune.utils.log import Verbosity
 
 if __name__ == "__main__":
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             input_files.append(input_file)
 
     # Get max_ep_len
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     max_ep_len = env.spec.max_episode_steps
     env.close()
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     config = (
         DTConfig()
         .environment(
-            env="CartPole-v0",
+            env="CartPole-v1",
             clip_actions=False,
             normalize_actions=False,
         )
@@ -142,11 +142,10 @@ if __name__ == "__main__":
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Algorithm and restore its state from the last checkpoint.
-    algo = get_algorithm_class("DT")(config=config)
-    algo.restore(checkpoint)
+    algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
     obs = env.reset()
     input_dict = algo.get_initial_input_dict(obs)

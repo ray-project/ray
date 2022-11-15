@@ -290,7 +290,7 @@ py_test(
 
 py_test(
     name = "test_syncer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -679,7 +679,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "small",
+    size = "medium",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
@@ -733,7 +733,7 @@ py_test(
 
 py_test(
     name = "optuna_multiobjective_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "medium_instance"],
@@ -796,7 +796,7 @@ py_test(
 
 py_test(
     name = "pbt_function",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_function.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -921,7 +921,7 @@ py_test(
 
 py_test(
     name = "wandb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/wandb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
