@@ -34,6 +34,8 @@ If you would like to run an application *interactively* and see the output in re
 - (Recommended) Run your script directly on a cluster node (e.g. after SSHing into the node using :ref:`ray attach <ray-attach-doc>`), or
 - use [Ray Client](ray-client-ref) to run a script from your local machine while maintaining a connection to the cluster.
 
+Note that jobs started in these ways are not managed by the Ray Jobs API, so the Ray Jobs API will not be able to see them or interact with them (with the exception of `ray job list` and `JobSubmissionClient.list_jobs()`).
+
 # Contents
 
 ```{toctree}
