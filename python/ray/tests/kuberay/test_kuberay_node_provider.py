@@ -178,13 +178,73 @@ def test_get_node_data(podlist_file: str, expected_node_data):
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
-    "scale_request,expected_patch_payload",
-    [(SAMPLE_SCALE_REQUEST, SAMPLE_RAYCLUSTER_PATCH_PAYLOAD)],
+    "node_data_dict,scale_request,expected_patch_payload",
+    [
+        (
+            {
+                "raycluster-autoscaler-head-8zsc8": NodeData(
+                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                ),
+                "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
+                    kind="worker",
+                    type="fake-gpu-group",
+                    ip="10.4.0.6",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
+                    kind="worker",
+                    type="small-group",
+                    ip="10.4.1.8",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-worker-small-group-lbfm4": NodeData(
+                    kind="worker",
+                    type="small-group",
+                    ip="10.4.0.5",
+                    status="up-to-date",
+                ),
+            },
+            ScaleRequest(
+                desired_num_workers={
+                    "small-group": 1,  # Delete 1
+                    "gpu-group": 1,  # Don't touch
+                    "blah-group": 5,  # Create 5
+                },
+                workers_to_delete={
+                    "raycluster-autoscaler-worker-small-group-dkz2r",
+                }
+            ),
+            [
+                {
+                    "op": "replace",
+                    "path": "/spec/workerGroupSpecs/2/replicas",
+                    "value": 5
+                },
+                {
+                    "op": "replace",
+                    "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                    "value": {
+                        "workersToDelete": [
+                            "raycluster-autoscaler-worker-small-group-dkz2r"
+                        ]
+                    }
+                },
+            ],
+        ),
+    ]
 )
-def test_submit_scale_request(scale_request, expected_patch_payload):
+def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payload):
+    """Test the KuberayNodeProvider's RayCluster patch payload given a dict
+    of current node counts and a scale request.
+    """
     raycluster = get_basic_ray_cr()
+    # Add another worker group for the sake of this test.
+    blah_group = copy.deepcopy(raycluster["spec"]["workerGroupSpecs"][1])
+    blah_group["groupName"] = "blah-group"
+    raycluster["spec"]["workerGroupSpecs"].append(blah_group)
     with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        kr_node_provider.node_data_dict = node_data_dict
         patch_payload = kr_node_provider._scale_request_to_patch_payload(
             scale_request=scale_request, raycluster=raycluster
         )
