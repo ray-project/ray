@@ -31,7 +31,7 @@ If needed, the Ray Jobs API also provides APIs for [programmatic job submission]
 
 If you would like to run an application *interactively* and see the output in real time (for example, during development or debugging), you can:
 
-- Run your script directly on a cluster node (e.g. after SSHing into the node using :ref:`ray attach <ray-attach-doc>`), or
+- (Recommended) Run your script directly on a cluster node (e.g. after SSHing into the node using :ref:`ray attach <ray-attach-doc>`), or
 - use [Ray Client](ray-client-ref) to run a script from your local machine while maintaining a connection to the cluster.
 
 # Contents
