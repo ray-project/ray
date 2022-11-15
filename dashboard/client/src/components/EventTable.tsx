@@ -217,19 +217,6 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
-        {!isJob && (
-          <Autocomplete
-            className={classes.search}
-            style={{ width: 100 }}
-            options={jobOptions}
-            onInputChange={(_: any, value: string) => {
-              changeFilter("jobId", value.trim());
-            }}
-            renderInput={(params: TextFieldProps) => (
-              <TextField {...params} label="Job" />
-            )}
-          />
-        )}
         <TextField
           className={classes.search}
           label="Msg"
@@ -299,7 +286,7 @@ const EventTable = (props: EventTableProps) => {
                   <article className={classes.li} key={eventId}>
                     <Grid container spacing={4}>
                       <Grid item>
-                        <StatusChip status={label} type={severity} />
+                        <StatusChip status={severity} type={severity} />
                       </Grid>
                       <Grid item>{realTimestamp}</Grid>
                       {customFields && (
