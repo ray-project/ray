@@ -9,7 +9,6 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
