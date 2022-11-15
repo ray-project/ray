@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+from ray.autoscaler.batching_node_provider import NodeData
 from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_index,
     _worker_group_max_replicas,
@@ -11,14 +12,13 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KuberayNodeProvider,
     ScaleRequest,
 )
+from pathlib import Path
 from typing import Any, Dict
+import yaml
 
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
 
-SAMPLE_POD_LIST = []
-SAMPLE_NODE_DATA = {}
-
-SAMPLE_SCALE_REQUEST = ScaleRequest
+SAMPLE_SCALE_REQUEST = ScaleRequest()
 SAMPLE_RAYCLUSTER_PATCH_PAYLOAD = []
 
 
@@ -29,6 +29,13 @@ def _get_basic_ray_cr_workers_to_delete():
         "workersToDelete": ["random-worker"]
     }
     return raycluster
+
+
+def _get_test_yaml(file_name):
+    file_path = str(
+        Path(__file__).resolve().parent / "test_files" / file_name
+    )
+    return yaml.safe_load(open(file_path).read())
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
@@ -103,20 +110,61 @@ def test_create_node_cap_at_max(
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
-    "pod_list,expected_node_data",
-    [(SAMPLE_POD_LIST, SAMPLE_NODE_DATA)],
+    "podlist_file,expected_node_data",
+    [
+        (
+            # Pod list obtained by running kubectl get pod -o yaml at runtime.
+            "podlist1.yaml",
+            {
+                "raycluster-autoscaler-head-8zsc8": NodeData(
+                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                ),  # up-to-date status because the Ray container is in running status
+                "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
+                    kind="worker", type="small-group", ip="10.4.1.8", status="waiting"
+                ),  # waiting status, because Ray container's state is "waiting".
+                # The pod list includes a worker with non-null deletion timestamp.
+                # It is excluded from the node data because it is considered
+                # "terminated".
+            }
+        ),
+        (
+            # Pod list obtained by running kubectl get pod -o yaml at runtime.
+            "podlist2.yaml",
+            {
+                "raycluster-autoscaler-head-8zsc8": NodeData(
+                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                ),
+                "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
+                    kind="worker", type="fake-gpu-group", ip="10.4.0.6", status="up-to-date"
+                ),
+                "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
+                    kind="worker", type="small-group", ip="10.4.1.8", status="up-to-date"
+                ),
+                "raycluster-autoscaler-worker-small-group-lbfm4": NodeData(
+                    kind="worker", type="small-group", ip="10.4.0.5", status="up-to-date"
+                ),
+            }
+        ),
+    ],
 )
-def test_get_node_data(pod_list, expected_node_data):
+def test_get_node_data(podlist_file: str, expected_node_data):
+    """Test translation of a K8s pod list into autoscaler node data.
+    """
+    pod_list = _get_test_yaml(podlist_file)
+
     def mock_get(node_provider, path):
-        if path == "pods":
+        if "pods" in path:
             return pod_list
-        else:
+        elif "raycluster" in path:
             return get_basic_ray_cr()
+        else:
+            raise ValueError("Invalid path.")
 
     with mock.patch.object(
         KuberayNodeProvider, "__init__", return_value=None
     ), mock.patch.object(KuberayNodeProvider, "_get", mock_get):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        kr_node_provider.cluster_name = "fake"
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
         assert set(nodes) == set(expected_node_data.keys())
