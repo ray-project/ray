@@ -15,9 +15,10 @@ Framework-specific Examples
 - :doc:`/ray-air/examples/analyze_tuning_results`: Distributed tuning with XGBoost
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
 
-AutoML
-------
+Simple Machine Learning
+-----------------------
 - :doc:`/ray-air/examples/automl_with_ray_air`: Build an AutoML system for time-series forecasting with Ray AIR
+- :doc:`/ray-air/examples/batch_tuning`: Perform batch tuning on NYC Taxi Dataset with Ray AIR
 
 Text/NLP
 --------
