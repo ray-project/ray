@@ -271,10 +271,9 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> ray.init()
-            >>> client = JobSubmissionClient()
-            >>> submission_id = client.submit_job(entrypoint="echo hello")
-            >>> client.delete_job(submission_id)
+            >>> client = JobSubmissionClient() # doctest: +SKIP
+            >>> submission_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.delete_job(submission_id) # doctest: +SKIP
             True
 
         Args:
