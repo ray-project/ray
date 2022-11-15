@@ -262,7 +262,8 @@ def test_safe_to_scale(raycluster: Dict[str, Any], expected: bool):
         KuberayNodeProvider, "__init__", return_value=None
     ), mock.patch(
         # Enable the method's logic for this test.
-        "ray.autoscaler._private.kuberay.node_provider.WAIT_FOR_WORKERS_TO_DELETE", 1
+        "ray.autoscaler._private.kuberay.node_provider.WAIT_FOR_WORKERS_TO_DELETE",
+        1,
     ):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider._raycluster = raycluster
