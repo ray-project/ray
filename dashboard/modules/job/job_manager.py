@@ -426,6 +426,7 @@ class JobManager:
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
+    WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
@@ -477,7 +478,7 @@ class JobManager:
         try:
             await self._monitor_job_internal(job_id, job_supervisor)
         finally:
-            self.monitored_jobs.remove(job_id)
+            self.monitored_jobs.discard(job_id)
 
     async def _monitor_job_internal(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
@@ -811,6 +812,13 @@ class JobManager:
             )
 
         await self._job_info_client.delete_info(job_id)
+        self.monitored_jobs.discard(job_id)
+        # Wait until the actor is dead to ensure that the job is fully cleaned
+        # up.
+        while self._get_actor_for_job(job_id) is not None:
+            await asyncio.sleep(self.WAIT_FOR_ACTOR_DEATH_TIMEOUT_S)
+
+        return True
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

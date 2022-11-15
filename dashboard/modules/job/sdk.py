@@ -265,6 +265,7 @@ class JobSubmissionClient(SubmissionClient):
         """Delete a job in a terminal state and all of its associated data.
 
         If the job is not already in a terminal state, raises an error.
+        This does not delete the job logs from disk.
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
