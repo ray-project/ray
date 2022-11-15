@@ -364,6 +364,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             self.assertEqual(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
+        """NOTE: This test only works with the old api
+        TODO: avnishn gjoliver
+        """
+
         class ModelBasedPolicy(DQNTFPolicy):
             def compute_actions_from_input_dict(
                 self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
@@ -421,6 +425,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
+                enable_connectors=False,  # only works with old episode API
             )
             .multi_agent(
                 policies={"p0", "p1"},
