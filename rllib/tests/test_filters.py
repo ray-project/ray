@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
 from ray.rllib.utils import FilterManager
-from ray.rllib.tests.mock_worker import _MockWorker
+from ray.rllib.tests.mock_worker import _MockWorkerSet
 
 
 class RunningStatTest(unittest.TestCase):
@@ -86,15 +86,22 @@ class FilterManagerTest(unittest.TestCase):
         filt1.reset_buffer()
         self.assertEqual(filt1.buffer.n, 0)
 
-        RemoteWorker = ray.remote(_MockWorker)
-        remote_e = RemoteWorker.remote(sample_count=10)
-        remote_e.sample.remote()
-
-        FilterManager.synchronize(
-            {"obs_filter": filt1, "rew_filter": filt1.copy()}, [remote_e]
+        mock_worker_set = _MockWorkerSet(1)
+        # running_stats.n should be 20 after this sample() step.
+        mock_worker_set.foreach_worker(
+            func=lambda w: w.sample(),
+            local_worker=False,
         )
 
-        filters = ray.get(remote_e.get_filters.remote())
+        FilterManager.synchronize(
+            {"obs_filter": filt1, "rew_filter": filt1.copy()},
+            mock_worker_set,
+        )
+
+        filters = mock_worker_set.foreach_worker(
+            lambda w: w.get_filters(),
+            local_worker=False,
+        )[0]
         obs_f = filters["obs_filter"]
         self.assertEqual(filt1.running_stats.n, 20)
         self.assertEqual(filt1.buffer.n, 0)

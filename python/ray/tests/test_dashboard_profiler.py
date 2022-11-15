@@ -17,6 +17,10 @@ from ray._private.test_utils import (
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
 def test_profiler_endpoints(ray_start_with_dashboard):
     # Sanity check py-spy is installed.
     subprocess.check_call(["py-spy", "--version"])
@@ -84,6 +88,10 @@ def test_profiler_endpoints(ray_start_with_dashboard):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
 def test_profiler_failure_message(ray_start_with_dashboard):
     # Sanity check py-spy is installed.
     subprocess.check_call(["py-spy", "--version"])
