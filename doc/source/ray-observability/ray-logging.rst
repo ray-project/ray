@@ -7,7 +7,12 @@ This document will explain Ray's logging system and its best practices.
 Driver logs
 ~~~~~~~~~~~
 An entry point of Ray applications that calls ``ray.init()`` is called a driver.
-All the driver logs are handled in the same way as normal Python programs. 
+All the driver logs are handled in the same way as normal Python programs.
+
+Job logs
+~~~~~~~~
+Logs for jobs submitted via the :ref:`Ray Jobs API <jobs-overview>` can be retrieved using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>` or using ``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()`` via the :ref:`Python SDK <ray-job-submission-sdk-ref>`.
+The log file consists of the stdout of the entrypoint command of the job.  For the location of the log file on disk, see :ref:`Logging directory structure <logging-directory-structure>`.
 
 Worker logs
 ~~~~~~~~~~~
@@ -151,6 +156,7 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
+- ``job-driver-[submission_id].log``: The stdout of a job submitted via the :ref:`Ray Jobs API <jobs-overview>`.
 - ``log_monitor.log``: The log monitor is in charge of streaming logs to the driver.
 - ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
 - ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
