@@ -208,7 +208,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         payload = self._scale_request_to_patch_payload(scale_request, self._raycluster)
         path = "rayclusters/{}".format(self.cluster_name)
         logger.info(
-            "Autoscaler is submitting the following patch to RayCluster"
+            "Autoscaler is submitting the following patch to RayCluster "
             f"{self.cluster_name} in namespace {self.namespace}."
         )
         logger.info(payload)
