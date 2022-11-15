@@ -826,9 +826,7 @@ class Algorithm(Trainable):
         self._before_evaluate()
 
         if self.evaluation_dataset is not None:
-            eval_results = {}
-            eval_results["evaluation"] = self._run_offline_evaluation()
-            return eval_results
+            return {"evaluation": self._run_offline_evaluation()}
 
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
@@ -2048,7 +2046,7 @@ class Algorithm(Trainable):
             # training on the offline dataset, since rollout workers have already
             # claimed it.
             # Another Note (Kourosh): dataset reader will not use placement groups so
-            # what ever we specify here won't matter because dataset won't even use it.
+            # whatever we specify here won't matter because dataset won't even use it.
             # Disclaimer: using ray dataset in tune may cause deadlock when multiple
             # tune trials get scheduled on the same node and do not leave any spare
             # resources for dataset operations. The workaround is to limit the

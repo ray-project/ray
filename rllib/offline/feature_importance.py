@@ -215,7 +215,7 @@ class FeatureImportance(OfflineEvaluator):
 
         For each feature in the dataset, the importance is computed by applying
         perturbations to each feature and computing the difference between the
-        perturbed prediction and the reference prediction. The importance is
+        perturbed prediction and the reference prediction. The importance
         computation for each feature and each perturbation is repeated `self.repeat`
         times. If dataset is large the user can initialize the estimator with a
         `limit_fraction` to limit the dataset to a fraction of the original dataset.
