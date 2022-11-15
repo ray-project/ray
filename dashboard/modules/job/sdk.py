@@ -262,9 +262,9 @@ class JobSubmissionClient(SubmissionClient):
         self,
         job_id: str,
     ) -> bool:
-        """Delete a job and all of its associated data.
+        """Delete a job in a terminal state and all of its associated data.
 
-        If the job is running, it will be stopped first.
+        If the job is not already in a terminal state, raises an error.
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
@@ -281,8 +281,8 @@ class JobSubmissionClient(SubmissionClient):
             True if the job was deleted, otherwise False.
 
         Raises:
-            RuntimeError: If the job does not exist or if the request to the
-            job server fails.
+            RuntimeError: If the job does not exist, if the request to the
+                job server fails, or if the job is not in a terminal state.
         """
         logger.debug(f"Deleting job with job_id={job_id}.")
         r = self._do_request("DELETE", f"/api/jobs/{job_id}")

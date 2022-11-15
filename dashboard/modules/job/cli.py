@@ -336,9 +336,10 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
 @add_click_logging_options
 @PublicAPI(stability="alpha")
 def delete(address: Optional[str], job_id: str):
-    """Deletes a job and its associated data.
+    """Deletes a stopped job and its associated data.
 
-    This will also stop the job if it is still running.
+    Only supported for jobs that are already in the state JobStatus.STOPPED.
+    Fails with exit code 1 if the job is not already stopped.
 
     Example:
         ray job delete <my_job_id>

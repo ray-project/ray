@@ -62,7 +62,6 @@ if sys.platform == "win32":
 
 def generate_job_id() -> str:
     """Returns a job_id of the form 'raysubmit_XYZ'.
-
     Prefixed with 'raysubmit' to avoid confusion with Ray JobID (driver ID).
     """
     rand = random.SystemRandom()
@@ -102,7 +101,6 @@ class JobLogStorageClient:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
         `num_log_lines` lines.
-
         Args:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
@@ -135,7 +133,6 @@ class JobSupervisor:
     Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status, persist job logs and manage subprocess group cleaning.
-
     One job supervisor actor maps to one subprocess, for one job_id.
     Job supervisor actor should fate share with subprocess it created.
     """
@@ -159,9 +156,8 @@ class JobSupervisor:
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
         self._metadata.update(user_metadata)
 
-        # fire and forget calls from outer job manager to this actor
+        # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
-        self._delete_event = asyncio.Event()
 
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
@@ -170,14 +166,12 @@ class JobSupervisor:
         self, resources_specified: bool = False
     ) -> Dict[str, Any]:
         """Get the runtime env that should be set in the job driver.
-
         Args:
             resources_specified: Whether the user specified resources (CPUs, GPUs,
                 custom resources) in the submit_job request. If so, we will skip
                 the workaround for GPU detection introduced in #24546, so that the
                 behavior matches that of the user specifying resources for any
                 other actor.
-
         Returns:
             The runtime env that should be set in the job driver.
         """
@@ -200,15 +194,12 @@ class JobSupervisor:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
-
         Unix systems:
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
-
         Windows systems:
         A jobObject is created to enable fate sharing for the entire process group.
-
         Args:
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
@@ -325,7 +316,6 @@ class JobSupervisor:
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
         and coroutine, respectively.
-
         1) Sets job status as running
         2) Pass runtime env and metadata to subprocess as serialized env
             variables.
@@ -368,23 +358,17 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait(), self._delete_event.wait()],
-                return_when=FIRST_COMPLETED,
+                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
             )
 
-            if self._stop_event.is_set() or self._delete_event.is_set():
+            if self._stop_event.is_set():
                 polling_task.cancel()
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
                     # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
                     child_process.kill()
-                if not self._delete_event.is_set():
-                    # Deleting the job info is handled by the JobManager. Avoid race
-                    # by only putting it if it's not being deleted.
-                    await self._job_info_client.put_status(
-                        self._job_id, JobStatus.STOPPED
-                    )
+                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -418,17 +402,12 @@ class JobSupervisor:
             ray.actor.exit_actor()
 
     def stop(self):
-        """Set stop_event and let run() handle the rest in its asyncio.wait()."""
+        """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
-
-    def delete(self):
-        """Set delete_event and let run() handle the rest in its asyncio.wait()."""
-        self._delete_event.set()
 
 
 class JobManager:
     """Provide python APIs for job submission and management.
-
     It does not provide persistence, all info will be lost if the cluster
     goes down.
     """
@@ -444,25 +423,23 @@ class JobManager:
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
         except Exception:
             self.event_logger = None
 
-        # Maps job_id to the task monitoring the job.
-        self._monitor_tasks: Dict[str, asyncio.Task] = {}
         create_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
-
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                self._monitor_tasks[job_id] = create_task(self._monitor_job(job_id))
+                create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -474,6 +451,23 @@ class JobManager:
             return None
 
     async def _monitor_job(
+        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+    ):
+        """Monitors the specified job until it enters a terminal state.
+        This is necessary because we need to handle the case where the
+        JobSupervisor dies unexpectedly.
+        """
+        if job_id in self.monitored_jobs:
+            logger.debug(f"Job {job_id} is already being monitored.")
+            return
+
+        self.monitored_jobs.add(job_id)
+        try:
+            await self._monitor_job_internal(job_id, job_supervisor)
+        finally:
+            self.monitored_jobs.remove(job_id)
+
+    async def _monitor_job_internal(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
         is_alive = True
@@ -521,7 +515,7 @@ class JobManager:
                         message=(f"Job supervisor actor could not be scheduled: {e}"),
                     )
                 else:
-                    logger.debug(
+                    logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
@@ -534,7 +528,9 @@ class JobManager:
 
                 # Log events
                 if self.event_logger:
-                    event_log = f"Completed Ray job {job_id} with status {job_status}."
+                    event_log = (
+                        f"Completed a ray job {job_id} with a status {job_status}."
+                    )
                     if job_error_message:
                         event_log += f" {job_error_message}"
                         self.event_logger.error(event_log, submission_id=job_id)
@@ -542,21 +538,27 @@ class JobManager:
                         self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
-        # TODO(architkulkarni): We need to do this in the DELETE case as well
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
-        if job_id in self._monitor_tasks:
-            del self._monitor_tasks[job_id]
+    def _get_current_node_resource_key(self) -> str:
+        """Get the Ray resource key for current node.
+        It can be used for actor placement.
+        """
+        current_node_id = ray.get_runtime_context().node_id.hex()
+        for node in ray.nodes():
+            if node["NodeID"] == current_node_id:
+                # Found the node.
+                for key in node["Resources"].keys():
+                    if key.startswith("node:"):
+                        return key
         else:
-            logger.warning(f"Job {job_id} not found in monitor tasks.")
+            raise ValueError("Cannot find the node dictionary for current node.")
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
-
         If started successfully, result should be None. Otherwise it should be
         an Exception.
-
         On failure, the job will be marked failed with a relevant error
         message.
         """
@@ -567,7 +569,6 @@ class JobManager:
         self, user_runtime_env: Dict[str, Any], resources_specified: bool = False
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
-
         Args:
             user_runtime_env: The runtime_env specified by the user.
             resources_specified: Whether the user specified resources in the
@@ -575,7 +576,6 @@ class JobManager:
                 in #24546 for GPU detection and just use the user's resource
                 requests, so that the behavior matches that of the user specifying
                 resources for any other actor.
-
         Returns:
             The runtime_env for the supervisor actor.
         """
@@ -602,15 +602,12 @@ class JobManager:
         self, resources_specified: bool
     ) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
-
         If resources_specified is true, or if the environment variable is set to
         allow the job to run on worker nodes, we will use Ray's default actor
         placement strategy. Otherwise, we will force the job to use the head node.
-
         Args:
             resources_specified: Whether the job specified any resources
                 (CPUs, GPUs, or custom resources).
-
         Returns:
             The scheduling strategy to use for the job.
         """
@@ -665,16 +662,13 @@ class JobManager:
     ) -> str:
         """
         Job execution happens asynchronously.
-
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new
             ID, job supervisor actor, and child process.
         2) Create new detached actor with same runtime_env as job spec
-
         Actual setting up runtime_env, subprocess group, driver command
         execution, subprocess cleaning up and running status update to GCS
         is all handled by job supervisor actor.
-
         Args:
             entrypoint: Driver command to execute in subprocess shell.
                 Represents the entrypoint to start user application.
@@ -695,7 +689,6 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
-
         Returns:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
@@ -759,12 +752,7 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            if self._monitor_tasks.get(submission_id) is None:
-                self._monitor_tasks[submission_id] = asyncio.create_task(
-                    self._monitor_job(submission_id, job_supervisor=supervisor)
-                )
-            else:
-                logger.debug(f"Job {submission_id} already being monitored.")
+            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,
@@ -776,7 +764,6 @@ class JobManager:
 
     def stop_job(self, job_id) -> bool:
         """Request a job to exit, fire and forget.
-
         Returns whether or not the job was running.
         """
         job_supervisor_actor = self._get_actor_for_job(job_id)
@@ -788,27 +775,17 @@ class JobManager:
         else:
             return False
 
-    async def delete_job(self, job_id) -> bool:
-        """Delete a job from the cluster.
+    async def delete_job(self, job_id):
+        """Delete a job's info and metadata from the cluster."""
+        job_status = await self._job_info_client.get_status(job_id)
 
-        Returns whether or not the job was running.
-        """
-        job_supervisor_actor = self._get_actor_for_job(job_id)
-        if job_supervisor_actor is not None:
-            # Actor is still alive, signal it to stop the driver without
-            # updating its job status, fire and forget
-            job_supervisor_actor.delete.remote()
-            job_was_running = True
-        else:
-            job_was_running = False
-
-        if job_id in self._monitor_tasks:
-            self._monitor_tasks[job_id].cancel()
-            del self._monitor_tasks[job_id]
+        if job_status is None or not job_status.is_terminal():
+            raise RuntimeError(
+                f"Attempted to delete {job_id}, "
+                f"but it is in a non-terminal state {job_status}."
+            )
 
         await self._job_info_client.delete_info(job_id)
-
-        return job_was_running
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client
