@@ -111,8 +111,9 @@ class TestEnvsThatCrash(unittest.TestCase):
             .environment(
                 env=CartPoleCrashing,
                 env_config={
-                    # Crash prob=1%.
-                    "p_crash": 0.01,
+                    "crash_after_n_steps": 10,
+                    # Crash prob=100%, so test is deterministic.
+                    "p_crash": 1.0,
                     # Only crash on worker with index 2.
                     "crash_on_worker_indices": [2],
                     # Make sure nothing happens during pre-checks.
