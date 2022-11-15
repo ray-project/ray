@@ -1,12 +1,8 @@
 import subprocess
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 
-import pytest
-import yaml
-
 import ray
 from ray._private.test_utils import (
-    same_elements,
     wait_for_condition,
     metric_check_condition,
 )
@@ -115,3 +111,12 @@ def test_metrics(shutdown_only):
 
     finally:
         cluster.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
