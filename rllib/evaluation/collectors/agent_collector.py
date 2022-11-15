@@ -1,3 +1,5 @@
+import logging
+
 from copy import deepcopy
 from gym.spaces import Space
 import math
@@ -16,7 +18,10 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -120,6 +125,38 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
+    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
+        """Warns if data does not fit the view requirement.
+
+        Should raise an AssertionError if data does not fit the view requirement in the
+        future.
+        """
+
+        if view_requirement_name in self.view_requirements:
+            vr = self.view_requirements[view_requirement_name]
+            # We only check for the shape here, because conflicting dtypes are often
+            # because of float conversion
+            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
+            #  space that is not a gym.Space
+            if (
+                hasattr(vr.space, "shape")
+                and not vr.space.shape == np.shape(data)
+                and log_once(
+                    f"view_requirement"
+                    f"_{view_requirement_name}_checked_in_agent_collector"
+                )
+            ):
+
+                # TODO (Artur): Enforce VR shape
+                # TODO (Artur): Enforce dtype as well
+                logger.warning(
+                    f"Provided tensor\n{data}\n does not match space of view "
+                    f"requirements {view_requirement_name}.\n"
+                    f"Provided tensor has shape {np.shape(data)} and view requirement "
+                    f"has shape shape {vr.space.shape}."
+                    f"Make sure dimensions match to resolve this warning."
+                )
+
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -147,6 +184,10 @@ class AgentCollector:
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
+
+        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
+        # view requirement does not match init_obs
+        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -204,8 +245,13 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            # Check if view requirement dict has k and warn once if
+            # view requirement does not match v
+            self._check_view_requirement(k, v)
+
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
+
             # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
@@ -548,9 +594,11 @@ class AgentCollector:
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
+                    #  state_out_x assumes the values do not have a batch dimension
+                    #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,
-                        batch_size=1,
+                        batch_size=0,
                     )
                 else:
                     fill_value = space

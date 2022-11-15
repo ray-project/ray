@@ -20,7 +20,7 @@ class AlwaysSameHeuristic(Policy):
                 "state_in_0": ViewRequirement(
                     "state_out_0",
                     shift=-1,
-                    space=gym.spaces.Box(0, 100, shape=(), dtype=np.int32),
+                    space=gym.spaces.Box(ROCK, SCISSORS, shape=(1,), dtype=np.int32),
                 )
             }
         )
@@ -38,7 +38,7 @@ class AlwaysSameHeuristic(Policy):
         episodes=None,
         **kwargs
     ):
-        return state_batches[0], state_batches, {}
+        return [state_batches[0][0] for x in obs_batch], state_batches, {}
 
 
 class BeatLastHeuristic(Policy):
