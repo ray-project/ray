@@ -48,6 +48,9 @@ DECLARE_stats(tasks);
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
 
+/// Placement group stats, broken down by state.
+DECLARE_stats(placement_groups);
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);

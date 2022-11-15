@@ -9,6 +9,10 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
+from ray.tune.progress_reporter import (
+    _prepare_progress_reporter_for_ray_client,
+    _stream_client_output,
+)
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 
@@ -140,6 +144,7 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+
         if _tuner_internal:
             if not self._is_ray_client:
                 self._local_tuner = kwargs[_TUNER_INTERNAL]
@@ -217,6 +222,20 @@ class Tuner:
             ).remote(restore_path=path, resume_config=resume_config)
             return Tuner(_tuner_internal=tuner_internal)
 
+    def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
+        run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
+            run_config.progress_reporter, run_config.verbose
+        )
+        run_config.progress_reporter = progress_reporter
+        ray.get(
+            self._remote_tuner.set_run_config_and_remote_string_queue.remote(
+                run_config, string_queue
+            )
+        )
+
+        return progress_reporter, string_queue
+
     def fit(self) -> ResultGrid:
         """Executes hyperparameter tuning job as configured and returns result.
 
@@ -251,8 +270,18 @@ class Tuner:
             experiment_checkpoint_dir = ray.get(
                 self._remote_tuner.get_experiment_checkpoint_dir.remote()
             )
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
             try:
-                return ray.get(self._remote_tuner.fit.remote())
+                fit_future = self._remote_tuner.fit.remote()
+                _stream_client_output(
+                    fit_future,
+                    progress_reporter,
+                    string_queue,
+                )
+                return ray.get(fit_future)
             except Exception as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
@@ -281,4 +310,14 @@ class Tuner:
         if not self._is_ray_client:
             return self._local_tuner.get_results()
         else:
-            return ray.get(self._remote_tuner.fit.remote())
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
+            fit_future = self._remote_tuner.fit.remote()
+            _stream_client_output(
+                fit_future,
+                progress_reporter,
+                string_queue,
+            )
+            return ray.get(fit_future)
