@@ -329,6 +329,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             def get_initial_state(self):
                 return [{}]  # empty dict
 
+            def is_recurrent(self):
+                return True
+
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=StatefulPolicy,
@@ -342,6 +345,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             ),
         )
         batch = ev.sample()
+        batch = batch["default_policy"]
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch["state_in_0"][0], {})
         self.assertEqual(batch["state_out_0"][0], h)
