@@ -259,11 +259,11 @@ Ray can also be installed as a conda package on linux and windows
 .. code-block:: bash
 
   # also works with mamba
-  conda create -c conda-forge python=3.9 -n ray_dev  
-  conda activate ray_dev
+  conda create -c conda-forge python=3.9 -n ray
+  conda activate ray
 
   # Install Ray with support for the dashboard + cluster launcher
-  conda install -c condaforge "ray-default"
+  conda install -c conda-forge "ray-default"
 
   # Install Ray with minimal dependencies
   # conda install -c conda-forge ray
