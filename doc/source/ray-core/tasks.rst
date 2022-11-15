@@ -211,7 +211,6 @@ More about Ray Tasks
 .. toctree::
     :maxdepth: 1
 
-    tasks/resources.rst
     tasks/using-ray-with-gpus.rst
     tasks/nested-tasks.rst
     tasks/generators.rst

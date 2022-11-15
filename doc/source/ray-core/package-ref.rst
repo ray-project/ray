@@ -25,6 +25,8 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. _ray-options-ref:
+
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
 .. autofunction:: ray.actor.ActorClass.options
