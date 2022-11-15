@@ -156,7 +156,7 @@ class BatchPredictor:
             .. testoutput::
 
                 Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
-                Final accuracy:  1.0
+                Final accuracy: 1.0
         """
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
