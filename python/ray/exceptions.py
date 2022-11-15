@@ -379,14 +379,14 @@ class OutOfMemoryError(RayError):
 
     # TODO: (clarng) expose the error message string here and format it with proto
     def __init__(self, message):
-        self.message = message
-        self.top_n = (
+        top_n = (
             "\nThe top 10 memory consumers are:\n"
             f"{memory_monitor.get_top_n_memory_usage(10)}"
         )
-
+        self.message = message + top_n
+        
     def __str__(self):
-        return self.message + self.top_n
+        return self.message
 
 
 @PublicAPI
