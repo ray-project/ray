@@ -333,7 +333,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
             def is_recurrent(self):
-                # TODO: avnishn automatically infer this.
+                # TODO(avnishn): automatically infer this.
                 return True
 
         ev = RolloutWorker(
