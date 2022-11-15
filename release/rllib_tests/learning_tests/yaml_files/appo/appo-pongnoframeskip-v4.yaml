@@ -7,6 +7,8 @@ appo-pongnoframeskip-v4:
         timesteps_total: 5000000
     stop:
         time_total_s: 1800
+    # TODO (Kourosh): Torch does not learn as good as tf. Why?
+    frameworks: ["tf", "tf2"]
     config:
         vtrace: True
         use_kl_loss: False
