@@ -254,7 +254,7 @@ class EpisodeV2:
         Args:
             batch_builder: _PolicyCollectorGroup for saving the collected per-agent
                 sample batches.
-            is_done: If this episode is done.
+            is_done: If this episode is done (terminated or truncated).
             check_dones: Whether to make sure per-agent trajectories are actually done.
         """
         # TODO: (sven) Once we implement multi-agent communication channels,
