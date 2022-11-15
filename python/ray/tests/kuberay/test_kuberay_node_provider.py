@@ -212,13 +212,13 @@ def test_get_node_data(podlist_file: str, expected_node_data):
                 },
                 workers_to_delete={
                     "raycluster-autoscaler-worker-small-group-dkz2r",
-                }
+                },
             ),
             [
                 {
                     "op": "replace",
                     "path": "/spec/workerGroupSpecs/2/replicas",
-                    "value": 5
+                    "value": 5,
                 },
                 {
                     "op": "replace",
@@ -227,11 +227,11 @@ def test_get_node_data(podlist_file: str, expected_node_data):
                         "workersToDelete": [
                             "raycluster-autoscaler-worker-small-group-dkz2r"
                         ]
-                    }
+                    },
                 },
             ],
         ),
-    ]
+    ],
 )
 def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payload):
     """Test the KuberayNodeProvider's RayCluster patch payload given a dict
