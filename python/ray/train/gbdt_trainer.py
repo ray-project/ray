@@ -272,10 +272,6 @@ class GBDTTrainer(BaseTrainer):
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         trainable_cls = super()._generate_trainable_cls()
-        trainer_cls = self.__class__
-        scaling_config = self.scaling_config
-        ray_params_cls = self._ray_params_cls
-        default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
             def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
@@ -286,20 +282,5 @@ class GBDTTrainer(BaseTrainer):
                 if parent_dir and preprocessor:
                     save_preprocessor_to_dir(preprocessor, parent_dir)
                 return checkpoint_path
-
-            @classmethod
-            def default_resource_request(cls, config):
-                # `config["scaling_config"] is a dataclass when passed via the
-                # `scaling_config` argument in `Trainer` and is a dict when passed
-                # via the `scaling_config` key of `param_spec`.
-                updated_scaling_config = config.get("scaling_config", scaling_config)
-                if isinstance(updated_scaling_config, dict):
-                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
-                validated_scaling_config = trainer_cls._validate_scaling_config(
-                    updated_scaling_config
-                )
-                return _convert_scaling_config_to_ray_params(
-                    validated_scaling_config, ray_params_cls, default_ray_params
-                ).get_tune_resources()
 
         return GBDTTrainable
