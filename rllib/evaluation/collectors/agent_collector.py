@@ -178,6 +178,10 @@ class AgentCollector:
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
         """
+        if t == -2:
+            import ipdb
+
+            ipdb.set_trace()
         # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
         self.episode_id = episode_id
