@@ -5,14 +5,10 @@
 namespace ray {
 namespace rpc {
 
-static std::unique_ptr<boost::asio::thread_pool> executor_;
-
 boost::asio::thread_pool &GetServerCallExecutor() {
-  if (executor_ == nullptr) {
-    executor_ = std::make_unique<boost::asio::thread_pool>(
-        ::RayConfig::instance().num_server_call_thread());
-  }
-  return *executor_;
+  static boost::asio::thread_pool thread_pool(
+      ::RayConfig::instance().num_server_call_thread());
+  return thread_pool;
 }
 
 }  // namespace rpc

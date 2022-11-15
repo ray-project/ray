@@ -152,18 +152,11 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   // then reply.
   // The request will be sent when call send_reply_callback and after that, reply will
   // not be used any more. But entry is still valid.
-  auto arena = reply->GetArena();
-  RAY_CHECK(arena != nullptr);
-
   for (const auto &entry : alive_nodes_) {
-    auto ptr = google::protobuf::Arena::Create<std::shared_ptr<rpc::GcsNodeInfo>>(
-        arena, entry.second);
-    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(ptr->get());
+    *reply->add_node_info_list() = *entry.second;
   }
   for (const auto &entry : dead_nodes_) {
-    auto ptr = google::protobuf::Arena::Create<std::shared_ptr<rpc::GcsNodeInfo>>(
-        arena, entry.second);
-    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(ptr->get());
+    *reply->add_node_info_list() = *entry.second;
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];

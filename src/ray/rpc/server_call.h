@@ -15,7 +15,6 @@
 #pragma once
 
 #include <google/protobuf/arena.h>
-#include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>

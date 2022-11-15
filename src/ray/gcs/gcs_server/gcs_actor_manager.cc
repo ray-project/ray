@@ -309,23 +309,16 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   const auto &registered_actor_iter = registered_actors_.find(actor_id);
-  std::shared_ptr<GcsActor> *ptr = nullptr;
-  auto arena = reply->GetArena();
-  RAY_CHECK(arena != nullptr);
+  GcsActor *ptr = nullptr;
   if (registered_actor_iter != registered_actors_.end()) {
-    ptr = google::protobuf::Arena::Create<std::shared_ptr<GcsActor>>(
-        arena, registered_actor_iter->second);
+    ptr = registered_actor_iter->second.get();
   } else {
     const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
-    if (destroyed_actor_iter != destroyed_actors_.end()) {
-      ptr = google::protobuf::Arena::Create<std::shared_ptr<GcsActor>>(
-          arena, destroyed_actor_iter->second);
-    }
+    ptr = destroyed_actor_iter->second.get();
   }
 
   if (ptr != nullptr) {
-    reply->unsafe_arena_set_allocated_actor_table_data(
-        (*ptr)->GetMutableActorTableData());
+    *reply->mutable_actor_table_data() = ptr->GetActorTableData();
   }
 
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
@@ -340,9 +333,6 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
-  auto arena = reply->GetArena();
-  RAY_CHECK(arena != nullptr);
-
   if (request.show_dead_jobs() == false) {
     auto total_actors = registered_actors_.size() + destroyed_actors_.size();
     reply->set_total(total_actors);
@@ -353,10 +343,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         break;
       }
       count += 1;
-      auto ptr =
-          google::protobuf::Arena::Create<std::shared_ptr<GcsActor>>(arena, iter.second);
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>((*ptr)->GetMutableActorTableData()));
+      *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
 
     for (const auto &iter : destroyed_actors_) {
@@ -364,11 +351,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         break;
       }
       count += 1;
-
-      auto ptr =
-          google::protobuf::Arena::Create<std::shared_ptr<GcsActor>>(arena, iter.second);
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>((*ptr)->GetMutableActorTableData()));
+      *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -429,13 +412,8 @@ void GcsActorManager::HandleGetNamedActorInfo(
     RAY_LOG(WARNING) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
-    auto arena = reply->GetArena();
-    RAY_CHECK(arena != nullptr);
-    auto ptr =
-        google::protobuf::Arena::Create<std::shared_ptr<GcsActor>>(arena, iter->second);
-    reply->unsafe_arena_set_allocated_actor_table_data(
-        (*ptr)->GetMutableActorTableData());
-    reply->unsafe_arena_set_allocated_task_spec((*ptr)->GetMutableTaskSpec());
+    *reply->mutable_actor_table_data() = iter->second->GetActorTableData();
+    *reply->mutable_task_spec() = *iter->second->GetMutableTaskSpec();
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
