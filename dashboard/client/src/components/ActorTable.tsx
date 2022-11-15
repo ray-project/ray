@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "@material-ui/core";
 import { orange } from "@material-ui/core/colors";
-import { SearchOutlined } from "@material-ui/icons";
+import { SearchOutlined, TouchApp } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
@@ -153,6 +153,7 @@ const ActorTable = ({
               "Pid",
               "IP",
               "Restarted",
+              "Required Resources",
               "Exit Detail",
               "Log",
             ].map((col) => (
@@ -176,6 +177,7 @@ const ActorTable = ({
               startTime,
               endTime,
               exitDetail,
+              requiredResources,
             }) => (
               <ExpandableTableRow
                 length={
@@ -236,11 +238,27 @@ const ActorTable = ({
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}
+                    title={Object.entries(requiredResources || {}).map(
+                      ([key, val]) => (
+                        <div style={{ margin: 4 }}>
+                          {key}: {val}
+                        </div>
+                      ),
+                    )}
+                    arrow
+                    interactive
+                  >
+                    <TouchApp />
+                  </Tooltip>
+                </TableCell>
+                <TableCell align="center">
+                  <Tooltip
+                    className={classes.idCol}
                     title={exitDetail}
                     arrow
                     interactive
                   >
-                    <div>{exitDetail ? exitDetail : "-"}</div>
+                    <TouchApp />
                   </Tooltip>
                 </TableCell>
                 <TableCell align="center">
