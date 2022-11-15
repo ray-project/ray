@@ -4,27 +4,15 @@ import time
 from typing import List, Any
 
 import ray
-from ray.data.block import BlockAccessor
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.execution.pipelined_executor import PipelinedExecutor
-from ray.data._internal.execution.operators import InputDataBuffer, MapOperator
-
-
-def make_ref_bundles(simple_data: List[List[Any]]) -> List[RefBundle]:
-    output = []
-    for block in simple_data:
-        output.append(
-            RefBundle(
-                [
-                    (
-                        ray.put(block),
-                        BlockAccessor.for_block(block).get_metadata([], None),
-                    )
-                ]
-            )
-        )
-    return output
+from ray.data._internal.execution.operators import (
+    InputDataBuffer,
+    MapOperator,
+    _from_dataset_read_tasks,
+)
+from ray.data._internal.execution.util import _make_ref_bundles
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -37,7 +25,7 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 
 def test_basic_bulk():
     executor = BulkExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = _make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
     o3 = MapOperator(lambda block: [b * 2 for b in block], o2)
@@ -45,6 +33,19 @@ def test_basic_bulk():
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)]
     assert output == expected, (output, expected)
+
+
+def test_ds_adapter():
+    executor = PipelinedExecutor(
+        ExecutionOptions(parallelism_limit=3, locality_with_output=True)
+    )
+    o1 = _from_dataset_read_tasks(ray.data.range(20))
+    o2 = MapOperator(lambda block: [b * -1 for b in block], o1, name="Negate")
+    o3 = MapOperator(s(0.3, lambda block: [b * 2 for b in block]), o2, name="Multiply")
+    it = executor.execute(o3)
+    output = ref_bundles_to_list(it)
+    expected = [[x * -2] for x in range(20)]
+    assert sorted(output) == sorted(expected), (output, expected)
 
 
 def s(s, f):
@@ -57,7 +58,7 @@ def s(s, f):
 
 def test_basic_pipelined():
     executor = PipelinedExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(100)])
+    inputs = _make_ref_bundles([[x] for x in range(100)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(s(0.05, lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator(s(0.3, lambda block: [b * 2 for b in block]), o2)

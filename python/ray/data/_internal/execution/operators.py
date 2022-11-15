@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
 )
 from ray.data._internal.compute import BlockTransform
+from ray.data._internal.execution.util import _make_ref_bundles
 
 
 class InputDataBuffer(ExchangeOperator):
@@ -31,9 +32,14 @@ class InputDataBuffer(ExchangeOperator):
 class MapOperator(OneToOneOperator):
     """Defines a simple map operation over blocks."""
 
-    def __init__(self, block_transform: BlockTransform, input_op: PhysicalOperator):
+    def __init__(
+        self,
+        block_transform: BlockTransform,
+        input_op: PhysicalOperator,
+        name: str = "Map",
+    ):
         self._block_transform = block_transform
-        super().__init__("Map", [input_op])
+        super().__init__(name, [input_op])
 
     def execute_one(self, block_bundle: Iterator[Block], _) -> Iterator[Block]:
         def apply_transform(fn, block_bundle):
@@ -41,3 +47,19 @@ class MapOperator(OneToOneOperator):
                 yield fn(b)
 
         return apply_transform(self._block_transform, block_bundle)
+
+
+# For testing only.
+def _from_dataset_read_tasks(ds) -> PhysicalOperator:
+    read_tasks = ds._plan._snapshot_blocks._tasks
+    inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
+
+    def do_read(block):
+        import time
+
+        time.sleep(1)
+        for read_task in block:
+            for output_block in read_task():
+                return output_block  # TODO handle remaining blocks
+
+    return MapOperator(do_read, inputs, name="DoRead")

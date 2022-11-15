@@ -51,6 +51,9 @@ class RefBundle:
 class ExecutionOptions:
     """Common options that should be supported by all Executor implementations."""
 
+    # Max number of in flight tasks.
+    parallelism_limit: Optional[int] = None
+
     # Example: set to 1GB and executor will try to limit object store
     # memory usage to 1GB.
     memory_limit_bytes: Optional[int] = None

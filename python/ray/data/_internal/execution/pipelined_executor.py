@@ -14,6 +14,7 @@ from ray.data._internal.execution.bulk_executor import _transform_one
 from ray.data._internal.execution.operators import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.types import ObjectRef
 
 
@@ -56,17 +57,33 @@ class _OpState:
 class _OneToOneTask:
     """Execution state for OneToOneOperator task."""
 
-    def __init__(self, op: OneToOneOperator, state: _OpState, inputs: RefBundle):
+    def __init__(
+        self,
+        op: OneToOneOperator,
+        state: _OpState,
+        inputs: RefBundle,
+        options: ExecutionOptions,
+    ):
         self._op: OneToOneOperator = op
         self._state: _OpState = state
         self._inputs: RefBundle = inputs
         self._block_ref: Optional[ObjectRef[Block]] = None
         self._meta_ref: Optional[ObjectRef[BlockMetadata]] = None
+        self._options = options
 
     def execute(self) -> ObjectRef:
         if len(self._inputs.blocks) != 1:
             raise NotImplementedError("TODO: multi-block inputs")
-        self._block_ref, self._meta_ref = _transform_one.remote(
+        transform_fn = _transform_one
+        if self._options.locality_with_output:
+            transform_fn = transform_fn.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(),
+                    soft=True,
+                )
+            )
+            print("AFFINITY")
+        self._block_ref, self._meta_ref = transform_fn.remote(
             self._op, self._inputs.blocks[0][0]
         )
         self._state.num_active_tasks += 1
@@ -186,7 +203,7 @@ class PipelinedExecutor(Executor):
         The objective of this function is to maximize the throughput of the overall
         pipeline, subject to defined memory and parallelism limits.
         """
-        PARALLELISM_LIMIT = 8
+        PARALLELISM_LIMIT = self._options.parallelism_limit or 8
         if len(self._active_tasks) >= PARALLELISM_LIMIT:
             return None
 
@@ -214,7 +231,7 @@ class PipelinedExecutor(Executor):
         """
         if isinstance(op, OneToOneOperator):
             state = self._operator_state[op]
-            task = _OneToOneTask(op, state, state.inqueues[0].pop(0))
+            task = _OneToOneTask(op, state, state.inqueues[0].pop(0), self._options)
             self._active_tasks[task.execute()] = task
         else:
             raise NotImplementedError
