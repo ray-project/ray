@@ -37,6 +37,7 @@ class OnlineLinearRegression(nn.Module):
             data=self.covariance.matmul(self.f), requires_grad=False
         )
         self._init_params()
+        self.dist = self._make_dist()
 
     def _init_params(self):
         self.update_schedule = 1
@@ -44,9 +45,13 @@ class OnlineLinearRegression(nn.Module):
         self.delta_b = 0
         self.time = 0
         self.covariance.mul_(self.alpha)
-        self.dist = torch.distributions.multivariate_normal.MultivariateNormal(
-            self.theta, self.covariance
+
+    def _make_dist(self):
+        """Create a multivariate normal distribution from the current parameters."""
+        dist = torch.distributions.multivariate_normal.MultivariateNormal(
+            loc=self.theta, precision_matrix=self.precision
         )
+        return dist
 
     def partial_fit(self, x, y):
         x, y = self._check_inputs(x, y)
@@ -54,16 +59,21 @@ class OnlineLinearRegression(nn.Module):
         y = y.item()
         self.time += 1
         self.delta_f += y * x
-        self.delta_b += torch.ger(x, x)
+        self.delta_b += torch.outer(x, x)
         # Can follow an update schedule if not doing sherman morison updates
         if self.time % self.update_schedule == 0:
             self.precision += self.delta_b
             self.f += self.delta_f
             self.delta_b = 0
             self.delta_f = 0
-            torch.inverse(self.precision, out=self.covariance)
-            torch.matmul(self.covariance, self.f, out=self.theta)
-            self.covariance.mul_(self.alpha)
+            self.covariance.data = torch.inverse(self.precision)
+            self.theta.data = torch.matmul(self.covariance, self.f)
+            self.covariance.data *= self.alpha
+            # the multivariate dist needs to be reconstructed every time
+            # its parameters are updated.the parameters of the dist do not
+            #  update every time the stored self.covariance and self.theta
+            # (the mean) are updated
+            self.dist = self._make_dist()
 
     def sample_theta(self):
         theta = self.dist.sample()

@@ -6,14 +6,14 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
-    from ray.data.impl.sort import SortKeyT
+    from ray.data._internal.sort import SortKeyT
 
 
 def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.Table":
     import pyarrow.compute as pac
 
     indices = pac.sort_indices(table, sort_keys=key)
-    return table.take(indices)
+    return take_table(table, indices)
 
 
 def take_table(

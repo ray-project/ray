@@ -4,6 +4,7 @@ import warnings
 import pytest
 
 import ray
+from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
@@ -533,7 +534,10 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
         "placement_group parameter is deprecated" in str(warning.message)
         for warning in w
     )
-    assert any("docs.ray.io/en/master" in str(warning.message) for warning in w)
+    assert any(
+        f"docs.ray.io/en/{get_ray_doc_version()}" in str(warning.message)
+        for warning in w
+    )
 
     # Pointing to the same doc version as ray.__version__.
     ray.__version__ = "1.13.0"

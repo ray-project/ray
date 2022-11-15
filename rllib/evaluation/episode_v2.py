@@ -116,7 +116,7 @@ class EpisodeV2:
         # duration of this episode to the returned PolicyID.
         if agent_id not in self._agent_to_policy or refresh:
             policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                agent_id, self, worker=self.worker
+                agent_id, episode=self, worker=self.worker
             )
         # Use already determined PolicyID.
         else:
@@ -163,15 +163,15 @@ class EpisodeV2:
     def add_init_obs(
         self,
         agent_id: AgentID,
-        t: int,
         init_obs: TensorType,
+        t: int = -1,
     ) -> None:
         """Add initial env obs at the start of a new episode
 
         Args:
             agent_id: Agent ID.
-            t: timestamp.
             init_obs: Initial observations.
+            t: timestamp.
         """
         policy = self.policy_map[self.policy_for(agent_id)]
 
@@ -189,8 +189,8 @@ class EpisodeV2:
             episode_id=self.episode_id,
             agent_index=self.agent_index(agent_id),
             env_id=self.env_id,
-            t=t,
             init_obs=init_obs,
+            t=t,
         )
 
         self._has_init_obs[agent_id] = True
