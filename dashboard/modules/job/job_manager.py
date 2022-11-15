@@ -228,7 +228,11 @@ class JobSupervisor:
             # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
-                child_pgid = os.getpgid(child_pid)
+                try:
+                    child_pgid = os.getpgid(child_pid)
+                except ProcessLookupError:
+                    # Process died before we could get its pgid.
+                    return child_process
 
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
@@ -406,6 +410,15 @@ class JobSupervisor:
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
+            try:
+                await self._job_info_client.put_status(
+                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                )
+            except Exception:
+                logger.error(
+                    "Failed to update job status to FAILED. "
+                    f"Exception: {traceback.format_exc()}"
+                )
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
