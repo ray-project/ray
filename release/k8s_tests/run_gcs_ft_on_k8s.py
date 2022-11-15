@@ -1,3 +1,4 @@
+import json
 import subprocess
 from kubernetes import client, config, watch
 import requests
@@ -9,10 +10,10 @@ import ray
 import os
 
 # global variables for the cluster informations
-cluster_id = str(uuid.uuid4()).split("-")[0]
-ray_cluster_name = "cluster-" + cluster_id
-ray_service_name = "service-" + cluster_id
-locust_id = "ray-locust-" + cluster_id
+cluster_id = None
+ray_cluster_name = None
+ray_service_name = None
+locust_id = None
 
 
 if os.environ.get("RAY_IMAGE") is not None:
@@ -28,6 +29,20 @@ config.load_kube_config()
 cli = client.CoreV1Api()
 
 yaml_path = pathlib.Path("/tmp/ray_v1alpha1_rayservice.yaml")
+
+KILL_WORKER_NODE = "kill_worker_node"
+KILL_HEAD_NODE = "kill_head_node"
+
+
+def generate_cluster_variable():
+    global cluster_id
+    global ray_cluster_name
+    global ray_service_name
+    global locust_id
+    cluster_id = str(uuid.uuid4()).split("-")[0]
+    ray_cluster_name = "cluster-" + cluster_id
+    ray_service_name = "service-" + cluster_id
+    locust_id = "ray-locust-" + cluster_id
 
 
 def check_kuberay_installed():
@@ -276,7 +291,7 @@ def kill_worker():
     cli.delete_namespaced_pod(to_be_killed, "default")
 
 
-def start_killing_nodes(duration, kill_interval, kill_head_every_n):
+def start_killing_nodes(duration, kill_interval, kill_node_type):
     """Kill the nodes in ray cluster.
 
     duration: How long does we run the test (seconds)
@@ -288,9 +303,9 @@ def start_killing_nodes(duration, kill_interval, kill_head_every_n):
         while True:
             try:
                 # kill
-                if kill_idx % kill_head_every_n == 0:
+                if kill_node_type == KILL_HEAD_NODE:
                     kill_header()
-                else:
+                elif kill_node_type == KILL_WORKER_NODE:
                     kill_worker()
                 break
             except Exception as e:
@@ -339,47 +354,45 @@ def get_stats():
 
 
 def main():
-    procs = []
-    try:
-        check_kuberay_installed()
-        start_rayservice()
-        procs.append(start_port_forward())
-        warmup_cluster(200)
-        users = 60
-        duration = 5 * 60 * 60
-        procs.append(start_sending_traffics(duration * 1.1, users))
-        start_killing_nodes(duration, 60, 6)
-        rate, qps, data = get_stats()
-
-        print("Result:", rate, qps)
-
+    result = {KILL_WORKER_NODE: {"rate": None}, KILL_HEAD_NODE: {"rate": None}}
+    expected_result = {KILL_WORKER_NODE: 0.99, KILL_HEAD_NODE: 0.99}
+    check_kuberay_installed()
+    users = 60
+    for kill_node_type, kill_interval, test_duration in [
+        (KILL_WORKER_NODE, 60, 600),
+        (KILL_HEAD_NODE, 300, 1200),
+    ]:
         try:
-            assert rate > 0.999
-            assert qps > users * 10 * 0.8
-        except Exception:
-            print("Raw Data", data)
-            print("Result:", rate, qps)
-            raise
+            generate_cluster_variable()
+            procs = []
+            start_rayservice()
+            procs.append(start_port_forward())
+            warmup_cluster(200)
+            procs.append(start_sending_traffics(test_duration * 1.1, users))
+            start_killing_nodes(test_duration, kill_interval, kill_node_type)
+            rate, qps, _ = get_stats()
+            result[kill_node_type]["rate"] = rate
+            assert expected_result[kill_node_type] <= rate
+        except Exception as e:
+            print(f"{kill_node_type} HA test failed, {e}")
+        finally:
+            print("=== Cleanup ===")
+            subprocess.run(
+                ["kubectl", "delete", "-f", str(yaml_path)],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["helm", "uninstall", locust_id],
+                capture_output=True,
+            )
 
-    except Exception as e:
-        print("Experiment failed")
-        raise e
-    finally:
-        print("=== Cleanup ===")
+            print("Kill locust processes")
+            for p in procs:
+                p.kill()
+        print("Result:", result)
 
-        subprocess.run(
-            ["kubectl", "delete", "-f", str(yaml_path)],
-            capture_output=True,
-        )
-
-        subprocess.run(
-            ["helm", "uninstall", locust_id],
-            capture_output=True,
-        )
-
-        print("Kill processes")
-        for p in procs:
-            p.kill()
+        with open("/tmp/serve_kuberay_ha.json", "wt") as f:
+            json.dump(result, f)
 
 
 if __name__ == "__main__":
