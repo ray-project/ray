@@ -154,7 +154,7 @@ def test_pandas_multi_dim_pandas(cast_tensor_columns, use_tensor_extension_for_i
 
 def test_no_pandas_future_warning():
     """Tests that Pandas in-place FutureWarning is
-    supressed during tensor extension casting."""
+    suppressed during tensor extension casting."""
 
     input_tensor = np.arange(12).reshape((3, 2, 2))
     input_data = pd.DataFrame({"x": TensorArray(input_tensor)})
