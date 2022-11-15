@@ -76,3 +76,9 @@ There are three ways to run a Ray job on a Ray cluster:
 3. Use :ref:`Ray Client <ray-client-ref>` to connect remotely to the cluster within a driver script.
 
 For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
+
+.. figure:: images/ray-job-diagram.svg
+    :align: center
+    :width: 600px
+    
+    *Three ways of running a job on a Ray cluster.*
