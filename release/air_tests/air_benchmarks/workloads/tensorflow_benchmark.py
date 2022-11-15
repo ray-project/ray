@@ -82,6 +82,7 @@ def train_func(use_ray: bool, config: dict):
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
         callbacks=callbacks,
+        verbose=2,  # Disables progress bar in remote actors.
     )
     results = history.history
     loss = results["loss"][-1]
