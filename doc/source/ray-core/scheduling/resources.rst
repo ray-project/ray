@@ -31,8 +31,8 @@ The fact that resources are logical has several implications:
   For example, Ray won't reserve a physical CPU exclusively and pin a ``num_cpus=1`` task to it.
   Ray will let the operating system schedule and run the task instead.
   If needed, you can use operating system APIs like ``sched_setaffinity`` to pin a task to a physical CPU.
-- Ray does provide :ref:`GPU <gpu-support>` isolation in the form of *visible devices* by automatically setting the ``CUDA_VISIBLE_DEVICES`` envrionment variable,
-  but it is still up to the task or actor to actually honor it or override it.
+- Ray does provide :ref:`GPU <gpu-support>` isolation in the form of *visible devices* by automatically setting the ``CUDA_VISIBLE_DEVICES`` environment variable,
+  which most ML frameworks will respect for purposes of GPU assignment.
 
 .. figure:: ../images/physical_resources_vs_logical_resources.svg
 
@@ -136,31 +136,37 @@ You can also explicitly specify a task's or actor's resource requirements (for e
     .. code-block:: java
 
         // Specify required resources.
-        Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 0.5).setResource("special_hardware", 1.0).remote();
+        Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 1.0).setResource("special_hardware", 1.0).remote();
 
-        Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
+        Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 1.0).remote();
 
 .. tabbed:: C++
 
     .. code-block:: c++
 
         // Specify required resources.
-        ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 0.5).SetResource("special_hardware", 1.0).Remote();
+        ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 1.0).SetResource("special_hardware", 1.0).Remote();
 
-        ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
-
-.. note::
-
-  Ray supports fractional resource requirements.
-  For example, if your task or actor is IO bound and has low CPU usage, you can specify fractional CPU ``num_cpus=0.5`` or even zero CPU ``num_cpus=0``.
-  The precision of the fractional resource requirement is 0.0001 so you should avoid specifying a double that's beyond that precision.
-
-.. tip::
-
-  Besides resource requirements, you can also specify an environment for a task or actor to run in,
-  which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
+        ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 1.0).Remote();
 
 Task and actor resource requirements have implications for the Ray's scheduling concurrency.
 In particular, the sum of the resource requirements of all of the
 concurrently executing tasks and actors on a given node cannot exceed the node's total resources.
 This property can be used to :ref:`limit the number of concurrently running tasks or actors to avoid issues like OOM <core-patterns-limit-running-tasks>`.
+
+Fractional Resource Requirements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray supports fractional resource requirements.
+For example, if your task or actor is IO bound and has low CPU usage, you can specify fractional CPU ``num_cpus=0.5`` or even zero CPU ``num_cpus=0``.
+The precision of the fractional resource requirement is 0.0001 so you should avoid specifying a double that's beyond that precision.
+
+.. literalinclude:: ../doc_code/resources.py
+    :language: python
+    :start-after: __specifying_fractional_resource_requirements_start__
+    :end-before: __specifying_fractional_resource_requirements_end__
+
+.. tip::
+
+  Besides resource requirements, you can also specify an environment for a task or actor to run in,
+  which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.

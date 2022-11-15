@@ -9,21 +9,51 @@ ray.init(num_cpus=3, num_gpus=4, resources={"special_hardware": 1, "custom_label
 
 # __specifying_resource_requirements_start__
 # Specify the default resource requirements for this remote function.
-@ray.remote(num_cpus=4, num_gpus=2, resources={"special_hardware": 1})
+@ray.remote(num_cpus=2, num_gpus=2, resources={"special_hardware": 1})
 def func():
     return 1
 
 
 # You can override the default resource requirements.
-func.options(num_cpus=5, num_gpus=3, resources={"custom_label": 0.001}).remote()
+func.options(num_cpus=3, num_gpus=1, resources={"special_hardware": 0}).remote()
 
 
-# Ray also supports fractional resource requirements.
-@ray.remote(num_cpus=0, num_gpus=0.5)
+@ray.remote(num_cpus=0, num_gpus=1)
 class Actor:
     pass
 
 
 # You can override the default resource requirements for actors as well.
-actor = Actor.options(num_cpus=0, num_gpus=0.6).remote()
+actor = Actor.options(num_cpus=1, num_gpus=0).remote()
 # __specifying_resource_requirements_end__
+
+
+# __specifying_fractional_resource_requirements_start__
+@ray.remote(num_cpus=0.5)
+def io_bound_task():
+    import time
+
+    time.sleep(1)
+    return 2
+
+
+io_bound_task.remote()
+
+
+@ray.remote(num_gpus=0.5)
+class IOActor:
+    def ping(self):
+        import os
+
+        print(f"CUDA_VISIBLE_DEVICES: {os.environ['CUDA_VISIBLE_DEVICES']}")
+
+
+# Two actors can share the same GPU.
+io_actor1 = IOActor.remote()
+io_actor2 = IOActor.remote()
+ray.get(io_actor1.ping.remote())
+ray.get(io_actor2.ping.remote())
+# Output:
+# (IOActor pid=96328) CUDA_VISIBLE_DEVICES: 1
+# (IOActor pid=96329) CUDA_VISIBLE_DEVICES: 1
+# __specifying_fractional_resource_requirements_end__
