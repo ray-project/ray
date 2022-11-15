@@ -194,6 +194,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 success=False,
                 message=e.message,
             )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
+            )
 
     @routes.get("/api/progress_by_task_name")
     async def get_progress_by_task_name(self, req):
@@ -223,6 +228,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=False,
                 message=e.message,
+            )
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=str(e),
             )
 
     @staticmethod
@@ -322,7 +332,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             pid=self._pid,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_info().rss) / 1.0e6)
+        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
 
     async def run(self, server):
         self._create_default_grafana_configs()
