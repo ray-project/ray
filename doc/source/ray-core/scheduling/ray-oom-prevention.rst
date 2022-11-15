@@ -18,7 +18,7 @@ The memory monitor is a component that runs within the :ref:`raylet <whitepaper>
 
 .. note::
 
-    The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
+    The memory monitor is in :ref:`beta <api-stability-beta>`. It is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
 
 How do I configure the memory monitor?
 --------------------------------------
