@@ -439,6 +439,7 @@ class JobManager:
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
+    WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
@@ -812,6 +813,19 @@ class JobManager:
             return True
         else:
             return False
+
+    async def delete_job(self, job_id):
+        """Delete a job's info and metadata from the cluster."""
+        job_status = await self._job_info_client.get_status(job_id)
+
+        if job_status is None or not job_status.is_terminal():
+            raise RuntimeError(
+                f"Attempted to delete job '{job_id}', "
+                f"but it is in a non-terminal state {job_status}."
+            )
+
+        await self._job_info_client.delete_info(job_id)
+        return True
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

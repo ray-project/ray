@@ -200,6 +200,26 @@ class TestJobList:
         assert "hi_id" in stdout
 
 
+class TestJobDelete:
+    def test_basic_delete(self, ray_start_stop):
+        cmd = "sleep 1000"
+        job_id = "test_basic_delete"
+        _run_cmd(f"ray job submit --no-wait --submission-id={job_id} -- {cmd}")
+
+        # Job shouldn't be able to be deleted because it is not in a terminal state.
+        stdout, stderr = _run_cmd(f"ray job delete {job_id}", should_fail=True)
+        assert "it is in a non-terminal state" in stderr
+
+        # Submit a job that finishes quickly.
+        cmd = "echo hello"
+        job_id = "test_basic_delete_quick"
+        _run_cmd(f"ray job submit --submission-id={job_id} -- bash -c '{cmd}'")
+
+        # Job should be able to be deleted because it is finished.
+        stdout, _ = _run_cmd(f"ray job delete {job_id}")
+        assert f"Job '{job_id}' deleted successfully" in stdout
+
+
 def test_quote_escaping(ray_start_stop):
     cmd = "echo \"hello 'world'\""
     job_id = "test_quote_escaping"
