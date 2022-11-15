@@ -806,7 +806,7 @@ class JobManager:
 
         if job_status is None or not job_status.is_terminal():
             raise RuntimeError(
-                f"Attempted to delete {job_id}, "
+                f"Attempted to delete job '{job_id}', "
                 f"but it is in a non-terminal state {job_status}."
             )
 
