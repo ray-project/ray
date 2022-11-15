@@ -1020,7 +1020,11 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      total_normal_task_resources += allocated_instances->ToResourceRequest();
+      auto resource_request = allocated_instances->ToResourceRequest();
+      if (worker->IsBlocked()) {
+        resource_request.Set(ResourceID::CPU(), 0);
+      }
+      total_normal_task_resources += resource_request;
     }
   }
   return total_normal_task_resources;
