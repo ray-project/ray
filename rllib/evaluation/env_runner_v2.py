@@ -1110,8 +1110,12 @@ class EnvRunnerV2:
                     ac_data
                 ).output
 
+                # The action we want to buffer is the direct output of
+                # compute_actions_from_input_dict() here. This is because we want to
+                # send the unsqushed actions to the environment while learning and
+                # possibly basing subsequent actions on the squashed actions.
                 action_to_buffer = (
-                    action_to_send
+                    action
                     if env_id not in off_policy_actions
                     or agent_id not in off_policy_actions[env_id]
                     else off_policy_actions[env_id][agent_id]
