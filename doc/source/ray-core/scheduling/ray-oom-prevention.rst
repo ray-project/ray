@@ -18,20 +18,20 @@ The memory monitor is a component that runs within the :ref:`raylet <whitepaper>
 
 .. note::
 
-    The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is disabled by default and needs to be enabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to a value greater than zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
+    The memory monitor is in :ref:`alpha <api-stability-alpha>`. It is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_interval_ms`` to zero when Ray starts. It is available on Linux and is tested with Ray running inside a container that is using cgroup v1. If you encounter issues when running the memory monitor outside of a container or the container is using cgroup v2, please :ref:`file an issue or post a question <oom-questions>`.
 
 How do I configure the memory monitor?
 --------------------------------------
 
 The memory monitor is controlled by the following environment variables:
 
-- ``RAY_memory_monitor_interval_ms (int, defaults to 9)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
+- ``RAY_memory_monitor_interval_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. It is disabled when this value is 0.
 
-- ``RAY_memory_usage_threshold_fraction (float, defaults to 0.9)`` is the threshold when the node is beyond the memory
+- ``RAY_memory_usage_threshold_fraction (float, defaults to 0.98)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this value and the free space is
   below min_memory_free_bytes then it will start killing processes to free up space. Ranges from [0, 1].
 
-- ``RAY_min_memory_free_bytes (int, defaults to 1 GiB)`` is the minimum amount of free space. If the memory usage is above
+- ``RAY_min_memory_free_bytes (int, defaults to 512 MiB)`` is the minimum amount of free space. If the memory usage is above
   ``memory_usage_threshold_fraction`` and the free space is below this value then it
   will start killing processes to free up space. This setting is unused if it is set to -1.
 
@@ -78,8 +78,8 @@ Memory usage threshold
 
 The memory usage threshold is used by the memory monitor to determine when it should start killing processes to free up memory. The threshold is controlled by the two environment variables:
 
-- ``RAY_memory_usage_threshold_fraction`` (default: 0.9)
-- ``RAY_min_memory_free_bytes`` (default: 1 GiB)
+- ``RAY_memory_usage_threshold_fraction`` (default: 0.98)
+- ``RAY_min_memory_free_bytes`` (default: 512 MiB)
 
 When the node starts it computes the usage threshold as follows:
 
@@ -136,33 +136,23 @@ Let's create an application oom.py that will trigger the out-of-memory condition
       :end-before: __oom_end__
 
 
-To speed up the example, set ``RAY_task_oom_retries=1`` on the application so the task will only retry once if it is killed by the memory monitor.
+To speed up the example, set ``RAY_task_oom_retries=1`` on the application so the task will only retry once if it is killed by the memory monitor. Also set ``RAY_event_stats_print_interval_ms=1000`` so it prints the worker kill summary, which by default is every minute.
 
 .. code-block:: bash
 
-    $ RAY_task_oom_retries=1 python oom.py
+    $ RAY_event_stats_print_interval_ms=1000 RAY_task_oom_retries=1 python oom.py
 
-    INFO worker.py:1342 -- Connecting to existing Ray cluster at address: 172.17.0.2:6379...
-    INFO worker.py:1525 -- Connected to Ray cluster. View the dashboard at http://127.0.0.1:8265
+    2022-11-15 13:50:14,737 INFO worker.py:1534 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 
-    WARNING worker.py:1839 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: 8ce7275b7a7953cc794f8c138a616d91cb907c1b01000000 Worker ID: 5c9ac30f8a9eda340f651a204de5d94f1ff965c5d9f72175579bd8dd Node ID: 3a4b60759256926fd0e84a9ff596dab3d7be854134107ef21b0e0260 Worker IP address: 172.17.0.2 Worker port: 10003 Worker PID: 69161 Worker exit type: SYSTEM_ERROR Worker exit detail: Task was killed due to the node running low on memory.
-    Memory on the node (IP: 172.17.0.2, ID: 3a4b60759256926fd0e84a9ff596dab3d7be854134107ef21b0e0260) where the task was running was 32.91GB / 33.28GB (0.988698), which exceeds the memory usage threshold of 0.969955. Ray killed this worker (ID: 5c9ac30f8a9eda340f651a204de5d94f1ff965c5d9f72175579bd8dd) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-5c9ac30f8a9eda340f651a204de5d94f1ff965c5d9f72175579bd8dd*out -ip 172.17.0.2`.
-    Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the eviction threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker eviction, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    (raylet) [2022-11-15 13:50:27,653 E 87636 87636] (raylet) node_manager.cc:3080: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: bda1c70a263e8e7201e9cf64196ce0bfc0a2ecaa00107f3d739b6a35, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
+    (raylet)
+    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
 
-    WARNING worker.py:1839 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: b60ff970726d7cf526e74acc71310ecce51edb4c01000000 Worker ID: 39416ad98016ee6a63173856a9b4e4100625be22e6ee4192722388ba Node ID: 3a4b60759256926fd0e84a9ff596dab3d7be854134107ef21b0e0260 Worker IP address: 172.17.0.2 Worker port: 10004 Worker PID: 69160 Worker exit type: SYSTEM_ERROR Worker exit detail: Task was killed due to the node running low on memory.
-    Memory on the node (IP: 172.17.0.2, ID: 3a4b60759256926fd0e84a9ff596dab3d7be854134107ef21b0e0260) where the task was running was 32.53GB / 33.28GB (0.977449), which exceeds the memory usage threshold of 0.969955. Ray killed this worker (ID: 39416ad98016ee6a63173856a9b4e4100625be22e6ee4192722388ba) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-39416ad98016ee6a63173856a9b4e4100625be22e6ee4192722388ba*out -ip 172.17.0.2`.
-    Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the eviction threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker eviction, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    (raylet) [2022-11-15 13:50:35,141 E 87636 87636] (raylet) node_manager.cc:3080: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: bda1c70a263e8e7201e9cf64196ce0bfc0a2ecaa00107f3d739b6a35, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
+    (raylet)
+    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
 
-    Traceback (most recent call last):
-      File "simple.py", line 11, in <module>
-        ray.get(tasks)
-      File "/home/ray/github/rayclarng/ray/python/ray/_private/client_mode_hook.py", line 105, in wrapper
-        return func(*args, **kwargs)
-      File "/home/ray/github/rayclarng/ray/python/ray/_private/worker.py", line 2291, in get
-        raise value
-    ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
-    Memory on the node (IP: 172.17.0.2, ID: 3a4b60759256926fd0e84a9ff596dab3d7be854134107ef21b0e0260) where the task was running was 32.53GB / 33.28GB (0.977449), which exceeds the memory usage threshold of 0.969955. Ray killed this worker (ID: 39416ad98016ee6a63173856a9b4e4100625be22e6ee4192722388ba) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-39416ad98016ee6a63173856a9b4e4100625be22e6ee4192722388ba*out -ip 172.17.0.2`.
-    Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the eviction threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. To disable worker eviction, set the environment variable `RAY_memory_monitor_interval_ms` to zero.
+    task failed with OutOfMemoryError, which is expected
 
 Verify the task was indeed executed twice via ``task_oom_retry``:
 
@@ -170,11 +160,11 @@ Verify the task was indeed executed twice via ``task_oom_retry``:
 
     $ grep -r "retries left" /tmp/ray/session_latest/logs/
 
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_60002.log:[2022-10-12 16:14:07,723 I 60002 60031] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 1, task failed due to oom: 1
+    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:27,653 I 87487 87703] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 1, task failed due to oom: 1
 
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_60002.log:[2022-10-12 16:14:18,843 I 60002 60031] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 0, task failed due to oom: 1
+    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:36,671 I 87487 87703] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 0, task failed due to oom: 1
 
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_60002.log:[2022-10-12 16:14:18,843 I 60002 60031] task_manager.cc:466: No retries left for task c8ef45ccd0112571ffffffffffffffffffffffff01000000, not going to resubmit.
+    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:36,671 I 87487 87703] task_manager.cc:466: No retries left for task c8ef45ccd0112571ffffffffffffffffffffffff01000000, not going to resubmit.
 
 .. note::
 

@@ -312,7 +312,7 @@ int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
 int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path) {
   std::ifstream smap_ifs(smap_path, std::ios::in | std::ios::binary);
   if (!smap_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs) << " file not found: " << smap_path;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << smap_path;
     return kNull;
   }
 
@@ -339,7 +339,7 @@ int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap
   }
 
   if (uss == 0) {
-    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Got zero used memory for smap file " << smap_path;
     return kNull;
   }
