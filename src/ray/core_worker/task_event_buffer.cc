@@ -44,20 +44,21 @@ void TaskEventBuffer::AddTaskStatusEvent(
     return;
   }
   absl::MutexLock lock(&mutex_);
-  auto task_events_itr = GetOrInitTaskEvents(task_id);
 
-  // Update the task state changes
+  // TODO(rickyx): What if too many in local buffer? Trigger force flush or drop?
+  auto events_task = task_events_data_.add_events_by_task();
+  events_task->set_task_id(task_id.Binary());
   if (task_state_update) {
-    task_events_itr->second.mutable_task_state()->MergeFrom(*task_state_update);
+    events_task->mutable_task_state()->Swap(task_state_update.get());
   }
 
-  // Add the task info entry
   if (task_info) {
-    task_events_itr->second.mutable_task_info()->Swap(task_info.get());
+    events_task->mutable_task_info()->Swap(task_info.get());
   }
 
   // Add the event.
-  auto event = task_events_itr->second.add_task_events();
+  auto event = events_task->add_task_events();
+  event->set_event_type(rpc::TaskEventType::STATUS_EVENT);
   event->set_task_status(task_status);
   event->set_start_time(absl::GetCurrentTimeNanos());
 }
@@ -67,36 +68,18 @@ void TaskEventBuffer::AddTaskEvent(TaskID task_id, rpc::TaskEventEntry event) {
     return;
   }
   absl::MutexLock lock(&mutex_);
-  auto task_events_itr = GetOrInitTaskEvents(task_id);
 
-  auto event_ptr = task_events_itr->second.add_task_events();
-  event_ptr->Swap(&event);
-}
+  auto events_task = task_events_data_.add_events_by_task();
 
-TaskIdEventMap::iterator TaskEventBuffer::GetOrInitTaskEvents(TaskID task_id) {
-  // TODO(rickyx): Measure and handle cases for too many events
-  auto task_events_itr = task_events_map_.find(task_id);
-
-  // Existing task state events entry in the buffer, return it.
-  if (task_events_itr != task_events_map_.end()) {
-    return task_events_itr;
-  }
-
-  // No existing entry, init a new TaskEvents.
-  rpc::TaskEvents task_state_events;
-
-  // Set id for this task
-  task_state_events.set_task_id(task_id.Binary());
-
-  // Add the newly task events to the buffer
-  task_events_map_.emplace(task_id, std::move(task_state_events));
-  return task_events_map_.find(task_id);
+  events_task->set_task_id(task_id.Binary());
+  events_task->add_task_events()->Swap(&event);
 }
 
 void TaskEventBuffer::FlushEvents(bool forced) {
   RAY_CHECK(recording_on_) << "Task state events recording should have be on. Set "
                               "RAY_task_events_report_interval_ms > 0 to turn on";
-  TaskIdEventMap cur_task_events_map;
+  std::unique_ptr<rpc::TaskEventData> cur_task_events_data =
+      std::make_unique<rpc::TaskEventData>();
   RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
                                 << (1.0 * total_events_bytes_) / 1024 / 1024
                                 << "MiB][total_count=" << total_num_events_ << "]";
@@ -108,30 +91,26 @@ void TaskEventBuffer::FlushEvents(bool forced) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
           << "GCS hasn't replied to the previous flush events call (likely overloaded). "
              "Skipping reporting task state events and retry later. Pending "
-          << task_events_map_.size() << "tasks' events stored in buffer.";
+          << task_events_data_.events_by_task_size() << "tasks' events ("
+          << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
+          << "MiB)stored in buffer. ";
       return;
     }
 
-    if (task_events_map_.empty()) {
+    if (task_events_data_.events_by_task_size() == 0) {
       return;
     }
 
-    task_events_map_.swap(cur_task_events_map);
+    task_events_data_.Swap(cur_task_events_data.get());
   }
   // mutex released. Below operations should be lock-free.
 
-  // Construct gRPC data
-  auto cur_task_state_data = std::make_unique<rpc::TaskEventData>();
-  // Fill up the task events
-  for (auto &[task_id, task_events] : cur_task_events_map) {
-    auto events_of_task = cur_task_state_data->add_events_by_task();
-    events_of_task->Swap(&task_events);
-  }
-
   // Some debug tracking.
-  auto num_events = cur_task_state_data->events_by_task_size();
+  auto num_events = cur_task_events_data->events_by_task_size();
+  RAY_CHECK(num_events > 0) << "There should be some task events to be pushed.";
+
   total_num_events_ += num_events;
-  total_events_bytes_ += cur_task_state_data->ByteSizeLong();
+  total_events_bytes_ += cur_task_events_data->ByteSizeLong();
 
   auto on_complete = [this, num_events](const Status &status) {
     if (!status.ok()) {
@@ -144,8 +123,10 @@ void TaskEventBuffer::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
-  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(std::move(cur_task_state_data),
-                                                           on_complete);
+  // The flag should be unset when on_complete is invoked.
+  grpc_in_progress_ = true;
+  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(
+      std::move(cur_task_events_data), on_complete);
   if (!status.ok()) {
     // If we couldn't even send the data by invoking client side callbacks, there's
     // something seriously wrong, and losing data in this case should not be too
@@ -153,9 +134,7 @@ void TaskEventBuffer::FlushEvents(bool forced) {
     RAY_LOG(WARNING)
         << "Failed to push task state events to GCS. Data will be lost. [status="
         << status.ToString() << "]";
-  } else {
-    // The flag should be unset when on_complete is invoked.
-    grpc_in_progress_ = true;
+    grpc_in_progress_ = false;
   }
 }
 

@@ -2810,7 +2810,7 @@ def test_raise_on_missing_output_truncation(
             str(max_data_source),
         )
         m.setenv(
-            "RAY_task_state_events_max_num_task_in_gcs",
+            "RAY_task_events_max_num_task_in_gcs",
             str(max_num_gcs_task),
         )
         ray.init()

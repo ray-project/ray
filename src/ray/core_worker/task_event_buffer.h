@@ -18,7 +18,6 @@
 #include <string>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"             // absl::flat_hash_map
 #include "absl/synchronization/mutex.h"               // absl::Mutex
 #include "absl/types/optional.h"                      // std::unique_ptr
 #include "ray/common/asio/instrumented_io_context.h"  // instrumented_io_context
@@ -32,8 +31,6 @@ namespace ray {
 namespace core {
 
 namespace worker {
-
-using TaskIdEventMap = absl::flat_hash_map<TaskID, rpc::TaskEvents>;
 
 /// An in-memory buffer for storing task state events, and flushing them periodically to
 /// GCS. Task state events will be recorded by other core components, i.e. core worker
@@ -82,9 +79,6 @@ class TaskEventBuffer {
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_);
 
  private:
-  TaskIdEventMap::iterator GetOrInitTaskEvents(TaskID task_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Mutex guarding task_events_map_.
   absl::Mutex mutex_;
 
@@ -97,8 +91,8 @@ class TaskEventBuffer {
   /// Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  /// Current buffer storing task state events, mapped from task name to a list of events.
-  TaskIdEventMap task_events_map_ GUARDED_BY(mutex_);
+  /// Current task event data to be pushed to GCS.
+  rpc::TaskEventData task_events_data_ GUARDED_BY(mutex_);
 
   /// Flag to toggle event recording on/off.
   bool recording_on_ = false;

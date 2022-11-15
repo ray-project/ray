@@ -33,9 +33,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
   ///
-  /// \param gcs_task_info_table GCS table external storage accessor.
-  explicit GcsTaskManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-      : gcs_table_storage_(std::move(gcs_table_storage)){};
+  GcsTaskManager() = default;
 
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
@@ -46,25 +44,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  /// Add events for multiple tasks to the underlying GCS storage.
-  ///
-  /// \param data Task events data
-  /// \param cb_on_done Callback when adding the events is done.
-  void AddTaskEvents(rpc::TaskEventData &&data, AddTaskEventCallback cb_on_done);
-
   /// Add events for a single task to the underlying GCS storage.
   ///
   /// \param task_id Task's id.
   /// \param events_by_task Events by a single task.
-  /// \param cb_on_done Callback to be invoked when events have been added to GCS.
-  void AddTaskEventForTask(const TaskID &task_id,
-                           rpc::TaskEvents &&events_by_task,
-                           AddTaskEventCallback cb_on_done);
+  Status AddTaskEventForTask(const TaskID &task_id, rpc::TaskEvents &&events_by_task);
 
  private:
-  /// Underlying GCS storage
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
-
   /// Mutex guarding tasks_reported_
   absl::Mutex mutex_;
 
@@ -74,6 +60,14 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// calls. With a simple counter, we are not able to know the exact number of tasks we
   /// are dropping.
   absl::flat_hash_set<TaskID> tasks_reported_ GUARDED_BY(mutex_);
+
+  /// Current task events tracked. This map might contain less events than the actual task
+  /// events reported to GCS due to truncation for capping memory usage.
+  /// TODO(rickyx):  Refactor this to an abstraction
+  absl::flat_hash_map<TaskID, rpc::TaskEvents> task_events_ GUARDED_BY(mutex_);
+
+  /// Counter for tracking the size of task event.
+  size_t num_bytes_task_events_ = 0;
 };
 
 }  // namespace gcs

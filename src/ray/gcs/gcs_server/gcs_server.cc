@@ -627,7 +627,7 @@ void GcsServer::InitGcsWorkerManager() {
 }
 
 void GcsServer::InitGcsTaskManager() {
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(gcs_table_storage_);
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
   // Register service.
   task_info_service_.reset(
       new rpc::TaskInfoGrpcService(main_service_, *gcs_task_manager_));
