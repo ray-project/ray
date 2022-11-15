@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_state_buffer.h"
+#include "ray/core_worker/task_event_buffer.h"
 
 namespace ray {
 namespace core {
 
 namespace worker {
 
-TaskStateBuffer::TaskStateBuffer(instrumented_io_context &io_service,
+TaskEventBuffer::TaskEventBuffer(instrumented_io_context &io_service,
                                  const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), periodical_runner_(io_service_), gcs_client_(gcs_client) {
-  auto report_interval_ms = RayConfig::instance().task_state_events_report_interval_ms();
+  auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   if (report_interval_ms >= 0) {
     recording_on_ = true;
     RAY_LOG(INFO) << "Reporting task state events to GCS every: " << report_interval_ms
@@ -35,7 +35,7 @@ TaskStateBuffer::TaskStateBuffer(instrumented_io_context &io_service,
   }
 }
 
-void TaskStateBuffer::AddTaskEvent(
+void TaskEventBuffer::AddTaskEvent(
     TaskID task_id,
     rpc::TaskStatus task_status,
     std::unique_ptr<rpc::TaskInfoEntry> task_info,
@@ -62,7 +62,7 @@ void TaskStateBuffer::AddTaskEvent(
   event->set_start_time(absl::GetCurrentTimeNanos());
 }
 
-TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(TaskID task_id) {
+TaskIdEventMap::iterator TaskEventBuffer::GetOrInitTaskEvents(TaskID task_id) {
   // TODO(rickyx): Measure and handle cases for too many events
   auto task_events_itr = task_events_map_.find(task_id);
 
@@ -82,9 +82,9 @@ TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(TaskID task_id) {
   return task_events_map_.find(task_id);
 }
 
-void TaskStateBuffer::FlushEvents(bool forced) {
+void TaskEventBuffer::FlushEvents(bool forced) {
   RAY_CHECK(recording_on_) << "Task state events recording should have be on. Set "
-                              "RAY_task_state_events_report_interval_ms > 0 to turn on";
+                              "RAY_task_events_report_interval_ms > 0 to turn on";
   TaskIdEventMap cur_task_events_map;
   RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
                                 << (1.0 * total_events_bytes_) / 1024 / 1024

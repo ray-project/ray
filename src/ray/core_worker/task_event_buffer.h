@@ -48,13 +48,13 @@ using TaskIdEventMap = absl::flat_hash_map<TaskID, rpc::TaskEvents>;
 ///
 ///
 /// This class is thread-safe.
-class TaskStateBuffer {
+class TaskEventBuffer {
  public:
   /// Constructor
   ///
   /// \param io_service IO service to run the periodic flushing routines.
   /// \param gcs_client GCS client
-  TaskStateBuffer(instrumented_io_context &io_service,
+  TaskEventBuffer(instrumented_io_context &io_service,
                   const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   /// Add a task event with optional task metadata info.

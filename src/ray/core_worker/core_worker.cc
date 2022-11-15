@@ -225,8 +225,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
   // Initialize the task state event buffer.
-  task_state_buffer_ =
-      std::make_shared<worker::TaskStateBuffer>(io_service_, gcs_client_);
+  task_event_buffer_ =
+      std::make_shared<worker::TaskEventBuffer>(io_service_, gcs_client_);
 
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
@@ -345,7 +345,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      task_state_buffer_));
+      task_event_buffer_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -637,7 +637,7 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Force task state events push before exiting the worker.
-  task_state_buffer_->FlushEvents(/* forced */ true);
+  task_event_buffer_->FlushEvents(/* forced */ true);
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
@@ -1153,12 +1153,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   ScopedTaskMetricSetter state(
       worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   if (worker_context_.GetCurrentTask() == nullptr) {
-    task_state_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
+    task_event_buffer_->AddTaskEvent(worker_context_.GetCurrentTaskID(),
                                      rpc::TaskStatus::RUNNING_IN_RAY_GET,
                                      /* task_info */ nullptr,
                                      /* task_state_update */ nullptr);
   } else {
-    task_state_buffer_->AddTaskEvent(
+    task_event_buffer_->AddTaskEvent(
         worker_context_.GetCurrentTaskID(),
         rpc::TaskStatus::RUNNING_IN_RAY_GET,
         task_manager_->MakeTaskInfoEntry(*worker_context_.GetCurrentTask()),
@@ -2276,7 +2276,7 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name);
-    task_state_buffer_->AddTaskEvent(task_spec.TaskId(),
+    task_event_buffer_->AddTaskEvent(task_spec.TaskId(),
                                      rpc::TaskStatus::RUNNING,
                                      task_manager_->MakeTaskInfoEntry(task_spec),
                                      /* task_state_update */ nullptr);

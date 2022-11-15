@@ -32,7 +32,7 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
-#include "ray/core_worker/task_state_buffer.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -1470,7 +1470,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
-  std::shared_ptr<worker::TaskStateBuffer> task_state_buffer_;
+  std::shared_ptr<worker::TaskEventBuffer> task_event_buffer_;
 };
 
 }  // namespace core
