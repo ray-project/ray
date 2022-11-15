@@ -51,7 +51,9 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs: An optional list of block partition metadata
                 refs. This should be the same length as the tasks argument.
             cached_metadata: An optional list of already computed AND fetched metadata.
-                This serves as a cache of fetched block metadata.
+                This serves as a cache of fetched block metadata. Note that each entry
+                in cached_metadata represents the list of output blocks metadata per
+                the read task. One task can produce multiple output blocks.
             ray_remote_args: Ray remote arguments for the read tasks.
             stats_uuid: UUID for the dataset stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
@@ -424,7 +426,8 @@ class LazyBlockList(BlockList):
         pre-read metadata from the ReadTasks given to this LazyBlockList so it doesn't
         have to block on the execution of the read tasks. Therefore, the metadata may be
         under-specified, e.g. missing schema or the number of rows. If fully-specified
-        block metadata is required, pass block_for_metadata=True.
+        block metadata is required, pass block_for_metadata=True. When dynamic block
+        splitting is enabled, always block on the execution of the read tasks.
 
         The length of this iterator is not known until execution.
 
@@ -454,6 +457,8 @@ class LazyBlockList(BlockList):
                         generator_ref, _ = next(self._base_iter)
                         generator = ray.get(generator_ref)
                         refs = list(generator)
+                        # This blocks until the read task completes, returning
+                        # fully-specified block metadata for each output block.
                         metadata = ray.get(refs.pop(-1))
                         assert len(metadata) == len(refs)
                         for block_ref, meta in zip(refs, metadata):
@@ -619,8 +624,8 @@ class LazyBlockList(BlockList):
     ) -> List[BlockMetadata]:
         """Flatten the metadata of computed blocks into a list.
 
-        This is required because dynamic block splitting can produce more than one
-        output block.
+        This is required because dynamic block splitting can produce multiple output
+        blocks from each task.
         """
         return [meta for meta_list in metadata for meta in meta_list]
 

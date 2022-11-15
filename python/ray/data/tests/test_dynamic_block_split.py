@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask, Reader
@@ -10,60 +11,260 @@ from ray.data.datasource.datasource import ReadTask, Reader
 from ray.tests.conftest import *  # noqa
 
 
-def test_read_large_data(ray_start_cluster):
-    # Test 20G input with single task
-    num_batch = 20
+# Data source generates random bytes data
+class RandomBytesDatasource(Datasource):
+    def create_reader(self, **read_args):
+        return RandomBytesReader(read_args["num_batches"], read_args["batch_size"])
+
+
+class RandomBytesReader(Reader):
+    def __init__(self, num_batches: int, batch_size: int):
+        self.num_batches = num_batches
+        self.batch_size = batch_size
+
+    def estimate_inmemory_data_size(self):
+        return None
+
+    def get_read_tasks(self, parallelism: int):
+        def _batches_generator():
+            for _ in range(self.num_batches):
+                yield pd.DataFrame({"one": [np.random.bytes(self.batch_size)]})
+
+        return parallelism * [
+            ReadTask(
+                lambda: _batches_generator(),
+                BlockMetadata(
+                    num_rows=self.num_batches,
+                    size_bytes=self.num_batches * self.batch_size,
+                    schema=None,
+                    input_files=None,
+                    exec_stats=None,
+                ),
+            )
+        ]
+
+
+def test_dataset(ray_start_regular_shared, enable_dynamic_block_splitting):
+    # Test 10 blocks from 10 tasks, each block is 1024 bytes.
+    num_batches = 10
+    batch_size = 1024
+    num_tasks = 10
+
     ctx = ray.data.context.DatasetContext.get_current()
-    block_splitting_enabled = ctx.block_splitting_enabled
-    ctx.block_splitting_enabled = True
+    target_max_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = batch_size
 
     try:
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=1)
-
-        ray.init(cluster.address)
-
-        # Data source generates multiple 1G random bytes data
-        class LargeBytesDatasource(Datasource):
-            def create_reader(self, **read_args):
-                return LargeBytesReader()
-
-        class LargeBytesReader(Reader):
-            def estimate_inmemory_data_size(self):
-                return None
-
-            def get_read_tasks(self, parallelism: int):
-                def _1g_batches_generator():
-                    for _ in range(num_batch):
-                        yield pd.DataFrame(
-                            {"one": [np.random.bytes(1024 * 1024 * 1024)]}
-                        )
-
-                return parallelism * [
-                    ReadTask(
-                        lambda: _1g_batches_generator(),
-                        BlockMetadata(
-                            num_rows=None,
-                            size_bytes=None,
-                            schema=None,
-                            input_files=None,
-                            exec_stats=None,
-                        ),
-                    )
-                ]
-
-        def foo(batch):
-            return pd.DataFrame({"one": [1]})
-
         ds = ray.data.read_datasource(
-            LargeBytesDatasource(),
-            parallelism=1,
+            RandomBytesDatasource(),
+            parallelism=num_tasks,
+            num_batches=num_batches,
+            batch_size=batch_size,
+        )
+        assert ds.schema() is not None
+        assert ds.count() == num_batches * num_tasks
+        assert ds.num_blocks() == num_tasks
+        assert ds.size_bytes() >= 0.7 * batch_size * num_batches * num_tasks
+
+        map_ds = ds.map_batches(lambda x: x)
+        assert map_ds.num_blocks() == num_tasks
+        map_ds = ds.map_batches(lambda x: x, batch_size=num_batches * num_tasks)
+        assert map_ds.num_blocks() == 1
+        map_ds = ds.map(lambda x: x)
+        assert map_ds.num_blocks() == num_batches * num_tasks
+
+        ds_list = ds.split(5)
+        assert len(ds_list) == 5
+        for new_ds in ds_list:
+            assert new_ds.num_blocks() == num_batches * num_tasks / 5
+
+        train, test = ds.train_test_split(test_size=0.25)
+        assert train.num_blocks() == num_batches * num_tasks * 0.75
+        assert test.num_blocks() == num_batches * num_tasks * 0.25
+
+        new_ds = ds.union(ds, ds)
+        assert new_ds.num_blocks() == num_tasks * 3
+        new_ds.fully_executed()
+        assert new_ds.num_blocks() == num_batches * num_tasks * 3
+
+        new_ds = ds.random_shuffle()
+        assert new_ds.num_blocks() == num_tasks
+        new_ds = ds.randomize_block_order()
+        assert new_ds.num_blocks() == num_tasks
+        assert ds.groupby("one").count().count() == num_batches * num_tasks
+
+        new_ds = ds.zip(ds)
+        assert new_ds.num_blocks() == num_batches * num_tasks
+
+        assert len(ds.take(5)) == 5
+        assert len(ds.take_all()) == num_batches * num_tasks
+        for batch in ds.iter_batches(batch_size=10):
+            assert len(batch) == 10
+    finally:
+        ctx.target_max_block_size = target_max_block_size
+
+
+def test_dataset_pipeline(ray_start_regular_shared, enable_dynamic_block_splitting):
+    # Test 10 blocks from 10 tasks, each block is 1024 bytes.
+    num_batches = 10
+    batch_size = 1024
+    num_tasks = 10
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    target_max_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = batch_size
+
+    try:
+        ds = ray.data.read_datasource(
+            RandomBytesDatasource(),
+            parallelism=num_tasks,
+            num_batches=num_batches,
+            batch_size=batch_size,
+        )
+        dsp = ds.window(blocks_per_window=2)
+        assert dsp._length == num_tasks / 2
+
+        dsp = dsp.map_batches(lambda x: x)
+        result_batches = list(ds.iter_batches(batch_size=5))
+        for batch in result_batches:
+            assert len(batch) == 5
+        assert len(result_batches) == num_batches * num_tasks / 5
+
+        dsp = ds.window(blocks_per_window=2)
+        assert dsp._length == num_tasks / 2
+
+        dsp = ds.repeat().map_batches(lambda x: x)
+        assert len(dsp.take(5)) == 5
+    finally:
+        ctx.target_max_block_size = target_max_block_size
+
+
+def test_lazy_block_list(shutdown_only, enable_dynamic_block_splitting):
+    # Test 10 blocks from 10 tasks, each block is 1024 bytes.
+    num_batches = 10
+    batch_size = 1024
+    num_tasks = 10
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    target_max_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = batch_size
+
+    try:
+        ds = ray.data.read_datasource(
+            RandomBytesDatasource(),
+            parallelism=num_tasks,
+            num_batches=num_batches,
+            batch_size=batch_size,
         )
 
-        ds = ds.map_batches(foo, batch_size=None)
-        assert ds.count() == num_batch
+        # Check internal states of LazyBlockList before execution
+        block_list = ds._plan._in_blocks
+        block_refs = block_list._block_partition_refs
+        cached_metadata = block_list._cached_metadata
+        metadata = block_list.get_metadata()
+
+        assert isinstance(block_list, LazyBlockList)
+        assert len(block_refs) == num_tasks
+        assert block_refs[0] is not None and all(
+            map(lambda ref: ref is None, block_refs[1:])
+        )
+        assert all(map(lambda ref: ref is None, block_list._block_partition_meta_refs))
+        assert len(cached_metadata) == num_tasks
+        for i, block_metadata in enumerate(cached_metadata):
+            if i == 0:
+                assert len(block_metadata) == num_batches
+                for m in block_metadata:
+                    assert m.num_rows == 1
+            else:
+                assert block_metadata is None
+        assert len(metadata) == num_tasks - 1 + num_batches
+        for i, block_metadata in enumerate(metadata):
+            if i < num_batches:
+                assert block_metadata.num_rows == 1
+                assert block_metadata.schema is not None
+            else:
+                assert block_metadata.num_rows == num_batches
+                assert block_metadata.schema is None
+
+        # Check APIs of LazyBlockList
+        new_block_list = block_list.copy()
+        new_block_list.clear()
+        assert len(block_list._block_partition_refs) == num_tasks
+
+        block_lists = block_list.split(2)
+        assert len(block_lists) == num_tasks / 2
+        assert len(block_lists[0]._block_partition_refs) == 2
+        assert len(block_lists[0]._cached_metadata) == 2
+
+        block_lists = block_list.split_by_bytes(batch_size * num_batches * 2)
+        assert len(block_lists) == num_tasks / 2
+        assert len(block_lists[0]._block_partition_refs) == 2
+        assert len(block_lists[0]._cached_metadata) == 2
+
+        new_block_list = block_list.truncate_by_rows(num_batches * 3)
+        assert len(new_block_list._block_partition_refs) == 3
+        assert len(new_block_list._cached_metadata) == 3
+
+        left_block_list, right_block_list = block_list.divide(3)
+        assert len(left_block_list._block_partition_refs) == 3
+        assert len(left_block_list._cached_metadata) == 3
+        assert len(right_block_list._block_partition_refs) == num_tasks - 3
+        assert len(right_block_list._cached_metadata) == num_tasks - 3
+
+        new_block_list = block_list.randomize_block_order()
+        assert len(new_block_list._block_partition_refs) == num_tasks
+        assert len(new_block_list._cached_metadata) == num_tasks
+
+        output_blocks = block_list.get_blocks_with_metadata()
+        assert len(output_blocks) == num_tasks * num_batches
+        for _, metadata in output_blocks:
+            assert metadata.num_rows == 1
+        for _, metadata in block_list.iter_blocks_with_metadata():
+            assert metadata.num_rows == 1
+
+        # Check internal states of LazyBlockList after execution
+        ds.fully_executed()
+        metadata = block_list.get_metadata()
+
+        assert block_list._num_computed() == num_tasks
+        assert len(block_refs) == num_tasks
+        assert all(map(lambda ref: ref is not None, block_refs))
+        assert all(map(lambda ref: ref is None, block_list._block_partition_meta_refs))
+        assert len(cached_metadata) == num_tasks
+        for block_metadata in cached_metadata:
+            assert len(block_metadata) == num_batches
+            for m in block_metadata:
+                assert m.num_rows == 1
+        assert len(metadata) == num_tasks * num_batches
+        for block_metadata in metadata:
+            assert block_metadata.num_rows == 1
+            assert block_metadata.schema is not None
     finally:
-        ctx.block_splitting_enabled = block_splitting_enabled
+        ctx.target_max_block_size = target_max_block_size
+
+
+def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
+    # Test 20G input with single task
+    num_batches = 20
+    batch_size = 1024 * 1024 * 1024
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+
+    ray.init(cluster.address)
+
+    def foo(batch):
+        return pd.DataFrame({"one": [1]})
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_batches=num_batches,
+        batch_size=batch_size,
+    )
+
+    ds = ds.map_batches(foo, batch_size=None)
+    assert ds.count() == num_batches
 
 
 if __name__ == "__main__":

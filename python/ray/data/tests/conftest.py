@@ -287,6 +287,15 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = original
 
 
+@pytest.fixture(params=[True])
+def enable_dynamic_block_splitting(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.block_splitting_enabled
+    ctx.block_splitting_enabled = request.param
+    yield request.param
+    ctx.block_splitting_enabled = original
+
+
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
