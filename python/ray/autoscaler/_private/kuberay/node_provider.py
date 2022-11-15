@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,6 +22,8 @@ from ray.autoscaler.tags import (
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
 )
+
+WAIT_FOR_WORKERS_TO_DELETE = os.getenv("RAY_WAIT_FOR_WORKERS_TO_DELETE", "0")
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
@@ -218,6 +221,12 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         """To reduce race conditions, wait for the operator to clear the workersToDelete
         queue before submitting another scale request.
         """
+        if WAIT_FOR_WORKERS_TO_DELETE == 0:
+            # The operator's logic for clearing workersToDelete is faulty.
+            # Once that is fixed, have the KubeRay operator flip this env flag
+            # to enable the logic of this method.
+            return True
+
         for group_spec in self._raycluster["spec"].get("workerGroupSpecs", []):
             if group_spec.get("scaleStrategy", {}).get("workersToDelete", []):
                 logger.warning(

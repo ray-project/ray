@@ -258,7 +258,12 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
 )
 def test_safe_to_scale(raycluster: Dict[str, Any], expected: bool):
     """Test method KuberayNodeProvider.safe_to_scale()"""
-    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
+    with mock.patch.object(
+        KuberayNodeProvider, "__init__", return_value=None
+    ), mock.patch(
+        # Enable the method's logic for this test.
+        "ray.autoscaler._private.kuberay.node_provider.WAIT_FOR_WORKERS_TO_DELETE", 1
+    ):
         kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider._raycluster = raycluster
         assert kr_node_provider.safe_to_scale() is expected
