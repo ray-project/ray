@@ -61,7 +61,7 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             false_fn=lambda: exploit_action,
         )
 
-        if self.framework in ["tf2", "tfe"] and not self.policy_config["eager_tracing"]:
+        if self.framework == "tf2" and not self.policy_config["eager_tracing"]:
             self.last_timestep = timestep
             return action, action_logp
         else:

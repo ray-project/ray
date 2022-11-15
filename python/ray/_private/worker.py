@@ -75,7 +75,7 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.storage import _load_class
-from ray._private.utils import check_oversized_function
+from ray._private.utils import check_oversized_function, get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -1116,8 +1116,7 @@ def init(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
-        local_mode: If true, the code will be executed serially. This
-            is useful for debugging.
+        local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1263,6 +1262,16 @@ def init(
 
         usage_lib.record_library_usage("client")
         return ctx
+
+    if kwargs.get("allow_multiple"):
+        raise RuntimeError(
+            "`allow_multiple` argument is passed to `ray.init` when the "
+            "ray client is not used ("
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/cluster"
+            "/running-applications/job-submission"
+            "/ray-client.html#connect-to-multiple-ray-clusters-experimental). "
+            "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
+        )
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1529,6 +1538,7 @@ def init(
 
     connect(
         _global_node,
+        _global_node.session_name,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
@@ -1536,6 +1546,7 @@ def init(
         job_id=None,
         namespace=namespace,
         job_config=job_config,
+        entrypoint=ray._private.utils.get_entrypoint_name(),
     )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1854,6 +1865,7 @@ def is_initialized() -> bool:
 
 def connect(
     node,
+    session_name: str,
     mode=WORKER_MODE,
     log_to_driver: bool = False,
     worker=global_worker,
@@ -1864,11 +1876,13 @@ def connect(
     runtime_env_hash: int = 0,
     startup_token: int = 0,
     ray_debugger_external: bool = False,
+    entrypoint: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
         node (ray._private.node.Node): The node to connect.
+        session_name: The session name (cluster id) of this cluster.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -1882,6 +1896,8 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
+        entrypoint: The name of the entrypoint script. Ignored unless the
+            mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2026,6 +2042,8 @@ def connect(
         node.metrics_agent_port,
         runtime_env_hash,
         startup_token,
+        session_name,
+        "" if mode != SCRIPT_MODE else entrypoint,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2140,6 +2158,7 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
+
         worker._session_index += 1
 
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
@@ -2471,7 +2490,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,
@@ -2920,7 +2939,8 @@ def remote(
             (this can be used to address memory leaks in third-party
             libraries or to reclaim resources that cannot easily be
             released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite.
+            By default this is infinite for CPU tasks and 1 for GPU tasks
+            (to force GPU tasks to release resources after finishing).
         max_restarts: Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
             unexpectedly. The minimum valid value is 0 (default),

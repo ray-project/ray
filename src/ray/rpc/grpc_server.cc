@@ -14,6 +14,8 @@
 
 #include "ray/rpc/grpc_server.h"
 
+#include <grpcpp/ext/channelz_service_plugin.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/impl/service_type.h>
 
 #include <boost/asio/detail/socket_holder.hpp>
@@ -39,6 +41,11 @@ GrpcServer::GrpcServer(std::string name,
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
+  // Enable built in health check implemented by gRPC:
+  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  grpc::EnableDefaultHealthCheckService(true);
+  grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+  grpc::channelz::experimental::InitChannelzService();
 }
 
 void GrpcServer::Run() {
@@ -67,7 +74,6 @@ void GrpcServer::Run() {
   // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
   builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
                              60000);
-
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());

@@ -42,8 +42,14 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// Task stats from core workers.
+/// Tasks stats, broken down by state.
 DECLARE_stats(tasks);
+
+/// Actor stats, broken down by state.
+DECLARE_stats(actors);
+
+/// Placement group stats, broken down by state.
+DECLARE_stats(placement_groups);
 
 /// Event stats
 DECLARE_stats(operation_count);

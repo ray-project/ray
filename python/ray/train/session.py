@@ -34,6 +34,10 @@ class _TrainSessionImpl(Session):
         return ckpt
 
     @property
+    def experiment_name(self) -> str:
+        return self._session.trial_info.experiment_name
+
+    @property
     def trial_name(self) -> str:
         return self._session.trial_info.name
 
@@ -46,6 +50,10 @@ class _TrainSessionImpl(Session):
         return self._session.trial_info.resources
 
     @property
+    def trial_dir(self) -> str:
+        return self._session.trial_info.logdir
+
+    @property
     def world_size(self) -> int:
         return self._session.world_size
 
@@ -56,6 +64,14 @@ class _TrainSessionImpl(Session):
     @property
     def local_rank(self) -> int:
         return self._session.local_rank
+
+    @property
+    def local_world_size(self) -> int:
+        return self._session.local_world_size
+
+    @property
+    def node_rank(self) -> int:
+        return self._session.node_rank
 
     def get_dataset_shard(
         self,

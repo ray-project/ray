@@ -360,6 +360,7 @@ def test_options():
 
     assert foo._default_options == {
         "_metadata": {"namespace": {"a": 1, "b": 2}},
+        "max_calls": 1,
         "num_gpus": 2,
     }
 
@@ -420,13 +421,13 @@ def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
     for i in range(100):
-        value_before = i * 10 ** 6
+        value_before = i * 10**6
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
-        value_before = i * 10 ** 6 * 1.0
+        value_before = i * 10**6 * 1.0
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
@@ -483,7 +484,7 @@ def test_function_descriptor():
 def test_ray_options(shutdown_only):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
-    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2 ** 20, resources={"custom1": 1})
+    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo(expected_resources):
         # Possibly wait until the available resources have been updated
         # (there might be a delay due to heartbeats)
@@ -511,7 +512,7 @@ def test_ray_options(shutdown_only):
     expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
     memory_available_with_options = ray.get(
         foo.options(
-            num_cpus=3, num_gpus=4, memory=50 * 2 ** 20, resources={"custom1": 0.5}
+            num_cpus=3, num_gpus=4, memory=50 * 2**20, resources={"custom1": 0.5}
         ).remote(expected_resources_with_options)
     )
 

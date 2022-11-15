@@ -7,9 +7,14 @@ import tempfile
 
 from ray.dashboard.modules.metrics.metrics_head import (
     _format_prometheus_output,
+    _format_prometheus_output_by_task_names,
+    TaskProgressByTaskNameResponse,
+    TaskProgressWithTaskName,
     TaskProgress,
 )
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import GRAFANA_PANELS
 from ray.tests.conftest import _ray_start
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +35,7 @@ def test_metrics_folder():
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
+        assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
 
 
@@ -45,10 +51,16 @@ def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
     """
     Tests that the default dashboard files get created.
     """
-    with _ray_start(include_dashboard=True):
+    with _ray_start(include_dashboard=True) as context:
+        session_dir = context["session_dir"]
         assert os.path.exists(
             f"{override_dashboard_dir}/default_grafana_dashboard.json"
         )
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
+        ) as f:
+            contents = f.read()
+            assert override_dashboard_dir in contents
 
 
 def test_metrics_folder_when_dashboard_disabled():
@@ -107,6 +119,10 @@ def test_format_prometheus_output():
                     "metric": {"State": "PENDING_OBJ_STORE_MEM_AVAIL"},
                     "value": [1664330796.832, "8"],
                 },
+                {
+                    "metric": {"State": "FAILED"},
+                    "value": [1664330796.832, "6"],
+                },
             ],
         },
     }
@@ -117,6 +133,7 @@ def test_format_prometheus_output():
         num_running=9,
         num_submitted_to_worker=5,
         num_unknown=0,
+        num_failed=6,
     )
 
     # With unknown states from prometheus
@@ -139,6 +156,10 @@ def test_format_prometheus_output():
                     "metric": {"State": "SOME_NEW_VARIABLE"},
                     "value": [1664330796.832, "3"],
                 },
+                {
+                    "metric": {"State": "FAILED"},
+                    "value": [1664330796.832, "3"],
+                },
             ],
         },
     }
@@ -149,7 +170,80 @@ def test_format_prometheus_output():
         num_running=14,
         num_submitted_to_worker=0,
         num_unknown=3,
+        num_failed=3,
     )
+
+
+def test_format_prometheus_output_by_task_names():
+    prom_output = {
+        "status": "success",
+        "data": {
+            "resultType": "vector",
+            "result": [
+                {
+                    "metric": {"Name": "step1", "State": "RUNNING"},
+                    "value": [1666390500.167, "3"],
+                },
+                {
+                    "metric": {"Name": "step1", "State": "SUBMITTED_TO_WORKER"},
+                    "value": [1666390500.167, "3"],
+                },
+                {
+                    "metric": {"Name": "step1", "State": "PENDING_ARGS_AVAIL"},
+                    "value": [1666390500.167, "0"],
+                },
+                {
+                    "metric": {"Name": "step1", "State": "PENDING_NODE_ASSIGNMENT"},
+                    "value": [1666390500.167, "0"],
+                },
+                {
+                    "metric": {"Name": "step2", "State": "RUNNING"},
+                    "value": [1666390500.167, "2"],
+                },
+                {
+                    "metric": {"Name": "step2", "State": "SUBMITTED_TO_WORKER"},
+                    "value": [1666390500.167, "0"],
+                },
+                {
+                    "metric": {"Name": "step2", "State": "PENDING_ARGS_AVAIL"},
+                    "value": [1666390500.167, "3"],
+                },
+                {
+                    "metric": {"Name": "step3", "State": "PENDING_ARGS_AVAIL"},
+                    "value": [1666390500.167, "1"],
+                },
+            ],
+        },
+    }
+    assert _format_prometheus_output_by_task_names(
+        prom_output
+    ) == TaskProgressByTaskNameResponse(
+        tasks=[
+            TaskProgressWithTaskName(
+                name="step1",
+                progress=TaskProgress(
+                    num_running=3,
+                    num_submitted_to_worker=3,
+                ),
+            ),
+            TaskProgressWithTaskName(
+                name="step2",
+                progress=TaskProgress(
+                    num_running=2,
+                    num_pending_args_avail=3,
+                ),
+            ),
+            TaskProgressWithTaskName(
+                name="step3", progress=TaskProgress(num_pending_args_avail=1)
+            ),
+        ]
+    )
+
+
+def test_default_dashboard_utilizes_global_filters():
+    for panel in GRAFANA_PANELS:
+        for target in panel.targets:
+            assert "{global_filters}" in target.expr
 
 
 if __name__ == "__main__":
