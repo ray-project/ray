@@ -434,6 +434,10 @@ RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 10
 
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
+/// Due to the protocol drawback, raylet needs to refresh the message if
+/// no message is received for a while.
+/// Refer to https://tinyurl.com/n6kvsp87 for more details
+RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
@@ -489,7 +493,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 30000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
@@ -701,8 +705,7 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// A feature flag to enable pull based health check.
-/// TODO: Turn it on by default
-RAY_CONFIG(bool, pull_based_healthcheck, false)
+RAY_CONFIG(bool, pull_based_healthcheck, true)
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 RAY_CONFIG(int64_t, health_check_period_ms, 3000)
 RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)

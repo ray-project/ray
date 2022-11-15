@@ -149,6 +149,10 @@ The output should look something like the following:
 
 To get information about all jobs, call ``client.list_jobs()``.  This returns a ``Dict[str, JobInfo]`` object mapping Job IDs to their information.
 
+Job information (status and associated metadata) is stored on the cluster indefinitely.  
+To delete this information, you may call ``client.delete_job(job_id)`` for any job that is already in a terminal state.  
+See the :ref:`SDK API Reference <ray-job-submission-sdk-ref>` for more details.
+
 Dependency Management
 ---------------------
 

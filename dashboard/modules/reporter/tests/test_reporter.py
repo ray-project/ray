@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-import time
 
 import pytest
 import requests
@@ -10,7 +9,6 @@ import ray
 from mock import patch
 from ray._private import ray_constants
 from ray._private.test_utils import (
-    RayTestTimeoutException,
     fetch_prometheus,
     format_web_url,
     wait_for_condition,
@@ -26,45 +24,6 @@ except ImportError:
     prometheus_client = None
 
 logger = logging.getLogger(__name__)
-
-
-def test_profiling(shutdown_only):
-    addresses = ray.init(include_dashboard=True, num_cpus=6)
-
-    @ray.remote(num_cpus=2)
-    class Actor:
-        def getpid(self):
-            return os.getpid()
-
-    c = Actor.remote()
-    actor_pid = ray.get(c.getpid.remote())
-
-    webui_url = addresses["webui_url"]
-    assert wait_until_server_available(webui_url) is True
-    webui_url = format_web_url(webui_url)
-
-    start_time = time.time()
-    launch_profiling = None
-    while True:
-        # Sometimes some startup time is required
-        if time.time() - start_time > 15:
-            raise RayTestTimeoutException(
-                "Timed out while collecting profiling stats, "
-                f"launch_profiling: {launch_profiling}"
-            )
-        launch_profiling = requests.get(
-            webui_url + "/api/launch_profiling",
-            params={
-                "ip": ray.nodes()[0]["NodeManagerAddress"],
-                "pid": actor_pid,
-                "duration": 5,
-            },
-        ).json()
-        if launch_profiling["result"]:
-            profiling_info = launch_profiling["data"]["profilingInfo"]
-            break
-        time.sleep(1)
-    logger.info(profiling_info)
 
 
 def test_node_physical_stats(enable_test_module, shutdown_only):

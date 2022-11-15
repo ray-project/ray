@@ -1,8 +1,9 @@
 import logging
+from typing import Dict, Any
+
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
