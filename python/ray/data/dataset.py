@@ -88,6 +88,7 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
+    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
@@ -324,7 +325,7 @@ class Dataset(Generic[T]):
         self,
         fn: BatchUDF,
         *,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -336,9 +337,9 @@ class Dataset(Generic[T]):
         """Apply the given function to batches of data.
 
         This applies the ``fn`` in parallel with map tasks, with each task handling
-        a block or a bundle of blocks (if ``batch_size`` larger than block size) of
-        the dataset. Each batch is executed serially at Ray level (at lower level,
-        the processing of the batch is usually vectorized).
+        a block or a bundle of blocks of the dataset. Each batch is executed serially
+        at Ray level (at lower level, the processing of the batch is usually
+        vectorized).
 
         Batches are represented as dataframes, ndarrays, or lists. The default batch
         type is determined by your dataset's schema. To determine the default batch
@@ -367,10 +368,10 @@ class Dataset(Generic[T]):
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
             ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
-            a given map task. Each map task will be sent a single block if the block is
-            equal to or larger than ``batch_size``, and will be sent a bundle of blocks
-            up to (but not exceeding) ``batch_size`` if blocks are smaller than
-            ``batch_size``.
+            a given map task. When ``batch_size`` is specified, each map task will be
+            sent a single block if the block is equal to or larger than ``batch_size``,
+            and will be sent a bundle of blocks up to (but not exceeding)
+            ``batch_size`` if blocks are smaller than ``batch_size``.
 
         Examples:
 
@@ -449,7 +450,7 @@ class Dataset(Generic[T]):
                 blocks as batches (blocks may contain different number of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Defaults to 4096.
+                to a given map task. Default batch_size is 4096 with "default".
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
@@ -491,8 +492,14 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("Batch size cannot be negative or 0")
+        target_block_size = None
+        if batch_size == "default":
+            batch_size = DEFAULT_BATCH_SIZE
+        elif batch_size is not None:
+            if batch_size < 1:
+                raise ValueError("Batch size cannot be negative or 0")
+            # Enable blocks bundling when batch_size is specified by caller.
+            target_block_size = batch_size
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -600,7 +607,7 @@ class Dataset(Generic[T]):
                 compute,
                 ray_remote_args,
                 # TODO(Clark): Add a strict cap here.
-                target_block_size=batch_size,
+                target_block_size=target_block_size,
                 fn=fn,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
@@ -712,7 +719,7 @@ class Dataset(Generic[T]):
             >>> # Select only "col1" and "col2" columns.
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=1, num_rows=10, schema={col1: int64, col2: int64})
+            Dataset(num_blocks=..., num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -2439,6 +2446,60 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+
+    def write_mongo(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a MongoDB datasource.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Notes:
+        - Currently, this supports only a subset of the pyarrow's types, due to the
+          limitation of pymongoarrow which is used underneath. Writing unsupported
+          types will fail on type checking. See all the supported types at:
+          https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+        - The records will be inserted into MongoDB as new documents. If a record has
+          the _id field, this _id must be non-existent in MongoDB, otherwise the write
+          will be rejected and fail (hence preexisting documents are protected from
+          being mutated). It's fine to not have _id field in record and MongoDB will
+          auto generate one at insertion.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_mongo( # doctest: +SKIP
+            >>>     MongoDatasource(),
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+            >>>     database="my_db",
+            >>>     collection="my_collection",
+            >>> )
+
+        Args:
+            uri: The URI to the destination MongoDB where the dataset will be
+                written to. For the URI format, see details in
+                https://www.mongodb.com/docs/manual/reference/connection-string/.
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            collection: The name of the collection in the database. This collection
+                must exist otherwise ValueError will be raised.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+        self.write_datasource(
+            MongoDatasource(),
+            ray_remote_args=ray_remote_args,
+            uri=uri,
+            database=database,
+            collection=collection,
         )
 
     def write_datasource(

@@ -8,12 +8,13 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look
 at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
+Note that a version of at least 1.19 is required for Kubernetes and Kubectl.
+
 ## The end-to-end workflow
 The following script summarizes the end-to-end workflow for GPU training. These instructions are for GCP, but a similar setup would work for any major cloud provider. The following script consists of:
 - Step 1: Set up a Kubernetes cluster on GCP.
 - Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-- Step 3: Run the PyTorch image training benchmark. 
-
+- Step 3: Run the PyTorch image training benchmark.
 ```shell
 # Step 1: Set up a Kubernetes cluster on GCP
 # Create a node-pool for a CPU-only head node

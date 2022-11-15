@@ -32,10 +32,10 @@ class MAMLConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
@@ -43,14 +43,15 @@ class MAMLConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = MAMLConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
+        >>> print(config.lr)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
+        >>> config = config.training(  # doctest: +SKIP
+        ...     grad_clip=tune.grid_search([10.0, 40.0]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "MAML",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),

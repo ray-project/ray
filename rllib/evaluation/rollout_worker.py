@@ -53,6 +53,7 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
@@ -477,7 +478,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_config = config.to_dict()
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_workers
+            num_workers if num_workers is not None else self.config.num_rollout_workers
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -1104,11 +1105,8 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
-        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
-        # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
-            # SampleBatch -> Calculate gradients for the default policy.
+            samples = convert_ma_batch_to_sample_batch(samples)
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
