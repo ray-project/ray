@@ -445,7 +445,7 @@ def check_compute_single_action(
             # pre-processor up front.
             worker_set = getattr(algorithm, "workers", None)
             assert worker_set
-            if isinstance(worker_set, list):
+            if not worker_set.local_worker():
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(

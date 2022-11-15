@@ -6,8 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
-from ray.tune.result import TRIAL_INFO
-from ray.util import log_once
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -40,6 +39,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRIAL_INFO
+from ray.util import log_once
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -248,6 +249,7 @@ class AlgorithmConfig:
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
+        self.max_requests_in_flight_per_sampler_worker = 2
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -324,6 +326,7 @@ class AlgorithmConfig:
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
+        self.worker_cls = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -1192,6 +1195,7 @@ class AlgorithmConfig:
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1203,6 +1207,18 @@ class AlgorithmConfig:
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer.
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1225,6 +1241,10 @@ class AlgorithmConfig:
             self.model.update(model)
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
+        if max_requests_in_flight_per_sampler_worker is not NotProvided:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
 
         return self
 
@@ -1776,6 +1796,7 @@ class AlgorithmConfig:
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
+        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -1796,6 +1817,7 @@ class AlgorithmConfig:
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
+            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1812,6 +1834,8 @@ class AlgorithmConfig:
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
+        if worker_cls is not NotProvided:
+            self.worker_cls = worker_cls
 
         return self
 

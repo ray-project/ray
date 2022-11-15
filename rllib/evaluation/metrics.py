@@ -1,18 +1,15 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-import ray
-from ray import ObjectRef
-from ray.actor import ActorHandle
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.evaluation.worker_set import WorkerSet
 
 logger = logging.getLogger(__name__)
 
@@ -71,21 +68,24 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 @DeveloperAPI
 def collect_metrics(
-    local_worker: Optional["RolloutWorker"] = None,
-    remote_workers: Optional[List[ActorHandle]] = None,
-    to_be_collected: Optional[List[ObjectRef]] = None,
+    workers: "WorkerSet",
+    remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
 ) -> ResultDict:
-    """Gathers episode metrics from RolloutWorker instances."""
-    if remote_workers is None:
-        remote_workers = []
+    """Gathers episode metrics from rollout worker set.
 
-    if to_be_collected is None:
-        to_be_collected = []
+    Args:
+        workers: WorkerSet.
+        remote_worker_ids: Optional list of IDs of remote workers to collect
+            metrics from.
+        timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
 
-    episodes, to_be_collected = collect_episodes(
-        local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
+    Returns:
+        A result dict of metrics.
+    """
+    episodes = collect_episodes(
+        workers, remote_worker_ids, timeout_seconds=timeout_seconds
     )
     metrics = summarize_episodes(
         episodes, episodes, keep_custom_metrics=keep_custom_metrics
@@ -95,46 +95,38 @@ def collect_metrics(
 
 @DeveloperAPI
 def collect_episodes(
-    local_worker: Optional["RolloutWorker"] = None,
-    remote_workers: Optional[List[ActorHandle]] = None,
-    to_be_collected: Optional[List[ObjectRef]] = None,
+    workers: "WorkerSet",
+    remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
-) -> Tuple[List[RolloutMetrics], List[ObjectRef]]:
+) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        local_worker: The local RolloutWorker (if any). By default, evaluation
-            WorkerSets don't have a local worker anymore (not needed).
-        remote_workers: List of ActorHandle pointing to remote RolloutWorkers.
+        workers: WorkerSet.
+        remote_worker_ids: Optional list of IDs of remote workers to collect
+            metrics from.
+        timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
 
+    Returns:
+        List of RolloutMetrics.
     """
-    if remote_workers is None:
-        remote_workers = []
+    # This will drop get_metrics() calls that are too slow.
+    # We can potentially make this an asynchronous call if this turns
+    # out to be a problem.
+    metric_lists = workers.foreach_worker(
+        lambda w: w.get_metrics(),
+        local_worker=True,
+        remote_worker_ids=remote_worker_ids,
+        timeout_seconds=timeout_seconds,
+    )
+    if len(metric_lists) == 0:
+        logger.warning("WARNING: collected no metrics.")
 
-    if to_be_collected is None:
-        to_be_collected = []
-
-    if remote_workers:
-        pending = [
-            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
-        ] + to_be_collected
-        collected, to_be_collected = ray.wait(
-            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0
-        )
-        if pending and len(collected) == 0:
-            logger.warning(
-                "WARNING: collected no metrics in {} seconds".format(timeout_seconds)
-            )
-        metric_lists = ray.get(collected)
-    else:
-        metric_lists = []
-
-    if local_worker:
-        metric_lists.append(local_worker.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
-    return episodes, to_be_collected
+
+    return episodes
 
 
 @DeveloperAPI
@@ -150,6 +142,9 @@ def summarize_episodes(
             (not newly collected in this iteration) in order to achieve the size of
             the smoothing window.
         new_episodes: All the episodes that were completed in this iteration.
+
+    Returns:
+        A result dict of metrics.
     """
 
     if new_episodes is None:
