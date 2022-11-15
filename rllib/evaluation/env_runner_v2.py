@@ -527,6 +527,8 @@ class EnvRunnerV2:
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
+            # Finished advancing episode by 1 step, mark it so.
+            episode.step()
             # If this episode is brand-new, call the episode start callback(s).
             # Note: EpisodeV2s are initialized with length=-1 (before the reset).
             if not episode.has_init_obs():
@@ -660,8 +662,8 @@ class EnvRunnerV2:
                         item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
                         to_eval[policy_id].append(item)
 
-            # Finished advancing episode by 1 step, mark it so.
-            episode.step()
+            # # Finished advancing episode by 1 step, mark it so.
+            # episode.step()
 
             # Exception: The very first env.poll() call causes the env to get reset
             # (no step taken yet, just a single starting observation logged).
@@ -819,6 +821,7 @@ class EnvRunnerV2:
         # If reset is async, we will get its result in some future poll.
         elif resetted_obs != ASYNC_RESET_RETURN:
             new_episode: EpisodeV2 = self._active_episodes[env_id]
+            new_episode.step()
             self._call_on_episode_start(new_episode, env_id)
 
             per_policy_resetted_obs: Dict[PolicyID, List] = defaultdict(list)
@@ -852,7 +855,7 @@ class EnvRunnerV2:
                     to_eval[policy_id].append(d)
 
             # Step after adding initial obs. This will give us 0 env and agent step.
-            new_episode.step()
+            # new_episode.step()
 
     def create_episode(self, env_id: EnvID) -> EpisodeV2:
         """Creates a new EpisodeV2 instance and returns it.
