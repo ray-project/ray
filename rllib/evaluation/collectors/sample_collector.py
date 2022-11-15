@@ -100,9 +100,9 @@ class SampleCollector(metaclass=ABCMeta):
             ...     init_obs=obs,
             ...     init_infos=infos,
             ... )
-            >>> obs, r, done, truncated, info = env.step(action)
+            >>> obs, r, terminated, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "done": done,
+            ...     "action": action, "obs": obs, "reward": r, "terminated": terminated,
             ...     "truncated": truncated, "info": info
             ... })
         """
@@ -120,8 +120,8 @@ class SampleCollector(metaclass=ABCMeta):
     ) -> None:
         """Add the given dictionary (row) of values to this collector.
 
-        The incoming data (`values`) must include action, reward, done, and
-        next_obs information and may include any other information.
+        The incoming data (`values`) must include action, reward, terminated, truncated,
+        and next_obs information and may include any other information.
         For the initial observation (after Env.reset()) of the given agent/
         episode-ID combination, `add_initial_obs()` must be called instead.
 
@@ -136,20 +136,20 @@ class SampleCollector(metaclass=ABCMeta):
                 its trajectory (the multi-agent episode may still be ongoing).
             values (Dict[str, TensorType]): Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
-                REWARD, NEW_OBS, and DONE.
+                REWARD, NEW_OBS, TERMINATED, and TRUNCATED.
 
         Examples:
             >>> obs, info = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
-            >>> obs, r, done, truncated, info = env.step(action)
+            >>> obs, r, terminated, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(
             ...     12345,
             ...     0,
             ...     "pol0",
             ...     agent_done=False,
             ...     values={
-            ...         "action": action, "obs": obs, "reward": r, "done": done,
-            ...         "truncated": truncated
+            ...         "action": action, "obs": obs, "reward": r,
+            ...         "terminated": terminated, "truncated": truncated
             ...     },
             ... )
         """
@@ -220,9 +220,10 @@ class SampleCollector(metaclass=ABCMeta):
                 for inference/training.
 
         Examples:
-            >>> obs, r, done, truncated, info = env.step(action)
+            >>> obs, r, terminated, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "done": done
+            ...     "action": action, "obs": obs, "reward": r,
+            ...     "terminated": terminated, "truncated", truncated
             ... })
             >>> input_dict = collector.get_inference_input_dict(policy.model)
             >>> action = policy.compute_actions_from_input_dict(input_dict)

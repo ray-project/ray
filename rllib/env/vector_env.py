@@ -345,7 +345,7 @@ class _VectorizedGymEnv(VectorEnv):
     ) -> Tuple[
         List[EnvObsType], List[float], List[bool], List[bool], List[EnvInfoDict]
     ]:
-        obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch = (
+        obs_batch, reward_batch, terminated_batch, truncated_batch, info_batch = (
             [],
             [],
             [],
@@ -363,18 +363,18 @@ class _VectorizedGymEnv(VectorEnv):
                 else:
                     raise e
 
-            obs, r, terminated, truncated, info = results
+            obs, reward, terminated, truncated, info = results
 
             if not isinstance(info, dict):
                 raise ValueError(
                     "Info should be a dict, got {} ({})".format(info, type(info))
                 )
             obs_batch.append(obs)
-            rew_batch.append(r)
+            reward_batch.append(reward)
             terminated_batch.append(terminated)
             truncated_batch.append(truncated)
             info_batch.append(info)
-        return obs_batch, rew_batch, terminated_batch, truncated_batch, info_batch
+        return obs_batch, reward_batch, terminated_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self) -> List[EnvType]:

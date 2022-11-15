@@ -43,7 +43,7 @@ class PettingZooEnv(MultiAgentEnv):
                 [0, 0, 0],
                 [0, 0, 0]]], dtype=uint8)
         }
-        >>> obs, rewards, dones, truncateds, infos = env.step({
+        >>> obs, rewards, terminateds, truncateds, infos = env.step({
         ...     "prisoner_0": 1
         ... })
         # only returns the observation, reward, info, etc, for
@@ -62,7 +62,7 @@ class PettingZooEnv(MultiAgentEnv):
         {
             'prisoner_1': 0
         }
-        >>> print(dones)
+        >>> print(terminateds)
         {
             'prisoner_1': False, '__all__': False
         }
@@ -123,15 +123,15 @@ class PettingZooEnv(MultiAgentEnv):
         self.env.step(action[self.env.agent_selection])
         obs_d = {}
         rew_d = {}
-        done_d = {}
+        terminated_d = {}
         truncated_d = {}
         info_d = {}
         while self.env.agents:
-            obs, rew, done, truncated, info = self.env.last()
+            obs, rew, terminated, truncated, info = self.env.last()
             agent_id = self.env.agent_selection
             obs_d[agent_id] = obs
             rew_d[agent_id] = rew
-            done_d[agent_id] = done or truncated
+            terminated_d[agent_id] = terminated
             truncated_d[agent_id] = truncated
             info_d[agent_id] = info
             if (
@@ -142,11 +142,11 @@ class PettingZooEnv(MultiAgentEnv):
             else:
                 break
 
-        all_done = not self.env.agents
-        done_d["__all__"] = all_done
-        truncated_d["__all__"] = all(truncated_d.values())
+        all_gone = not self.env.agents
+        terminated_d["__all__"] = all_gone and all(terminated_d.values())
+        truncated_d["__all__"] = all_gone and all(truncated_d.values())
 
-        return obs_d, rew_d, done_d, truncated_d, info_d
+        return obs_d, rew_d, terminated_d, truncated_d, info_d
 
     def close(self):
         self.env.close()
@@ -202,10 +202,10 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         return obs, info or {}
 
     def step(self, action_dict):
-        obss, rews, dones, truncateds, infos = self.par_env.step(action_dict)
-        dones["__all__"] = all(dones.values())
+        obss, rews, terminateds, truncateds, infos = self.par_env.step(action_dict)
+        terminateds["__all__"] = all(terminateds.values())
         truncateds["__all__"] = all(truncateds.values())
-        return obss, rews, dones, truncateds, infos
+        return obss, rews, terminateds, truncateds, infos
 
     def close(self):
         self.par_env.close()

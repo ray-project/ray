@@ -179,8 +179,8 @@ class AgentCollector:
 
         Args:
             values: Data dict (interpreted as a single row) to be added to buffer.
-            Must contain keys:
-                SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
+                Must contain keys:
+                SampleBatch.ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS, and NEXT_OBS.
         """
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
@@ -302,8 +302,8 @@ class AgentCollector:
     ) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
 
-        If the episode/trajectory has no DONE=True at the end, will copy
-        the necessary n timesteps at the end of the trajectory back to the
+        If the episode/trajectory has no TERMINATED|TRUNCATED=True at the end, will
+        copy the necessary n timesteps at the end of the trajectory back to the
         beginning of the buffers and wait for new samples coming in.
         SampleBatches created by this method will be ready for postprocessing
         by a Policy.
@@ -414,8 +414,10 @@ class AgentCollector:
         # self.shift_before) to the beginning of buffers and erase everything
         # else.
         if (
-            SampleBatch.DONES in self.buffers
-            and not self.buffers[SampleBatch.DONES][0][-1]
+            SampleBatch.TERMINATEDS in self.buffers
+            and not self.buffers[SampleBatch.TERMINATEDS][0][-1]
+            and SampleBatch.TRUNCATEDS in self.buffers
+            and not self.buffers[SampleBatch.TRUNCATEDS][0][-1]
         ):
             # Copy data to beginning of buffer and cut lists.
             if self.shift_before > 0:

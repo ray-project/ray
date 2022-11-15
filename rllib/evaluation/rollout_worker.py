@@ -169,7 +169,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "dones": [[...]], "new_obs": [[...]]})
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
         >>> # Creating a multi-agent rollout worker
         >>> from gymnasium.spaces import Discrete, Box
         >>> import random

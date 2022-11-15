@@ -807,7 +807,7 @@ class SampleBatch(dict):
         # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
         # the old meaning of DONES.
         if key == SampleBatch.DONES:
-            return self[SampleBatch.TERMINATEDS] * self[SampleBatch.TRUNCATEDS]
+            return self[SampleBatch.TERMINATEDS] + self[SampleBatch.TRUNCATEDS]
         # Backward compatibility for when "input-dicts" were used.
         elif key == "is_training":
             if log_once("SampleBatch['is_training']"):
