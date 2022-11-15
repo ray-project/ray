@@ -362,7 +362,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.delete_job_internal(job.submission_id)
-            logger.error("delete job resp: %s", resp)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
