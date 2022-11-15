@@ -5,7 +5,7 @@ Resources
 
 Ray allows you to seamlessly scale your applications from a laptop to a cluster without code change.
 It is possible because of Ray resources.
-Ray resources abstract away physical machines and let you express your computation in terms of resources instead of machines,
+Ray resources abstract away physical machines and let you express your computation in terms of resources,
 while the system manages scheduling and autoscaling based on resource requests.
 
 A resource in Ray is a key-value pair where the key denotes a resource name, and the value is a float quantity.
