@@ -266,6 +266,8 @@ class JobSubmissionClient(SubmissionClient):
 
         If the job is not already in a terminal state, raises an error.
         This does not delete the job logs from disk.
+        Submitting a job with the same submission ID as a previously
+        deleted job is not supported and may lead to unexpected behavior.
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient

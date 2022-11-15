@@ -500,10 +500,6 @@ def test_delete_job(job_sdk_client, capsys):
     jobs = client.list_jobs()
     assert finished_job_id not in [job.submission_id for job in jobs]
 
-    # Check that we can resubmit a job with the same id
-    client.submit_job(entrypoint="echo hello", submission_id=finished_job_id)
-    wait_for_condition(_check_job_succeeded, client=client, job_id=finished_job_id)
-
 
 def test_job_metadata(job_sdk_client):
     client = job_sdk_client

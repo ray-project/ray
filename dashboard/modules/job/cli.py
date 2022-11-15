@@ -341,6 +341,8 @@ def delete(address: Optional[str], job_id: str):
     Only supported for jobs that are already in a terminal state.
     Fails with exit code 1 if the job is not already stopped.
     Does not delete job logs from disk.
+    Submitting a job with the same submission ID as a previously
+    deleted job is not supported and may lead to unexpected behavior.
 
     Example:
         ray job delete <my_job_id>
