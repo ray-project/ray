@@ -2,20 +2,25 @@ import copy
 import logging
 import platform
 import queue
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+import random
+from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
 import ray
-from ray.actor import ActorHandle
+from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
-from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
+from ray.rllib.utils.actor_manager import (
+    FaultAwareApply,
+    FaultTolerantActorManager,
+    RemoteCallResults,
+)
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -36,9 +41,13 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import PolicyID, ResultDict, SampleBatchType, T
+from ray.rllib.utils.typing import (
+    PolicyID,
+    ResultDict,
+    SampleBatchType,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.types import ObjectRef
+
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +108,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
-        self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
@@ -147,7 +155,6 @@ class ImpalaConfig(AlgorithmConfig):
         replay_buffer_num_slots: Optional[int] = NotProvided,
         learner_queue_size: Optional[int] = NotProvided,
         learner_queue_timeout: Optional[float] = NotProvided,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_worker: Optional[int] = NotProvided,
         timeout_s_sampler_manager: Optional[float] = NotProvided,
         timeout_s_aggregator_manager: Optional[float] = NotProvided,
@@ -205,8 +212,6 @@ class ImpalaConfig(AlgorithmConfig):
             learner_queue_timeout: Wait for train batches to be available in minibatch
                 buffer queue this many seconds. This may need to be increased e.g. when
                 training with a slow environment.
-            max_requests_in_flight_per_sampler_worker: Level of queuing for sampling
-                operations.
             max_requests_in_flight_per_aggregator_worker: Level of queuing for replay
                 aggregator operations (if using aggregator workers).
             timeout_s_sampler_manager: The timeout for waiting for sampling results
@@ -215,8 +220,8 @@ class ImpalaConfig(AlgorithmConfig):
             timeout_s_aggregator_manager: The timeout for waiting for replay worker
                 results -- typically if this is too low, the manager won't be able to
                 retrieve ready replay requests.
-            broadcast_interval: Max number of workers to broadcast one set of
-                weights to.
+            broadcast_interval: Number of training step calls before weights are
+                broadcasted to rollout workers that are sampled during any iteration.
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
                 multi-level aggregation of the data produced by the m RolloutWorkers
                 (`num_workers`). Note that n should be much smaller than m.
@@ -243,18 +248,6 @@ class ImpalaConfig(AlgorithmConfig):
                 for the value network.
             after_train_step: Callback for APPO to use to update KL, target network
                 periodically. The input to the callback is the learner fetches dict.
-
-        Note:
-            Tuning max_requests_in_flight_per_sampler_worker and
-            max_requests_in_flight_per_aggregator_worker is important when running
-            experiments with large sample batches. If the sample batches are large in
-            size, then there is the risk that the object store may fill up, causing
-            the store to spill sample batches to disk. This can cause any asynchronous
-            requests to become very slow, making your experiment run slowly. You can
-            inspect the object store during your experiment via a call to ray memory
-            on your headnode, and by using the ray dashboard. If you're seeing that
-            the object store is filling up, turn down the number of remote requests
-            in flight, or enable compression in your experiment of timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -291,10 +284,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.broadcast_interval = broadcast_interval
         if num_aggregation_workers is not NotProvided:
             self.num_aggregation_workers = num_aggregation_workers
-        if max_requests_in_flight_per_sampler_worker is not NotProvided:
-            self.max_requests_in_flight_per_sampler_worker = (
-                max_requests_in_flight_per_sampler_worker
-            )
         if max_requests_in_flight_per_aggregator_worker is not NotProvided:
             self.max_requests_in_flight_per_aggregator_worker = (
                 max_requests_in_flight_per_aggregator_worker
@@ -502,17 +491,18 @@ class Impala(Algorithm):
                 ],
                 node=localhost,
             )
-            self._aggregator_workers = [
+            aggregator_workers = [
                 actor for actor_groups in all_co_located for actor in actor_groups
             ]
-            self._aggregator_actor_manager = AsyncRequestsManager(
-                self._aggregator_workers,
-                max_remote_requests_in_flight_per_worker=(
+            self._aggregator_actor_manager = FaultTolerantActorManager(
+                aggregator_workers,
+                max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_worker
                 ),
-                ray_wait_timeout_s=self.config.timeout_s_aggregator_manager,
             )
-
+            self._timeout_s_aggregator_manager = (
+                self.config.timeout_s_aggregator_manager
+            )
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
             self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
@@ -524,22 +514,15 @@ class Impala(Algorithm):
                 replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
+            self._aggregator_actor_manager = None
 
-        self._sampling_actor_manager = AsyncRequestsManager(
-            self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=(
-                self.config.max_requests_in_flight_per_sampler_worker
-            ),
-            return_object_refs=True,
-            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
-        )
+        self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
         # Create and start the learner thread.
         self._learner_thread = make_learner_thread(
             self.workers.local_worker(), self.config
         )
         self._learner_thread.start()
-        self.workers_that_need_updates = set()
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
@@ -547,20 +530,29 @@ class Impala(Algorithm):
         if not self._learner_thread.is_alive():
             raise RuntimeError("The learner thread died while training!")
 
+        use_tree_aggregation = (
+            self._aggregator_actor_manager
+            and self._aggregator_actor_manager.num_healthy_actors() > 0
+        )
+
         # Get references to sampled SampleBatches from our workers.
-        unprocessed_sample_batches_refs = self.get_samples_from_workers()
+        unprocessed_sample_batches = self.get_samples_from_workers(
+            return_object_refs=use_tree_aggregation,
+        )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
-        self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
+        workers_that_need_updates = {
+            worker_id for worker_id, _ in unprocessed_sample_batches
+        }
 
         # Send the collected batches (still object refs) to our aggregation workers.
-        if self.config.num_aggregation_workers > 0:
+        if use_tree_aggregation:
             batches = self.process_experiences_tree_aggregation(
-                unprocessed_sample_batches_refs
+                unprocessed_sample_batches
             )
         # Resolve collected batches here on local process (using the mixin buffer).
         else:
-            batches = self.process_experiences_directly(unprocessed_sample_batches_refs)
+            batches = self.process_experiences_directly(unprocessed_sample_batches)
 
         # Increase sampling counters now that we have the actual SampleBatches on
         # the local process (and can measure their sizes).
@@ -577,7 +569,17 @@ class Impala(Algorithm):
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.update_workers_if_necessary(policy_ids=list(train_results.keys()))
+            self.update_workers_if_necessary(
+                workers_that_need_updates=workers_that_need_updates,
+                policy_ids=list(train_results.keys()),
+            )
+
+        # With a training step done, try to bring any aggregators back to life
+        # if necessary.
+        # Aggregation workers are stateless, so we do not need to restore any
+        # state here.
+        if self._aggregator_actor_manager:
+            self._aggregator_actor_manager.probe_unhealthy_actors()
 
         return train_results
 
@@ -661,24 +663,30 @@ class Impala(Algorithm):
 
     def get_samples_from_workers(
         self,
-    ) -> Dict[
-        Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
-    ]:
-        """Perform asynchronous sampling on all (remote) rollout workers."""
-
-        # Sample on all remote workers.
-        if self.workers.remote_workers():
-            self._sampling_actor_manager.call_on_all_available(
-                lambda worker: worker.sample()
+        return_object_refs: Optional[bool] = False,
+    ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
+        # Perform asynchronous sampling on all (remote) rollout workers.
+        if self.workers.num_healthy_remote_workers() > 0:
+            self.workers.foreach_worker_async(
+                lambda worker: worker.sample(),
+                healthy_only=True,
             )
-            sample_batches: Dict[
-                ActorHandle, List[ObjectRef]
-            ] = self._sampling_actor_manager.get_ready()
-        # Only sampling on the local worker.
+            sample_batches: List[
+                Tuple[int, ObjectRef]
+            ] = self.workers.fetch_ready_async_reqs(
+                timeout_seconds=self._timeout_s_sampler_manager,
+                return_obj_refs=return_object_refs,
+            )
+        elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+            # Sampling from the local worker
+            sample_batch = self.workers.local_worker().sample()
+            if return_object_refs:
+                sample_batch = ray.put(sample_batch)
+            sample_batches = [(0, sample_batch)]
         else:
-            sample_batches = {
-                self.workers.local_worker(): [self.workers.local_worker().sample()]
-            }
+            # Not much we can do. Return empty list and wait.
+            return []
+
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
@@ -734,20 +742,17 @@ class Impala(Algorithm):
         return final_learner_info
 
     def process_experiences_directly(
-        self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
+        self,
+        worker_to_sample_batches: List[Tuple[int, SampleBatch]],
     ) -> List[SampleBatchType]:
         processed_batches = []
-        batches = [
-            sample_batch_ref
-            for refs_batch in actor_to_sample_batches_refs.values()
-            for sample_batch_ref in refs_batch
-        ]
+        batches = [b for _, b in worker_to_sample_batches]
         if not batches:
             return processed_batches
-        if batches and isinstance(batches[0], ray.ObjectRef):
-            batches = ray.get(batches)
-
         for batch in batches:
+            assert not isinstance(
+                batch, ObjectRef
+            ), "process_experiences_directly can not handle ObjectRefs. "
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
@@ -757,31 +762,40 @@ class Impala(Algorithm):
         return processed_batches
 
     def process_experiences_tree_aggregation(
-        self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
+        self,
+        worker_to_sample_batches_refs: List[Tuple[int, ObjectRef]],
     ) -> List[SampleBatchType]:
-        batches = [
-            sample_batch_ref
-            for refs_batch in actor_to_sample_batches_refs.values()
-            for sample_batch_ref in refs_batch
-        ]
-        ready_processed_batches = []
-        for batch in batches:
-            success = self._aggregator_actor_manager.call(
-                lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
+        for _, batch in worker_to_sample_batches_refs:
+            assert isinstance(batch, ObjectRef), (
+                "For efficiency, process_experiences_tree_aggregation should "
+                f"be given ObjectRefs instead of {type(batch)}."
             )
-            if not success:
+            # Randomly pick an aggregation worker to process this batch.
+            aggregator_id = random.choice(
+                self._aggregator_actor_manager.healthy_actor_ids()
+            )
+            calls_placed = self._aggregator_actor_manager.foreach_actor_async(
+                lambda actor: actor.process_episodes(ray.get(batch)),
+                remote_actor_ids=[aggregator_id],
+            )
+            if calls_placed <= 0:
                 self._counters["num_times_no_aggregation_worker_available"] += 1
 
-        waiting_processed_sample_batches: Dict[
-            ActorHandle, List[SampleBatchType]
-        ] = self._aggregator_actor_manager.get_ready()
-        for ready_sub_batches in waiting_processed_sample_batches.values():
-            ready_processed_batches.extend(ready_sub_batches)
+        waiting_processed_sample_batches: RemoteCallResults = (
+            self._aggregator_actor_manager.fetch_ready_async_reqs(
+                timeout_seconds=self._timeout_s_aggregator_manager,
+            )
+        )
+        handle_remote_call_result_errors(
+            waiting_processed_sample_batches,
+            self.config.ignore_worker_failures,
+        )
 
-        return ready_processed_batches
+        return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
 
     def update_workers_if_necessary(
         self,
+        workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
     ) -> None:
         """Updates all RolloutWorkers that require updating.
@@ -807,39 +821,26 @@ class Impala(Algorithm):
         }
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            policy_ids != []
-            and self.workers.remote_workers()
+            self.workers.num_remote_workers() > 0
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config.broadcast_interval
-            and self.workers_that_need_updates
+            and workers_that_need_updates
         ):
             weights = ray.put(local_worker.get_weights(policy_ids))
+
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
-            for worker in self.workers_that_need_updates:
-                worker.set_weights.remote(weights, global_vars)
-            self.workers_that_need_updates = set()
+            self.workers.foreach_worker(
+                func=lambda w: w.set_weights(ray.get(weights), global_vars),
+                local_worker=False,
+                remote_worker_ids=list(workers_that_need_updates),
+                timeout_seconds=0,  # Don't wait for the workers to finish.
+            )
 
         # Update global vars of the local worker.
         local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
-
-    @override(Algorithm)
-    def on_worker_failures(
-        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
-    ):
-        """Handle the failures of remote sampling workers
-
-        Args:
-            removed_workers: removed worker ids.
-            new_workers: ids of newly created workers.
-        """
-        super().on_worker_failures(removed_workers, new_workers)
-        self._sampling_actor_manager.remove_workers(
-            removed_workers, remove_in_flight_requests=True
-        )
-        self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
@@ -850,8 +851,8 @@ class Impala(Algorithm):
         return result
 
 
-@ray.remote(num_cpus=0)
-class AggregatorWorker:
+@ray.remote(num_cpus=0, max_restarts=-1)
+class AggregatorWorker(FaultAwareApply):
     """A worker for doing tree aggregation of collected episodes"""
 
     def __init__(self, config: AlgorithmConfig):
@@ -871,15 +872,6 @@ class AggregatorWorker:
         self._mixin_buffer.add(batch)
         processed_batches = self._mixin_buffer.replay(_ALL_POLICIES)
         return processed_batches
-
-    def apply(
-        self,
-        func: Callable[["AggregatorWorker", Optional[Any], Optional[Any]], T],
-        *_args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this AggregatorWorker instance."""
-        return func(self, *_args, **kwargs)
 
     def get_host(self) -> str:
         return platform.node()
