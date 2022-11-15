@@ -145,7 +145,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
+            .rollouts(rollout_fragment_length=50, num_rollout_workers=0,
+                enable_connectors=True)
             .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
@@ -155,7 +156,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 50)
         self.assertEqual(batch.policy_batches["p0"].count, 150)
         self.assertEqual(batch.policy_batches["p1"].count, 100)
-        self.assertEqual(batch.policy_batches["p0"]["t"].tolist(), list(range(25)) * 6)
+        self.assertEqual(batch.policy_batches["p0"]["t"].tolist(), [i for i in range(-1, 24)] * 6)
 
     def test_multi_agent_sample_sync_remote(self):
         ev = RolloutWorker(
