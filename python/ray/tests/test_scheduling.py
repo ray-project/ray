@@ -702,12 +702,6 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     indirect=True,
 )
 def test_scheduling_class_depth(ray_start_regular):
-
-    node_info = ray.nodes()[0]
-    metrics_export_port = node_info["MetricsExportPort"]
-    addr = node_info["NodeManagerAddress"]
-    prom_addr = f"{addr}:{metrics_export_port}"
-
     @ray.remote(num_cpus=1000)
     def infeasible():
         pass

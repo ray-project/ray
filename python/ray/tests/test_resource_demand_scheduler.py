@@ -9,7 +9,6 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
-import subprocess
 
 import pytest
 import yaml
@@ -65,7 +64,6 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
-from ray.cluster_utils import AutoscalingCluster
 from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
