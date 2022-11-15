@@ -63,8 +63,8 @@ To learn more about autoscaling, refer to the user guides for Ray clusters on :r
 
 .. _cluster-clients-and-jobs:
 
-Ray Job
--------
+Ray Jobs
+--------
 
 A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 The worker that runs the Python script is known as the *driver* of the job.
