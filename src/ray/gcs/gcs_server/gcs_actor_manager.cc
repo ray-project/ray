@@ -314,7 +314,9 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
     ptr = registered_actor_iter->second.get();
   } else {
     const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
-    ptr = destroyed_actor_iter->second.get();
+    if(destroyed_actor_iter != destroyed_actors_.end()) {
+      ptr = destroyed_actor_iter->second.get();
+    }
   }
 
   if (ptr != nullptr) {
