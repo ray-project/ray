@@ -264,9 +264,6 @@ if setup_spec.type == SetupType.RAY:
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
-
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
         "gym>=0.21.0,<0.24.0",
@@ -787,7 +784,6 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
-            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },
