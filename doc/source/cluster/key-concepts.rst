@@ -67,7 +67,7 @@ Ray Jobs
 --------
 
 A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
-The worker that runs the Python script is known as the *driver* of the job.
+The worker that runs the Python script is known as the *driver* of the job. 
 
 There are three ways to run a Ray job on a Ray cluster:
 
@@ -79,6 +79,6 @@ For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-over
 
 .. figure:: images/ray-job-diagram.svg
     :align: center
-    :width: 600px
+    :width: 650px
     
     *Three ways of running a job on a Ray cluster.*
