@@ -26,14 +26,14 @@
 #include "ray/common/id.h"                            // TaskID
 #include "ray/common/task/task_spec.h"                // TaskSpecification
 #include "ray/gcs/gcs_client/gcs_client.h"            // Gcs::GcsClient
-#include "src/ray/protobuf/gcs.pb.h"                  // rpc::TaskStateEventData
+#include "src/ray/protobuf/gcs.pb.h"                  // rpc::TaskEventData
 
 namespace ray {
 namespace core {
 
 namespace worker {
 
-using TaskIdEventMap = absl::flat_hash_map<TaskID, rpc::TaskStateEvents>;
+using TaskIdEventMap = absl::flat_hash_map<TaskID, rpc::TaskEvents>;
 
 /// An in-memory buffer for storing task state events, and flushing them periodically to
 /// GCS. Task state events will be recorded by other core components, i.e. core worker

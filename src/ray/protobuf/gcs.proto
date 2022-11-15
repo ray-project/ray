@@ -201,24 +201,38 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
+// Represents the type of a task event.
+enum TaskEventType {
+  // Event related to task status change.
+  STATUS_EVENT = 0;
+  // Profiling events.
+  PROFILE_EVENT = 1;
+}
+
 // Represents a single task event entry.
 //  - It could be a task status event that represents a TaskStatus change, which
 //    only has a corresponding start_time.
 //  - It could also be other events with duration and customized event naming, such
-//    as profiling events. For such events, `task_status` should be set to
-//    TaskStatus::NIL.
-message TaskStateEventEntry {
-  // The task status associated with this event.
-  TaskStatus task_status = 1;
+//    as profiling events.
+message TaskEventEntry {
+  // Common fields for all events.
+  // Event type.
+  TaskEventType event_type = 1;
   // The start timestamp of the event time.
   int64 start_time = 2;
   // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus change.
   int64 end_time = 3;
+
+  // For STATUS_EVENT:
+  // The task status associated with this event.
+  TaskStatus task_status = 4;
+
+  // For PROFILE_EVENT:
   // Additional data associated with the event. This data must be serialized
   // using JSON.
-  string extra_data = 4;
+  string extra_data = 5;
   // Customized event name if not a TaskStatus change point event.
-  string event_name = 5;
+  string event_name = 6;
 }
 
 // Represents task states which could be changed during task execution.
@@ -228,7 +242,7 @@ message TaskStateEntry {
 }
 
 // Represents state envents for a single task.
-message TaskStateEvents {
+message TaskEvents {
   // Mirror info in task_info
   bytes task_id = 1;
   // Task immutable metadata info
@@ -236,14 +250,14 @@ message TaskStateEvents {
   // Task mutable state info, which could be changed during task execution
   TaskStateEntry task_state = 3;
   // List of task status events (e.g. PENDING, RUNNING)
-  repeated TaskStateEventEntry task_events = 4;
+  repeated TaskEventEntry task_events = 4;
 }
 
 // Represents a compact list of task state events by different tasks,
 // where each task has a list of state change events.
-message TaskStateEventData {
+message TaskEventData {
   // A batch of task state change events.
-  repeated TaskStateEvents events_by_task = 1;
+  repeated TaskEvents events_by_task = 1;
 }
 
 message ResourceTableData {

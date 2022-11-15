@@ -540,8 +540,8 @@ class TaskInfoAccessor {
   /// \param data_ptr The task states event data that will be added to GCS.
   /// \param callback Callback that will be called when add is complete.
   /// \return Status
-  virtual Status AsyncAddTaskStateEventData(
-      std::unique_ptr<rpc::TaskStateEventData> data_ptr, const StatusCallback &callback);
+  virtual Status AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
+                                       const StatusCallback &callback);
 
  private:
   GcsClient *client_impl_;

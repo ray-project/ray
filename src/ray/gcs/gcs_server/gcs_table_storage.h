@@ -38,8 +38,8 @@ using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
+using rpc::TaskEvents;
 using rpc::TaskSpec;
-using rpc::TaskStateEvents;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
@@ -239,9 +239,9 @@ class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
   }
 };
 
-class GcsTaskStateEventTable : public GcsTable<TaskID, TaskStateEvents> {
+class GcsTaskEventTable : public GcsTable<TaskID, TaskEvents> {
  public:
-  explicit GcsTaskStateEventTable(std::shared_ptr<StoreClient> store_client)
+  explicit GcsTaskEventTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_STATE);
   }
@@ -284,10 +284,10 @@ class GcsTableStorage {
     profile_table_ = std::make_unique<GcsProfileTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
-    task_state_event_table_ = std::make_unique<GcsTaskStateEventTable>(store_client_);
+    task_state_event_table_ = std::make_unique<GcsTaskEventTable>(store_client_);
   }
 
-  GcsTaskStateEventTable &TaskStateEventTable() {
+  GcsTaskEventTable &TaskEventTable() {
     RAY_CHECK(task_state_event_table_ != nullptr);
     return *task_state_event_table_;
   }
@@ -364,7 +364,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> system_config_table_;
-  std::unique_ptr<GcsTaskStateEventTable> task_state_event_table_;
+  std::unique_ptr<GcsTaskEventTable> task_state_event_table_;
 };
 
 /// \class RedisGcsTableStorage

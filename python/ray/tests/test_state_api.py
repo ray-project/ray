@@ -34,15 +34,15 @@ from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
-    TaskStateEventEntry,
-    TaskStateEvents,
+    TaskEventEntry,
+    TaskEvents,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
-    GetAllTaskStateEventReply,
+    GetAllTaskEventReply,
     GetAllWorkerInfoReply,
 )
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
@@ -205,13 +205,11 @@ def generate_task_data(
     )
     task_id = id
     task_events = [
-        TaskStateEventEntry(task_status=state, event_time=event_time)
+        TaskEventEntry(task_status=state, event_time=event_time)
         for state, event_time in state_events
     ]
 
-    return TaskStateEvents(
-        task_id=task_id, task_info=task_info, task_events=task_events
-    )
+    return TaskEvents(task_id=task_id, task_info=task_info, task_events=task_events)
 
 
 def generate_object_info(
@@ -776,7 +774,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     first_task_name = "1"
     second_task_name = "2"
     id = b"1234"
-    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name, node_id=node_id),
@@ -793,7 +791,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test detail
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -809,7 +807,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test limit
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -824,7 +822,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test filters
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -1204,7 +1202,7 @@ async def test_state_data_source_client(ray_start_cluster):
     Test tasks
     """
     result = await client.get_all_task_info()
-    assert isinstance(result, GetAllTaskStateEventReply)
+    assert isinstance(result, GetAllTaskEventReply)
 
     """
     Test objects
@@ -2505,7 +2503,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "TaskInfoGcsService.grpc_server.GetAllTaskStateEvent=20000000:20000000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskEvent=20000000:20000000,"
                 "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
@@ -2628,7 +2626,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "TaskInfoGcsService.grpc_server.GetAllTaskStateEvent=200000:200000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskEvent=200000:200000,"
                 "NodeManagerService.grpc_server.GetObjectsInfo=200000:200000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=200000:200000,"
                 "NodeInfoGcsService.grpc_server.GetAllNodeInfo=200000:200000,"

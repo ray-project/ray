@@ -32,7 +32,7 @@ from ray.experimental.state.common import (
 )
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
-    GetAllTaskStateEventReply,
+    GetAllTaskEventReply,
 )
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
@@ -69,7 +69,7 @@ async def test_api_manager_summary_tasks(state_api_manager):
     data_source_client.get_all_task_info = AsyncMock()
     ids = [TaskID((f"{i}" * 24).encode()) for i in range(5)]
     # 1: {PENDING_NODE_ASSIGNMENT:3, RUNNING:1}, 2:{PENDING_NODE_ASSIGNMENT: 1}
-    data_source_client.get_all_task_info.return_value = GetAllTaskStateEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
         total=5,
         events_by_task=[
             generate_task_data(

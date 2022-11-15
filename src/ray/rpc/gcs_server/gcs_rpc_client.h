@@ -382,13 +382,13 @@ class GcsRpcClient {
 
   /// Add task events info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
-                             AddTaskStateEventData,
+                             AddTaskEventData,
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get task events info from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
-                             GetAllTaskStateEvent,
+                             GetAllTaskEvent,
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

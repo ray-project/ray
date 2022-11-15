@@ -215,8 +215,8 @@ namespace gcs {
 class MockTaskInfoAccessor : public TaskInfoAccessor {
  public:
   MOCK_METHOD(Status,
-              AsyncAddTaskStateEventData,
-              (const std::shared_ptr<rpc::TaskStateEventData> &data_ptr,
+              AsyncAddTaskEventData,
+              (const std::shared_ptr<rpc::TaskEventData> &data_ptr,
                const StatusCallback &callback),
               (override));
 };

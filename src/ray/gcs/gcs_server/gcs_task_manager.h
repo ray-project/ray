@@ -24,8 +24,7 @@
 namespace ray {
 namespace gcs {
 
-using AddTaskStateEventCallback =
-    std::function<void(Status status, const TaskID &task_id)>;
+using AddTaskEventCallback = std::function<void(Status status, const TaskID &task_id)>;
 
 /// GcsTaskManger is responsible for capturing task states change reported from other
 /// components, i.e. raylets/workers through grpc handles.
@@ -38,30 +37,29 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   explicit GcsTaskManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
       : gcs_table_storage_(std::move(gcs_table_storage)){};
 
-  void HandleAddTaskStateEventData(rpc::AddTaskStateEventDataRequest request,
-                                   rpc::AddTaskStateEventDataReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                              rpc::AddTaskEventDataReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllTaskStateEvent(rpc::GetAllTaskStateEventRequest request,
-                                  rpc::GetAllTaskStateEventReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
+                             rpc::GetAllTaskEventReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   /// Add events for multiple tasks to the underlying GCS storage.
   ///
   /// \param data Task events data
   /// \param cb_on_done Callback when adding the events is done.
-  void AddTaskStateEvents(rpc::TaskStateEventData &&data,
-                          AddTaskStateEventCallback cb_on_done);
+  void AddTaskEvents(rpc::TaskEventData &&data, AddTaskEventCallback cb_on_done);
 
   /// Add events for a single task to the underlying GCS storage.
   ///
   /// \param task_id Task's id.
   /// \param events_by_task Events by a single task.
   /// \param cb_on_done Callback to be invoked when events have been added to GCS.
-  void AddTaskStateEventForTask(const TaskID &task_id,
-                                rpc::TaskStateEvents &&events_by_task,
-                                AddTaskStateEventCallback cb_on_done);
+  void AddTaskEventForTask(const TaskID &task_id,
+                           rpc::TaskEvents &&events_by_task,
+                           AddTaskEventCallback cb_on_done);
 
  private:
   /// Underlying GCS storage

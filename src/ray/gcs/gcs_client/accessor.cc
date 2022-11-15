@@ -813,15 +813,14 @@ Status StatsInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
-Status TaskInfoAccessor::AsyncAddTaskStateEventData(
-    std::unique_ptr<rpc::TaskStateEventData> data_ptr, const StatusCallback &callback) {
+Status TaskInfoAccessor::AsyncAddTaskEventData(
+    std::unique_ptr<rpc::TaskEventData> data_ptr, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
-  rpc::AddTaskStateEventDataRequest request;
+  rpc::AddTaskEventDataRequest request;
   // Prevent copy here
   request.mutable_data()->Swap(data_ptr.get());
-  client_impl_->GetGcsRpcClient().AddTaskStateEventData(
-      request,
-      [callback](const Status &status, const rpc::AddTaskStateEventDataReply &reply) {
+  client_impl_->GetGcsRpcClient().AddTaskEventData(
+      request, [callback](const Status &status, const rpc::AddTaskEventDataReply &reply) {
         if (callback) {
           callback(status);
         }

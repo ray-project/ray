@@ -634,24 +634,24 @@ service NodeInfoGcsService {
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
-message AddTaskStateEventDataRequest {
-  TaskStateEventData data = 1;
+message AddTaskEventDataRequest {
+  TaskEventData data = 1;
 }
 
-message AddTaskStateEventDataReply {
+message AddTaskEventDataReply {
   GcsStatus status = 1;
 }
 
-message GetAllTaskStateEventRequest {
+message GetAllTaskEventRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 1;
 }
 
-message GetAllTaskStateEventReply {
+message GetAllTaskEventReply {
   GcsStatus status = 1;
   // Data of task state events
-  repeated TaskStateEvents events_by_task = 2;
+  repeated TaskEvents events_by_task = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;
 }
@@ -660,11 +660,9 @@ message GetAllTaskStateEventReply {
 // TODO: actually rename it to TaskStateInfoGcsService
 service TaskInfoGcsService {
   // Add task event data to GCS.
-  rpc AddTaskStateEventData(AddTaskStateEventDataRequest)
-      returns (AddTaskStateEventDataReply);
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
 
   // Query all the task state events.
-  rpc GetAllTaskStateEvent(GetAllTaskStateEventRequest)
-      returns (GetAllTaskStateEventReply);
+  rpc GetAllTaskEvent(GetAllTaskEventRequest) returns (GetAllTaskEventReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

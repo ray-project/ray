@@ -19,9 +19,9 @@ class MockGcsTaskManager : public GcsTaskManager {
  public:
   MockGcsTaskManager() : GcsTaskManager(nullptr, nullptr, nullptr) {}
   MOCK_METHOD(void,
-              HandleAddTaskStateEventData,
-              (rpc::AddTaskStateEventDataRequest request,
-               rpc::AddTaskStateEventDataReply *reply,
+              HandleAddTaskEventData,
+              (rpc::AddTaskEventDataRequest request,
+               rpc::AddTaskEventDataReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
 };

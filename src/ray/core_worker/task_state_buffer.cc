@@ -71,8 +71,8 @@ TaskIdEventMap::iterator TaskStateBuffer::GetOrInitTaskEvents(TaskID task_id) {
     return task_events_itr;
   }
 
-  // No existing entry, init a new TaskStateEvents.
-  rpc::TaskStateEvents task_state_events;
+  // No existing entry, init a new TaskEvents.
+  rpc::TaskEvents task_state_events;
 
   // Set id for this task
   task_state_events.set_task_id(task_id.Binary());
@@ -110,7 +110,7 @@ void TaskStateBuffer::FlushEvents(bool forced) {
   // mutex released. Below operations should be lock-free.
 
   // Construct gRPC data
-  auto cur_task_state_data = std::make_unique<rpc::TaskStateEventData>();
+  auto cur_task_state_data = std::make_unique<rpc::TaskEventData>();
   // Fill up the task events
   for (auto &[task_id, task_events] : cur_task_events_map) {
     auto events_of_task = cur_task_state_data->add_events_by_task();
@@ -133,8 +133,8 @@ void TaskStateBuffer::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
-  auto status = gcs_client_->Tasks().AsyncAddTaskStateEventData(
-      std::move(cur_task_state_data), on_complete);
+  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(std::move(cur_task_state_data),
+                                                           on_complete);
   if (!status.ok()) {
     // If we couldn't even send the data by invoking client side callbacks, there's
     // something seriously wrong, and losing data in this case should not be too

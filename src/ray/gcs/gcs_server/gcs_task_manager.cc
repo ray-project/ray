@@ -22,10 +22,9 @@
 namespace ray {
 namespace gcs {
 
-void GcsTaskManager::HandleAddTaskStateEventData(
-    rpc::AddTaskStateEventDataRequest request,
-    rpc::AddTaskStateEventDataReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                                            rpc::AddTaskEventDataReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Adding task state event:" << request.data().ShortDebugString();
 
   size_t num_to_process = request.data().events_by_task_size();
@@ -61,18 +60,17 @@ void GcsTaskManager::HandleAddTaskStateEventData(
         RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
       };
 
-  AddTaskStateEvents(std::move(*request.release_data()), std::move(cb_on_done));
+  AddTaskEvents(std::move(*request.release_data()), std::move(cb_on_done));
 }
 
-void GcsTaskManager::HandleGetAllTaskStateEvent(
-    rpc::GetAllTaskStateEventRequest request,
-    rpc::GetAllTaskStateEventReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
+                                           rpc::GetAllTaskEventReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all task state events: " << request.ShortDebugString();
   auto limit = request.has_limit() ? request.limit() : -1;
 
   auto on_done = [this, reply, limit, send_reply_callback](
-                     const absl::flat_hash_map<TaskID, rpc::TaskStateEvents> &result) {
+                     const absl::flat_hash_map<TaskID, rpc::TaskEvents> &result) {
     absl::MutexLock lock(&mutex_);
     int count = 0;
     for (const auto &data : result) {
@@ -87,23 +85,23 @@ void GcsTaskManager::HandleGetAllTaskStateEvent(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
-  Status status = gcs_table_storage_->TaskStateEventTable().GetAll(on_done);
+  Status status = gcs_table_storage_->TaskEventTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(absl::flat_hash_map<TaskID, rpc::TaskStateEvents>());
+    on_done(absl::flat_hash_map<TaskID, rpc::TaskEvents>());
   }
 }
 
-void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
-                                              rpc::TaskStateEvents &&events_by_task,
-                                              AddTaskStateEventCallback cb_on_done) {
-  RAY_CHECK(cb_on_done) << "AddTaskStateEventCallback callback should not be empty";
+void GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
+                                         rpc::TaskEvents &&events_by_task,
+                                         AddTaskEventCallback cb_on_done) {
+  RAY_CHECK(cb_on_done) << "AddTaskEventCallback callback should not be empty";
   // Callback on async get done
   auto cb_on_get_done = [this,
                          task_id,
                          cb_on_done,
                          events_by_task = std::move(events_by_task)](
                             Status status,
-                            const boost::optional<rpc::TaskStateEvents> &result) {
+                            const boost::optional<rpc::TaskEvents> &result) {
     absl::MutexLock lock(&mutex_);
     // Failed to get the entry
     if (!status.ok()) {
@@ -131,7 +129,7 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
     }
 
     // Merge events of a single task.
-    rpc::TaskStateEvents empty_task_state_events;
+    rpc::TaskEvents empty_task_state_events;
     auto cur_task_state_events = result.value_or(empty_task_state_events);
 
     cur_task_state_events.MergeFrom(events_by_task);
@@ -146,7 +144,7 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
     // Overwrite the current task state event in the GCS table
     // TODO(rickyx): We could do an in-placed mutation actually if we send in-place
     // mutation callback to the underlying gcs storage table.
-    auto put_status = gcs_table_storage_->TaskStateEventTable().Put(
+    auto put_status = gcs_table_storage_->TaskEventTable().Put(
         task_id, std::move(cur_task_state_events), cb_on_put_done);
 
     if (!put_status.ok()) {
@@ -155,19 +153,18 @@ void GcsTaskManager::AddTaskStateEventForTask(const TaskID &task_id,
   };
 
   // Get the current task state events and update it.
-  auto get_status =
-      gcs_table_storage_->TaskStateEventTable().Get(task_id, cb_on_get_done);
+  auto get_status = gcs_table_storage_->TaskEventTable().Get(task_id, cb_on_get_done);
   if (!get_status.ok()) {
     cb_on_done(get_status, task_id);
   }
 }
 
-void GcsTaskManager::AddTaskStateEvents(rpc::TaskStateEventData &&data,
-                                        AddTaskStateEventCallback cb_on_done) {
+void GcsTaskManager::AddTaskEvents(rpc::TaskEventData &&data,
+                                   AddTaskEventCallback cb_on_done) {
   // Update each task.
   for (auto &events_by_task : *data.mutable_events_by_task()) {
     auto task_id = TaskID::FromBinary(events_by_task.task_id());
-    AddTaskStateEventForTask(task_id, std::move(events_by_task), cb_on_done);
+    AddTaskEventForTask(task_id, std::move(events_by_task), cb_on_done);
   }
 }
 

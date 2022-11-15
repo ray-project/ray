@@ -19,8 +19,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoRequest,
     GetAllPlacementGroupReply,
     GetAllPlacementGroupRequest,
-    GetAllTaskStateEventReply,
-    GetAllTaskStateEventRequest,
+    GetAllTaskEventReply,
+    GetAllTaskEventRequest,
     GetAllWorkerInfoReply,
     GetAllWorkerInfoRequest,
 )
@@ -252,13 +252,11 @@ class StateDataSourceClient:
     @handle_grpc_network_errors
     async def get_all_task_info(
         self, timeout: int = None, limit: int = None
-    ) -> Optional[GetAllTaskStateEventReply]:
+    ) -> Optional[GetAllTaskEventReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        request = GetAllTaskStateEventRequest(limit=limit)
-        reply = await self._gcs_task_info_stub.GetAllTaskStateEvent(
-            request, timeout=timeout
-        )
+        request = GetAllTaskEventRequest(limit=limit)
+        reply = await self._gcs_task_info_stub.GetAllTaskEvent(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
