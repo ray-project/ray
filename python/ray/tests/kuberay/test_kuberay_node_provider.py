@@ -32,9 +32,7 @@ def _get_basic_ray_cr_workers_to_delete():
 
 
 def _get_test_yaml(file_name):
-    file_path = str(
-        Path(__file__).resolve().parent / "test_files" / file_name
-    )
+    file_path = str(Path(__file__).resolve().parent / "test_files" / file_name)
     return yaml.safe_load(open(file_path).read())
 
 
@@ -125,7 +123,7 @@ def test_create_node_cap_at_max(
                 # The pod list includes a worker with non-null deletion timestamp.
                 # It is excluded from the node data because it is considered
                 # "terminated".
-            }
+            },
         ),
         (
             # Pod list obtained by running kubectl get pod -o yaml at runtime.
@@ -135,21 +133,29 @@ def test_create_node_cap_at_max(
                     kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
                 ),
                 "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
-                    kind="worker", type="fake-gpu-group", ip="10.4.0.6", status="up-to-date"
+                    kind="worker",
+                    type="fake-gpu-group",
+                    ip="10.4.0.6",
+                    status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
-                    kind="worker", type="small-group", ip="10.4.1.8", status="up-to-date"
+                    kind="worker",
+                    type="small-group",
+                    ip="10.4.1.8",
+                    status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-lbfm4": NodeData(
-                    kind="worker", type="small-group", ip="10.4.0.5", status="up-to-date"
+                    kind="worker",
+                    type="small-group",
+                    ip="10.4.0.5",
+                    status="up-to-date",
                 ),
-            }
+            },
         ),
     ],
 )
 def test_get_node_data(podlist_file: str, expected_node_data):
-    """Test translation of a K8s pod list into autoscaler node data.
-    """
+    """Test translation of a K8s pod list into autoscaler node data."""
     pod_list = _get_test_yaml(podlist_file)
 
     def mock_get(node_provider, path):
