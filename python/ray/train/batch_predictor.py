@@ -100,31 +100,6 @@ class BatchPredictor:
     ) -> ray.data.Dataset:
         """Run batch scoring on a Dataset.
 
-        Examples:
-            >>> import pandas as pd
-            >>> import ray
-            >>> from ray.air import Checkpoint
-            >>> from ray.train.predictor import Predictor
-            >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a batch predictor that returns identity as the predictions.
-            >>> batch_pred = BatchPredictor.from_pandas_udf(
-            ...     lambda data: pd.DataFrame({"predictions": data["feature_1"]}))
-            >>> # Create a dummy dataset.
-            >>> ds = ray.data.from_pandas(pd.DataFrame({
-            ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
-            >>> # Execute batch prediction using this predictor.
-            >>> predictions = batch_pred.predict(ds,
-            ...     feature_columns=["feature_1"], keep_columns=["label"])
-            >>> print(predictions)
-            Dataset(num_blocks=1, num_rows=3, schema={predictions: int64, label: int64})
-            >>> # Calculate final accuracy.
-            >>> def calculate_accuracy(df):
-            ...    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
-            >>> correct = predictions.map_batches(calculate_accuracy)
-            >>> print("Final accuracy: ",
-            ...    correct.sum(on="correct") / correct.count())
-            Final accuracy:  1.0
-
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in data to use for prediction. Columns not
@@ -150,6 +125,38 @@ class BatchPredictor:
         Returns:
             Dataset containing scoring results.
 
+        Examples:
+
+            .. testcode::
+
+                import pandas as pd
+                import ray
+                from ray.train.batch_predictor import BatchPredictor
+
+                def calculate_accuracy(df):
+                    return pd.DataFrame({"correct": df["preds"] == df["label"]})
+
+                # Create a batch predictor that returns identity as the predictions.
+                batch_pred = BatchPredictor.from_pandas_udf(
+                    lambda data: pd.DataFrame({"preds": data["feature_1"]}))
+
+                # Create a dummy dataset.
+                ds = ray.data.from_pandas(pd.DataFrame({
+                    "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
+
+                # Execute batch prediction using this predictor.
+                predictions = batch_pred.predict(ds,
+                    feature_columns=["feature_1"], keep_columns=["label"])
+
+                # print predictions and calculate final accuracy
+                print(predictions)
+                correct = predictions.map_batches(calculate_accuracy)
+                print(f"Final accuracy: {correct.sum(on='correct') / correct.count()}")
+
+            .. testoutput::
+
+                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
+                Final accuracy: 1.0
         """
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
@@ -261,22 +268,6 @@ class BatchPredictor:
         This is a convenience wrapper around calling `.window()` on the Dataset prior
         to passing it `BatchPredictor.predict()`.
 
-        Examples:
-            >>> import pandas as pd
-            >>> import ray
-            >>> from ray.air import Checkpoint
-            >>> from ray.train.predictor import Predictor
-            >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a batch predictor that always returns `42` for each input.
-            >>> batch_pred = BatchPredictor.from_pandas_udf(
-            ...     lambda data: pd.DataFrame({"a": [42] * len(data)}))
-            >>> # Create a dummy dataset.
-            >>> ds = ray.data.range_tensor(1000, parallelism=4)
-            >>> # Setup a prediction pipeline.
-            >>> print(batch_pred.predict_pipelined(
-            ...     ds, blocks_per_window=1))
-            DatasetPipeline(num_windows=4, num_stages=3)
-
         Args:
             data: Ray dataset to run batch prediction on.
             blocks_per_window: The window size (parallelism) in blocks.
@@ -310,6 +301,28 @@ class BatchPredictor:
 
         Returns:
             DatasetPipeline that generates scoring results.
+
+        Examples:
+
+             .. testcode::
+
+                import pandas as pd
+                import ray
+                from ray.train.batch_predictor import BatchPredictor
+
+                # Create a batch predictor that always returns `42` for each input.
+                batch_pred = BatchPredictor.from_pandas_udf(
+                    lambda data: pd.DataFrame({"a": [42] * len(data)}))
+
+                # Create a dummy dataset.
+                ds = ray.data.range_tensor(1000, parallelism=4)
+
+                # Setup a prediction pipeline.
+                print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
+
+             .. testoutput::
+
+                DatasetPipeline(num_windows=4, num_stages=3)
         """
 
         if blocks_per_window is None and bytes_per_window is None:
