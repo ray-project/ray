@@ -112,11 +112,11 @@ class BatchMapper(Preprocessor):
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
 
-    def determine_transform_to_use(self, data_format: BlockFormat):
+    def _determine_transform_to_use(self, data_format: BlockFormat):
         if self.batch_format:
             return self.batch_format
         else:
-            return super().determine_transform_to_use(data_format)
+            return super()._determine_transform_to_use(data_format)
 
     def _get_transform_config(self) -> Dict[str, Any]:
         return {"batch_size": self.batch_size}

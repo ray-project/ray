@@ -434,4 +434,4 @@ class BatchPredictor:
             preprocessor = preprocessor.preprocessors[0]
 
         # Use same batch format as first preprocessor to minimize data copies.
-        return preprocessor.determine_transform_to_use(dataset_block_format)
+        return preprocessor._determine_transform_to_use(dataset_block_format)

@@ -184,7 +184,7 @@ class Preprocessor(abc.ABC):
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
-    def determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
+    def _determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
         """Determine which transform to use based on data format and implementation.
 
         We will infer and pick the best transform to use:
@@ -244,7 +244,7 @@ class Preprocessor(abc.ABC):
                 "and 'arrow' Dataset formats are supported."
             )
 
-        transform_type = self.determine_transform_to_use(dataset_format)
+        transform_type = self._determine_transform_to_use(dataset_format)
 
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
@@ -259,7 +259,7 @@ class Preprocessor(abc.ABC):
             )
         else:
             raise ValueError(
-                "Invalid transform type returned from determine_transform_to_use; "
+                "Invalid transform type returned from _determine_transform_to_use; "
                 f'"pandas" and "numpy" allowed, but got: {transform_type}'
             )
 
@@ -297,7 +297,7 @@ class Preprocessor(abc.ABC):
                 f"ndarray. Got {type(data)}."
             )
 
-        transform_type = self.determine_transform_to_use(data_format)
+        transform_type = self._determine_transform_to_use(data_format)
 
         if transform_type == BatchFormat.PANDAS:
             return self._transform_pandas(convert_batch_type_to_pandas(data))
