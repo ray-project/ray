@@ -292,7 +292,7 @@ class BatchPredictor:
             ScoringWrapper,
             compute=compute,
             batch_format=preprocessor_batch_format
-            if self.get_preprocessor()
+            if self.get_preprocessor() is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
             **ray_remote_args,
@@ -424,7 +424,7 @@ class BatchPredictor:
             # TODO: Revisit
             return BatchFormat.PANDAS
 
-        if not preprocessor:
+        if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
         elif hasattr(preprocessor, "preprocessors"):
