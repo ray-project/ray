@@ -17,28 +17,30 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
         self.state_space = Box(-1.0, 1.0, (1,))
 
         class _fake_model:
-            pass
+            def __init__(self, state_space, action_space):
+                self.view_requirements = {
+                    SampleBatch.AGENT_INDEX: ViewRequirement(),
+                    SampleBatch.EPS_ID: ViewRequirement(),
+                    "env_id": ViewRequirement(),
+                    "t": ViewRequirement(),
+                    SampleBatch.OBS: ViewRequirement(),
+                    SampleBatch.PREV_ACTIONS: ViewRequirement(
+                        SampleBatch.ACTIONS, space=action_space, shift=-1
+                    ),
+                    SampleBatch.PREV_REWARDS: ViewRequirement(
+                        SampleBatch.REWARDS, shift=-1
+                    ),
+                }
+                self.time_major = True
+                for i in range(2):
+                    self.view_requirements["state_in_{}".format(i)] = ViewRequirement(
+                        "state_out_{}".format(i), shift=-1, space=state_space
+                    )
+                    self.view_requirements["state_out_{}".format(i)] = ViewRequirement(
+                        space=state_space
+                    )
 
-        self.model = _fake_model()
-        self.model.time_major = True
-        self.model.view_requirements = {
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            "env_id": ViewRequirement(),
-            "t": ViewRequirement(),
-            SampleBatch.OBS: ViewRequirement(),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, space=self.action_space, shift=-1
-            ),
-            SampleBatch.PREV_REWARDS: ViewRequirement(SampleBatch.REWARDS, shift=-1),
-        }
-        for i in range(2):
-            self.model.view_requirements["state_in_{}".format(i)] = ViewRequirement(
-                "state_out_{}".format(i), shift=-1, space=self.state_space
-            )
-            self.model.view_requirements["state_out_{}".format(i)] = ViewRequirement(
-                space=self.state_space
-            )
+        self.model = _fake_model(self.state_space, self.action_space)
 
         self.view_requirements = dict(
             **{
@@ -95,32 +97,42 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         self.config["model"] = {"max_seq_len": 50}
 
         class _fake_model:
-            pass
+            def __init__(self, state_space, config):
+                self.state_space = state_space
+                self.view_requirements = {
+                    SampleBatch.AGENT_INDEX: ViewRequirement(),
+                    SampleBatch.EPS_ID: ViewRequirement(),
+                    "env_id": ViewRequirement(),
+                    "t": ViewRequirement(),
+                    SampleBatch.OBS: ViewRequirement(),
+                    "state_in_0": ViewRequirement(
+                        "state_out_0",
+                        # Provide state outs -50 to -1 as "state-in".
+                        shift="-50:-1",
+                        # Repeat the incoming state every n time steps (usually max seq
+                        # len).
+                        batch_repeat_value=config["model"]["max_seq_len"],
+                        space=state_space,
+                    ),
+                    "state_out_0": ViewRequirement(
+                        space=state_space, used_for_compute_actions=False
+                    ),
+                }
 
-        self.model = _fake_model()
-        self.model.view_requirements = {
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            "env_id": ViewRequirement(),
-            "t": ViewRequirement(),
-            SampleBatch.OBS: ViewRequirement(),
-            "state_in_0": ViewRequirement(
-                "state_out_0",
-                # Provide state outs -50 to -1 as "state-in".
-                shift="-50:-1",
-                # Repeat the incoming state every n time steps (usually max seq
-                # len).
-                batch_repeat_value=self.config["model"]["max_seq_len"],
-                space=self.state_space,
-            ),
-            "state_out_0": ViewRequirement(
-                space=self.state_space, used_for_compute_actions=False
-            ),
-        }
+            # We need to provide at least an initial state if we want agent collector
+            # to build episodes with state_in_ and state_out_
+            def get_initial_state(self):
+                return [self.state_space.sample()]
+
+        self.model = _fake_model(self.state_space, self.config)
 
         self.view_requirements = dict(
             super()._get_default_view_requirements(), **self.model.view_requirements
         )
+
+    @override(Policy)
+    def get_initial_state(self):
+        return self.model.get_initial_state()
 
     @override(Policy)
     def is_recurrent(self):

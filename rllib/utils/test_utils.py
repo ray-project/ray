@@ -5,6 +5,7 @@ import random
 import re
 import time
 import os
+import gym
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -26,6 +27,7 @@ from gym.spaces import Box
 import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_ENV_STEPS_SAMPLED,
@@ -443,7 +445,7 @@ def check_compute_single_action(
             # pre-processor up front.
             worker_set = getattr(algorithm, "workers", None)
             assert worker_set
-            if isinstance(worker_set, list):
+            if not worker_set.local_worker():
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
@@ -469,6 +471,48 @@ def check_compute_single_action(
                                 unsquash,
                                 clip,
                             )
+
+
+def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
+    """Checks whether the given policy can infer actions from an env with connectors.
+
+    Args:
+        policy: The policy to check.
+        env_name: Name of the environment to check
+        max_steps: The maximum number of steps to run the environment for.
+
+    Raises:
+        ValueError: If the policy cannot infer actions from the environment.
+    """
+    # Avoids circular import
+    from ray.rllib.utils.policy import local_policy_inference
+
+    env = gym.make(env_name)
+
+    # Potentially wrap the env like we do in RolloutWorker
+    if is_atari(env):
+        env = wrap_deepmind(
+            env,
+            dim=policy.config["model"]["dim"],
+            framestack=policy.config["model"].get("framestack"),
+        )
+
+    obs = env.reset()
+    reward, done, info = 0.0, False, {}
+    ts = 0
+    while not done and ts < max_steps:
+        action_out = local_policy_inference(
+            policy,
+            env_id=0,
+            agent_id=0,
+            obs=obs,
+            reward=reward,
+            done=done,
+            info=info,
+        )
+        obs, reward, done, info = env.step(action_out[0][0])
+
+        ts += 1
 
 
 def check_learning_achieved(

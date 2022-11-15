@@ -264,7 +264,7 @@ def post_process_metrics(adapt_iter, workers, metrics):
     name = "_adapt_" + str(adapt_iter) if adapt_iter > 0 else ""
 
     # Only workers are collecting data
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
 
     metrics["episode_reward_max" + str(name)] = res["episode_reward_max"]
     metrics["episode_reward_mean" + str(name)] = res["episode_reward_mean"]
