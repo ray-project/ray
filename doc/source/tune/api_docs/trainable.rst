@@ -16,6 +16,10 @@ For the sake of example, let's maximize this objective function:
     :start-after: __example_objective_start__
     :end-before: __example_objective_end__
 
+In both APIs, the ``config`` dictionary is populated automatically by Tune and corresponds to the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
+
+.. tip:: Avoid passing large objects as hyperparameters in the ``config`` directory, as that will incur a large performance overhead. Use :ref:`tune-with-parameters` to pass large objects in or, if possible, load them inside your function from disk (making sure that all nodes have access to the files) or cloud storage. See :ref:`tune-bottlenecks` for more information.
+
 .. _tune-function-api:
 
 Function API
@@ -234,7 +238,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
-then you should use this:
+then you should use :ref:`tune-with-resources` like this:
 
 .. code-block:: python
    :emphasize-lines: 4-10
@@ -308,3 +312,9 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
+.. _tune-with-resources:
+
+tune.with_resources
+--------------------
+
+.. autofunction:: ray.tune.with_resources
