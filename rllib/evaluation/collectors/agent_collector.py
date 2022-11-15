@@ -369,7 +369,6 @@ class AgentCollector:
         np_data = {}
         for view_col, view_req in view_requirements.items():
             # Create the batch of data from the different buffers.
-            # "state_in_0"
             data_col = view_req.data_col or view_col
 
             if data_col not in self.buffers:
