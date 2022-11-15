@@ -62,6 +62,7 @@ if sys.platform == "win32":
 
 def generate_job_id() -> str:
     """Returns a job_id of the form 'raysubmit_XYZ'.
+
     Prefixed with 'raysubmit' to avoid confusion with Ray JobID (driver ID).
     """
     rand = random.SystemRandom()
@@ -101,6 +102,7 @@ class JobLogStorageClient:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
         `num_log_lines` lines.
+
         Args:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
@@ -133,6 +135,7 @@ class JobSupervisor:
     Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status, persist job logs and manage subprocess group cleaning.
+
     One job supervisor actor maps to one subprocess, for one job_id.
     Job supervisor actor should fate share with subprocess it created.
     """
@@ -166,12 +169,14 @@ class JobSupervisor:
         self, resources_specified: bool = False
     ) -> Dict[str, Any]:
         """Get the runtime env that should be set in the job driver.
+
         Args:
             resources_specified: Whether the user specified resources (CPUs, GPUs,
                 custom resources) in the submit_job request. If so, we will skip
                 the workaround for GPU detection introduced in #24546, so that the
                 behavior matches that of the user specifying resources for any
                 other actor.
+
         Returns:
             The runtime env that should be set in the job driver.
         """
@@ -194,12 +199,15 @@ class JobSupervisor:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
+
         Unix systems:
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
+
         Windows systems:
         A jobObject is created to enable fate sharing for the entire process group.
+
         Args:
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
@@ -316,6 +324,7 @@ class JobSupervisor:
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
         and coroutine, respectively.
+
         1) Sets job status as running
         2) Pass runtime env and metadata to subprocess as serialized env
             variables.
@@ -408,6 +417,7 @@ class JobSupervisor:
 
 class JobManager:
     """Provide python APIs for job submission and management.
+
     It does not provide persistence, all info will be lost if the cluster
     goes down.
     """
@@ -433,6 +443,7 @@ class JobManager:
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
+
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
@@ -454,6 +465,7 @@ class JobManager:
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
         """Monitors the specified job until it enters a terminal state.
+
         This is necessary because we need to handle the case where the
         JobSupervisor dies unexpectedly.
         """
@@ -543,6 +555,7 @@ class JobManager:
 
     def _get_current_node_resource_key(self) -> str:
         """Get the Ray resource key for current node.
+
         It can be used for actor placement.
         """
         current_node_id = ray.get_runtime_context().node_id.hex()
@@ -557,8 +570,10 @@ class JobManager:
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
+
         If started successfully, result should be None. Otherwise it should be
         an Exception.
+
         On failure, the job will be marked failed with a relevant error
         message.
         """
@@ -569,6 +584,7 @@ class JobManager:
         self, user_runtime_env: Dict[str, Any], resources_specified: bool = False
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
+
         Args:
             user_runtime_env: The runtime_env specified by the user.
             resources_specified: Whether the user specified resources in the
@@ -576,6 +592,7 @@ class JobManager:
                 in #24546 for GPU detection and just use the user's resource
                 requests, so that the behavior matches that of the user specifying
                 resources for any other actor.
+
         Returns:
             The runtime_env for the supervisor actor.
         """
@@ -602,12 +619,15 @@ class JobManager:
         self, resources_specified: bool
     ) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
+
         If resources_specified is true, or if the environment variable is set to
         allow the job to run on worker nodes, we will use Ray's default actor
         placement strategy. Otherwise, we will force the job to use the head node.
+
         Args:
             resources_specified: Whether the job specified any resources
                 (CPUs, GPUs, or custom resources).
+
         Returns:
             The scheduling strategy to use for the job.
         """
@@ -662,13 +682,16 @@ class JobManager:
     ) -> str:
         """
         Job execution happens asynchronously.
+
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new
             ID, job supervisor actor, and child process.
         2) Create new detached actor with same runtime_env as job spec
+
         Actual setting up runtime_env, subprocess group, driver command
         execution, subprocess cleaning up and running status update to GCS
         is all handled by job supervisor actor.
+
         Args:
             entrypoint: Driver command to execute in subprocess shell.
                 Represents the entrypoint to start user application.
@@ -689,6 +712,7 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
+
         Returns:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
@@ -764,6 +788,7 @@ class JobManager:
 
     def stop_job(self, job_id) -> bool:
         """Request a job to exit, fire and forget.
+
         Returns whether or not the job was running.
         """
         job_supervisor_actor = self._get_actor_for_job(job_id)
