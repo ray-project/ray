@@ -428,8 +428,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
   Status GetOwnershipInfo(const ObjectID &object_id,
-                        rpc::Address *owner_address,
-                        std::string *serialized_object_status);
+                          rpc::Address *owner_address,
+                          std::string *serialized_object_status);
 
   /// Get the owner information of an object. This should be
   /// called when serializing an object ID, and the returned information should
@@ -449,8 +449,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
   void GetOwnershipInfoOrDie(const ObjectID &object_id,
-                        rpc::Address *owner_address,
-                        std::string *serialized_object_status);
+                             rpc::Address *owner_address,
+                             std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.

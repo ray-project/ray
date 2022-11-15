@@ -926,8 +926,8 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
 
 
 void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
-                                  rpc::Address *owner_address,
-                                  std::string *serialized_object_status) {
+                                       rpc::Address *owner_address,
+                                       std::string *serialized_object_status) {
   auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
   RAY_CHECK(status.ok())
       << "An application is trying to access a Ray object whose owner is unknown ("
@@ -943,8 +943,8 @@ void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
 }
 
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
-                                  rpc::Address *owner_address,
-                                  std::string *serialized_object_status) {
+                                    rpc::Address *owner_address,
+                                    std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
     return Status::ObjectNotFound(
