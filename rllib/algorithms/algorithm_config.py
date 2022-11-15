@@ -1534,12 +1534,16 @@ class AlgorithmConfig:
             # For now Error out if user attempts to set these parameters.
             msg = "{} should not be set in the input_config. RLlib will use {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
-                ValueError(msg.format("num_cpus_per_read_task", "num_cpus_per_worker"))
+                raise ValueError(
+                    msg.format("num_cpus_per_read_task", "num_cpus_per_worker")
+                )
             if input_config.get("parallelism") is not None:
                 if self.in_evaluation:
-                    ValueError(msg.format("parallelism", "evaluation_num_workers"))
+                    raise ValueError(
+                        msg.format("parallelism", "evaluation_num_workers")
+                    )
                 else:
-                    ValueError(msg.format("parallelism", "num_rollout_workers"))
+                    raise ValueError(msg.format("parallelism", "num_rollout_workers"))
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
