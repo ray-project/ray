@@ -151,7 +151,10 @@ class Predictor(abc.ABC):
         elif has_numpy_implemented:
             return BatchFormat.NUMPY
         else:
-            raise NotImplementedError("Predictor {cls.__name__} must implement at least one of `_predict_pandas` and `_predict_numpy`")
+            raise NotImplementedError(
+                f"Predictor {cls.__name__} must implement at least one of "
+                "`_predict_pandas` and `_predict_numpy`."
+            )
 
     def _set_cast_tensor_columns(self):
         """Enable automatic tensor column casting.
