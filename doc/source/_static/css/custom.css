@@ -1,6 +1,7 @@
 /* Add a black background color to the top navigation */
 .topnav {
-  background-color: #333;
+  background-color: white;
+  border-bottom: 1px solid rgba(0, 0, 0, .1);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -8,28 +9,51 @@
 
 /* Style the links inside the navigation bar */
 .topnav a {
-  float: left;
-  color: #f2f2f2;
+  /* float: left; */
+  /* color: #f2f2f2; */
   text-align: center;
   padding: 14px 16px;
   text-decoration: none;
   font-size: 17px;
+  color: black;
+  border-bottom: 2px solid white; 
 }
 
 /* Change the color of links on hover */
 .topnav a:hover {
-  background-color: #ddd;
-  color: black;
+  color: #007bff;
+  border-bottom: 2px solid #007bff; 
 }
 
 /* Add a color to the active/current link */
 .topnav a.active {
-  background-color: #1E90FF;
-  color: white;
+  color: #007bff;
+}
+
+.top-nav-content {
+  max-width: 1400px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 900px) {
+  .top-nav-content {
+    display: none;
+  }
+}
+
+.top-nav-content > .left {
+  display: flex;
+  white-space: nowrap;
 }
 
 /* Styling the "Try Anyscale" button */
-.topnav > button.try-anyscale {
+.top-nav-content > button.try-anyscale {
   float: right;
   border-radius: 6px;
   background-color: #e7f2fa;
@@ -38,13 +62,14 @@
   margin-left: 12px;
   height: 40px;
   border: none;
+  white-space: nowrap;
 }
-@media (max-width: 900px) {
-  .topnav > button.try-anyscale {
-    display: none;
+@media (max-width: 1000px) {
+  .top-nav-content > button.try-anyscale {
+    display: none;;
   }
 }
-.topnav > button.try-anyscale > span {
+.top-nav-content > button.try-anyscale > span {
   margin-right: 12px;
 }
 
