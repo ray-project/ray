@@ -517,9 +517,9 @@ class JobManager:
                 is_alive = False
                 job_status = await self._job_info_client.get_status(job_id)
                 job_error_message = None
-                if job_status.is_terminal() or job_status is None:
-                    # If the job is already in a terminal state, or already deleted,
-                    # then the actor exiting is expected.
+                if job_status.is_terminal():
+                    # If the job is already in a terminal state, then the actor
+                    # exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
