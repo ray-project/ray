@@ -217,14 +217,14 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
     def safe_to_scale(self) -> bool:
         """This method is left here as a developer hint.
-        You may wish to implement this in the future to reduce race conditions.
+        You may wish to implement it in the future to reduce race conditions.
 
         If this method returns False, the autoscaler will back off submitting a scale
         request until the next autoscaler iteration.
         See BatchingNodeProvider.post_process().
 
-        This could potentially be used to test for convergence of system state to
-        reduce race conditions -- e.g. has the operator deleted the expected Ray nodes
+        This could potentially be used to test for convergence of system state --
+        e.g. has the operator deleted the expected Ray nodes
         and have we achieved desired replica counts?
         """
         return True
