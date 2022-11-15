@@ -245,7 +245,7 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
         # Try to convert any tensor extension columns to ndarray columns.
         for col_name, col in df.items():
             if isinstance(col.dtype, TensorDtype):
-                # Surpress Pandas warnings:
+                # Suppress Pandas warnings:
                 # https://github.com/ray-project/ray/issues/29270
                 # We actually want in-place operations so we surpress this warning.
                 # https://stackoverflow.com/a/74193599
