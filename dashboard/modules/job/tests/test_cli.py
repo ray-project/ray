@@ -393,7 +393,7 @@ class TestSubmit:
 
 class TestDelete:
     def test_address(self, mock_sdk_client):
-        _job_cli_group_test_address(mock_sdk_client, "delete")
+        _job_cli_group_test_address(mock_sdk_client, "delete", "fake_job_id")
 
     def test_delete(self, mock_sdk_client):
         runner = CliRunner()
