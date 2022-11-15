@@ -1111,7 +1111,7 @@ class EnvRunnerV2:
                 ).output
 
                 action_to_buffer = (
-                    action_to_send
+                    action
                     if env_id not in off_policy_actions
                     or agent_id not in off_policy_actions[env_id]
                     else off_policy_actions[env_id][agent_id]
