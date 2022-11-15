@@ -383,6 +383,7 @@ def test_metrics_export_node_metrics(shutdown_only):
         components = set()
         for metric in _DASHBOARD_METRICS:
             samples = avail_metrics[metric]
+            print(samples)
             for sample in samples:
                 components.add(sample.labels["Component"])
         assert components == {"dashboard"}
