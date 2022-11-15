@@ -232,8 +232,8 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
     trainer.fit()
 
 
-@pytest.mark.parametrize("use_gpu", (False, True))
-def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+@pytest.mark.parametrize("data_loader_num_workers", (0, 2))
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
     # identical hardware and software dependencies. This test should be okay given that
     # it only runs for two epochs on a small dataset.
@@ -251,7 +251,11 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
             torch.randn(dataset_length, 3, 32, 32),
             torch.randint(low=0, high=1000, size=(dataset_length,)),
         )
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+
+        # num_workers > 0 tests for https://github.com/ray-project/ray/issues/30247
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=64, num_workers=data_loader_num_workers
+        )
         dataloader = train.torch.prepare_data_loader(dataloader)
 
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)

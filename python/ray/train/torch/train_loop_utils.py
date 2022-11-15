@@ -6,7 +6,7 @@ import warnings
 import collections
 from distutils.version import LooseVersion
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import ray
 from ray.air import session
@@ -415,19 +415,22 @@ class _TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-                def seeded_worker_init_fn(worker_init_fn):
-                    def wrapper(worker_id):
+                def seeded_worker_init_fn(
+                    worker_init_fn: Optional[Callable[[int], None]]
+                ):
+                    def wrapper(worker_id: int):
                         worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
-                        worker_init_fn(worker_id)
+                        if worker_init_fn:
+                            worker_init_fn(worker_id)
 
                     return wrapper
 
-                worker_init_fn = loader.worker_init_fn
-                generator = loader.generator
+                worker_init_fn: Optional[Callable[[int], None]] = loader.worker_init_fn
+                generator: Optional[torch.Generator] = loader.generator
                 if self._seed is not None:
-                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    worker_init_fn = seeded_worker_init_fn(worker_init_fn)
                     generator = torch.Generator()
                     generator.manual_seed(self._seed)
 
