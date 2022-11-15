@@ -23,8 +23,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 
-WAIT_FOR_WORKERS_TO_DELETE = os.getenv("RAY_WAIT_FOR_WORKERS_TO_DELETE", "0")
-
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 # Key for KubeRay label that identifies the worker group (autoscaler node type) of a
@@ -218,22 +216,17 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         self._patch(path, payload)
 
     def safe_to_scale(self) -> bool:
-        """To reduce race conditions, wait for the operator to clear the workersToDelete
-        queue before submitting another scale request.
-        """
-        if WAIT_FOR_WORKERS_TO_DELETE == 0:
-            # The operator's logic for clearing workersToDelete is faulty.
-            # Once that is fixed, have the KubeRay operator flip this env flag
-            # to enable the logic of this method.
-            return True
+        """This method is left here as a developer hint.
+        You may wish to implement this in the future to reduce race conditions.
 
-        for group_spec in self._raycluster["spec"].get("workerGroupSpecs", []):
-            if group_spec.get("scaleStrategy", {}).get("workersToDelete", []):
-                logger.warning(
-                    "workersToDelete has not been processed yet."
-                    " Autoscaler backing off submitting scale request."
-                )
-                return False
+        If this method returns False, the autoscaler will back off submitting a scale
+        request until the next autoscaler iteration.
+        See BatchingNodeProvider.post_process().
+
+        This could potentially be used to test for convergence of system state to
+        reduce race conditions -- e.g. has the operator deleted the expected Ray nodes
+        and have we achieved desired replica counts?
+        """
         return True
 
     def _scale_request_to_patch_payload(
