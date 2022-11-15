@@ -219,7 +219,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
         for col_name, col in df.items():
             if column_needs_tensor_extension(col):
                 try:
-                    # Surpress Pandas warnings:
+                    # Suppress Pandas warnings:
                     # https://github.com/ray-project/ray/issues/29270
                     # We actually want in-place operations so we surpress this warning.
                     # https://stackoverflow.com/a/74193599
