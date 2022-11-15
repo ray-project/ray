@@ -66,7 +66,7 @@ class MemoryMonitor {
  public:
   /// \param process_id the process id
   /// \return the used memory in bytes for the process
-  int64_t GetProcessMemoryBytes(int64_t process_id) const;
+  static int64_t GetProcessMemoryBytes(int64_t process_id);
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =

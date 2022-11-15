@@ -3002,12 +3002,16 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   std::string total_bytes_gb =
       FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
   std::stringstream oom_kill_details_ss;
+  std::string process_used_bytes_gb = 
+      FormatFloat(static_cast<float>(MemoryMonitor::GetProcessMemoryBytes(
+        worker->GetProcess().GetId())) / 1024 / 1024 / 1024, 2);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the task (" << worker->GetTaskOrActorIdAsDebugString()
-      << ", name= " << worker->GetAssignedTask().GetTaskSpecification().GetName()
-      << ") was running was " << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
+      << ", name=" << worker->GetAssignedTask().GetTaskSpecification().GetName()
+      << ", memory used=" << process_used_bytes_gb << "GB) was running was "
+      << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
       << usage_fraction << "), which exceeds the memory usage threshold of "
       << usage_threshold << ". Ray killed this worker (ID: " << worker->WorkerId()
       << ") because it was the most recently scheduled task; to see more "
