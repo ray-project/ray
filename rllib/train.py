@@ -56,6 +56,7 @@ def load_experiments_from_file(
     file_type: SupportedFileType,
     stop: Optional[str] = None,
     checkpoint_config: Optional[dict] = None,
+    local_dir: Optional[str] = None,
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
     If you want to use a Python file, it has to have a 'config' variable
@@ -64,6 +65,9 @@ def load_experiments_from_file(
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
+            if local_dir:
+                for k, v in experiments.items():
+                    experiments[k]["local_dir"] = local_dir
     else:  # Python file case (ensured by file type enum)
         import importlib
 
@@ -88,6 +92,8 @@ def load_experiments_from_file(
                 "config": config,
             }
         }
+        if local_dir:
+            experiments["default"]["local_dir"] = local_dir
 
         # Add a stopping condition if provided
         if stop:
@@ -110,6 +116,7 @@ def file(
     checkpoint_at_end: bool = cli.CheckpointAtEnd,
     keep_checkpoints_num: int = cli.KeepCheckpointsNum,
     checkpoint_score_attr: str = cli.CheckpointScoreAttr,
+    local_dir: str = cli.LocalDir,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -156,8 +163,9 @@ def file(
     file_type = get_file_type(config_file)
 
     experiments = load_experiments_from_file(
-        config_file, file_type, stop, checkpoint_config
+        config_file, file_type, stop, checkpoint_config, local_dir
     )
+
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
 

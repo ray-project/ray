@@ -11,6 +11,7 @@ import typer
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
@@ -183,12 +184,22 @@ def run(
     # Load configuration from checkpoint file.
     config_args = json.loads(config)
     config_path = ""
+    algorithm = None
+
     if checkpoint:
         config_dir = os.path.dirname(checkpoint)
         config_path = os.path.join(config_dir, "params.pkl")
         # Try parent directory.
         if not os.path.exists(config_path):
             config_path = os.path.join(config_dir, "../params.pkl")
+
+        # Check for new checkpoint format.
+        algo_state_path = os.path.join(checkpoint, "algorithm_state.pkl")
+        # If this file exists, we can directly load from checkpoint, without explicitly
+        # loading either "algo" or "env".
+        if os.path.exists(algo_state_path):
+            algorithm = Algorithm.from_checkpoint(checkpoint)
+            ray.shutdown()  # Shutdown Ray to avoid conflicts in later configuration.
 
     # Load the config from pickled.
     if os.path.exists(config_path):
@@ -218,7 +229,7 @@ def run(
         config_args.get("evaluation_config", config.get("evaluation_config", {}))
     )
     config = merge_dicts(config, evaluation_config)
-    # Merge with command line `--config` settings (if not already the same anyways).
+    # Merge with command line `--config` settings (if not already the same anyway).
     config = merge_dicts(config, config_args)
     if not env:
         if not config.get("env"):
@@ -236,7 +247,7 @@ def run(
         config["evaluation_duration"] = 1
 
     # Hard-override this as it raises a warning by Algorithm otherwise.
-    # Makes no sense anyways, to have it set to None as we don't call
+    # Makes no sense anyway, to have it set to None as we don't call
     # `Algorithm.train()` here.
     config["evaluation_interval"] = 1
 
@@ -245,13 +256,14 @@ def run(
 
     ray.init(local_mode=local_mode)
 
-    # Create the Algorithm from config.
-    cls = get_trainable_cls(algo)
-    algorithm = cls(env=env, config=config)
+    # Create the Algorithm from config, if not already constructed.
+    if not algorithm:
+        cls = get_trainable_cls(algo)
+        algorithm = cls(env=env, config=config)
 
-    # Load state from checkpoint, if provided.
-    if checkpoint:
-        algorithm.restore(checkpoint)
+        # Load state from checkpoint, if provided.
+        if checkpoint:
+            algorithm.restore(checkpoint)
 
     # Do the actual rollout.
     with RolloutSaver(

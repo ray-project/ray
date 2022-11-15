@@ -34,7 +34,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
+            "python {}/train.py --local-dir={} --algo={} "
             "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
@@ -53,9 +53,9 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         # Test rolling out n steps.
         os.popen(
-            'python {}/evaluate.py --run={} "{}" --steps=10 '
+            'python {}/evaluate.py "{}" --algo={} --steps=10 '
             '--out="{}/rollouts_10steps.pkl"'.format(
-                rllib_dir, algo, checkpoint_path, tmp_dir
+                rllib_dir, checkpoint_path, algo, tmp_dir
             )
         ).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
@@ -65,9 +65,9 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         # Test rolling out 1 episode.
         if test_episode_rollout:
             os.popen(
-                'python {}/evaluate.py --run={} "{}" --episodes=1 '
+                'python {}/evaluate.py "{}" --algo={} --episodes=1 '
                 '--out="{}/rollouts_1episode.pkl"'.format(
-                    rllib_dir, algo, checkpoint_path, tmp_dir
+                    rllib_dir, checkpoint_path, algo, tmp_dir
                 )
             ).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
@@ -84,7 +84,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
 
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
-            # Last resort: Resolve via underlying tempdir (and cut tmp_.
+            # Last resort: Resolve via underlying tempdir (and cut tmp).
             tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             if not os.path.exists(tmp_dir):
                 sys.exit(1)
@@ -94,7 +94,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
+            "python {}/train.py --local-dir={} --algo={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
             + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1, '
             '\\"evaluation_config\\": {\\"explore\\": false}'
@@ -125,7 +125,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/evaluate.py --run={} "
+            "python {}/evaluate.py --algo={} "
             "--steps=400 "
             '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
@@ -206,7 +206,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/evaluate.py --run={} "
+            "python {}/evaluate.py --algo={} "
             "--steps=400 "
             '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, best_checkpoint._local_path
@@ -266,6 +266,27 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
     def test_ppo_multi_agent_train_then_rollout(self):
         learn_test_multi_agent_plus_evaluate("PPO")
+
+
+class TestEvaluateWithoutAlgo(unittest.TestCase):
+    def test_eval(self):
+        tmp_dir = os.popen("mktemp -d").read()[:-1]
+
+        example = "cartpole-simpleq"
+        os.popen(
+            f"python scripts.py train file tuned_examples/"
+            f"simple_q/{example}.yaml "
+            f"--checkpoint-freq 1 "
+            f"--local-dir={tmp_dir}"
+        ).read()
+
+        algo_path = f"{tmp_dir}/{example}/*/checkpoint_000001/algorithm_state.pkl"
+        checkpoint_path = (
+            os.popen(f"ls {algo_path}").read().strip("algorithm_state.pkl\n")
+        )
+
+        # no "--algo" specified
+        assert os.popen(f"python {rllib_dir}/evaluate.py {checkpoint_path}").read()
 
 
 class TestCLISmokeTests(unittest.TestCase):
