@@ -15,7 +15,7 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 .. note::
 
   There is nothing preventing you from specifying a larger value of
-  ``num_gpus`` than the true number of GPUs on the machine.
+  ``num_gpus`` than the true number of GPUs on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray will act as if the machine has the number of GPUs you specified
   for the purposes of scheduling tasks and actors that require GPUs.
   Trouble will only occur if those tasks and actors
@@ -81,7 +81,7 @@ so multiple tasks and actors can share the same GPU.
 don't use more than their share of the GPU memory.
 TensorFlow can be configured to limit its memory usage.
 
-When Ray assign GPUs to tasks or actors with fractional resource requirements,
+When Ray assigns GPUs to tasks or actors with fractional resource requirements,
 it will pack one GPU before moving on to the next one to avoid fragmentation.
 
 .. literalinclude:: ../doc_code/gpus.py
@@ -92,14 +92,14 @@ it will pack one GPU before moving on to the next one to avoid fragmentation.
 Workers not Releasing GPU Resources
 -----------------------------------
 
-**Note:** Currently, when a worker executes a task that uses a GPU (e.g.,
+Currently, when a worker executes a task that uses a GPU (e.g.,
 through TensorFlow), the task may allocate memory on the GPU and may not release
 it when the task finishes executing. This can lead to problems the next time a
 task tries to use the same GPU. To address the problem, Ray disables the worker
 process reuse between GPU tasks by default, where the GPU resources is released after
 the task process exists. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
-in the ``ray.remote`` decorator.
+in the :ref:`ray.remote <ray-remote-ref>` decorator.
 
 .. literalinclude:: ../doc_code/gpus.py
     :language: python

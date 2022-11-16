@@ -12,6 +12,8 @@ A resource in Ray is a key-value pair where the key denotes a resource name, and
 For convenience, Ray has native support for CPU, GPU, and memory resource types; CPU, GPU and memory are called **pre-defined resources**.
 Besides those, Ray also supports :ref:`custom resources <custom-resources>`.
 
+.. _logical-resources:
+
 Physical Resources and Logical Resources
 ----------------------------------------
 
