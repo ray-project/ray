@@ -26,4 +26,5 @@ assert torch.cuda.is_available()
 def f():
     return ray.get_gpu_ids()
 
+
 assert ray.get(f.remote()) == [0]
