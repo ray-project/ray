@@ -45,7 +45,11 @@ DEFAULT_ENV_VARS = {
     # https://github.com/ray-project/ray/issues/28197
     "PL_DISABLE_FORK": "1"
 }
-ENV_VARS_TO_PROPAGATE = {COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV}
+ENV_VARS_TO_PROPAGATE = {
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
+    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
+}
 
 
 class _ActorClassCache:
@@ -152,8 +156,8 @@ class _TrialCleanup:
 
 def _noop_logger_creator(config, logdir, should_chdir: bool = True):
     # Upon remote process setup, record the actor's original working dir before
-    # changing the working dir to the Tune logdir
-    os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
+    # changing to the Tune logdir
+    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
     os.makedirs(logdir, exist_ok=True)
     if should_chdir:
