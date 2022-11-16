@@ -341,7 +341,8 @@ class GroupedDataset(Generic[T]):
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
-            block_accessor = BlockAccessor.for_block(batch)
+            block = BlockAccessor.batch_to_block(batch)
+            block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
@@ -349,9 +350,14 @@ class GroupedDataset(Generic[T]):
             builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end)
-                applied = fn(group)
-                builder.add_block(applied)
+                group_block = block_accessor.slice(start, end)
+                group_block_accessor = BlockAccessor.for_block(group_block)
+                # Convert block of each group to batch format here, because the
+                # block format here can be different from batch format
+                # (e.g. block is Arrow format, and batch is NumPy format).
+                group_batch = group_block_accessor.to_batch_format(batch_format)
+                applied = fn(group_batch)
+                builder.add_batch(applied)
                 start = end
             rs = builder.build()
             return rs

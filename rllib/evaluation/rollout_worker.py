@@ -53,6 +53,7 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
@@ -63,6 +64,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
@@ -94,6 +96,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -147,7 +150,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -228,6 +231,8 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus=num_gpus,
             memory=memory,
             resources=resources,
+            # Automatically restart failed workers.
+            max_restarts=-1,
         )(cls)
 
     @DeveloperAPI
@@ -1104,11 +1109,8 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
-        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
-        # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
-            # SampleBatch -> Calculate gradients for the default policy.
+            samples = convert_ma_batch_to_sample_batch(samples)
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
@@ -1829,40 +1831,15 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
-
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
         # Close all policies' sessions (if tf static graph).
-        for policy in self.policy_map.values():
+        for policy in self.policy_map.cache.values():
             sess = policy.get_session()
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
-
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this rollout worker instance.
-
-        Useful for when the RolloutWorker class has been converted into a
-        ActorHandle and the user needs to execute some functionality (e.g.
-        add a property) on the underlying policy object.
-
-        Args:
-            func: The function to call, with this RolloutWorker as first
-                argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
-
-        Returns:
-            The return value of the function call.
-        """
-        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
