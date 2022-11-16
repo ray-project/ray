@@ -220,21 +220,6 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     initial_region_size = size;
   }
 
-  // This is in the raylet itself. Not sure if we want to MADV_DONTDUMP.
-  if (false) {
-    RAY_LOG(ERROR) << "[CADE] madvise call! region is of size " << size;
-    // int madvise(void *addr, size_t length, int advice);
-    // MADV_DONTDUMP madvise
-
-    auto rval = madvise(initial_region_ptr, initial_region_size, MADV_DONTDUMP);
-
-    if (rval) {
-      RAY_LOG(ERROR) << "[CADE] madvise call failed: " << rval << strerror(rval);
-    } else {
-      RAY_LOG(ERROR) << "[CADE] madvise call succeeded.";
-    }
-  }
-  
 }
 
 #endif
