@@ -93,6 +93,13 @@ class _FailOnStats(Callback):
             print("Not failing:", [(t.status, t.last_result.get("it")) for t in trials])
 
 
+class MockData:
+    def __init__(self):
+        import numpy as np
+
+        self.data = np.random.rand((2 * 1024 * 1024))
+
+
 def test_tuner_restore_num_trials(ray_start_4_cpus, tmpdir):
     """Number of trials after restoring a finished run should be the same"""
     tuner = Tuner(
@@ -499,6 +506,141 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
+
+
+def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir):
+    """Test validation for trainable compatibility, when re-specifying a trainable
+    on restore."""
+
+    def train_func_1(config):
+        data = {"data": config["data"]}
+        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        raise RuntimeError("Failing!")
+
+    tuner = Tuner(
+        train_func_1,
+        run_config=RunConfig(name="overwrite_trainable", local_dir=str(tmpdir)),
+        param_space={"data": 1},
+    )
+    tuner.fit()
+
+    del tuner
+    ray.shutdown()
+    ray.init(num_cpus=4)
+
+    # Can't overwrite with a different Trainable type
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable="__fake",
+            resume_errored=True,
+        )
+
+    # Can't overwrite with a different Trainable name
+    def train_func_2(config):
+        checkpoint = session.get_checkpoint()
+        assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
+
+    with pytest.raises(ValueError):
+        tuner = Tuner.restore(
+            str(tmpdir / "overwrite_trainable"),
+            overwrite_trainable=train_func_2,
+            resume_errored=True,
+        )
+
+    # Can still change trainable code, but logs a warning
+    def train_func_1(config):
+        checkpoint = session.get_checkpoint()
+        assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
+
+    tuner = Tuner.restore(
+        str(tmpdir / "overwrite_trainable"),
+        overwrite_trainable=train_func_1,
+        resume_errored=True,
+    )
+    results = tuner.fit()
+    assert not results.errors
+
+
+@pytest.mark.parametrize("use_function_trainable", [True, False])
+def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_trainable):
+    """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
+
+    def train_func(config, data_str=None, data_obj=None):
+        assert data_str is not None and data_obj is not None
+        fail_marker = config.pop("fail_marker", None)
+        config["failing_hanging"] = (fail_marker, None)
+        _train_fn_sometimes_failing(config)
+
+    class FailingTrainable(Trainable):
+        def setup(self, config, data_str=None, data_obj=None):
+            assert data_str is not None and data_obj is not None
+            self.idx = 0
+            self.fail_marker = config.get("fail_marker", None)
+
+        def step(self):
+            if self.fail_marker and self.fail_marker.exists():
+                raise RuntimeError("==== Run is failing ====")
+            self.idx += 1
+            return {"score": self.idx}
+
+        def save_checkpoint(self, checkpoint_dir):
+            return {"idx": self.idx}
+
+        def load_checkpoint(self, checkpoint_dict):
+            self.idx = checkpoint_dict["idx"]
+
+    trainable = train_func if use_function_trainable else FailingTrainable
+
+    def create_trainable_with_params():
+        data = MockData()
+        trainable_with_params = tune.with_parameters(
+            trainable, data_str="data", data_obj=data
+        )
+        return trainable_with_params
+
+    exp_name = "restore_with_params"
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    tuner = Tuner(
+        create_trainable_with_params(),
+        run_config=RunConfig(
+            name=exp_name,
+            local_dir=str(tmp_path),
+            stop={"training_iteration": 3},
+            failure_config=FailureConfig(max_failures=0),
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        ),
+        param_space={"fail_marker": fail_marker},
+    )
+    results = tuner.fit()
+    assert results.errors
+
+    # Simulate restoring from a new script (re-initializing Ray runtime)
+    ray.shutdown()
+    ray.init(num_cpus=4, configure_logging=False)
+    fail_marker.unlink()
+
+    tuner = Tuner.restore(
+        str(tmp_path / exp_name),
+        resume_errored=True,
+    )
+    # Should still be able to access results
+    assert len(tuner.get_results().errors) == 1
+
+    # Continuing to fit should fail if we didn't re-specify the trainable
+    with pytest.raises(tune.TuneError):
+        tuner.fit()
+
+    del tuner
+    tuner = Tuner.restore(
+        str(tmp_path / exp_name),
+        resume_errored=True,
+        overwrite_trainable=create_trainable_with_params(),
+    )
+    results = tuner.fit()
+    assert not results.errors
 
 
 if __name__ == "__main__":
