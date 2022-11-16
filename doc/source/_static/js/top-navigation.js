@@ -14,21 +14,76 @@ function getNavURL(url) {
     }
 }
 
+downCaret = '<span class="down-caret"><svg width="12" height="7" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 1 6 6 1 1" stroke="#2A2A2A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>'
+rayLogoSvg = "<svg viewBox='0 0 110 44' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M66.225 32.133h2.716l-4.89-7.102c3.008-.99 4.677-3.299 4.677-6.753 0-4.443-3.008-6.985-8.208-6.985h-7.936v20.84h2.387v-6.578h5.53c.485 0 .95-.04 1.397-.059l4.327 6.637ZM54.97 23.245v-9.663h5.53c3.783 0 5.918 1.61 5.918 4.753 0 3.24-2.135 4.91-5.918 4.91h-5.53Zm32.617 3.609 2.329 5.258h2.58l-9.313-20.84h-2.465l-9.352 20.84h2.522l2.329-5.258h11.37Zm-1.009-2.29h-9.352l4.657-10.575 4.695 10.575Zm15.504.407L110 11.274h-2.445L100.88 22.14l-6.752-10.867h-2.465l8.072 13.777v7.063h2.348v-7.14Z' fill='#2A2A2A'></path><path d='M15.989 20.258a6.013 6.013 0 0 1 1.552-2.736 5.88 5.88 0 0 1 4.172-1.727c1.63 0 3.104.66 4.172 1.727a6.011 6.011 0 0 1 1.552 2.736h4.346a5.746 5.746 0 0 1 .66-1.592l-7.703-7.703a5.954 5.954 0 0 1-3.027.835 5.88 5.88 0 0 1-4.172-1.727 5.88 5.88 0 0 1-1.727-4.172c0-1.63.66-3.105 1.727-4.172A5.88 5.88 0 0 1 21.713 0c1.63 0 3.104.66 4.172 1.727a5.88 5.88 0 0 1 1.727 4.172 5.9 5.9 0 0 1-.835 3.027l7.703 7.703a5.954 5.954 0 0 1 3.028-.834c1.63 0 3.104.66 4.171 1.727a5.88 5.88 0 0 1 1.727 4.171 5.88 5.88 0 0 1-1.727 4.172 5.88 5.88 0 0 1-4.172 1.727 5.9 5.9 0 0 1-3.026-.834l-7.704 7.723c.524.892.835 1.92.835 3.026a5.88 5.88 0 0 1-1.727 4.172 5.88 5.88 0 0 1-4.172 1.727 5.88 5.88 0 0 1-4.172-1.727 5.88 5.88 0 0 1-1.727-4.172c0-1.63.66-3.104 1.727-4.171a5.88 5.88 0 0 1 4.172-1.727 5.9 5.9 0 0 1 3.027.834l7.703-7.703a5.746 5.746 0 0 1-.66-1.591h-4.346a6.011 6.011 0 0 1-1.552 2.736 5.88 5.88 0 0 1-4.172 1.727 5.88 5.88 0 0 1-4.172-1.727 6.013 6.013 0 0 1-1.552-2.736h-4.347a6.013 6.013 0 0 1-1.552 2.736 5.88 5.88 0 0 1-4.172 1.727 5.88 5.88 0 0 1-4.172-1.727A5.817 5.817 0 0 1 0 21.713c0-1.63.66-3.105 1.727-4.172a5.88 5.88 0 0 1 4.172-1.727c1.63 0 3.104.66 4.172 1.727a6.014 6.014 0 0 1 1.552 2.736h4.366v-.02Zm3.59 19.384c.543.543 1.3.892 2.134.892.834 0 1.59-.33 2.134-.892.543-.543.893-1.3.893-2.135 0-.834-.33-1.59-.893-2.134a3.022 3.022 0 0 0-2.134-.892c-.835 0-1.591.33-2.135.892a3.022 3.022 0 0 0-.892 2.135c0 .834.33 1.59.892 2.134Zm20.063-15.795c.543-.543.892-1.3.892-2.134 0-.835-.33-1.591-.892-2.135a3.022 3.022 0 0 0-2.135-.892c-.834 0-1.59.33-2.134.892a3.022 3.022 0 0 0-.892 2.135c0 .834.33 1.59.892 2.134.543.543 1.3.893 2.135.893a3.106 3.106 0 0 0 2.134-.893ZM23.847 3.764a3.022 3.022 0 0 0-2.134-.892c-.835 0-1.591.33-2.135.892a3.022 3.022 0 0 0-.892 2.135c0 .834.33 1.59.892 2.134.544.543 1.3.893 2.135.893.834 0 1.59-.33 2.134-.893.543-.543.893-1.3.893-2.134a3.106 3.106 0 0 0-.893-2.135ZM3.764 19.578a3.022 3.022 0 0 0-.892 2.135c0 .834.33 1.59.892 2.134.544.543 1.3.893 2.135.893.834 0 1.59-.33 2.134-.893.543-.563.893-1.3.893-2.134 0-.835-.33-1.591-.893-2.135-.563-.543-1.3-.892-2.134-.892-.835 0-1.591.33-2.135.892Zm15.814 0a3.022 3.022 0 0 0-.892 2.135c0 .834.33 1.59.892 2.134.544.543 1.3.893 2.135.893.834 0 1.59-.33 2.134-.893.543-.543.893-1.3.893-2.134 0-.835-.33-1.591-.893-2.135a3.022 3.022 0 0 0-2.134-.892c-.835 0-1.591.33-2.135.892Z' fill='#028CF0'></path></svg>"
+
 topNavContent = document.createElement("div");
 topNavContent.setAttribute("class", "top-nav-content")
 
+// The left part that contains links and menus
 topNavContentLeft = document.createElement("div");
 topNavContentLeft.setAttribute("class", "left")
 
-topNavContentLeft.innerHTML += "<a href='https://ray.io'>Ray</a>"
-topNavContentLeft.innerHTML += "<a href='" + getNavURL("ray-overview/index.html") + "'>Get Started</a>"
-topNavContentLeft.innerHTML += "<a href='https://www.anyscale.com/blog'>Blog</a>"
-topNavContentLeft.innerHTML += "<a class='active' href='" + getNavURL("ray-overview/index.html").replace("ray-overview/index.html", "index.html") + "'>Documentation</a>"
-topNavContentLeft.innerHTML += "<a href='" + getNavURL("ray-air/getting-started.html") + "'>Libraries</a>"
-topNavContentLeft.innerHTML += "<a href='" + getNavURL("ray-overview/ray-libraries.html") + "'>Ecosystem</a>"
-topNavContentLeft.innerHTML += "<a href='https://www.ray.io/community'>Community</a>"
+//-- The Ray link
+linkRay = document.createElement("a")
+linkRay.setAttribute("href", "https://ray.io")
+linkRay.setAttribute("class", "ray-logo")
+linkRay.innerHTML += rayLogoSvg;
+topNavContentLeft.append(linkRay)
+
+//-- The Get started link
+getStartedLink = document.createElement("a")
+getStartedLink.innerText = "Get started"
+getStartedLink.setAttribute("href", getNavURL("ray-overview/index.html"))
+topNavContentLeft.append(getStartedLink)
+
+//-- The Libraries menu
+librariesMenu = document.createElement("div")
+librariesMenu.setAttribute("class", "menu")
+librariesMenu.innerHTML = "<a href='#'>Libraries" + downCaret + "</a>"
+librariesList = document.createElement("ul")
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-core'><span class='primary'>Ray Core</span><span class='secondary'>Scale general Python applications</span></a></li>"
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-datasets'><span class='primary'>Ray Datasets</span><span class='secondary'>Scale general Python applications</span></a></li>"
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-sgd'><span class='primary'>Ray Train</span><span class='secondary'>Scale deep learning</span></a></li>"
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-tune'><span class='primary'>Ray Tune</span><span class='secondary'>Scale hyperparameter tuning</span></a></li>"
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-serve'><span class='primary'>Ray Serve</span><span class='secondary'>Scale model serving</span></a></li>"
+librariesList.innerHTML += "<li><a href='https://www.ray.io/ray-rllib'><span class='primary'>Ray RLlib</span><span class='secondary'>Scale reinforcement learning</span></a></li>"
+librariesMenu.append(librariesList)
+topNavContentLeft.append(librariesMenu)
+
+//-- The Documentation link
+documentationLink = document.createElement("a")
+documentationLink.innerText = "Documentation"
+documentationLink.setAttribute("href", getNavURL("ray-overview/index.html").replace("ray-overview/index.html", "index.html"))
+topNavContentLeft.append(documentationLink)
+
+//-- The Learn menu
+learnMenu = document.createElement("div")
+learnMenu.setAttribute("class", "menu")
+learnMenu.innerHTML = "<a href='#'>Learning" + downCaret + "</a>"
+learnList = document.createElement("ul")
+learnList.innerHTML += "<li><a href='https://www.anyscale.com/blog'><span class='primary'>Blog</span><span class='secondary'>Updates, best practices, user-stories</span></a></li>"
+learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
+learnList.innerHTML += "<li><a href='https://www.anyscale.com/events'><span class='primary'>Events</span><span class='secondary'>Webinars, meetups, office hours</span></a></li>"
+learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span></a></li>"
+learnMenu.append(learnList)
+topNavContentLeft.append(learnMenu)
+
+//-- The Ecosystem link
+ecosystemLink = document.createElement("a")
+ecosystemLink.innerText = "Ecosystem"
+ecosystemLink.setAttribute("href", getNavURL("/ray-overview/ray-libraries.html"))
+topNavContentLeft.append(ecosystemLink)
+
+//-- The Community link
+communityLink = document.createElement("a")
+communityLink.innerText = "Community"
+communityLink.setAttribute("href", "https://www.ray.io/community")
+topNavContentLeft.append(communityLink)
+
 topNavContent.append(topNavContentLeft)
 
+// The right part that contains the Anyscale trial button
 anyscaleButton = document.createElement("button");
 anyscaleButton.setAttribute("class", "try-anyscale");
 anyscaleButton.innerHTML = '<span>Managed Ray on Anyscale</span><i class="fas fa-chevron-right" aria-hidden="true" title="Hide"></i>'

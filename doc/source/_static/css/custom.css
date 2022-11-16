@@ -1,4 +1,3 @@
-/* Add a black background color to the top navigation */
 .topnav {
   background-color: white;
   border-bottom: 1px solid rgba(0, 0, 0, .1);
@@ -7,49 +6,93 @@
   align-items: center;
 }
 
-/* Style the links inside the navigation bar */
-.topnav a {
-  /* float: left; */
-  /* color: #f2f2f2; */
-  text-align: center;
-  padding: 14px 16px;
-  text-decoration: none;
-  font-size: 17px;
-  color: black;
-  border-bottom: 2px solid white; 
-}
-
-/* Change the color of links on hover */
-.topnav a:hover {
-  color: #007bff;
-  border-bottom: 2px solid #007bff; 
-}
-
-/* Add a color to the active/current link */
-.topnav a.active {
-  color: #007bff;
-}
-
+/* Content wrapper for the unified nav link / menus */
 .top-nav-content {
   max-width: 1400px;
   width: 100%;
   margin-left: auto;
   margin-right: auto;
-  padding: 0 15px;
+  padding: 0 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-
 @media (max-width: 900px) {
   .top-nav-content {
     display: none;
   }
 }
 
+/* Styling the links and menus in the top nav */
+.top-nav-content a {
+  text-decoration: none;
+  color: black;
+  font-size: 17px;
+}
+.top-nav-content a:hover {
+  color: #007bff;
+}
+
+/* The left part are the links and menus */
 .top-nav-content > .left {
   display: flex;
   white-space: nowrap;
+}
+
+.top-nav-content .left > * {
+  margin-right: 8px;
+}
+.top-nav-content .left > a,
+.top-nav-content .left > .menu > a {
+  text-align: center;
+  padding: 14px 16px;
+  border-bottom: 2px solid white; 
+}
+.top-nav-content .menu:hover > a,
+.top-nav-content .left > a:hover {
+  border-bottom: 2px solid #007bff; 
+}
+
+/* Special styling for the Ray logo */
+.top-nav-content .left > a.ray-logo {
+  width: 90px;
+  padding: 10px 0;
+}
+.top-nav-content .left > a.ray-logo:hover {
+  border-bottom: 2px solid white; 
+}
+
+/* Styling the dropdown menus */
+.top-nav-content .menu {
+  display: flex;
+}
+.top-nav-content .menu > a > .down-caret {
+  margin-left: 8px;
+}
+.top-nav-content .menu > ul {
+  display: none;
+}
+.top-nav-content .menu:hover > ul {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  box-shadow: 0 5px 15px 0 rgb(0 0 0 / 10%);
+  padding: 15px;
+  width: 330px;
+  position: absolute;
+  z-index: 2000;
+  background-color: white;
+  top: 58px;
+}
+.top-nav-content .menu:hover > ul > li {
+  list-style: none;
+  padding: 5px 0;
+}
+.top-nav-content .menu:hover > ul > li span {
+  display: block;
+}
+.top-nav-content .menu:hover > ul > li span.secondary {
+  color: #787878;
 }
 
 /* Styling the "Try Anyscale" button */
@@ -72,6 +115,14 @@
 .top-nav-content > button.try-anyscale > span {
   margin-right: 12px;
 }
+
+
+/* Style the links inside the navigation bar */
+/* Add a color to the active/current link */
+/* .topnav a.active {
+  color: #007bff;
+} */
+
 
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
