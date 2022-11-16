@@ -18,7 +18,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails
 import ray
 from ray.job_submission import JobSubmissionClient
 
-NUM_CLIENTS = 4
+NUM_CLIENTS = 1
 NUM_JOBS_PER_BATCH = 4
 
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
