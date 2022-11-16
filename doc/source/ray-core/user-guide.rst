@@ -14,6 +14,7 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     actors
     objects
     scheduling/index.rst
+    tasks/using-ray-with-gpus
     handling-dependencies
     patterns/index.rst
     advanced-topics

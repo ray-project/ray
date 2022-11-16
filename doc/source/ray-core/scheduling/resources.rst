@@ -54,6 +54,8 @@ Some use cases for custom resources:
   For this use case, the actual quantity doesn't matter, and the convention is to specify a tiny number so that the label resource is
   not the limiting factor for parallelism.
 
+.. _specify-node-resources:
+
 Specifying Node Resources
 -------------------------
 
@@ -153,6 +155,8 @@ Task and actor resource requirements have implications for the Ray's scheduling 
 In particular, the sum of the resource requirements of all of the
 concurrently executing tasks and actors on a given node cannot exceed the node's total resources.
 This property can be used to :ref:`limit the number of concurrently running tasks or actors to avoid issues like OOM <core-patterns-limit-running-tasks>`.
+
+.. _fractional-resource-requirements:
 
 Fractional Resource Requirements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
