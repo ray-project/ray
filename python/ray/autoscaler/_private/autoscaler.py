@@ -357,6 +357,7 @@ class StandardAutoscaler:
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
+            self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
