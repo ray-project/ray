@@ -81,7 +81,7 @@ so multiple tasks and actors can share the same GPU.
 don't use more than their share of the GPU memory.
 TensorFlow can be configured to limit its memory usage.
 
-When Ray assigns GPUs to tasks or actors with fractional resource requirements,
+When Ray assigns GPUs of a node to tasks or actors with fractional resource requirements,
 it will pack one GPU before moving on to the next one to avoid fragmentation.
 
 .. literalinclude:: ../doc_code/gpus.py
