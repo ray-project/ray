@@ -120,25 +120,28 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
     # Load data into GPUs.
     load_timer = algorithm._timers[LOAD_BATCH_TIMER]
-    with load_timer:
-        num_loaded_samples = {}
-        for policy_id, batch in train_batch.policy_batches.items():
-            # Not a policy-to-train.
-            if (
-                local_worker.is_policy_to_train is not None
-                and not local_worker.is_policy_to_train(policy_id, train_batch)
-            ):
-                continue
 
-            # Decompress SampleBatch, in case some columns are compressed.
-            batch.decompress_if_needed()
+    num_loaded_samples = {"default_policy": 5000}#TEST
+    if algorithm.training_iteration == 0:#TEST
 
-            # Load the entire train batch into the Policy's only buffer
-            # (idx=0). Policies only have >1 buffers, if we are training
-            # asynchronously.
-            num_loaded_samples[policy_id] = local_worker.policy_map[
-                policy_id
-            ].load_batch_into_buffer(batch, buffer_index=0)
+        with load_timer:
+            for policy_id, batch in train_batch.policy_batches.items():
+                # Not a policy-to-train.
+                if (
+                    local_worker.is_policy_to_train is not None
+                    and not local_worker.is_policy_to_train(policy_id, train_batch)
+                ):
+                    continue
+
+                # Decompress SampleBatch, in case some columns are compressed.
+                batch.decompress_if_needed()
+
+                # Load the entire train batch into the Policy's only buffer
+                # (idx=0). Policies only have >1 buffers, if we are training
+                # asynchronously.
+                num_loaded_samples[policy_id] = local_worker.policy_map[
+                    policy_id
+                ].load_batch_into_buffer(batch, buffer_index=0)
 
     # Execute minibatch SGD on loaded data.
     learn_timer = algorithm._timers[LEARN_ON_BATCH_TIMER]
@@ -164,7 +167,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
                         permutation[batch_index] * per_device_batch_size, buffer_index=0
                     )
 
-                    learner_info_builder.add_learn_on_batch_results(results, policy_id)
+                    #learner_info_builder.add_learn_on_batch_results(results, policy_id)
 
         # Tower reduce and finalize results.
         learner_info = learner_info_builder.finalize()

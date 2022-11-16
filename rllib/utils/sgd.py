@@ -125,11 +125,15 @@ def do_minibatch_sgd(
 
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
+                import time
+                t0 = time.monotonic()
                 results = (
                     local_worker.learn_on_batch(
                         MultiAgentBatch({policy_id: minibatch}, minibatch.count)
                     )
                 )[policy_id]
+                t1 = time.monotonic()
+                print(f"minibatch sgd {t1-t0}")
                 learner_info_builder.add_learn_on_batch_results(results, policy_id)
 
     learner_info = learner_info_builder.finalize()

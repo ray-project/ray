@@ -62,16 +62,16 @@ def apply_grad_clipping(
             # We therefore need to compute grad_gnorm further down (fixes #4965)
             global_norm = nn.utils.clip_grad_norm_(params, clip_value)
 
-            if isinstance(global_norm, torch.Tensor):
-                global_norm = global_norm.cpu().numpy()
+            #if isinstance(global_norm, torch.Tensor):
+            #    global_norm = global_norm.cpu().numpy()
 
-            grad_gnorm += min(global_norm, clip_value)
+            #grad_gnorm += min(global_norm, clip_value)
 
-    if grad_gnorm > 0:
-        return {"grad_gnorm": grad_gnorm}
-    else:
-        # No grads available
-        return {}
+    #if grad_gnorm > 0:
+    #    return {"grad_gnorm": grad_gnorm}
+    #else:
+    #    # No grads available
+    return {}
 
 
 @Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)

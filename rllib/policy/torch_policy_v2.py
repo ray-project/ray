@@ -648,6 +648,7 @@ class TorchPolicyV2(Policy):
     ) -> int:
         # Set the is_training flag of the batch.
         batch.set_training(True)
+        batch["obs"] = batch["obs"].astype(np.float32)
 
         # Shortcut for 1 CPU only: Store batch in `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
@@ -700,89 +701,34 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
-        if not self._loaded_batches[buffer_index]:
-            raise ValueError(
-                "Must call Policy.load_batch_into_buffer() before "
-                "Policy.learn_on_loaded_batch()!"
-            )
-
+        import time
+        t0 = time.monotonic()
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
         device_batch_size = self.config.get(
             "sgd_minibatch_size", self.config["train_batch_size"]
         ) // len(self.devices)
 
-        # Set Model to train mode.
-        if self.model_gpu_towers:
-            for t in self.model_gpu_towers:
-                t.train()
-
-        # Shortcut for 1 CPU only: Batch should already be stored in
-        # `self._loaded_batches`.
-        if len(self.devices) == 1 and self.devices[0].type == "cpu":
-            assert buffer_index == 0
-            if device_batch_size >= len(self._loaded_batches[0][0]):
-                batch = self._loaded_batches[0][0]
-            else:
-                batch = self._loaded_batches[0][0][offset : offset + device_batch_size]
-            return self.learn_on_batch(batch)
-
-        if len(self.devices) > 1:
-            # Copy weights of main model (tower-0) to all other towers.
-            state_dict = self.model.state_dict()
-            # Just making sure tower-0 is really the same as self.model.
-            assert self.model_gpu_towers[0] is self.model
-            for tower in self.model_gpu_towers[1:]:
-                tower.load_state_dict(state_dict)
-
-        if device_batch_size >= sum(len(s) for s in self._loaded_batches[buffer_index]):
-            device_batches = self._loaded_batches[buffer_index]
-        else:
-            device_batches = [
-                b[offset : offset + device_batch_size]
-                for b in self._loaded_batches[buffer_index]
-            ]
+        device_batches = [
+            b[offset : offset + device_batch_size]
+            for b in self._loaded_batches[buffer_index]
+        ]
 
         # Callback handling.
         batch_fetches = {}
         for i, batch in enumerate(device_batches):
             custom_metrics = {}
-            self.callbacks.on_learn_on_batch(
-                policy=self, train_batch=batch, result=custom_metrics
-            )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
         # Do the (maybe parallelized) gradient calculation step.
-        import time
-        t0 = time.monotonic()
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
-        t1 = time.monotonic()
-        print(f"grad-calc {t1-t0}")
-
-        # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
-        all_grads = []
-        for i in range(len(tower_outputs[0][0])):
-            if tower_outputs[0][0][i] is not None:
-                all_grads.append(
-                    torch.mean(
-                        torch.stack([t[0][i].to(self.device) for t in tower_outputs]),
-                        dim=0,
-                    )
-                )
-            else:
-                all_grads.append(None)
-        # Set main model's grads to mean-reduced values.
-        for i, p in enumerate(self.model.parameters()):
-            p.grad = all_grads[i]
-
-        self.apply_gradients(_directStepOptimizerSingleton)
 
         self.num_grad_updates += 1
 
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
-                    LEARNER_STATS_KEY: self.stats_fn(batch),
+                    LEARNER_STATS_KEY: {},#self.stats_fn(batch),
                     "model": model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
@@ -793,6 +739,9 @@ class TorchPolicyV2(Policy):
                 }
             )
         batch_fetches.update(self.extra_compute_grad_fetches())
+
+        t1 = time.monotonic()
+        print(f"torch: learn_on_loaded_batch {t1-t0}")
 
         return batch_fetches
 
@@ -833,7 +782,7 @@ class TorchPolicyV2(Policy):
     def apply_gradients(self, gradients: ModelGradients) -> None:
         if gradients == _directStepOptimizerSingleton:
             for i, opt in enumerate(self._optimizers):
-                opt.step()
+                pass#opt.step()
         else:
             # TODO(sven): Not supported for multiple optimizers yet.
             assert len(self._optimizers) == 1
@@ -1117,124 +1066,12 @@ class TorchPolicyV2(Policy):
             A list (one item per device) of 2-tuples, each with 1) gradient
             list and 2) grad info dict.
         """
-        assert len(self.model_gpu_towers) == len(sample_batches)
-        lock = threading.Lock()
-        results = {}
-        grad_enabled = torch.is_grad_enabled()
+        #torch.set_grad_enabled(grad_enabled)
+        self._optimizers[0].zero_grad(set_to_none=True)
+        loss_out = force_list(
+            self.loss(self.model, self.dist_class, sample_batches[0])
+        )
 
-        def _worker(shard_idx, model, sample_batch, device):
-            torch.set_grad_enabled(grad_enabled)
-            try:
-                with NullContextManager() if device.type == "cpu" else torch.cuda.device(  # noqa: E501
-                    device
-                ):
-                    loss_out = force_list(
-                        self.loss(model, self.dist_class, sample_batch)
-                    )
+        loss_out[0].backward()
 
-                    # Call Model's custom-loss with Policy loss outputs and
-                    # train_batch.
-                    loss_out = model.custom_loss(loss_out, sample_batch)
-
-                    assert len(loss_out) == len(self._optimizers)
-
-                    # Loop through all optimizers.
-                    grad_info = {"allreduce_latency": 0.0}
-
-                    parameters = list(model.parameters())
-                    all_grads = [None for _ in range(len(parameters))]
-                    for opt_idx, opt in enumerate(self._optimizers):
-                        # Erase gradients in all vars of the tower that this
-                        # optimizer would affect.
-                        param_indices = self.multi_gpu_param_groups[opt_idx]
-                        for param_idx, param in enumerate(parameters):
-                            if param_idx in param_indices and param.grad is not None:
-                                param.grad.data.zero_()
-                        # Recompute gradients of loss over all variables.
-                        loss_out[opt_idx].backward(retain_graph=True)
-                        grad_info.update(
-                            self.extra_grad_process(opt, loss_out[opt_idx])
-                        )
-
-                        grads = []
-                        # Note that return values are just references;
-                        # Calling zero_grad would modify the values.
-                        for param_idx, param in enumerate(parameters):
-                            if param_idx in param_indices:
-                                if param.grad is not None:
-                                    grads.append(param.grad)
-                                all_grads[param_idx] = param.grad
-
-                        if self.distributed_world_size:
-                            start = time.time()
-                            if torch.cuda.is_available():
-                                # Sadly, allreduce_coalesced does not work with
-                                # CUDA yet.
-                                for g in grads:
-                                    torch.distributed.all_reduce(
-                                        g, op=torch.distributed.ReduceOp.SUM
-                                    )
-                            else:
-                                torch.distributed.all_reduce_coalesced(
-                                    grads, op=torch.distributed.ReduceOp.SUM
-                                )
-
-                            for param_group in opt.param_groups:
-                                for p in param_group["params"]:
-                                    if p.grad is not None:
-                                        p.grad /= self.distributed_world_size
-
-                            grad_info["allreduce_latency"] += time.time() - start
-
-                with lock:
-                    results[shard_idx] = (all_grads, grad_info)
-            except Exception as e:
-                import traceback
-
-                with lock:
-                    results[shard_idx] = (
-                        ValueError(
-                            e.args[0]
-                            + "\n traceback"
-                            + traceback.format_exc()
-                            + "\n"
-                            + "In tower {} on device {}".format(shard_idx, device)
-                        ),
-                        e,
-                    )
-
-        # Single device (GPU) or fake-GPU case (serialize for better
-        # debugging).
-        if len(self.devices) == 1 or self.config["_fake_gpus"]:
-            for shard_idx, (model, sample_batch, device) in enumerate(
-                zip(self.model_gpu_towers, sample_batches, self.devices)
-            ):
-                _worker(shard_idx, model, sample_batch, device)
-                # Raise errors right away for better debugging.
-                last_result = results[len(results) - 1]
-                if isinstance(last_result[0], ValueError):
-                    raise last_result[0] from last_result[1]
-        # Multi device (GPU) case: Parallelize via threads.
-        else:
-            threads = [
-                threading.Thread(
-                    target=_worker, args=(shard_idx, model, sample_batch, device)
-                )
-                for shard_idx, (model, sample_batch, device) in enumerate(
-                    zip(self.model_gpu_towers, sample_batches, self.devices)
-                )
-            ]
-
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join()
-
-        # Gather all threads' outputs and return.
-        outputs = []
-        for shard_idx in range(len(sample_batches)):
-            output = results[shard_idx]
-            if isinstance(output[0], Exception):
-                raise output[0] from output[1]
-            outputs.append(results[shard_idx])
-        return outputs
+        self._optimizers[0].step()

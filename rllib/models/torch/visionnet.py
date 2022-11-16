@@ -240,7 +240,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         seq_lens: TensorType,
     ) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float()
-        # Permuate b/c data comes in as [B, dim, dim, channels]:
+        # Permutate b/c data comes in as [B, dim, dim, channels]:
         self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.

@@ -153,11 +153,15 @@ if __name__ == "__main__":
             except ConnectionError:
                 ray.init()
             else:
-                try:
-                    trials = run_experiments(experiments, resume=False, verbose=2)
-                finally:
-                    ray.shutdown()
-                    _register_all()
+                algo = get_trainable_cls(exp["run"])(config=exp["config"], env=exp["env"])
+                while True:
+                    print(algo.train())
+
+                #try:
+                #    trials = run_experiments(experiments, resume=False, verbose=2)
+                #finally:
+                #    ray.shutdown()
+                #    _register_all()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
