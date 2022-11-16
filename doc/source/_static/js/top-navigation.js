@@ -37,6 +37,12 @@ getStartedLink.innerText = "Get started"
 getStartedLink.setAttribute("href", getNavURL("ray-overview/index.html"))
 topNavContentLeft.append(getStartedLink)
 
+//-- The Blog link
+blogLink = document.createElement("a")
+blogLink.innerText = "Blog"
+blogLink.setAttribute("href", "https://www.anyscale.com/blog")
+topNavContentLeft.append(blogLink)
+
 //-- The Libraries menu
 librariesMenu = document.createElement("div")
 librariesMenu.setAttribute("class", "menu")
@@ -45,7 +51,7 @@ librariesList = document.createElement("ul")
 librariesList.innerHTML += "<li><a href='" + getNavURL("ray-core/walkthrough.html") + "'><span class='primary'>Ray Core</span><span class='secondary'>Scale general Python applications</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("ray-air/getting-started.html") + "'><span class='primary'>Ray AIR</span><span class='secondary'>Scale AI applications</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("data/dataset.html") + "'><span class='primary'>Ray Datasets</span><span class='secondary'>Scale data ingest and preprocessing</span></a></li>"
-librariesList.innerHTML += "<li><a href='" + getNavURL("train/train.html") + "'><span class='primary'>Ray Train</span><span class='secondary'>Scale deep learning</span></a></li>"
+librariesList.innerHTML += "<li><a href='" + getNavURL("train/train.html") + "'><span class='primary'>Ray Train</span><span class='secondary'>Scale machine learning training</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("tune/index.html") + "'><span class='primary'>Ray Tune</span><span class='secondary'>Scale hyperparameter tuning</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("serve/index.html") + "'><span class='primary'>Ray Serve</span><span class='secondary'>Scale model serving</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("rllib/index.html") + "'><span class='primary'>Ray RLlib</span><span class='secondary'>Scale reinforcement learning</span></a></li>"
@@ -63,7 +69,7 @@ learnMenu = document.createElement("div")
 learnMenu.setAttribute("class", "menu")
 learnMenu.innerHTML = "<a href='#'>Learning" + downCaret + "</a>"
 learnList = document.createElement("ul")
-learnList.innerHTML += "<li><a href='https://www.anyscale.com/blog'><span class='primary'>Blog</span><span class='secondary'>Updates, best practices, user-stories</span></a></li>"
+learnList.innerHTML += "<li><a href='https://discuss.ray.io/'><span class='primary'>Discussion Forum</span><span class='secondary'>Get your Ray questions answered</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events'><span class='primary'>Events</span><span class='secondary'>Webinars, meetups, office hours</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span></a></li>"
