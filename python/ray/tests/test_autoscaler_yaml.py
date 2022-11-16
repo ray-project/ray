@@ -33,18 +33,6 @@ CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
 
 CONFIG_PATHS += recursive_fnmatch(os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
 
-
-def ignore_k8s_operator_configs(paths):
-    return [
-        path
-        for path in paths
-        if "kubernetes/operator_configs" not in path
-        and "kubernetes/job-example.yaml" not in path
-    ]
-
-
-CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
-
 EXPECTED_LOCAL_CONFIG_STR = """
 cluster_name: minimal-manual
 provider:
@@ -113,10 +101,6 @@ class AutoscalingConfigTest(unittest.TestCase):
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
                 config = prepare_config(config)
-                if config["provider"]["type"] == "kubernetes":
-                    KubernetesNodeProvider.fillout_available_node_types_resources(
-                        config
-                    )
                 if config["provider"]["type"] == "aws":
                     fake_fillout_available_node_types_resources(config)
                 validate_config(config)
