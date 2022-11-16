@@ -22,7 +22,7 @@ except ImportError:
 _pandas = None
 
 
-def lazy_import_pandas():
+def _lazy_import_pandas():
     global _pandas
     if _pandas is None:
         import pandas
@@ -63,7 +63,7 @@ def convert_batch_type_to_pandas(
         A pandas Dataframe representation of the input data.
 
     """
-    pd = lazy_import_pandas()
+    pd = _lazy_import_pandas()
 
     if isinstance(data, np.ndarray):
         data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
@@ -149,7 +149,7 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
-    pd = lazy_import_pandas()
+    pd = _lazy_import_pandas()
 
     if isinstance(data, np.ndarray):
         return data
@@ -209,7 +209,7 @@ def _ndarray_to_column(arr: np.ndarray) -> Union["pd.Series", List[np.ndarray]]:
     If conversion to a pandas Series fails (e.g. if the ndarray is multi-dimensional),
     fall back to a list of NumPy ndarrays.
     """
-    pd = lazy_import_pandas()
+    pd = _lazy_import_pandas()
     try:
         # Try to convert to Series, falling back to a list conversion if this fails
         # (e.g. if the ndarray is multi-dimensional).
@@ -236,7 +236,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
-    pd = lazy_import_pandas()
+    pd = _lazy_import_pandas()
     from ray.air.util.tensor_extensions.pandas import (
         TensorArray,
         column_needs_tensor_extension,
@@ -270,7 +270,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 
 def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
-    pd = lazy_import_pandas()
+    pd = _lazy_import_pandas()
     from ray.air.util.tensor_extensions.pandas import TensorDtype
 
     with pd.option_context("chained_assignment", None):
