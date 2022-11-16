@@ -145,9 +145,7 @@ def test_pandas_multi_dim_pandas(use_tensor_extension_for_input):
     actual_output = convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    actual_output = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.PANDAS
-    )
+    actual_output = convert_pandas_to_batch_type(actual_output, type=BatchFormat.PANDAS)
     pd.testing.assert_frame_equal(actual_output, input_data)
 
 
@@ -170,9 +168,7 @@ def test_numpy_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.NUMPY
-    )
+    output_array = convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)
     np.testing.assert_equal(output_array, input_data)
 
 
@@ -182,9 +178,7 @@ def test_numpy_multi_dim_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.NUMPY
-    )
+    output_array = convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)
     np.testing.assert_array_equal(np.array(list(output_array)), input_data)
 
 
@@ -222,9 +216,7 @@ def test_dict_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.NUMPY
-    )
+    output_array = convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)
     np.testing.assert_array_equal(output_array, input_data["x"])
 
 
@@ -235,9 +227,7 @@ def test_dict_multi_dim_to_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.NUMPY
-    )
+    output_array = convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)
     np.testing.assert_array_equal(np.array(list(output_array)), input_data["x"])
 
 
@@ -247,9 +237,7 @@ def test_dict_pandas_multi_column():
     actual_output = convert_batch_type_to_pandas(array_dict)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_dict = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.NUMPY
-    )
+    output_dict = convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)
     for k, v in output_dict.items():
         np.testing.assert_array_equal(v, array_dict[k])
 
@@ -276,9 +264,7 @@ def test_arrow_tensor_pandas():
     expected_output = pd.DataFrame({"x": TensorArray(np_array)})
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    arrow_output = convert_pandas_to_batch_type(
-        actual_output, type=BatchFormat.ARROW
-    )
+    arrow_output = convert_pandas_to_batch_type(actual_output, type=BatchFormat.ARROW)
     assert arrow_output.equals(input_data)
 
 
