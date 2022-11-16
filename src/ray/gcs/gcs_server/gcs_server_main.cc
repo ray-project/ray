@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     main_service.stop();
-    rpc::DrainAndResetServerCallExecutor();
+    ray::rpc::DrainAndResetServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
   };
