@@ -19,8 +19,8 @@
 namespace ray {
 namespace rpc {
 
-boost::asio::thread_pool &GetServerCallExecutor() {
-  static boost::asio::thread_pool thread_pool(
+std::unique_ptr<boost::asio::thread_pool> &GetServerCallExecutor() {
+  static auto thread_pool = std::make_unique<boost::asio::thread_pool>(
       ::RayConfig::instance().num_server_call_thread());
   return thread_pool;
 }
