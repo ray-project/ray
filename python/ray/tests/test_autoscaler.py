@@ -62,7 +62,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2
-from ray.tests.batching_node_provider.test_batching_node_provider_unit import (
+from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
 )
 
