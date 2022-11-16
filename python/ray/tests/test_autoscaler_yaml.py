@@ -15,7 +15,6 @@ from click.exceptions import ClickException
 
 import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
-from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
@@ -206,7 +205,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                     new_config
                 )
                 validate_config(new_config)
-                assert expected_available_node_types == new_config["available_node_types"]
+                assert (
+                    expected_available_node_types == new_config["available_node_types"]
+                )
             except Exception:
                 self.fail("Config did not pass multi node types auto fill test!")
 
