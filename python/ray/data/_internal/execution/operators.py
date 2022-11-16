@@ -55,9 +55,6 @@ def _from_dataset_read_tasks(ds) -> PhysicalOperator:
     inputs = InputDataBuffer(_make_ref_bundles([[r] for r in read_tasks]))
 
     def do_read(block):
-        import time
-
-        time.sleep(1)
         for read_task in block:
             for output_block in read_task():
                 return output_block  # TODO handle remaining blocks
