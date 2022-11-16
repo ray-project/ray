@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Iterator, Tuple
 
 import ray
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -166,6 +167,17 @@ class OneToOneOperator(PhysicalOperator):
             input_metadata: Extra metadata provided from the upstream operator.
         """
         raise NotImplementedError
+
+    def compute_strategy(self) -> ComputeStrategy:
+        """Return the compute strategy to use for executing these tasks.
+
+        Supported strategies: {TaskPoolStrategy, ActorPoolStrategy}.
+        """
+        return TaskPoolStrategy()
+
+    def ray_remote_args(self) -> Dict[str, Any]:
+        """Return extra ray remote args to use for execution."""
+        return {}
 
 
 class ExchangeOperator(PhysicalOperator):

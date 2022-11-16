@@ -1,6 +1,7 @@
-from typing import List, Iterator, Optional
+from typing import List, Iterator, Optional, Any, Dict
 
 from ray.data.block import Block
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     OneToOneOperator,
@@ -37,8 +38,12 @@ class MapOperator(OneToOneOperator):
         block_transform: BlockTransform,
         input_op: PhysicalOperator,
         name: str = "Map",
+        compute_strategy: Optional[ComputeStrategy] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._block_transform = block_transform
+        self._strategy = compute_strategy or TaskPoolStrategy()
+        self._remote_args = (ray_remote_args or {}).copy()
         super().__init__(name, [input_op])
 
     def execute_one(self, block_bundle: Iterator[Block], _) -> Iterator[Block]:
@@ -47,6 +52,12 @@ class MapOperator(OneToOneOperator):
                 yield fn(b)
 
         return apply_transform(self._block_transform, block_bundle)
+
+    def compute_strategy(self):
+        return self._strategy
+
+    def ray_remote_args(self):
+        return self._remote_args
 
 
 # For testing only.

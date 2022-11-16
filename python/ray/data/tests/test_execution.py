@@ -4,6 +4,7 @@ import time
 from typing import List, Any
 
 import ray
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.execution.pipelined_executor import PipelinedExecutor
@@ -33,6 +34,24 @@ def test_basic_bulk():
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)]
     assert output == expected, (output, expected)
+
+
+def test_actor_strategy():
+    executor = PipelinedExecutor(ExecutionOptions())
+    inputs = _make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(lambda block: [b * -1 for b in block], o1)
+    o3 = MapOperator(
+        s(0.8, lambda block: [b * 2 for b in block]),
+        o2,
+        compute_strategy=ActorPoolStrategy(1, 2),
+        ray_remote_args={"num_cpus": 1},
+        name="ActorMap",
+    )
+    it = executor.execute(o3)
+    output = ref_bundles_to_list(it)
+    expected = [[x * -2] for x in range(20)]
+    assert sorted(output) == sorted(expected), (output, expected)
 
 
 def test_ds_adapter():

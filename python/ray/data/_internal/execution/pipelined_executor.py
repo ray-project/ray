@@ -1,7 +1,8 @@
-from typing import Dict, List, Iterator, Optional
+from typing import Dict, List, Iterator, Optional, Any
 
 import ray
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, BlockAccessor
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -18,6 +19,35 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.types import ObjectRef
 
 
+@ray.remote
+class _Actor:
+    @ray.method(num_returns=2)
+    def transform_one(self, op, block):
+        [out] = list(op.execute_one([block], {}))
+        return out, BlockAccessor.for_block(out).get_metadata([], None)
+
+
+class _ActorPool:
+    def __init__(
+        self,
+        size: int,
+        ray_remote_args: Dict[str, Any] = None,
+    ):
+        cls = _Actor
+        if ray_remote_args:
+            cls = cls.options(**ray_remote_args)
+        self.actors = {cls.remote(): 0 for _ in range(size)}
+
+    def pick_actor(self):
+        actors = sorted(list(self.actors.items()), key=lambda a: a[1])
+        least_busy = actors[0][0]
+        self.actors[least_busy] += 1
+        return least_busy
+
+    def return_actor(self, actor):
+        self.actors[actor] -= 1
+
+
 class _OpState:
     """Execution state for a PhysicalOperator."""
 
@@ -30,6 +60,14 @@ class _OpState:
         self.progress_bar = None
         self.num_active_tasks = 0
         self.num_completed_tasks = 0
+        if isinstance(op, OneToOneOperator):
+            self.compute_strategy = op.compute_strategy()
+        else:
+            self.compute_strategy = None
+        if isinstance(self.compute_strategy, ActorPoolStrategy):
+            self.actor_pool = _ActorPool(self.compute_strategy.max_size)
+        else:
+            self.actor_pool = None
 
     def initialize_progress_bar(self, index: int) -> None:
         self.progress_bar = ProgressBar(
@@ -70,10 +108,17 @@ class _OneToOneTask:
         self._block_ref: Optional[ObjectRef[Block]] = None
         self._meta_ref: Optional[ObjectRef[BlockMetadata]] = None
         self._options = options
+        self._actor = None
 
     def execute(self) -> ObjectRef:
         if len(self._inputs.blocks) != 1:
             raise NotImplementedError("TODO: multi-block inputs")
+        if self._state.actor_pool:
+            return self._execute_actor()
+        else:
+            return self._execute_task()
+
+    def _execute_task(self):
         transform_fn = _transform_one
         if self._options.locality_with_output:
             transform_fn = transform_fn.options(
@@ -88,10 +133,21 @@ class _OneToOneTask:
         self._state.num_active_tasks += 1
         return self._meta_ref
 
+    def _execute_actor(self):
+        actor = self._state.actor_pool.pick_actor()
+        self._actor = actor
+        self._block_ref, self._meta_ref = actor.transform_one.remote(
+            self._op, self._inputs.blocks[0][0]
+        )
+        self._state.num_active_tasks += 1
+        return self._meta_ref
+
     def completed(self):
         meta = ray.get(self._meta_ref)
         self._state.num_active_tasks -= 1
         self._state.add_output(RefBundle([(self._block_ref, meta)]))
+        if self._actor:
+            self._state.actor_pool.return_actor(self._actor)
 
 
 # TODO: optimize memory usage by deleting intermediate results.
