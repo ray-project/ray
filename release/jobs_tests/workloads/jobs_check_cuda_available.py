@@ -4,7 +4,7 @@ Checks that GPU resources are available in the job submission
 driver script.
 
 This file is a driver script to be submitted to a Ray cluster via
-the Ray Jobs API. This is done by specifying `type: job` in 
+the Ray Jobs API. This is done by specifying `type: job` in
 `release_tests.yaml` (as opposed to, say, `type: sdk_command`).
 
 Release test for https://github.com/ray-project/ray/issues/24455
