@@ -4,9 +4,9 @@ ipython
 tblib
 
 # If you make changes to the torch versions, please also make the corresponding changes to `requirements_dl.txt`!
--f https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.1+cu116
-torchvision==0.13.1+cu116
+-f https://download.pytorch.org/whl/cu102
+torch==1.12.1+cu102
+torchvision==0.13.1+cu102
 
 -f https://data.pyg.org/whl/torch-1.12.1+cu116.html
 torch-scatter==2.0.9
