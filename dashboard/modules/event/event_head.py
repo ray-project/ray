@@ -42,6 +42,7 @@ class EventHead(
 
     @staticmethod
     def _update_events(event_list):
+        return
         # {job_id: {event_id: event}}
         all_job_events = defaultdict(JobEvents)
         for event in event_list:
