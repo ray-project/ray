@@ -16,7 +16,11 @@ from ray.rllib.examples.policy.episode_env_aware_policy import (
 )
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
@@ -85,6 +89,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
+            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
             expected_count = config.num_envs_per_worker * config.rollout_fragment_length
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
@@ -149,6 +154,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
+            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
             # Rollout fragment length should be auto-computed to 2000:
             # 2 workers, 1 env per worker, train batch size=4000 -> 2000 per worker.
