@@ -42,7 +42,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
-    GetAllTaskEventReply,
+    GetAllTaskEventsReply,
     GetAllWorkerInfoReply,
 )
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
@@ -775,7 +775,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     first_task_name = "1"
     second_task_name = "2"
     id = b"1234"
-    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventsReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name, node_id=node_id),
@@ -792,7 +792,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test detail
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventsReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -808,7 +808,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test limit
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventsReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -823,7 +823,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     """
     Test filters
     """
-    data_source_client.get_all_task_info.return_value = GetAllTaskEventReply(
+    data_source_client.get_all_task_info.return_value = GetAllTaskEventsReply(
         total=2,
         events_by_task=[
             generate_task_data(id, first_task_name),
@@ -1203,7 +1203,7 @@ async def test_state_data_source_client(ray_start_cluster):
     Test tasks
     """
     result = await client.get_all_task_info()
-    assert isinstance(result, GetAllTaskEventReply)
+    assert isinstance(result, GetAllTaskEventsReply)
 
     """
     Test objects
@@ -2504,7 +2504,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "TaskInfoGcsService.grpc_server.GetAllTaskEvent=20000000:20000000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskEvents=20000000:20000000,"
                 "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
@@ -2627,7 +2627,7 @@ def test_state_api_server_enforce_concurrent_http_requests(
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "TaskInfoGcsService.grpc_server.GetAllTaskEvent=200000:200000,"
+                "TaskInfoGcsService.grpc_server.GetAllTaskEvents=200000:200000,"
                 "NodeManagerService.grpc_server.GetObjectsInfo=200000:200000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=200000:200000,"
                 "NodeInfoGcsService.grpc_server.GetAllNodeInfo=200000:200000,"

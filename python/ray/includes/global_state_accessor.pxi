@@ -67,6 +67,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllProfileInfo()
         return result
 
+    def get_profile_events(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllProfileEvents()
+        return result
+
     def get_all_resource_usage(self):
         """Get newest resource usage of all nodes from GCS service."""
         cdef unique_ptr[c_string] result

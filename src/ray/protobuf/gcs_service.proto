@@ -646,7 +646,7 @@ message AddTaskEventDataReply {
   uint64 num_failure = 3;
 }
 
-message GetAllTaskEventRequest {
+message GetAllTaskEventsRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 1;
@@ -654,7 +654,7 @@ message GetAllTaskEventRequest {
   optional TaskEventType event_type = 2;
 }
 
-message GetAllTaskEventReply {
+message GetAllTaskEventsReply {
   GcsStatus status = 1;
   // Data of task state events
   repeated TaskEvents events_by_task = 2;
@@ -669,6 +669,6 @@ service TaskInfoGcsService {
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
 
   // Query all the task state events.
-  rpc GetAllTaskEvent(GetAllTaskEventRequest) returns (GetAllTaskEventReply);
+  rpc GetAllTaskEvents(GetAllTaskEventsRequest) returns (GetAllTaskEventsReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

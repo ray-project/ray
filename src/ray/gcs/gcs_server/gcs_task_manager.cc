@@ -86,9 +86,9 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
       "GcsTaskManager::HandleAddTaskEventData");
 }
 
-void GcsTaskManager::HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
-                                           rpc::GetAllTaskEventReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::HandleGetAllTaskEvents(rpc::GetAllTaskEventsRequest request,
+                                            rpc::GetAllTaskEventsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all task state events: " << request.ShortDebugString();
   // Dispatch to the handler
   io_service_.post(
@@ -131,7 +131,7 @@ void GcsTaskManager::HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
                        << reply->ShortDebugString();
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       },
-      "GcsTaskManager::HandleGetAllTaskEvent");
+      "GcsTaskManager::HandleGetAllTaskEvents");
 }
 
 Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,

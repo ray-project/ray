@@ -543,6 +543,13 @@ class TaskInfoAccessor {
   virtual Status AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
                                        const StatusCallback &callback);
 
+  /// Get all profile events from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called when get is complete.
+  /// \return Status
+  virtual Status AsyncGetAllProfileEvents(
+      const MultiItemCallback<rpc::TaskEvents> &callback);
+
  private:
   GcsClient *client_impl_;
 };

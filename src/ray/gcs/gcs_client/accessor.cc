@@ -813,6 +813,20 @@ Status StatsInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status TaskInfoAccessor::AsyncGetAllProfileEvents(
+    const MultiItemCallback<rpc::TaskEvents> &callback) {
+  RAY_LOG(DEBUG) << "Getting all profile events.";
+  RAY_CHECK(callback);
+  rpc::GetAllTaskEventsRequest request;
+  request.set_event_type(rpc::TaskEventType::PROFILE_EVENT);
+  client_impl_->GetGcsRpcClient().GetAllTaskEvents(
+      request, [callback](const Status &status, const rpc::GetAllTaskEventsReply &reply) {
+        callback(status, VectorFromProtobuf(reply.events_by_task()));
+        RAY_LOG(DEBUG) << "Finished getting all profile events.";
+      });
+  return Status::OK();
+}
+
 Status TaskInfoAccessor::AsyncAddTaskEventData(
     std::unique_ptr<rpc::TaskEventData> data_ptr, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();

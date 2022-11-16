@@ -68,6 +68,8 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllProfileInfo() LOCKS_EXCLUDED(mutex_);
 
+  std::vector<std::string> GetAllProfileEvents() LOCKS_EXCLUDED(mutex_);
+
   /// Get information of a node resource from GCS Service.
   ///
   /// \param node_id The ID of node to look up in the GCS Service.

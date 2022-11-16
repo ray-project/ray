@@ -388,7 +388,7 @@ class GcsRpcClient {
 
   /// Get task events info from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
-                             GetAllTaskEvent,
+                             GetAllTaskEvents,
                              task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
