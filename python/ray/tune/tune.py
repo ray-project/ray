@@ -289,12 +289,14 @@ def run(
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
-        trial_name_creator: Optional function
-            for generating the trial string representation.
-        trial_dirname_creator: Function
-            for generating the trial dirname. This function should take
-            in a Trial object and return a string representing the
-            name of the directory. The return value cannot be a path.
+        trial_name_creator: Optional function that takes in a Trial and returns
+            its name (i.e. its string representation). Be sure to include some unique
+            identifier (such as `Trial.trial_id`) in each trial's name.
+        trial_dirname_creator: Optional function that takes in a trial and
+            generates its trial directory name as a string. Be sure to include some
+            unique identifier (such as `Trial.trial_id`) is used in each trial's
+            directory name. Otherwise, trials could overwrite artifacts and checkpoints
+            of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Whether to change the working directory of each worker
             to its corresponding trial directory. Defaults to `True` to prevent
             contention between workers saving trial-level outputs.
