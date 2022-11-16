@@ -155,16 +155,18 @@ class AutoscalingConfigTest(unittest.TestCase):
         expected_available_node_types["cpu_4_ondemand"]["resources"] = {"CPU": 4}
         expected_available_node_types["cpu_16_spot"]["resources"] = {
             "CPU": 16,
-            "memory": 41231686041,
+            "memory": 48103633715,
             "Custom1": 1,
             "is_spot": 1,
         }
         expected_available_node_types["gpu_8_ondemand"]["resources"] = {
             "CPU": 32,
-            "memory": 157195803033,
+            "memory": 183395103539,
             "GPU": 4,
             "accelerator_type:V100": 1,
         }
+        expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
+        expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0
 
         boto3_dict = {
             "InstanceTypes": [
