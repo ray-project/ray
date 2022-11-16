@@ -135,7 +135,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   }
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
-        [this] { TryKillingIdleWorkers(); },
+        [this] { ResizeIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
@@ -804,10 +804,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (num_initial_python_workers_for_first_job_ > 0) {
       delay_callback = true;
       // Start initial Python workers for the first job.
-      for (int i = 0; i < num_initial_python_workers_for_first_job_; i++) {
-        PopWorkerStatus status;
-        StartWorkerProcess(Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
-      }
+      PrestartWorkers(Language::PYTHON, num_initial_python_workers_for_first_job_);
     }
   }
 
@@ -993,7 +990,14 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 }
 
-void WorkerPool::TryKillingIdleWorkers() {
+void WorkerPool::ResizeIdleWorkers() {
+  auto running_size = TryKillingIdleWorkers();
+  if (running_size < static_cast<size_t>(num_workers_soft_limit_)) {
+    PrestartWorkers(ray::Language::PYTHON, running_size);
+  }
+}
+
+size_t WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 
   int64_t now = get_time_();
@@ -1073,7 +1077,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       if (!finished_jobs_.count(job_id)) {
         // Ignore the soft limit for jobs that have already finished, as we
         // should always clean up these workers.
-        return;
+        return running_size;
       }
     }
 
@@ -1146,6 +1150,7 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   idle_of_all_languages_ = std::move(new_idle_of_all_languages);
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+  return running_size;
 }
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
@@ -1204,8 +1209,14 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
     if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        it->first->GetAssignedJobId() != task_spec.JobId() ||
         state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+      continue;
+    }
+
+    // Don't allow worker reuse across jobs.
+    // TODO(scv119): make this optional?
+    if (!it->first->GetAssignedJobId().IsNil() &&
+        it->first->GetAssignedJobId() != task_spec.JobId()) {
       continue;
     }
 
@@ -1307,11 +1318,14 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    for (int i = 0; i < num_needed; i++) {
-      PopWorkerStatus status;
-      StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
-    }
+    PrestartWorkers(task_spec.GetLanguage(), num_needed);
+  }
+}
+
+void WorkerPool::PrestartWorkers(ray::Language language, int64_t num_needed) {
+  for (int i = 0; i < num_needed; i++) {
+    PopWorkerStatus status;
+    StartWorkerProcess(language, rpc::WorkerType::WORKER, JobID::Nil(), &status);
   }
 }
 

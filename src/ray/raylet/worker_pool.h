@@ -384,9 +384,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Try resize (both killing and starting enw) the number of idle workers to ensure the
+  /// running workers are in a reasonable size.
+  void ResizeIdleWorkers();
+
   /// Try killing idle workers to ensure the running workers are in a
   /// reasonable size.
-  void TryKillingIdleWorkers();
+  size_t TryKillingIdleWorkers();
 
  protected:
   void update_worker_startup_token_counter();
@@ -438,6 +442,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
+
+  void PrestartWorkers(ray::Language language, int64_t num_needed);
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
