@@ -245,6 +245,9 @@ class ServerCallImpl : public ServerCall {
 
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
+    if (io_service_.stopped()) {
+      return;
+    }
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
