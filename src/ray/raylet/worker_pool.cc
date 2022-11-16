@@ -980,7 +980,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &found,
                                     &used,
                                     &task_id);
-  // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
@@ -1239,7 +1238,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     // Start a new worker process.
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
-      RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
+      RAY_LOG(DEBUG) << "Creating runtime env for task/ " << task_spec.TaskId();
       GetOrCreateRuntimeEnv(
           task_spec.SerializedRuntimeEnv(),
           task_spec.RuntimeEnvConfig(),
