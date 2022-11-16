@@ -92,7 +92,7 @@ class BatchMapper(Preprocessor):
                 "You must specify either 'pandas' or 'numpy' batch format."
             )
 
-        if gbatch_format not in [
+        if batch_format not in [
             BatchFormat.PANDAS,
             BatchFormat.NUMPY,
         ]:
