@@ -148,7 +148,6 @@ class TestMultiAgentEnv(unittest.TestCase):
             .rollouts(
                 rollout_fragment_length=50,
                 num_rollout_workers=0,
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={"p0", "p1"},
