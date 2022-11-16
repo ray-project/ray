@@ -129,6 +129,8 @@ class _OneToOneTask:
                     soft=True,
                 )
             )
+        else:
+            transform_fn = transform_fn.options(scheduling_strategy="SPREAD")
         self._block_ref, self._meta_ref = transform_fn.remote(
             self._op, self._inputs.blocks[0][0]
         )
