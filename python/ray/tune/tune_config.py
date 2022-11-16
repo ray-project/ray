@@ -1,9 +1,10 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
+from ray.tune.experiment.trial import Trial
 from ray.tune.schedulers import TrialScheduler
-from ray.tune.search import Searcher, SearchAlgorithm
+from ray.tune.search import SearchAlgorithm, Searcher
 from ray.util import PublicAPI
 
 
@@ -46,6 +47,23 @@ class TuneConfig:
             Defaults to ``True`` for function trainables (including most
             Ray AIR trainers) and ``False`` for class and registered trainables
             (e.g. RLlib).
+        trial_name_creator: Optional function that takes in a Trial and returns
+            its name (i.e. its string representation). Be sure to include some unique
+            identifier (such as `Trial.trial_id`) in each trial's name.
+            NOTE: This API is in alpha and subject to change.
+        trial_dirname_creator: Optional function that takes in a trial and
+            generates its trial directory name as a string. Be sure to include some
+            unique identifier (such as `Trial.trial_id`) is used in each trial's
+            directory name. Otherwise, trials could overwrite artifacts and checkpoints
+            of other trials. The return value cannot be a path.
+            NOTE: This API is in alpha and subject to change.
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
@@ -59,3 +77,6 @@ class TuneConfig:
     max_concurrent_trials: Optional[int] = None
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None
     reuse_actors: Optional[bool] = None
+    trial_name_creator: Optional[Callable[[Trial], str]] = None
+    trial_dirname_creator: Optional[Callable[[Trial], str]] = None
+    chdir_to_trial_dir: bool = True

@@ -3,7 +3,7 @@ py_test(
  size = "medium",
  srcs = ["tune_hvd_keras.py"],
  deps = ["//:ray_lib"],
- tags = ["team:ml", "compat", "exclusive"],
+ tags = ["team:ml", "compat", "compat_py36", "exclusive"],
 )
 
 py_test(
@@ -11,5 +11,5 @@ py_test(
  size = "medium",
  srcs = ["tune_hvd_torch.py"],
  deps = ["//:ray_lib"],
- tags = ["team:ml", "compat", "exclusive"],
+ tags = ["team:ml", "compat", "compat_py36", "exclusive"],
 )

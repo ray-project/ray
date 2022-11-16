@@ -4,6 +4,7 @@ import functools
 import hashlib
 import importlib
 import inspect
+import json
 import logging
 import multiprocessing
 import os
@@ -14,12 +15,13 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
+from subprocess import list2cmdline
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
-
 import grpc
 import numpy as np
 
@@ -61,6 +63,7 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
 
 
 def get_user_temp_dir():
@@ -640,6 +643,26 @@ def get_cgroupv1_used_memory(filename):
         return None
 
 
+def get_cgroupv2_used_memory(stat_file, usage_file):
+    # Uses same calculation as libcontainer, that is:
+    # memory.current - memory.stat[inactive_file]
+    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+    inactive_file_bytes = -1
+    current_usage = -1
+    with open(usage_file, "r") as f:
+        current_usage = int(f.read().strip())
+    with open(stat_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "inactive_file" in line:
+                inactive_file_bytes = int(line.split()[1])
+        if current_usage >= 0 and inactive_file_bytes >= 0:
+            working_set = current_usage - inactive_file_bytes
+            assert working_set >= 0
+            return working_set
+        return None
+
+
 def get_used_memory():
     """Return the currently used system memory in bytes
 
@@ -653,11 +676,15 @@ def get_used_memory():
     memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
+    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
     if os.path.exists(memory_usage_filename):
         docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
-    elif os.path.exists(memory_usage_filename_v2):
-        with open(memory_usage_filename_v2, "r") as f:
-            docker_usage = int(f.read())
+    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
+        memory_stat_filename_v2
+    ):
+        docker_usage = get_cgroupv2_used_memory(
+            memory_stat_filename_v2, memory_usage_filename_v2
+        )
 
     if docker_usage is not None:
         return docker_usage
@@ -1365,6 +1392,24 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
+def parse_resources_json(
+    resources: str, cli_logger, cf, command_arg="--resources"
+) -> Dict[str, float]:
+    try:
+        resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(
+                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+            ),
+        )
+    return resources
+
+
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
@@ -1554,3 +1599,102 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_entrypoint_name():
+    """Get the entrypoint of the current script."""
+    prefix = ""
+    try:
+        curr = psutil.Process()
+        # Prepend `interactive_shell` for interactive shell scripts.
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode # noqa
+        if hasattr(sys, "ps1"):
+            prefix = "(interactive_shell) "
+
+        return prefix + list2cmdline(curr.cmdline())
+    except Exception:
+        return "unknown"
+
+
+def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
+    """Add params to the provided url as query parameters.
+
+    If url already contains query parameters, they will be merged with params, with the
+    existing query parameters overriding any in params with the same parameter name.
+
+    Args:
+        url: The URL to add query parameters to.
+        params: The query parameters to add.
+
+    Returns:
+        URL with params added as query parameters.
+    """
+    # Unquote URL first so we don't lose existing args.
+    url = unquote(url)
+    # Parse URL.
+    parsed_url = urlparse(url)
+    # Merge URL query string arguments dict with new params.
+    base_params = params
+    params = dict(parse_qsl(parsed_url.query))
+    base_params.update(params)
+    # bool and dict values should be converted to json-friendly values.
+    base_params.update(
+        {
+            k: json.dumps(v)
+            for k, v in base_params.items()
+            if isinstance(v, (bool, dict))
+        }
+    )
+
+    # Convert URL arguments to proper query string.
+    encoded_params = urlencode(base_params, doseq=True)
+    # Replace query string in parsed URL with updated query string.
+    parsed_url = parsed_url._replace(query=encoded_params)
+    # Convert back to URL.
+    return urlunparse(parsed_url)
+
+
+def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
+    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
+    parameter. For pyarrow >= 9.0.0, this is required in order to allow
+    ``S3FileSystem.create_dir()`` to create S3 buckets.
+
+    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
+    the URI unchanged.
+
+    Args:
+        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
+
+    Returns:
+        A URI with the added allow_bucket_creation=true query parameter, if the provided
+        URI is an S3 URL; uri will be returned unchanged otherwise.
+    """
+    from pkg_resources._vendor.packaging.version import parse as parse_version
+
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
+        return uri
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "s3":
+        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
+    return uri
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION

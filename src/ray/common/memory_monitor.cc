@@ -20,6 +20,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -37,6 +38,14 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   RAY_CHECK_LE(usage_threshold_, 1);
   if (monitor_interval_ms > 0) {
 #ifdef __linux__
+    auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+    computed_threshold_bytes_ =
+        GetMemoryThreshold(total_memory_bytes, usage_threshold_, min_memory_free_bytes_);
+    computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
+    RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
+                  << computed_threshold_bytes_ << " bytes ("
+                  << FormatFloat(computed_threshold_fraction_, 2)
+                  << " system memory), total system memory bytes: " << total_memory_bytes;
     runner_.RunFnPeriodically(
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
@@ -44,19 +53,14 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
           system_memory.used_bytes = used_memory_bytes;
           system_memory.total_bytes = total_memory_bytes;
 
-          // TODO(clarng): compute this once only.
-          int64_t threshold_bytes = GetMemoryThreshold(
-              system_memory.total_bytes, usage_threshold_, min_memory_free_bytes_);
-
           bool is_usage_above_threshold =
-              IsUsageAboveThreshold(system_memory, threshold_bytes);
+              IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);
 
-          float threshold_fraction = (float)threshold_bytes / system_memory.total_bytes;
-          monitor_callback_(is_usage_above_threshold, system_memory, threshold_fraction);
+          monitor_callback_(
+              is_usage_above_threshold, system_memory, computed_threshold_fraction_);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-    RAY_LOG(INFO) << "MemoryMonitor initialized";
 #else
     RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported "
                      << "only on Linux.";
@@ -143,6 +147,49 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
   return used;
 }
 
+int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                                  const char *usage_path) {
+  // Uses same calculation as libcontainer, that is: memory.current -
+  // memory.stat[inactive_file]. Source:
+  // https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
+  std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
+  if (!memstat_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << " cgroups v2 memory.stat file not found: " << stat_path;
+    return kNull;
+  }
+  std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
+  if (!memusage_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << " cgroups v2 memory.current file not found: " << usage_path;
+    return kNull;
+  }
+
+  std::string title;
+  int64_t value;
+  std::string line;
+
+  int64_t inactive_file_bytes = kNull;
+  while (std::getline(memstat_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value;
+    if (title == kCgroupsV2MemoryStatInactiveKey) {
+      inactive_file_bytes = value;
+      break;
+    }
+  }
+
+  int64_t current_usage_bytes = kNull;
+  memusage_ifs >> current_usage_bytes;
+  if (current_usage_bytes == kNull || inactive_file_bytes == kNull) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Failed to parse cgroup v2 memory usage. memory.current "
+        << current_usage_bytes << " inactive " << inactive_file_bytes;
+    return kNull;
+  }
+  return current_usage_bytes - inactive_file_bytes;
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   int64_t total_bytes = kNull;
   if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
@@ -154,9 +201,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   }
 
   int64_t used_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
-    std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
-    mem_file >> used_bytes;
+  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) &&
+      std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
+    used_bytes =
+        GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
     used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
   }

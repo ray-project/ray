@@ -102,7 +102,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d ** 0.5
+        score = score / d**0.5
 
         # Causal mask of the same length as the sequence.
         mask = tf.sequence_mask(tf.range(Tau + 1, Tau + T + 1), dtype=score.dtype)

@@ -23,6 +23,10 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
@@ -61,7 +65,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         self.observation_space = obs_space
         self.action_space = action_space
-        config = dict(self.get_default_config(), **config)
         self.config = config
         self.framework = "tf"
         self._seq_lens = None
@@ -140,11 +143,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # This is static graph TF policy.
         # Simply do nothing.
         pass
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -988,6 +986,7 @@ class DynamicTFPolicyV2(TFPolicy):
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
+            num_grad_updates=batch.num_grad_updates,
         )
 
     @override(Policy)
@@ -1030,9 +1029,21 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        return self.multi_gpu_tower_stacks[buffer_index].optimize(
-            self.get_session(), offset
+        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        results = tower_stack.optimize(self.get_session(), offset)
+        self.num_grad_updates += 1
+
+        results.update(
+            {
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates - 1 - (tower_stack.num_grad_updates or 0)
+                ),
+            }
         )
+
+        return results
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):

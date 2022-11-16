@@ -29,19 +29,13 @@ preprocessor = Chain(
 
 # __air_tf_train_start__
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from ray import train
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.air.callbacks.keras import Callback as KerasCallback
-from ray.train.tensorflow import (
-    TensorflowTrainer,
-    TensorflowCheckpoint,
-    prepare_dataset_shard,
-)
+from ray.air.integrations.keras import Callback as KerasCallback
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def create_keras_model(input_features):
@@ -55,25 +49,6 @@ def create_keras_model(input_features):
     )
 
 
-def to_tf_dataset(dataset, batch_size):
-    def to_tensor_iterator():
-        data_iterator = dataset.iter_tf_batches(
-            batch_size=batch_size, dtypes=tf.float32
-        )
-        for d in data_iterator:
-            # "concat_out" is the output column of the Concatenator.
-            yield d["concat_out"], d["target"]
-
-    output_signature = (
-        tf.TensorSpec(shape=(None, num_features), dtype=tf.float32),
-        tf.TensorSpec(shape=(None), dtype=tf.float32),
-    )
-    tf_dataset = tf.data.Dataset.from_generator(
-        to_tensor_iterator, output_signature=output_signature
-    )
-    return prepare_dataset_shard(tf_dataset)
-
-
 def train_loop_per_worker(config):
     batch_size = config["batch_size"]
     lr = config["lr"]
@@ -82,7 +57,7 @@ def train_loop_per_worker(config):
 
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
-    train_data = train.get_dataset_shard("train")
+    train_data = session.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -99,7 +74,9 @@ def train_loop_per_worker(config):
         )
 
     for _ in range(epochs):
-        tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
+        tf_dataset = train_data.to_tf(
+            feature_columns="concat_out", label_columns="target", batch_size=batch_size
+        )
         multi_worker_model.fit(
             tf_dataset,
             callbacks=[KerasCallback()],

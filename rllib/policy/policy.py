@@ -287,11 +287,19 @@ class Policy(metaclass=ABCMeta):
             )
         pol_spec = PolicySpec.deserialize(serialized_pol_spec)
 
+        if pol_spec.config["framework"] == "tf":
+            from ray.rllib.policy.tf_policy import TFPolicy
+
+            return TFPolicy._tf1_from_state_helper(state)
+
         # Create the new policy.
         new_policy = pol_spec.policy_class(
-            observation_space=pol_spec.observation_space,
-            action_space=pol_spec.action_space,
-            config=pol_spec.config,
+            # Note(jungong) : we are intentionally not using keyward arguments here
+            # because some policies name the observation space parameter obs_space,
+            # and some others name it observation_space.
+            pol_spec.observation_space,
+            pol_spec.action_space,
+            pol_spec.config,
         )
 
         # Set the new policy's state (weights, optimizer vars, exploration state,
@@ -336,6 +344,8 @@ class Policy(metaclass=ABCMeta):
         # The global timestep, broadcast down from time to time from the
         # local worker to all remote workers.
         self.global_timestep: int = 0
+        # The number of gradient updates this policy has undergone.
+        self.num_grad_updates: int = 0
 
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
@@ -892,6 +902,8 @@ class Policy(metaclass=ABCMeta):
             "weights": self.get_weights(),
             # The current global timestep.
             "global_timestep": self.global_timestep,
+            # The current num_grad_updates counter.
+            "num_grad_updates": self.num_grad_updates,
         }
 
         # Add this Policy's spec so it can be retreived w/o access to the original
@@ -992,10 +1004,14 @@ class Policy(metaclass=ABCMeta):
         # steps).
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
-        if self.framework in ["tfe", "tf2"]:
+        if self.framework == "tf2":
             self.global_timestep.assign(global_vars["timestep"])
         else:
             self.global_timestep = global_vars["timestep"]
+        # Update our lifetime gradient update counter.
+        num_grad_updates = global_vars.get("num_grad_updates")
+        if num_grad_updates is not None:
+            self.num_grad_updates = num_grad_updates
 
     @DeveloperAPI
     def export_checkpoint(

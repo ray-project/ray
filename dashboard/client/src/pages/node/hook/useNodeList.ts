@@ -1,3 +1,4 @@
+import _ from "lodash";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getNodeList } from "../../../service/node";
 import { NodeDetail } from "../../../type/node";
@@ -50,14 +51,24 @@ export const useNodeList = () => {
     };
   }, [getList]);
 
+  const nodeListWithState = nodeList
+    .map((e) => ({
+      ...e,
+      state: e.raylet.state,
+    }))
+    .sort(sorterFunc);
+
+  const sortedList = _.sortBy(nodeListWithState, [
+    (obj) => !obj.raylet.isHeadNode,
+    // sort by alive first, then alphabetically for other states
+    (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),
+    (obj) => obj.raylet.nodeId,
+  ]);
+
   return {
-    nodeList: nodeList
-      .map((e) => ({ ...e, state: e.raylet.state }))
-      .sort((a, b) => (a.raylet.nodeId > b.raylet.nodeId ? 1 : -1))
-      .sort(sorterFunc)
-      .filter((node) =>
-        filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
-      ),
+    nodeList: sortedList.filter((node) =>
+      filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
+    ),
     msg,
     isRefreshing,
     onSwitchChange,

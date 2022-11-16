@@ -1,8 +1,11 @@
 import dataclasses
 import logging
-from typing import Any, Dict, Iterator, List, Optional
-
+from typing import Any, Dict, Iterator, List, Optional, Union
+import ray
+from pkg_resources import packaging
 from ray.dashboard.utils import get_address_for_submission_client
+from ray.dashboard.modules.job.utils import strip_keys_with_value_none
+
 
 try:
     import aiohttp
@@ -16,6 +19,7 @@ except ImportError:
     JobDetails = None
 
 from ray.dashboard.modules.job.common import (
+    JobDeleteResponse,
     JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -66,6 +70,7 @@ class JobSubmissionClient(SubmissionClient):
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
+        self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
         if requests is None:
             raise RuntimeError(
@@ -104,6 +109,18 @@ class JobSubmissionClient(SubmissionClient):
             "running Ray 1.9 or higher.",
         )
 
+        # In ray>=2.0, the client sends the new kwarg `submission_id` to the server
+        # upon every job submission, which causes servers with ray<2.0 to error.
+        if packaging.version.parse(self._client_ray_version) > packaging.version.parse(
+            "2.0"
+        ):
+            self._check_connection_and_version(
+                min_version="2.0",
+                version_error_message=f"Client Ray version {self._client_ray_version} "
+                "is not compatible with the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.0 or higher or downgrade the client Ray version.",
+            )
+
     @PublicAPI(stability="beta")
     def submit_job(
         self,
@@ -113,6 +130,9 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         submission_id: Optional[str] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -139,6 +159,15 @@ class JobSubmissionClient(SubmissionClient):
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
             job_id: DEPRECATED. This has been renamed to submission_id
+            entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_num_gpus: The quantity of GPUs to reserve for the execution
+                of the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
+            entrypoint_resources: The quantity of custom resources to reserve for the
+                execution of the entrypoint command, separately from any tasks or
+                actors launched by it.
 
         Returns:
             The submission ID of the submitted job.  If not specified,
@@ -153,6 +182,15 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
+        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_resources:
+            self._check_connection_and_version(
+                min_version="2.2",
+                version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
+                "and `entrypoint_resources` kwargs "
+                "are not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.2 or higher.",
+            )
+
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -164,16 +202,23 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         submission_id = submission_id or job_id
-
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             submission_id=submission_id,
             runtime_env=runtime_env,
             metadata=metadata,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_resources=entrypoint_resources,
         )
 
+        # Remove keys with value None so that new clients with new optional fields
+        # are still compatible with older servers.  This is also done on the server,
+        # but we do it here as well to be extra defensive.
+        json_data = strip_keys_with_value_none(dataclasses.asdict(req))
+
         logger.debug(f"Submitting job with submission_id={submission_id}.")
-        r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
+        r = self._do_request("POST", "/api/jobs/", json_data=json_data)
 
         if r.status_code == 200:
             return JobSubmitResponse(**r.json()).submission_id
@@ -209,6 +254,43 @@ class JobSubmissionClient(SubmissionClient):
 
         if r.status_code == 200:
             return JobStopResponse(**r.json()).stopped
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="alpha")
+    def delete_job(
+        self,
+        job_id: str,
+    ) -> bool:
+        """Delete a job in a terminal state and all of its associated data.
+
+        If the job is not already in a terminal state, raises an error.
+        This does not delete the job logs from disk.
+        Submitting a job with the same submission ID as a previously
+        deleted job is not supported and may lead to unexpected behavior.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient() # doctest: +SKIP
+            >>> job_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.delete_job(job_id) # doctest: +SKIP
+            True
+
+        Args:
+            job_id: submission ID for the job to be deleted.
+
+        Returns:
+            True if the job was deleted, otherwise False.
+
+        Raises:
+            RuntimeError: If the job does not exist, if the request to the
+                job server fails, or if the job is not in a terminal state.
+        """
+        logger.debug(f"Deleting job with job_id={job_id}.")
+        r = self._do_request("DELETE", f"/api/jobs/{job_id}")
+
+        if r.status_code == 200:
+            return JobDeleteResponse(**r.json()).deleted
         else:
             self._raise_error(r)
 

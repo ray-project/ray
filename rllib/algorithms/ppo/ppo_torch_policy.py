@@ -136,7 +136,6 @@ class PPOTorchPolicy(
                 logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
             ),
         )
-        mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         # Compute a value function loss.
         if self.config["use_critic"]:
@@ -148,10 +147,8 @@ class PPOTorchPolicy(
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
-            value_fn_out = torch.tensor(0.0).to(mean_policy_loss.device)
-            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(
-                mean_policy_loss.device
-            )
+            value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
+            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(surrogate_loss.device)
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
@@ -167,7 +164,7 @@ class PPOTorchPolicy(
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
         model.tower_stats["total_loss"] = total_loss
-        model.tower_stats["mean_policy_loss"] = mean_policy_loss
+        model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
         model.tower_stats["vf_explained_var"] = explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS], value_fn_out

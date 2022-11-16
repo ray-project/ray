@@ -201,6 +201,7 @@ class GlobalState:
             job_info["StartTime"] = entry.start_time
             job_info["EndTime"] = entry.end_time
             job_info["IsDead"] = entry.is_dead
+            job_info["Entrypoint"] = entry.entrypoint
             results.append(job_info)
 
         return results
@@ -349,7 +350,7 @@ class GlobalState:
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10 ** 6 * time_in_seconds
+        time_in_microseconds = 10**6 * time_in_seconds
         return time_in_microseconds
 
     # Colors are specified at

@@ -306,7 +306,7 @@ def test_json_read_with_read_options(
     ds = ray.data.read_json(
         path1,
         filesystem=fs,
-        read_options=pajson.ReadOptions(use_threads=False, block_size=2 ** 30),
+        read_options=pajson.ReadOptions(use_threads=False, block_size=2**30),
     )
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)

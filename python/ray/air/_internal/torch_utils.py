@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -132,7 +133,15 @@ def convert_ndarray_to_torch_tensor(
     Returns: A Torch Tensor.
     """
     ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
-    return torch.as_tensor(ndarray, dtype=dtype, device=device)
+
+    # The numpy array is not always writeable as it can come from the Ray object store.
+    # Numpy will throw a verbose warning here, which we suppress, as we don't write
+    # to the tensors. We also don't want to copy the array to avoid memory overhead.
+    # Original warning: https://github.com/pytorch/pytorch/blob/v1.13.0/
+    # torch/csrc/utils/tensor_numpy.cpp#L198-L206
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return torch.as_tensor(ndarray, dtype=dtype, device=device)
 
 
 def convert_ndarray_batch_to_torch_tensor_batch(
