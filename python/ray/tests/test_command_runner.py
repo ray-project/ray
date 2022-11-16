@@ -7,7 +7,6 @@ from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import (
     SSHCommandRunner,
     DockerCommandRunner,
-    KubernetesCommandRunner,
     _with_environment_variables,
 )
 from ray.autoscaler.sdk import get_docker_host_mount_location
@@ -50,7 +49,7 @@ def test_command_runner_interface_abstraction_violation():
         for func in cmd_runner_interface_public_functions
         if not func.startswith("_")
     }
-    for subcls in [SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner]:
+    for subcls in [SSHCommandRunner, DockerCommandRunner]:
         subclass_available_functions = dir(subcls)
         subclass_public_functions = {
             func for func in subclass_available_functions if not func.startswith("_")
