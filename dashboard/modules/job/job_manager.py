@@ -228,7 +228,11 @@ class JobSupervisor:
             # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
-                child_pgid = os.getpgid(child_pid)
+                try:
+                    child_pgid = os.getpgid(child_pid)
+                except ProcessLookupError:
+                    # Process died before we could get its pgid.
+                    return child_process
 
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
@@ -406,6 +410,15 @@ class JobSupervisor:
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
+            try:
+                await self._job_info_client.put_status(
+                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                )
+            except Exception:
+                logger.error(
+                    "Failed to update job status to FAILED. "
+                    f"Exception: {traceback.format_exc()}"
+                )
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
@@ -426,6 +439,7 @@ class JobManager:
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
+    WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
@@ -799,6 +813,19 @@ class JobManager:
             return True
         else:
             return False
+
+    async def delete_job(self, job_id):
+        """Delete a job's info and metadata from the cluster."""
+        job_status = await self._job_info_client.get_status(job_id)
+
+        if job_status is None or not job_status.is_terminal():
+            raise RuntimeError(
+                f"Attempted to delete job '{job_id}', "
+                f"but it is in a non-terminal state {job_status}."
+            )
+
+        await self._job_info_client.delete_info(job_id)
+        return True
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

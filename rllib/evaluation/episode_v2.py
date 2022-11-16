@@ -116,7 +116,7 @@ class EpisodeV2:
         # duration of this episode to the returned PolicyID.
         if agent_id not in self._agent_to_policy or refresh:
             policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                agent_id, self, worker=self.worker
+                agent_id, episode=self, worker=self.worker
             )
         # Use already determined PolicyID.
         else:
@@ -184,6 +184,7 @@ class EpisodeV2:
                 "_disable_action_flattening", False
             ),
             is_policy_recurrent=policy.is_recurrent(),
+            intial_states=policy.get_initial_state(),
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,

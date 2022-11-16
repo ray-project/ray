@@ -415,31 +415,6 @@
 
   alert: default
 
-- name: air_benchmark_tune_torch_mnist_large_gpu
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: weekly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_8_g4_12xl.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu --disable-strict-pack
-
-    wait_for_nodes:
-      num_nodes: 8
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
   group: AIR tests
@@ -633,7 +608,7 @@
     cluster_compute: compute_cpu_16.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: bash out_of_core_benchmark.sh
     type: sdk_command
     file_manager: sdk
@@ -1108,6 +1083,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1132,6 +1109,8 @@
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
+    wait_for_nodes:
+      num_nodes: 2
     type: client
 
   alert: default
@@ -1156,6 +1135,8 @@
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1180,6 +1161,8 @@
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1203,6 +1186,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1226,6 +1211,8 @@
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
+    wait_for_nodes:
+      num_nodes: 5
     type: client
 
   alert: default
@@ -1250,6 +1237,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1274,6 +1263,8 @@
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
+    wait_for_nodes:
+      num_nodes: 3
     type: client
 
   alert: default
@@ -1298,6 +1289,8 @@
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
+    wait_for_nodes:
+      num_nodes: 11
     type: client
 
   alert: default
@@ -3418,6 +3411,7 @@
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
+  env: staging
   legacy:
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
@@ -3959,6 +3953,7 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
+  env: staging
   legacy:
     test_name: single_node
     test_suite: benchmark_tests
@@ -4804,7 +4799,7 @@
   group: core-observability-test
   working_dir: dashboard
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -4814,7 +4809,6 @@
 
   run:
     timeout: 14400
-    prepare: rllib train file atari.yaml &
     script: python mem_check.py
     type: sdk_command
     file_manager: sdk
