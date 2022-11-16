@@ -1,6 +1,4 @@
-import logging
 import pytest
-from unittest.mock import patch
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
