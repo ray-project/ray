@@ -174,11 +174,15 @@ class TestMultiAgentEnv(unittest.TestCase):
                 num_envs_per_worker=4,
                 remote_worker_envs=True,
                 remote_env_batch_wait_ms=99999999,
-                enable_connectors=True
+                enable_connectors=True,
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(lambda agent_id, episode, worker, **kwargs: "p{}".format(agent_id % 2)),
+                policy_mapping_fn=(
+                    lambda agent_id, episode, worker, **kwargs: "p{}".format(
+                        agent_id % 2
+                    )
+                ),
             ),
         )
         batch = ev.sample()
