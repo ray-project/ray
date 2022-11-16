@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
@@ -112,9 +113,14 @@ public class ReferenceCountingTest extends BaseTest {
     if (succeed) {
       TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
     } else {
-      List<Boolean> result =
-          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100, true);
-      Assert.assertFalse(result.get(0));
+      try {
+        List<Boolean> result =
+            TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 0, 100, true);
+        Assert.fail(
+            "Ray did not fail when waiting for an object that does not belong in this session");
+      } catch (RayException e) {
+        // This is the expected outcome for succeed=false, as we wait for non-existent objects.
+      }
     }
   }
 
