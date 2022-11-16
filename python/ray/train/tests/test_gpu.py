@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+import time
 
 from unittest.mock import patch
 import pytest
@@ -318,7 +319,7 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
         # NCCL should timeout.
         if session.get_world_rank() == 0:
             while True:
-                pass
+                time.sleep(100)
 
         torch.distributed.barrier()
 
