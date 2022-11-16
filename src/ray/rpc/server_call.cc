@@ -18,11 +18,22 @@
 
 namespace ray {
 namespace rpc {
+namespace {
 
-std::unique_ptr<boost::asio::thread_pool> &GetServerCallExecutor() {
+std::unique_ptr<boost::asio::thread_pool> &_GetServerCallExecutor() {
   static auto thread_pool = std::make_unique<boost::asio::thread_pool>(
       ::RayConfig::instance().num_server_call_thread());
   return thread_pool;
+}
+
+}  // namespace
+
+boost::asio::thread_pool &GetServerCallExecutor() { return *_GetServerCallExecutor(); }
+
+void DrainAndResetServerCallExecutor() {
+  GetServerCallExecutor().join();
+  _GetServerCallExecutor() = std::make_unique<boost::asio::thread_pool>(
+      ::RayConfig::instance().num_server_call_thread());
 }
 
 }  // namespace rpc

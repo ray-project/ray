@@ -54,8 +54,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
  protected:
   void SetUp() override {
-    rpc::GetServerCallExecutor() = std::make_unique<boost::asio::thread_pool>(
-        ::RayConfig::instance().num_server_call_thread());
     if (!no_redis_) {
       config_.redis_address = "127.0.0.1";
       config_.enable_sharding_conn = false;
@@ -107,7 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
-    rpc::GetServerCallExecutor()->join();
+    rpc::DrainAndResetServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();

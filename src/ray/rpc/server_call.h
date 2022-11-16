@@ -30,7 +30,11 @@ namespace rpc {
 
 /// Get the thread pool for the gRPC server.
 /// This pool is shared across gRPC servers.
-std::unique_ptr<boost::asio::thread_pool> &GetServerCallExecutor();
+boost::asio::thread_pool &GetServerCallExecutor();
+
+/// For testing
+/// Drain the executor and reset it.
+void DrainAndResetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
@@ -204,7 +208,7 @@ class ServerCallImpl : public ServerCall {
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
-          boost::asio::post(*GetServerCallExecutor(),
+          boost::asio::post(GetServerCallExecutor(),
                             [this, status]() { SendReply(status); });
         });
   }
