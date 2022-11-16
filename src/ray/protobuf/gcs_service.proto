@@ -650,6 +650,8 @@ message GetAllTaskEventRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 1;
+  // Task event type
+  optional TaskEventType event_type = 2;
 }
 
 message GetAllTaskEventReply {

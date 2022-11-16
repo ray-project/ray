@@ -33,7 +33,10 @@ ProfileEvent::ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
                            TaskID task_id,
                            const std::string &worker_type,
                            const std::string &worker_id)
-    : task_event_buffer_(task_event_buffer), task_id_(task_id), component_type_(worker_type), component_id_(worker_id) {
+    : task_event_buffer_(task_event_buffer),
+      task_id_(task_id),
+      component_type_(worker_type),
+      component_id_(worker_id) {
   use_task_event_ = true;
   event_.set_start_time(absl::GetCurrentTimeNanos());
   event_.set_event_name(event_name);

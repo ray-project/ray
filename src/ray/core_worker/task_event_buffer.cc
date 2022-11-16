@@ -66,7 +66,7 @@ void TaskEventBuffer::AddTaskStatusEvent(
 }
 
 void TaskEventBuffer::AddProfileEvent(TaskID task_id,
-                                      rpc::ProfileEvents::ProfileEventEntry event,
+                                      rpc::ProfileEventEntry event,
                                       const std::string &component_id,
                                       const std::string &component_type) {
   if (!recording_on_) {

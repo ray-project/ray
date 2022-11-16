@@ -66,7 +66,7 @@ class TaskEventBuffer {
       LOCKS_EXCLUDED(mutex_);
 
   void AddProfileEvent(TaskID task_id,
-                       rpc::ProfileEvents::ProfileEventEntry event,
+                       rpc::ProfileEventEntry event,
                        const std::string &component_id,
                        const std::string &component_type) LOCKS_EXCLUDED(mutex_);
 

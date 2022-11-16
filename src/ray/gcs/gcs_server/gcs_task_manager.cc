@@ -97,11 +97,32 @@ void GcsTaskManager::HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
         int count = 0;
         {
           absl::MutexLock lock(&mutex_);
-          for (const auto &[_task_id, data] : task_events_) {
+          for (const auto &[task_id, data] : task_events_) {
+            // Break early for limit
             if (limit >= 0 && count++ >= limit) {
               break;
             }
-            reply->add_events_by_task()->CopyFrom(data);
+            rpc::TaskEvents result;
+            result.set_task_id(task_id.Binary());
+            // Filter by event type to reduce message sizes.
+            if (request.has_event_type()) {
+              switch (request.event_type()) {
+              case rpc::TaskEventType::STATUS_EVENT: {
+                result.mutable_status_events()->CopyFrom(data.status_events());
+              }
+              case rpc::TaskEventType::PROFILE_EVENT: {
+                result.mutable_profile_events()->CopyFrom(data.profile_events());
+              }
+              default: {
+                // do nothing
+              }
+              }
+            } else {
+              // Copy the entire task events
+              result.CopyFrom(data);
+            }
+
+            reply->add_events_by_task()->Swap(&result);
           }
           reply->set_total(tasks_reported_.size());
         }
@@ -126,6 +147,8 @@ Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
   auto task_event_itr = task_events_.find(task_id);
   auto max_num_events = RayConfig::instance().task_events_max_num_task_in_gcs();
   if (task_event_itr == task_events_.end()) {
+    // A newly reported task events
+    tasks_reported_.insert(task_id);
     if (max_num_events >= 0 &&
         task_events_.size() >= static_cast<size_t>(max_num_events)) {
       // TODO(rickyx): We might want to evict those events with some semantics, e.g.
@@ -146,7 +169,6 @@ Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
           << "Failed to add a new TasEvents to the storage.";
       return Status::UnknownError("Insert to map failed.");
     }
-    tasks_reported_.insert(task_id);
     return Status::OK();
   }
 

@@ -12,6 +12,7 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated.gcs_pb2 import TaskEventType
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
@@ -255,7 +256,9 @@ class StateDataSourceClient:
     ) -> Optional[GetAllTaskEventReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        request = GetAllTaskEventRequest(limit=limit)
+        request = GetAllTaskEventRequest(
+            limit=limit, event_type=TaskEventType.STATUS_EVENT
+        )
         reply = await self._gcs_task_info_stub.GetAllTaskEvent(request, timeout=timeout)
         return reply
 

@@ -34,8 +34,8 @@ from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
-    TaskEventEntry,
     TaskEvents,
+    TaskStatusEvents,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
@@ -204,12 +204,13 @@ def generate_task_data(
         node_id=node_id.binary() if node_id is not None else None,
     )
     task_id = id
-    task_events = [
-        TaskEventEntry(task_status=state, event_time=event_time)
+    events = [
+        TaskStatusEvents.TaskStatusEventEntry(task_status=state, start_time=event_time)
         for state, event_time in state_events
     ]
+    status_events = TaskStatusEvents(task_info=task_info, events=events)
 
-    return TaskEvents(task_id=task_id, task_info=task_info, task_events=task_events)
+    return TaskEvents(task_id=task_id, status_events=status_events)
 
 
 def generate_object_info(
@@ -2799,7 +2800,7 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
 
 @pytest.mark.parametrize(
     "max_data_source,max_num_gcs_task",
-    [(100, 10), (10, 100)],
+    [(90, 10), (10, 100)],
 )
 def test_raise_on_missing_output_truncation(
     max_data_source, max_num_gcs_task, monkeypatch, shutdown_only
@@ -2827,7 +2828,7 @@ def test_raise_on_missing_output_truncation(
     def verify():
         # Verify when raise_on_missing_output=True, it raises an exception.
         try:
-            print(list_tasks(_explain=True, timeout=3))
+            print(len(list_tasks(_explain=True, timeout=3)))
         except RayStateApiException as e:
             assert "Failed to retrieve all 15 tasks" in str(e)
             assert "only 10" in str(e)

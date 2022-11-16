@@ -67,8 +67,10 @@ class ProfileEvent {
   ProfileEvent(const std::shared_ptr<Profiler> &profiler, const std::string &event_type);
 
   ProfileEvent(std::shared_ptr<TaskEventBuffer> task_event_buffer,
-               const std::string &event_type,
-               TaskID task_id);
+               const std::string &event_name,
+               TaskID task_id,
+               const std::string &worker_type,
+               const std::string &worker_id);
 
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent() {
@@ -107,7 +109,7 @@ class ProfileEvent {
   std::shared_ptr<TaskEventBuffer> task_event_buffer_;
 
   // Underlying proto data structure that holds the event data.
-  rpc::TaskEventEntry event_;
+  rpc::ProfileEventEntry event_;
 
   // Task ID
   TaskID task_id_;

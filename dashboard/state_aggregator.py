@@ -374,8 +374,12 @@ class StateAPIManager:
                     "parent_task_id",
                 ],
             )
+            status_events = data.get("status_events", None)
+            if status_events is None:
+                num_missing_spec += 1
+                continue
 
-            task_info = data.get("task_info", None)
+            task_info = status_events.get("task_info", None)
             if not task_info:
                 # Note(rickyx): some tasks don't have the spec, the driver script?
                 num_missing_spec += 1
@@ -383,7 +387,7 @@ class StateAPIManager:
             state = task_info
 
             # Update scheduling_state
-            task_state_events = data.get("task_events", None)
+            task_state_events = status_events.get("events", None)
             if task_state_events:
                 most_recent_state = max(
                     task_state_events, key=lambda e: e["start_time"]
@@ -391,7 +395,7 @@ class StateAPIManager:
                 state["scheduling_state"] = most_recent_state["task_status"]
 
             # Update node id
-            task_state = data.get("task_state", None)
+            task_state = status_events.get("task_state", None)
             if task_state:
                 state["node_id"] = task_state.get("node_id", None)
 

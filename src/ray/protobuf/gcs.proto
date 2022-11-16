@@ -201,6 +201,40 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
+enum TaskEventType {
+  STATUS_EVENT = 0;
+  PROFILE_EVENT = 1;
+}
+
+message ProfileEventEntry {
+  // The start timestamp of the event time.
+  int64 start_time = 1;
+  // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
+  // change.
+  int64 end_time = 2;
+  // Additional data associated with the event. This data must be serialized
+  // using JSON.
+  string extra_data = 3;
+  // Customized event name if not a TaskStatus change point event.
+  string event_name = 4;
+}
+
+message ProfileEvents {
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  bytes component_type = 1;
+  // An identifier for the component that generated the event.
+  bytes component_id = 2;
+  // Events
+  repeated ProfileEventEntry events = 3;
+}
+
+// Represents task states which could be changed during task execution.
+message TaskStateEntry {
+  // The node of the associated task
+  bytes node_id = 1;
+}
+
 message TaskStatusEvents {
   // Represents a single task event entry.
   //  - It could be a task status event that represents a TaskStatus change, which
@@ -212,11 +246,6 @@ message TaskStatusEvents {
     TaskStatus task_status = 2;
   }
 
-  // Represents task states which could be changed during task execution.
-  message TaskStateEntry {
-    // The node of the associated task
-    bytes node_id = 1;
-  }
   // Metadata shared by all events
   // Task immutable metadata info
   TaskInfoEntry task_info = 1;
@@ -225,28 +254,6 @@ message TaskStatusEvents {
 
   // List of task status events (e.g. PENDING, RUNNING)
   repeated TaskStatusEventEntry events = 3;
-}
-
-message ProfileEvents {
-  message ProfileEventEntry {
-    // The start timestamp of the event time.
-    int64 start_time = 1;
-    // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
-    // change.
-    int64 end_time = 2;
-    // Additional data associated with the event. This data must be serialized
-    // using JSON.
-    string extra_data = 3;
-    // Customized event name if not a TaskStatus change point event.
-    string event_name = 4;
-  }
-  // The type of the component that generated the event, e.g., worker or
-  // object_manager, or node_manager.
-  bytes component_type = 1;
-  // An identifier for the component that generated the event.
-  bytes component_id = 2;
-  // Events
-  repeated ProfileEventEntry events = 3;
 }
 
 // Represents envents from a single task. This follows a composition strucuture,
