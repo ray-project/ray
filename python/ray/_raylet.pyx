@@ -187,6 +187,19 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
+        # Pre-build this message in case an object was not found.
+        not_found_msg = (
+                "One or more objects could not be "
+                "found in this Ray session. "
+                "Please make sure that all Ray objects used by the "
+                "application are part of the current Ray session. "
+                "Note that object IDs generated randomly "
+                "(ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task "
+                "arguments because Ray does not know which task created them."
+                "If this was not how your object ID was generated, please "
+                "file an issue at "
+                "https://github.com/ray-project/ray/issues/")
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
@@ -197,7 +210,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
-        raise ValueError(message)
+        raise ValueError(not_found_msg)
     else:
         raise RaySystemError(message)
 
@@ -434,19 +447,7 @@ cdef prepare_args_internal(
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                     c_arg, c_owner_address)
             if not op_status.ok():
-                msg = (
-                    f"Object {repr(arg)} could not be found in this Ray "
-                    "session."
-                    "Please make sure that all Ray objects used by the "
-                    "application are part of the current Ray session. "
-                    "Note that object IDs generated randomly "
-                    "(ObjectID.from_random()) or out-of-band "
-                    "(ObjectID.from_binary(...)) cannot be passed as a task "
-                    "arguments because Ray does not know which task created them."
-                    "If this was not how your object ID was generated, please "
-                    "file an issue at "
-                    "https://github.com/ray-project/ray/issues/")
-                raise ValueError(msg)
+                check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
@@ -1585,19 +1586,7 @@ cdef class CoreWorker:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
                 c_object_ids, timeout_ms, &results)
         if not op_status.ok():
-            msg = (
-                f"One or more objects in {repr(object_refs)} could not be "
-                "found in this Ray session. "
-                "Please make sure that all Ray objects used by the "
-                "application are part of the current Ray session. "
-                "Note that object IDs generated randomly "
-                "(ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task "
-                "arguments because Ray does not know which task created them."
-                "If this was not how your object ID was generated, please "
-                "file an issue at "
-                "https://github.com/ray-project/ray/issues/")
-            raise ValueError(msg)
+            check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1804,19 +1793,7 @@ cdef class CoreWorker:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
         if not op_status.ok():
-            msg = (
-                f"None of the objects in {repr(object_refs)} were "
-                "found in this Ray session. "
-                "Please make sure that all Ray objects used by the "
-                "application are part of the current Ray session. "
-                "Note that object IDs generated randomly "
-                "(ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task "
-                "arguments because Ray does not know which task created them."
-                "If this was not how your object ID was generated, please "
-                "file an issue at "
-                "https://github.com/ray-project/ray/issues/")
-            raise ValueError(msg)
+            check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2371,19 +2348,7 @@ cdef class CoreWorker:
         op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                 c_object_id, c_owner_address)
         if not op_status.ok():
-            msg = (
-                f"Object {repr(object_ref)} could not be found in this Ray "
-                "session."
-                "Please make sure that all Ray objects used by the "
-                "application are part of the current Ray session. "
-                "Note that object IDs generated randomly "
-                "(ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task "
-                "arguments because Ray does not know which task created them."
-                "If this was not how your object ID was generated, please "
-                "file an issue at "
-                "https://github.com/ray-project/ray/issues/")
-            raise ValueError(msg)
+            check_status(op_status)
         return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
@@ -2394,19 +2359,7 @@ cdef class CoreWorker:
         op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
         if not op_status.ok():
-            msg = (
-                f"Object {repr(object_ref)} could not be found in this Ray "
-                "session."
-                "Please make sure that all Ray objects used by the "
-                "application are part of the current Ray session. "
-                "Note that object IDs generated randomly "
-                "(ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task "
-                "arguments because Ray does not know which task created them."
-                "If this was not how your object ID was generated, please "
-                "file an issue at "
-                "https://github.com/ray-project/ray/issues/")
-            raise ValueError(msg)
+            check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

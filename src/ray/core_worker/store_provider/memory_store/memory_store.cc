@@ -328,7 +328,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // If we must fail for any exception, OR if every single object requested has
     // no known owners, then return a failed status, since we are having issues.
     if (objects_without_owner > 0 &&
-	(abort_if_any_object_is_exception || objects_without_owner == num_objects)) {
+        (abort_if_any_object_is_exception || objects_without_owner == num_objects)) {
       return Status::ObjectNotFound(
           "Unable to get ownership information for one or more objects");
     }

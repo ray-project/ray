@@ -924,7 +924,6 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   return refs;
 }
 
-
 void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
                                        rpc::Address *owner_address,
                                        std::string *serialized_object_status) {
