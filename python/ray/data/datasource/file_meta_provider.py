@@ -327,7 +327,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         )
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces, ray_remote_args)
+            return _fetch_metadata_remotely(pieces, **ray_remote_args)
         else:
             return _fetch_metadata(pieces)
 
