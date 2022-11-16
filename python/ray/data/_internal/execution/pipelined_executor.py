@@ -178,7 +178,7 @@ class PipelinedExecutor(Executor):
         """
         if self._active_tasks:
             [ref], _ = ray.wait(
-                list(self._active_tasks), num_returns=1, fetch_local=True
+                list(self._active_tasks), num_returns=1, fetch_local=False
             )
             task = self._active_tasks.pop(ref)
             task.completed()
