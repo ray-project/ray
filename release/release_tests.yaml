@@ -2159,7 +2159,7 @@
 
   run:
     timeout: 86400
-    script: python workloads/long_running_many_jobs.py --num-clients=1
+    script: RAY_DASHBOARD_MAX_ACTORS_TO_CACHE=1 python workloads/long_running_many_jobs.py --num-clients=1
     long_running: true
     type: sdk_command
     file_manager: job
@@ -2190,7 +2190,7 @@
 
   run:
     timeout: 1800
-    script: python workloads/long_running_many_jobs.py --num-clients=1 --smoke-test
+    script: RAY_DASHBOARD_MAX_ACTORS_TO_CACHE=1 python workloads/long_running_many_jobs.py --num-clients=1 --smoke-test
     long_running: true
     type: sdk_command
     file_manager: job
