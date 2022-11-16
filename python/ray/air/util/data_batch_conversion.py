@@ -1,5 +1,6 @@
 from enum import Enum, auto
 from typing import Dict, Union, List
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -218,7 +219,13 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
         for col_name, col in df.items():
             if column_needs_tensor_extension(col):
                 try:
-                    df.loc[:, col_name] = TensorArray(col)
+                    # Suppress Pandas warnings:
+                    # https://github.com/ray-project/ray/issues/29270
+                    # We actually want in-place operations so we surpress this warning.
+                    # https://stackoverflow.com/a/74193599
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=FutureWarning)
+                        df.loc[:, col_name] = TensorArray(col)
                 except Exception as e:
                     raise ValueError(
                         f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -238,5 +245,11 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
         # Try to convert any tensor extension columns to ndarray columns.
         for col_name, col in df.items():
             if isinstance(col.dtype, TensorDtype):
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                # Suppress Pandas warnings:
+                # https://github.com/ray-project/ray/issues/29270
+                # We actually want in-place operations so we surpress this warning.
+                # https://stackoverflow.com/a/74193599
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=FutureWarning)
+                    df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
         return df
