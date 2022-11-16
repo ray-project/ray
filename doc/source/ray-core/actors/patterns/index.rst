@@ -14,7 +14,5 @@ You may also be interested in visiting the design patterns section for :ref:`tas
     :maxdepth: -1
 
     tree-of-actors
-    actor-sync
     concurrent-operations-async-actor
-    overlapping-computation-communication
     fault-tolerance-actor-checkpointing

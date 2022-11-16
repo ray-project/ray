@@ -208,7 +208,8 @@ class StateAPIManager:
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(
-                message=message, fields_to_decode=["actor_id", "owner_id"]
+                message=message,
+                fields_to_decode=["actor_id", "owner_id", "job_id", "node_id"],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -404,8 +405,9 @@ class StateAPIManager:
             for task in tasks:
                 data = self._message_to_dict(
                     message=task,
-                    fields_to_decode=["task_id"],
+                    fields_to_decode=["task_id", "job_id", "node_id", "actor_id"],
                 )
+
                 if data["task_id"] in running_task_id:
                     data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
                         TaskStatus.RUNNING

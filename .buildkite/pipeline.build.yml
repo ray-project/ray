@@ -625,9 +625,9 @@
       set -x;
       {
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... &&
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-mosaic,-needs_credentials python/ray/air/... &&
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic,-gpu_only,-gpu,-needs_credentials python/ray/train/... &&
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-mosaic python/ray/data/...;
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)

@@ -1,5 +1,6 @@
-from enum import Enum, auto
+from enum import Enum
 from typing import Dict, Union, List
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -16,10 +17,20 @@ except ImportError:
 
 
 @DeveloperAPI
-class DataType(Enum):
-    PANDAS = auto()
-    ARROW = auto()
-    NUMPY = auto()  # Either a single numpy array or a Dict of numpy arrays.
+class BatchFormat(str, Enum):
+    PANDAS = "pandas"
+    # TODO: Remove once Arrow is deprecated as user facing batch format
+    ARROW = "arrow"
+    NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
+
+
+@DeveloperAPI
+class BlockFormat(str, Enum):
+    """Internal Dataset block format enum."""
+
+    PANDAS = "pandas"
+    ARROW = "arrow"
+    SIMPLE = "simple"
 
 
 @DeveloperAPI
@@ -61,21 +72,21 @@ def convert_batch_type_to_pandas(
 @DeveloperAPI
 def convert_pandas_to_batch_type(
     data: pd.DataFrame,
-    type: DataType,
+    type: BatchFormat,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
-        type: The specific ``DataBatchType`` to convert to.
+        type: The specific ``BatchFormat`` to convert to.
 
     Returns:
         The input data represented with the provided type.
     """
-    if type == DataType.PANDAS:
+    if type == BatchFormat.PANDAS:
         return data
 
-    elif type == DataType.NUMPY:
+    elif type == BatchFormat.NUMPY:
         if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
@@ -86,7 +97,7 @@ def convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
 
-    elif type == DataType.ARROW:
+    elif type == BatchFormat.ARROW:
         if not pyarrow:
             raise ValueError(
                 "Attempted to convert data to Pyarrow Table but Pyarrow "
@@ -97,7 +108,7 @@ def convert_pandas_to_batch_type(
 
     else:
         raise ValueError(
-            f"Received type {type}, but expected it to be one of {DataType}"
+            f"Received type {type}, but expected it to be one of {DataBatchType}"
         )
 
 
@@ -155,7 +166,7 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = col.to_numpy(zero_copy_only=False)
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        return convert_pandas_to_batch_type(data, DataType.NUMPY)
+        return convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
@@ -209,7 +220,13 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
         for col_name, col in df.items():
             if column_needs_tensor_extension(col):
                 try:
-                    df.loc[:, col_name] = TensorArray(col)
+                    # Suppress Pandas warnings:
+                    # https://github.com/ray-project/ray/issues/29270
+                    # We actually want in-place operations so we surpress this warning.
+                    # https://stackoverflow.com/a/74193599
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=FutureWarning)
+                        df.loc[:, col_name] = TensorArray(col)
                 except Exception as e:
                     raise ValueError(
                         f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -229,5 +246,11 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
         # Try to convert any tensor extension columns to ndarray columns.
         for col_name, col in df.items():
             if isinstance(col.dtype, TensorDtype):
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                # Suppress Pandas warnings:
+                # https://github.com/ray-project/ray/issues/29270
+                # We actually want in-place operations so we surpress this warning.
+                # https://stackoverflow.com/a/74193599
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=FutureWarning)
+                    df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
         return df

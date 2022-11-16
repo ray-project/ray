@@ -140,7 +140,12 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -152,6 +157,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -162,6 +170,9 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
@@ -176,7 +187,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             # Test passing via json.
@@ -186,7 +202,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             # Test passing both throws an error.
@@ -221,7 +242,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -238,7 +264,12 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env=env_dict
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env=env_dict,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
     def test_job_id(self, mock_sdk_client):
@@ -249,7 +280,12 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id=None, runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
 
             result = runner.invoke(
@@ -258,8 +294,115 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"', submission_id="my_job_id", runtime_env={}
+                entrypoint='"echo hello"',
+                submission_id="my_job_id",
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
             )
+
+    def test_entrypoint_num_cpus(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--entrypoint-num-cpus=2", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=2,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
+            )
+
+    def test_entrypoint_num_gpus(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--entrypoint-num-gpus=2", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=2,
+                entrypoint_resources=None,
+            )
+
+    @pytest.mark.parametrize(
+        "resources",
+        [
+            ("--entrypoint-num-cpus=2", {"entrypoint_num_cpus": 2}),
+            ("--entrypoint-num-gpus=2", {"entrypoint_num_gpus": 2}),
+            (
+                """--entrypoint-resources={"Custom":3}""",
+                {"entrypoint_resources": {"Custom": 3}},
+            ),
+        ],
+    )
+    def test_entrypoint_resources(self, mock_sdk_client, resources):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", resources[0], "--", "echo hello"],
+            )
+            print(result.output)
+            assert result.exit_code == 0
+            expected_kwargs = {
+                "entrypoint": '"echo hello"',
+                "submission_id": None,
+                "runtime_env": {},
+                "entrypoint_num_cpus": None,
+                "entrypoint_num_gpus": None,
+                "entrypoint_resources": None,
+            }
+            expected_kwargs.update(resources[1])
+            mock_client_instance.submit_job.assert_called_with(**expected_kwargs)
+
+    def test_entrypoint_resources_invalid_json(self, mock_sdk_client):
+        runner = CliRunner()
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    """--entrypoint-resources={"Custom":3""",
+                    "--",
+                    "echo hello",
+                ],
+            )
+            print(result.output)
+            assert result.exit_code == 1
+            assert "not a valid JSON string" in result.output
+
+
+class TestDelete:
+    def test_address(self, mock_sdk_client):
+        _job_cli_group_test_address(mock_sdk_client, "delete", "fake_job_id")
+
+    def test_delete(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["delete", "job_id"])
+            check_exit_code(result, 0)
+            mock_client_instance.delete_job.assert_called_with("job_id")
 
 
 if __name__ == "__main__":

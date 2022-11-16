@@ -35,7 +35,9 @@ const useStyles = makeStyles((theme) => ({
 const columns = [
   { label: "Job ID" },
   { label: "Submission ID" },
+  { label: "Entrypoint" },
   { label: "Status" },
+  { label: "Duration" },
   {
     label: "Tasks",
     helpInfo: (
@@ -57,7 +59,6 @@ const columns = [
   },
   { label: "StartTime" },
   { label: "EndTime" },
-  { label: "Duration" },
   { label: "Driver Pid" },
 ];
 
