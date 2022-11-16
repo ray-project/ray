@@ -1,8 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_CPU"] | default("anyscale/ray-ml:2.0.1-py37-cpu") }}
-# RAY_DISABLE_MEMORY_MONITOR=1 disables the legacy memory monitor in python that
-# crashes the test if a task is submitted when the memory usage is high. Since the
-# test is expected to run at high memory it should remain off.
-env_vars: {"RAY_task_oom_retries": "50", "RAY_DISABLE_MEMORY_MONITOR": "1", "RAY_memory_monitor_interval_ms": "100", "RAY_min_memory_free_bytes": "1000000000"}
+env_vars: {"RAY_task_oom_retries": "50", "RAY_min_memory_free_bytes": "1000000000"}
 debian_packages:
   - curl
 
