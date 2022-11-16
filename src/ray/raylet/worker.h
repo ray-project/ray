@@ -213,6 +213,12 @@ class Worker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
+
+    if (assigned_job_id_.IsNil()) {
+      assigned_job_id_ = assigned_task_.GetTaskSpecification().JobId();
+    }
+
+    RAY_CHECK(assigned_job_id_ == assigned_task_.GetTaskSpecification().JobId());
     task_assign_time_ = std::chrono::steady_clock::now();
   };
 
@@ -262,7 +268,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  const JobID assigned_job_id_;
+  JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
