@@ -1,3 +1,4 @@
+from typing import Dict, Any
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
 
@@ -25,7 +26,7 @@ class FQETorchModel:
         self,
         policy: Policy,
         gamma: float,
-        model: ModelConfigDict = None,
+        model_config: ModelConfigDict = None,
         n_iters: int = 1,
         lr: float = 1e-3,
         min_loss_threshold: float = 1e-4,
@@ -37,7 +38,7 @@ class FQETorchModel:
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            model: The ModelConfigDict for self.q_model, defaults to:
+            model_config: The ModelConfigDict for self.q_model, defaults to:
                 {
                     "fcnet_hiddens": [8, 8],
                     "fcnet_activation": "relu",
@@ -59,19 +60,20 @@ class FQETorchModel:
         self.observation_space = policy.observation_space
         self.action_space = policy.action_space
 
-        if model is None:
-            model = {
+        if model_config is None:
+            model_config = {
                 "fcnet_hiddens": [32, 32, 32],
                 "fcnet_activation": "relu",
                 "vf_share_layers": True,
             }
+        self.model_config = model_config
 
         self.device = self.policy.device
         self.q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
             self.action_space.n,
-            model,
+            model_config,
             framework="torch",
             name="TorchQModel",
         ).to(self.device)
@@ -80,7 +82,7 @@ class FQETorchModel:
             self.observation_space,
             self.action_space,
             self.action_space.n,
-            model,
+            model_config,
             framework="torch",
             name="TargetTorchQModel",
         ).to(self.device)
@@ -244,3 +246,52 @@ class FQETorchModel:
         ), "FQE only supports Categorical or MultiCategorical distributions!"
         action_probs = action_dist.dist.probs
         return action_probs
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the current state of the FQE Model."""
+        return {
+            "policy_state": self.policy.get_state(),
+            "model_config": self.model_config,
+            "n_iters": self.n_iters,
+            "lr": self.lr,
+            "min_loss_threshold": self.min_loss_threshold,
+            "clip_grad_norm": self.clip_grad_norm,
+            "minibatch_size": self.minibatch_size,
+            "polyak_coef": self.polyak_coef,
+            "gamma": self.gamma,
+            "q_model_state": self.q_model.state_dict(),
+            "target_q_model_state": self.target_q_model.state_dict(),
+        }
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the current state of the FQE Model.
+        Args:
+            state: A state dict returned by `get_state()`.
+        """
+        self.n_iters = state["n_iters"]
+        self.lr = state["lr"]
+        self.min_loss_threshold = state["min_loss_threshold"]
+        self.clip_grad_norm = state["clip_grad_norm"]
+        self.minibatch_size = state["minibatch_size"]
+        self.polyak_coef = state["polyak_coef"]
+        self.gamma = state["gamma"]
+        self.policy.set_state(state["policy_state"])
+        self.q_model.load_state_dict(state["q_model_state"])
+        self.target_q_model.load_state_dict(state["target_q_model_state"])
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "FQETorchModel":
+        """Creates a FQE Model from a state dict.
+
+        Args:
+            state: A state dict returned by `get_state`.
+
+        Returns:
+            An instance of the FQETorchModel.
+        """
+        policy = Policy.from_state(state["policy_state"])
+        model = cls(
+            policy=policy, gamma=state["gamma"], model_config=state["model_config"]
+        )
+        model.set_state(state)
+        return model

@@ -1,7 +1,13 @@
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from typing import Dict, List, Any
+import math
+
+from ray.data import Dataset
+
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
+from ray.rllib.offline.offline_evaluation_utils import compute_is_weights
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy.sample_batch import SampleBatch
-from typing import Dict, List
 
 
 @DeveloperAPI
@@ -65,3 +71,49 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode["v_target"] = v_target
 
         return estimates_per_epsiode
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
+        """Computes the Importance sampling estimate on the given dataset.
+
+        Note: This estimate works for both continuous and discrete action spaces.
+
+        Args:
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
+            n_parallelism: The number of parallel workers to use.
+
+        Returns:
+            A dictionary containing the following keys:
+                v_target: The estimated value of the target policy.
+                v_behavior: The estimated value of the behavior policy.
+                v_gain_mean: The mean of the gain of the target policy over the
+                    behavior policy.
+                v_gain_ste: The standard error of the gain of the target policy over
+                    the behavior policy.
+        """
+        batch_size = max(dataset.count() // n_parallelism, 1)
+        updated_ds = dataset.map_batches(
+            compute_is_weights,
+            batch_size=batch_size,
+            fn_kwargs={
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
+        )
+        v_target = updated_ds.mean("weighted_rewards")
+        v_behavior = updated_ds.mean("rewards")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("weighted_rewards") / v_behavior / math.sqrt(dataset.count())
+        )
+
+        return {
+            "v_target": v_target,
+            "v_behavior": v_behavior,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
+        }
