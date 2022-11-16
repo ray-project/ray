@@ -475,11 +475,16 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     if not head_proc.is_alive():
         # NOTE(rickyyx): call recv() here is safe since the process
         # is guaranteed to be terminated.
+        if head_proc.exicode == 1:
+            assert False, (
+                "ray start --head --block is failed "
+                "due to unexpected component failures."
+            )
         _fail_if_false(
             False,
             head_parent_conn.recv(),
             (
-                "`ray start --head --block` should block forever even"
+                "`ray start --head --block` (head) should block forever even"
                 " though Ray subprocesses are stopped normally. But "
                 f"it exited with {head_proc.exitcode} early. \n"
                 f"Stop command: {stop_result.output}"
@@ -487,6 +492,11 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
         )
 
     if not worker_proc.is_alive():
+        if worker_proc.exicode == 1:
+            assert False, (
+                "ray start --address=<head_ip> --block` (worker) is failed "
+                "due to unexpected component failures."
+            )
         _fail_if_false(
             False,
             worker_parent_conn.recv(),
