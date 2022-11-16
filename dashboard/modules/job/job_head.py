@@ -21,6 +21,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray.dashboard.modules.job.common import (
+    JobDeleteResponse,
     http_uri_components_to_uri,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -92,7 +93,20 @@ class JobAgentSubmissionClient:
                 result_json = await resp.json()
                 return JobStopResponse(**result_json)
             else:
-                self._raise_error(resp)
+                await self._raise_error(resp)
+
+    async def delete_job_internal(self, job_id: str) -> JobDeleteResponse:
+
+        logger.debug(f"Deleting job with job_id={job_id}.")
+
+        async with self._session.delete(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
+        ) as resp:
+            if resp.status == 200:
+                result_json = await resp.json()
+                return JobDeleteResponse(**result_json)
+            else:
+                await self._raise_error(resp)
 
     async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
@@ -102,7 +116,7 @@ class JobAgentSubmissionClient:
                 result_json = await resp.json()
                 return JobLogsResponse(**result_json)
             else:
-                self._raise_error(resp)
+                await self._raise_error(resp)
 
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Get an iterator that follows the logs of a job."""
@@ -313,6 +327,41 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.stop_job_internal(job.submission_id)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
+
+    @routes.delete("/api/jobs/{job_or_submission_id}")
+    async def delete_job(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await find_job_by_ids(
+            self._dashboard_head.gcs_aio_client,
+            self._job_info_client,
+            job_or_submission_id,
+        )
+        if not job:
+            return Response(
+                text=f"Job {job_or_submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text="Can only delete submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+
+        try:
+            job_agent_client = await asyncio.wait_for(
+                self.choose_agent(),
+                timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
+            )
+            resp = await job_agent_client.delete_job_internal(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
