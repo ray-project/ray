@@ -219,7 +219,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             num_cpus: The number of CPUs to allocate for the remote actor.
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
-            memory: The heap memory request for the remote actor.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             resources: The default custom resources to allocate for the remote
                 actor.
 
