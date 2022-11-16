@@ -2172,6 +2172,37 @@
 
   alert: long_running_tests
 
+- name: long_running_many_jobs_smoke
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: true
+
+  legacy:
+    test_name: long_running_many_jobs_smoke
+    test_suite: long_running_tests
+
+  frequency: weekly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 1800
+    script: python workloads/long_running_many_jobs.py --num-clients=1 --smoke-test
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 1800
+
+  alert: long_running_tests
+
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
   working_dir: long_running_distributed_tests
