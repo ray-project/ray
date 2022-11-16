@@ -4,13 +4,9 @@ from typing import Dict, TypeVar, Union
 import numpy as np
 import pandas as pd
 
-from ray.air.util.data_batch_conversion import (
-    BatchFormat,
-    convert_pandas_to_batch_type,
-    convert_batch_type_to_pandas,
-)
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
+from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.predictor import Predictor
-from ray.util.annotations import DeveloperAPI
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
@@ -65,36 +61,25 @@ class DLPredictor(Predictor):
         """
         raise NotImplementedError
 
-    @classmethod
-    @DeveloperAPI
-    def preferred_batch_format(cls) -> BatchFormat:
-        return BatchFormat.NUMPY
-
     def _predict_pandas(
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
-        numpy_input = convert_pandas_to_batch_type(
+        tensors = convert_pandas_to_batch_type(
             data,
-            BatchFormat.NUMPY,
+            DataType.NUMPY,
             self._cast_tensor_columns,
         )
-        numpy_output = self._predict_numpy(numpy_input, dtype)
-        return convert_batch_type_to_pandas(numpy_output)
+        model_input = self._arrays_to_tensors(tensors, dtype)
 
-    def _predict_numpy(
-        self,
-        data: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        # Single column selection return numpy array so preprocessors can be
-        # reused in both training and prediction
-        if isinstance(data, dict) and len(data) == 1:
-            data = next(iter(data.values()))
-        model_input = self._arrays_to_tensors(data, dtype)
-        model_output = self.call_model(model_input)
-        # TODO (jiaodong): Investigate perf implication of this.
-        # Move DL Tensor to CPU and convert to numpy.
-        if isinstance(model_output, dict):
-            return {k: self._tensor_to_array(v) for k, v in model_output.items()}
+        output = self.call_model(model_input)
+
+        # Handle model multi-output. For example if model outputs 2 images.
+        if isinstance(output, dict):
+            return pd.DataFrame(
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
+            )
         else:
-            return {"predictions": self._tensor_to_array(model_output)}
+            return pd.DataFrame(
+                {"predictions": TensorArray(self._tensor_to_array(output))},
+                columns=["predictions"],
+            )

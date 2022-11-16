@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, auto
 from typing import Dict, Union, List
 import warnings
 
@@ -17,20 +17,10 @@ except ImportError:
 
 
 @DeveloperAPI
-class BatchFormat(str, Enum):
-    PANDAS = "pandas"
-    # TODO: Remove once Arrow is deprecated as user facing batch format
-    ARROW = "arrow"
-    NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
-
-
-@DeveloperAPI
-class BlockFormat(str, Enum):
-    """Internal Dataset block format enum."""
-
-    PANDAS = "pandas"
-    ARROW = "arrow"
-    SIMPLE = "simple"
+class DataType(Enum):
+    PANDAS = auto()
+    ARROW = auto()
+    NUMPY = auto()  # Either a single numpy array or a Dict of numpy arrays.
 
 
 @DeveloperAPI
@@ -76,14 +66,14 @@ def convert_batch_type_to_pandas(
 @DeveloperAPI
 def convert_pandas_to_batch_type(
     data: pd.DataFrame,
-    type: BatchFormat,
+    type: DataType,
     cast_tensor_columns: bool = False,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
-        type: The specific ``BatchFormat`` to convert to.
+        type: The specific ``DataBatchType`` to convert to.
         cast_tensor_columns: Whether tensor columns should be cast to our tensor
             extension type.
 
@@ -92,10 +82,10 @@ def convert_pandas_to_batch_type(
     """
     if cast_tensor_columns:
         data = _cast_ndarray_columns_to_tensor_extension(data)
-    if type == BatchFormat.PANDAS:
+    if type == DataType.PANDAS:
         return data
 
-    elif type == BatchFormat.NUMPY:
+    elif type == DataType.NUMPY:
         if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
@@ -106,7 +96,7 @@ def convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
 
-    elif type == BatchFormat.ARROW:
+    elif type == DataType.ARROW:
         if not pyarrow:
             raise ValueError(
                 "Attempted to convert data to Pyarrow Table but Pyarrow "
@@ -117,7 +107,7 @@ def convert_pandas_to_batch_type(
 
     else:
         raise ValueError(
-            f"Received type {type}, but expected it to be one of {DataBatchType}"
+            f"Received type {type}, but expected it to be one of {DataType}"
         )
 
 
@@ -175,7 +165,7 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = col.to_numpy(zero_copy_only=False)
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        return convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
+        return convert_pandas_to_batch_type(data, DataType.NUMPY)
     else:
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
