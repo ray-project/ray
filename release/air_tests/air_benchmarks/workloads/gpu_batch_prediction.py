@@ -59,7 +59,6 @@ def main(data_size_gb: int, smoke_test: bool = False):
     predictor.predict(
         dataset,
         num_gpus_per_worker=int(not smoke_test),
-        feature_columns=["image"],
         batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)
