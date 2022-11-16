@@ -306,6 +306,33 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             # ...
         )
 
+    .. note::
+        When restoring a Tune experiment, you need to re-specify the trainable
+        wrapped with ``tune.with_parameters``.
+        The reasoning behind this is as follows:
+
+        1. `tune.with_parameters` stores parameters in the object store and
+        attaches object references to the trainable, but the objects they point to
+        may not exist anymore upon restore.
+
+        2. The attached objects could be arbitrarily large, so Tune does not save the
+        object data along with the trainable.
+
+        To restore, Tune allows the trainable to be re-specified in
+        :meth:`Tuner.restore(overwrite_trainable=...) <ray.tune.tuner.Tuner.restore>`.
+        Continuing from the previous examples, here's an example of restoration:
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            data = HugeDataset(download=True)
+
+            tuner = Tuner.restore(
+                "/path/to/experiment/",
+                overwrite_trainable=tune.with_parameters(MyTrainable, data=data)
+            )
+
     """
     from ray.tune.trainable import Trainable
 
