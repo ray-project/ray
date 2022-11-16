@@ -122,7 +122,8 @@ std::string WorkerKillingPolicy::WorkersDebugString(
   return result.str();
 }
 
-std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(std::string killing_policy_str) {
+std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(
+    std::string killing_policy_str) {
     if (killing_policy_str == "group_by_depth") {
       return std::make_shared<GroupByDepthWorkingKillingPolicy>();
     } else if (killing_policy_str == "retriable_lifo") {

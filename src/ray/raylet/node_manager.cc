@@ -336,7 +336,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
-      worker_killing_policy_(WorkerKillingPolicyFactory(RayConfig::instance().worker_killing_policy())),
+      worker_killing_policy_(
+          WorkerKillingPolicyFactory(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
@@ -2912,8 +2913,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        auto worker_to_kill =
-            this->worker_killing_policy_->SelectWorkerToKill(workers, *memory_monitor_.get());
+        auto worker_to_kill = this->worker_killing_policy_->SelectWorkerToKill(
+            workers, *memory_monitor_.get());
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
