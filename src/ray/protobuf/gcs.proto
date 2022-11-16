@@ -222,11 +222,13 @@ message ProfileEventEntry {
 message ProfileEvents {
   // The type of the component that generated the event, e.g., worker or
   // object_manager, or node_manager.
-  bytes component_type = 1;
+  string component_type = 1;
   // An identifier for the component that generated the event.
   bytes component_id = 2;
+  // Node IP address
+  string node_ip_address = 3;
   // Events
-  repeated ProfileEventEntry events = 3;
+  repeated ProfileEventEntry events = 4;
 }
 
 // Represents task states which could be changed during task execution.

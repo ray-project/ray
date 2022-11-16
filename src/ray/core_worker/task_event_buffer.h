@@ -67,8 +67,9 @@ class TaskEventBuffer {
 
   void AddProfileEvent(TaskID task_id,
                        rpc::ProfileEventEntry event,
+                       const std::string &component_type,
                        const std::string &component_id,
-                       const std::string &component_type) LOCKS_EXCLUDED(mutex_);
+                       const std::string &node_ip_address) LOCKS_EXCLUDED(mutex_);
 
   /// Flush all of the events that have been added since last flush to the GCS.
   /// If previous flush's gRPC hasn't been replied and `forced` is false, the flush will

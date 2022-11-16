@@ -67,8 +67,9 @@ void TaskEventBuffer::AddTaskStatusEvent(
 
 void TaskEventBuffer::AddProfileEvent(TaskID task_id,
                                       rpc::ProfileEventEntry event,
+                                      const std::string &component_type,
                                       const std::string &component_id,
-                                      const std::string &component_type) {
+                                      const std::string &node_ip_address) {
   if (!recording_on_) {
     return;
   }
@@ -80,6 +81,7 @@ void TaskEventBuffer::AddProfileEvent(TaskID task_id,
   auto profile_events = events_task->mutable_profile_events();
   profile_events->set_component_type(component_type);
   profile_events->set_component_id(component_id);
+  profile_events->set_node_ip_address(node_ip_address);
   profile_events->add_events()->Swap(&event);
 }
 

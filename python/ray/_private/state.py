@@ -215,6 +215,38 @@ class GlobalState:
 
         return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
+    def profile_events(self):
+        self._check_connected()
+
+        result = defaultdict(list)
+        all_profile_events = self.global_state_accessor.get_profile_events()
+        for i in range(len(all_profile_events)):
+            profile = gcs_utils.TaskEvents.FromString(
+                all_profile_events[i]
+            ).profile_events
+            component_type = profile.component_type
+            component_id = binary_to_hex(profile.component_id)
+            node_ip_address = profile.node_ip_address
+
+            for event in profile.events:
+                try:
+                    extra_data = json.loads(event.extra_data)
+                except ValueError:
+                    extra_data = {}
+                profile_event = {
+                    "event_type": event.event_name,
+                    "component_id": component_id,
+                    "node_ip_address": node_ip_address,
+                    "component_type": component_type,
+                    "start_time": event.start_time / 1e9,
+                    "end_time": event.end_time / 1e9,
+                    "extra_data": extra_data,
+                }
+
+                result[component_id].append(profile_event)
+        print(result)
+        return dict(result)
+
     def profile_table(self):
         self._check_connected()
 
@@ -440,7 +472,8 @@ class GlobalState:
 
         time.sleep(1)
 
-        profile_table = self.profile_table()
+        # profile_table = self.profile_table()
+        profile_table = self.profile_events()
         all_events = []
 
         for component_id_hex, component_events in profile_table.items():

@@ -70,7 +70,8 @@ class ProfileEvent {
                const std::string &event_name,
                TaskID task_id,
                const std::string &worker_type,
-               const std::string &worker_id);
+               const std::string &worker_id,
+               const std::string &node_ip_address);
 
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent() {
@@ -78,7 +79,7 @@ class ProfileEvent {
       event_.set_end_time(absl::GetCurrentTimeNanos());
       // Add task event to the task event buffer
       task_event_buffer_->AddProfileEvent(
-          task_id_, std::move(event_), component_type_, component_id_);
+          task_id_, std::move(event_), component_type_, component_id_, node_ip_address_);
     } else {
       rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
       profiler_->AddEvent(rpc_event_);
@@ -116,6 +117,7 @@ class ProfileEvent {
 
   const std::string component_type_;
   const std::string component_id_;
+  const std::string node_ip_address_;
 };
 
 }  // namespace worker

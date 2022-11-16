@@ -2209,7 +2209,8 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
         event_type,
         worker_context_.GetCurrentTaskID(),
         WorkerTypeString(worker_context_.GetWorkerType()),
-        worker_context_.GetWorkerID().Binary());
+        worker_context_.GetWorkerID().Binary(),
+        options_.node_ip_address);
   }
   return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
 }
