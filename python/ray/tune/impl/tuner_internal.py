@@ -281,6 +281,8 @@ class TunerInternal:
         return self._experiment_checkpoint_dir
 
     def _get_converted_trainable(self) -> Union[str, Callable, Type[Trainable]]:
+        """Converts an AIR Trainer to a Tune trainable and saves the converted
+        trainable. If not using an AIR Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
         if not self._converted_trainable:
