@@ -1,6 +1,7 @@
 import copy
 import os
 import math
+import logging
 import warnings
 import shutil
 import tempfile
@@ -29,6 +30,8 @@ _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
 _PARAM_SPACE_KEY = "_param_space"
 _EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
+
+logger = logging.getLogger(__name__)
 
 
 class TunerInternal:
@@ -87,10 +90,14 @@ class TunerInternal:
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
+        self._missing_params_error_message = None
+
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
-                path_or_uri=restore_path, resume_config=resume_config
+                path_or_uri=restore_path,
+                resume_config=resume_config,
+                overwrite_trainable=trainable,
             )
             return
 
@@ -191,8 +198,77 @@ class TunerInternal:
                 stacklevel=4,
             )
 
+    def _validate_overwrite_trainable(self, original_trainable, overwrite_trainable):
+        """Determines whether the re-specified overwrite_trainable is compatible
+        the restored experiment with some basic sanity checks
+        (ensuring same type and name as the original trainable).
+        """
+
+        # Check if the trainable was wrapped with `tune.with_parameters`,
+        # Set the Tuner to fail on fit if the trainable is not re-specified.
+        trainable_wrapped_params = getattr(
+            original_trainable, "_attached_param_names", None
+        )
+        if trainable_wrapped_params and not overwrite_trainable:
+            self._missing_params_error_message = (
+                "The original trainable cannot be used to resume training, since "
+                "`tune.with_parameters` attached references to objects "
+                "in the Ray object store that may not exist anymore. "
+                "You must re-supply the trainable with the same parameters "
+                f"{trainable_wrapped_params} attached:\n\n"
+                "from ray import tune\n\n"
+                "# Reconstruct the trainable with the same parameters\n"
+                "trainable_with_params = tune.with_parameters(trainable, ...)\n"
+                "tuner = tune.Tuner.restore(\n"
+                "    ..., overwrite_trainable=trainable_with_params\n"
+                ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
+                "#tune-with-parameters for more details."
+            )
+        if not overwrite_trainable:
+            return
+
+        error_message = (
+            "Usage of `overwrite_trainable` is limited to re-specifying the "
+            "same trainable that was passed to `Tuner`, in the case "
+            "that the trainable is not serializable (ex: holds object references)."
+        )
+
+        if type(original_trainable) != type(overwrite_trainable):
+            raise ValueError(
+                f"{error_message}\n"
+                f"Got new trainable of type {type(overwrite_trainable)} "
+                f"but expected {type(original_trainable)}."
+            )
+
+        from ray.train.trainer import BaseTrainer
+
+        if not isinstance(overwrite_trainable, BaseTrainer):
+            original_name = Experiment.get_trainable_name(original_trainable)
+            overwrite_name = Experiment.get_trainable_name(overwrite_trainable)
+            if original_name != overwrite_name:
+                raise ValueError(
+                    f"{error_message}\nGot new trainable with identifier "
+                    f"{overwrite_name} but expected {original_name}."
+                )
+
+        logger.warning(
+            "Trainable has been overwritten - this should be done with caution: "
+            "it's possible to supply an incompatible trainable, and there are "
+            "no guarantees that the resumed experiment will continue successfully."
+        )
+
     def _restore_from_path_or_uri(
-        self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
+        self,
+        path_or_uri: str,
+        resume_config: Optional[_ResumeConfig],
+        overwrite_trainable: Optional[
+            Union[
+                str,
+                Callable,
+                Type[Trainable],
+                "BaseTrainer",
+            ]
+        ],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -217,6 +293,10 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
             tuner = pickle.load(fp)
             self.__dict__.update(tuner.__dict__)
+
+        self._validate_overwrite_trainable(trainable, overwrite_trainable)
+        if overwrite_trainable:
+            trainable = overwrite_trainable
 
         self._is_restored = True
         self._trainable = trainable
@@ -423,6 +503,9 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        if self._missing_params_error_message:
+            raise ValueError(self._missing_params_error_message)
+
         resume = "AUTO"
 
         if self._resume_config:

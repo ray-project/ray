@@ -327,10 +327,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         parameter_registry.put(prefix + k, v)
 
     trainable_name = getattr(trainable, "__name__", "tune_with_parameters")
+    keys = list(kwargs.keys())
 
     if inspect.isclass(trainable):
         # Class trainable
-        keys = list(kwargs.keys())
 
         class _Inner(trainable):
             def setup(self, config):
@@ -340,7 +340,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                 super(_Inner, self).setup(config, **setup_kwargs)
 
         _Inner.__name__ = trainable_name
-        return _Inner
+        trainable_with_params = _Inner
     else:
         # Function trainable
         use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
@@ -366,6 +366,8 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         if hasattr(trainable, "_resources"):
             inner._resources = trainable._resources
 
+        trainable_with_params = inner
+
         # Use correct function signature if no `checkpoint_dir` parameter
         # is set
         if not use_checkpoint:
@@ -381,12 +383,13 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             if hasattr(trainable, "__mixins__"):
                 _inner.__mixins__ = trainable.__mixins__
-            return _inner
+            trainable_with_params = _inner
 
-        if hasattr(trainable, "__mixins__"):
+        elif hasattr(trainable, "__mixins__"):
             inner.__mixins__ = trainable.__mixins__
 
-        return inner
+    trainable_with_params._attached_param_names = keys
+    return trainable_with_params
 
 
 @PublicAPI(stability="beta")

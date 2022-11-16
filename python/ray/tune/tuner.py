@@ -167,6 +167,14 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
+        overwrite_trainable: Optional[
+            Union[
+                str,
+                Callable,
+                Type[Trainable],
+                "BaseTrainer",
+            ]
+        ] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -213,13 +221,19 @@ class Tuner:
 
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(
-                restore_path=path, resume_config=resume_config
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=overwrite_trainable,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = _force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path, resume_config=resume_config)
+            ).remote(
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=overwrite_trainable,
+            )
             return Tuner(_tuner_internal=tuner_internal)
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
