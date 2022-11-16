@@ -1007,6 +1007,8 @@ class DynamicTFPolicyV2(TFPolicy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        import time
+        t0 = time.monotonic()
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
@@ -1042,6 +1044,9 @@ class DynamicTFPolicyV2(TFPolicy):
                 ),
             }
         )
+
+        t1 = time.monotonic()
+        print(f"tf learn_on_loaded_batch {t1-t0}")
 
         return results
 

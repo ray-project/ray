@@ -29,6 +29,7 @@ from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -48,6 +49,12 @@ parser.add_argument(
     "--local-mode",
     action="store_true",
     help="Run ray in local mode for easier debugging.",
+)
+parser.add_argument(
+    "--no-tune",
+    action="store_true",
+    help="Run without Tune using a manual train loop instead. Here,"
+         "there is no TensorBoard support.",
 )
 parser.add_argument(
     "--override-mean-reward",

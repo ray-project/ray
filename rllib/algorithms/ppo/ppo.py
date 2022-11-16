@@ -318,6 +318,7 @@ class PPO(Algorithm):
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
+        print(f"sampled {train_batch.count} steps")
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -330,6 +331,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        print(f"trained on {train_batch.count} steps")
         policies_to_update = list(train_results.keys())
 
         global_vars = {

@@ -753,7 +753,11 @@ class TorchPolicyV2(Policy):
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
         # Do the (maybe parallelized) gradient calculation step.
+        import time
+        t0 = time.monotonic()
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+        t1 = time.monotonic()
+        print(f"grad-calc {t1-t0}")
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
