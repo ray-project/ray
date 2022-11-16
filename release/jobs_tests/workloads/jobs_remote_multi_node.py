@@ -16,6 +16,8 @@ ray.init()
 
 NUM_NODES = 5
 
-# Assert that we have 5 nodes
 num_nodes = len(ray.nodes())
-assert num_nodes == NUM_NODES, "Expected 5 nodes, got {}".format(num_nodes)
+# Allow one fewer node in case a node fails to come up.
+assert (
+    num_nodes >= NUM_NODES - 1
+), f"Expected at least {NUM_NODES - 1} nodes, got {num_nodes}"
