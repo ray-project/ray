@@ -40,7 +40,7 @@ void TaskEventBuffer::AddTaskStatusEvent(
     rpc::TaskStatus task_status,
     std::unique_ptr<rpc::TaskInfoEntry> task_info,
     std::unique_ptr<rpc::TaskStateEntry> task_state_update) {
-  if (!recording_on_) {
+  if (!recording_on_ || !RayConfig::instance().task_events_enable_status_event()) {
     return;
   }
   absl::MutexLock lock(&mutex_);

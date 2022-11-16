@@ -459,6 +459,9 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// tasks will be dropped. Set to -1 for allowing unlimited events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 10000);
 
+/// If task status change events will be reported.
+RAY_CONFIG(int64_t, task_events_enable_status_event, true);
+
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
 
