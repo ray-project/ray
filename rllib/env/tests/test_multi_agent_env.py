@@ -145,7 +145,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
+            .rollouts(
+                rollout_fragment_length=50,
+                num_rollout_workers=0,
+                enable_connectors=True,
+            )
             .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
