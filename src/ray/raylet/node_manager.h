@@ -870,6 +870,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SubscribeGlobalOwnerAddress(const ActorID &actor_id,
                                    const rpc::Address &init_owner_address);
+
+  absl::flat_hash_map<WorkerID, std::string> worker_stats_;
 };
 
 }  // namespace raylet

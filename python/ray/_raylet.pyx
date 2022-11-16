@@ -1911,6 +1911,8 @@ cdef class CoreWorker:
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
+                     returned_object_owner_address = None,
+                     returned_object_global_owner_id = None,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1923,6 +1925,13 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
+            unique_ptr[CAddress] c_returned_object_owner_address
+            CActorID c_returned_object_global_owner_id
+
+        c_returned_object_owner_address = move(
+            self._convert_python_address(returned_object_owner_address))
+        c_returned_object_global_owner_id = self._convert_binary_actor_id(
+            returned_object_global_owner_id)
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1959,7 +1968,9 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls),
                     extension_data,
-                    &c_actor_id)
+                    &c_actor_id,
+                    c_returned_object_owner_address,
+                    c_returned_object_global_owner_id)
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
@@ -2044,7 +2055,9 @@ cdef class CoreWorker:
                           c_string name,
                           int num_returns,
                           double num_method_cpus,
-                          c_string concurrency_group_name):
+                          c_string concurrency_group_name,
+                          returned_object_owner_address = None,
+                          returned_object_global_owner_id = None):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -2053,6 +2066,13 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             optional[c_vector[CObjectReference]] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
+            unique_ptr[CAddress] c_returned_object_owner_address
+            CActorID c_returned_object_global_owner_id
+
+        c_returned_object_owner_address = move(
+            self._convert_python_address(returned_object_owner_address))
+        c_returned_object_global_owner_id = self._convert_binary_actor_id(
+            returned_object_global_owner_id)
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -2069,7 +2089,9 @@ cdef class CoreWorker:
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name))
+                        name, num_returns, c_resources, concurrency_group_name),
+                    c_returned_object_owner_address,
+                    c_returned_object_global_owner_id)
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -2182,13 +2204,17 @@ cdef class CoreWorker:
                 job_id, actor_creation_function_descriptor)
             method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
+            returned_object_owner_address = <bytes>dereference(c_actor_handle).ReturnedObjectOwnerAddress()
+            returned_object_global_owner_id = <bytes>dereference(c_actor_handle).ReturnedObjectGlobalOwnerID()
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
-                                         worker.current_session_and_job)
+                                         worker.current_session_and_job,
+                                         returned_object_owner_address=returned_object_owner_address,
+                                         returned_object_global_owner_id=returned_object_global_owner_id)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          {},  # method decorators

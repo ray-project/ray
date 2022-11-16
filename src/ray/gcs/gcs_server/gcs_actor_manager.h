@@ -104,6 +104,12 @@ class GcsActor {
 
     actor_table_data_.set_ray_namespace(ray_namespace);
 
+    if (task_spec.has_returned_object_owner_address()) {
+      actor_table_data_.mutable_returned_object_owner_address()->CopyFrom(task_spec.returned_object_owner_address());
+      RAY_CHECK(task_spec.has_returned_object_global_owner_id());
+      actor_table_data_.set_returned_object_global_owner_id(task_spec.returned_object_global_owner_id());
+    }
+
     // Set required resources.
     auto resource_map =
         GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();

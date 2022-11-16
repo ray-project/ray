@@ -486,6 +486,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         // NOTE(swang): Failure here means the local raylet is probably dead.
         // We do not assert failure though, because we should throw the object
         // error to the application.
+        if (reference_counter_->IsHAObject(object_id)) return;
         RAY_UNUSED(Put(RayObject(reason),
                        /*contained_object_ids=*/{},
                        object_id,
@@ -1846,7 +1847,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
-                               ActorID *return_actor_id) {
+                               ActorID *return_actor_id,
+                               const std::unique_ptr<rpc::Address> &returned_object_owner_address,
+                               const ActorID &returned_object_global_owner_id) {
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1903,6 +1906,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "" /* debugger_breakpoint */,
                       depth,
                       actor_creation_options.serialized_runtime_env_info);
+  if (returned_object_owner_address) {
+    builder.SetReturnedObjectInfo(*returned_object_owner_address,
+                                  returned_object_global_owner_id);
+  }
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1921,7 +1928,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name,
       ray_namespace,
       actor_creation_options.max_pending_calls,
-      actor_creation_options.execute_out_of_order);
+      actor_creation_options.execute_out_of_order,
+      returned_object_owner_address,
+      returned_object_global_owner_id);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(actor_id,
@@ -1938,15 +1947,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.concurrency_groups,
                                    extension_data,
                                    actor_creation_options.execute_out_of_order);
+  TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), CurrentCallSite(), rpc_address_, is_detached))
+      std::move(actor_handle), CurrentCallSite(), task_spec.ReturnedObjectOwnerAddress(), is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
-  TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
     // it looks like two actors with two different namespaces become the
@@ -2079,7 +2088,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options) {
+    const TaskOptions &task_options,
+    const std::unique_ptr<rpc::Address> &returned_object_owner_address,
+    const ActorID &returned_object_global_owner_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
@@ -2129,6 +2140,10 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
                       task_options.concurrency_group_name);
+  if (returned_object_owner_address) {
+    builder.SetReturnedObjectInfo(*returned_object_owner_address,
+                                  returned_object_global_owner_id);
+  }
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2139,6 +2154,12 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
+  if (returned_object_owner_address) {
+    RAY_LOG(DEBUG) << "actor(" << actor_id << "), caller worker id:"
+                   << WorkerID::FromBinary(rpc_address_.worker_id())
+                   << ", returned object owner worker id:"
+                   << WorkerID::FromBinary(returned_object_owner_address->worker_id());
+  }
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     /// NOTE: The lock should be released in local mode. The user code may
@@ -2148,8 +2169,23 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
+    auto assign_returned_object_owner_callback = [this](
+                                                     const ObjectID &object_id,
+                                                     const TaskSpecification &task_spec,
+                                                     bool is_reconstructable) {
+      AssignObjectOwnerInternal(object_id,
+                                -1,
+                                {},
+                                task_spec.ReturnedObjectOwnerAddress(),
+                                task_spec.ReturnedObjectGlobalOwnerID(),
+                                is_reconstructable);
+      RAY_CHECK(reference_counter_->HandleObjectSpilled(
+          object_id, "PLACEMENT_HOLD", NodeID::Nil()));
+      reference_counter_->SetCallerAddress(object_id, task_spec.CallerAddress());
+    };
     returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries(),
+        assign_returned_object_owner_callback);
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};
@@ -2371,7 +2407,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
         (worker_context_.GetCurrentTask()->ReturnedObjectOwnerAddress().worker_id() !=
          worker_context_.GetCurrentTask()->CallerAddress().worker_id());
     // Allocate a buffer for the return object.
-    if (is_ha_returned_object &&
+    if (!is_ha_returned_object &&
         (options_.is_local_mode ||
          (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
           // ensure we don't exceed the limit if we allocate this object inline.
@@ -2458,10 +2494,12 @@ Status CoreWorker::ExecuteTask(
                      << " should return dynamic object " << dynamic_return_id;
 
       AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      std::string spilled_url = "";
+      if (!task_spec.ReturnedObjectGlobalOwnerID().IsNil()) spilled_url = "PLACEMENT_HOLD";
       reference_counter_->AddBorrowedObject(dynamic_return_id,
                                             ObjectID::Nil(),
-                                            task_spec.CallerAddress(),
-                                            /*spilled_url=*/"",
+                                            task_spec.ReturnedObjectOwnerAddress(),
+                                            /*spilled_url=*/spilled_url,
                                             /*spilled_node_id=*/NodeID::Nil());
     }
   }
@@ -3487,7 +3525,7 @@ void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
 void CoreWorker::HandleCheckWorkerAlive(rpc::CheckWorkerAliveRequest request,
                                         rpc::CheckWorkerAliveReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // Do nothing.
 }
 
 void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
@@ -3510,29 +3548,13 @@ void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest r
     RAY_CHECK(request.serialized_ha_returned_object_infos_size() == 0 || request.serialized_ha_returned_object_infos_size() == request.spilled_objects_url_size());
     int index = 0;
     for (const auto &url : request.spilled_objects_url()) {
-      std::string temp_url = "PLACEMENT_HOLD";
-      if (temp_url.compare(url) == 0) {
+      if (url.rfind("PLACEMENT_HOLD", 0) == 0) {
         // check caller still alive.
         RAY_CHECK(request.serialized_ha_returned_object_infos()[index].size() > 0);
         rpc::HAReturnedObjectInfo ha_returned_object_info;
         ha_returned_object_info.ParseFromString(request.serialized_ha_returned_object_infos()[index]);
 
-        rpc::Address caller_address;
-        caller_address.ParseFromString(ha_returned_object_info.serialized_caller_address());
-
-        auto conn = core_worker_client_pool_->GetOrConnect(caller_address);
-        std::promise<std::string> result_promise;
-        conn->CheckWorkerAlive(request,
-                                [&result_promise](const Status &returned_status,
-                                                  const rpc::AssignObjectOwnerReply &reply) {
-                                  if (returned_status.ok()) {
-                                    result_promise.set_value("_ALIVE");
-                                  } else {
-                                    result_promise.set_value("_DEAD");
-                                  }
-                                });
-        temp_url += result_promise.get_future().get();
-        spilled_objects_url.push_back(std::move(temp_url));
+        spilled_objects_url.push_back(std::move(url));
         serialized_owner_addresses.push_back(std::move(ha_returned_object_info.serialized_owner_address()));
         serialized_global_owner_ids.push_back(std::move(ha_returned_object_info.serialized_global_owner_id()));
       } else {

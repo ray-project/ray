@@ -330,6 +330,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     for (const auto &return_object : reply.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
       if (first_execution) {
+        // TODO(JiaLing He): Assign owner
         reference_counter_->AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }

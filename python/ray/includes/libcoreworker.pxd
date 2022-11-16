@@ -98,6 +98,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
         int MaxPendingCalls() const
+        c_string ReturnedObjectOwnerAddress() const
+        c_string ReturnedObjectGlobalOwnerID() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -119,7 +121,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
-            const c_string &extension_data, CActorID *actor_id)
+            const c_string &extension_data, CActorID *actor_id,
+            const unique_ptr[CAddress] &returned_object_owner_address,
+            const CActorID &returned_object_global_owner_id)
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
@@ -130,7 +134,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         optional[c_vector[CObjectReference]] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
-            const CTaskOptions &options)
+            const CTaskOptions &options,
+            const unique_ptr[CAddress] &returned_object_owner_address,
+            const CActorID &returned_object_global_owner_id)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)

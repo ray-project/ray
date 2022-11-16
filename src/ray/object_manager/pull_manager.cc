@@ -471,6 +471,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // The object waiting for local pull retry; abort.
   auto &request = map_find_or_die(object_pull_requests_, object_id);
   if (request.next_pull_time > get_time_seconds_()) {
+    RAY_LOG(DEBUG) << "object(" << object_id << ") still need wait.";
     return;
   }
 
@@ -504,13 +505,13 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id,
                             request.object_size,
                             direct_restore_url,
-                            request.serialized_ha_returned_object_info,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id
                                                << " failed, will retry later: " << status;
                               }
-                            });
+                            },
+                            request.serialized_ha_returned_object_info);
     return;
   }
 

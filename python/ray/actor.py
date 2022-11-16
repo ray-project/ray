@@ -785,6 +785,18 @@ class ActorClass:
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
 
+        returned_object_owner_address = actor_options["returned_object_owner_address"]
+        returned_object_global_owner_id = actor_options[
+            "returned_object_global_owner_id"
+        ]
+        if returned_object_owner_address:
+            if lifetime is not None and lifetime != "detached":
+                raise ValueError(
+                    "Not allowed lifetime is not detached "
+                    "when Actor task returned is enable HA"
+                )
+            lifetime = "detached"
+
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -982,6 +994,8 @@ class ActorClass:
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
+            returned_object_owner_address=returned_object_owner_address,
+            returned_object_global_owner_id=returned_object_global_owner_id,
         )
 
         if _actor_launch_hook:
@@ -999,6 +1013,8 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True,
+            returned_object_owner_address=returned_object_owner_address,
+            returned_object_global_owner_id=returned_object_global_owner_id,
         )
 
         return actor_handle
@@ -1058,6 +1074,8 @@ class ActorHandle:
         actor_creation_function_descriptor,
         session_and_job,
         original_handle=False,
+        returned_object_owner_address=None,
+        returned_object_global_owner_id=None,
     ):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -1072,6 +1090,8 @@ class ActorHandle:
             actor_creation_function_descriptor
         )
         self._ray_function_descriptor = {}
+        self._returned_object_owner_address = returned_object_owner_address
+        self._returned_object_global_owner_id = returned_object_global_owner_id
 
         if not self._ray_is_cross_language:
             assert isinstance(
@@ -1176,6 +1196,8 @@ class ActorHandle:
             num_returns,
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
+            self._returned_object_owner_address,
+            self._returned_object_global_owner_id,
         )
 
         if len(object_refs) == 1:

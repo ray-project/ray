@@ -67,6 +67,11 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
+
+  // The address of the returned object owner.
+  optional Address returned_object_owner_address = 14;
+  // The global owner id of the returned object owner.
+  optional bytes returned_object_global_owner_id = 15;
 }
 
 message ReturnObject {
@@ -349,9 +354,9 @@ message RestoreSpilledObjectsReply {
   int64 bytes_restored_total = 1;
 }
 
-message CheckWorkerAliveRequest() {}
+message CheckWorkerAliveRequest {}
 
-message CheckWorkerAliveReply() {}
+message CheckWorkerAliveReply {}
 
 message DeleteSpilledObjectsRequest {
   // The URLs of spilled objects.

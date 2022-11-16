@@ -150,6 +150,11 @@ message ActorTableData {
   ActorDeathCause death_cause = 24;
   // Quantities of the different resources required by this actor.
   map<string, double> required_resources = 28;
+
+  // The address of the returned object owner.
+  optional Address returned_object_owner_address = 29;
+  // The global owner id of the returned object owner.
+  optional bytes returned_object_global_owner_id = 30;
 }
 
 message ErrorTableData {

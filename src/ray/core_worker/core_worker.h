@@ -683,7 +683,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data,
-                     ActorID *actor_id);
+                     ActorID *actor_id,
+                     const std::unique_ptr<rpc::Address> &returned_object_owner_address = nullptr,
+                     const ActorID &returned_object_global_owner_id = ActorID::Nil());
 
   /// Create a placement group.
   ///
@@ -727,7 +729,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const ActorID &actor_id,
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
-      const TaskOptions &task_options);
+      const TaskOptions &task_options,
+      const std::unique_ptr<rpc::Address> &returned_object_owner_address = nullptr,
+      const ActorID &returned_object_global_owner_id = ActorID::Nil());
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///

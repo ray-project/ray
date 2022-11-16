@@ -32,7 +32,9 @@ rpc::ActorHandle CreateInnerActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order) {
+    bool execute_out_of_order,
+    const std::unique_ptr<rpc::Address> &returned_object_owner_address,
+    const ActorID &returned_object_global_owner_id) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -48,6 +50,13 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_ray_namespace(ray_namespace);
   inner.set_execute_out_of_order(execute_out_of_order);
   inner.set_max_pending_calls(max_pending_calls);
+
+  if (returned_object_owner_address) {
+    RAY_CHECK(!returned_object_global_owner_id.IsNil());
+    inner.mutable_returned_object_owner_address()->CopyFrom(*returned_object_owner_address);
+    inner.set_returned_object_global_owner_id(returned_object_global_owner_id.Binary());
+  }
+
   return inner;
 }
 
@@ -79,6 +88,12 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
   inner.set_execute_out_of_order(
       task_spec.actor_creation_task_spec().execute_out_of_order());
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
+
+  if (actor_table_data.has_returned_object_owner_address()) {
+    inner.mutable_returned_object_owner_address()->CopyFrom(actor_table_data.returned_object_owner_address());
+    RAY_CHECK(actor_table_data.has_returned_object_global_owner_id());
+    inner.set_returned_object_global_owner_id(actor_table_data.returned_object_global_owner_id());
+  }
   return inner;
 }
 }  // namespace
@@ -96,7 +111,9 @@ ActorHandle::ActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order)
+    bool execute_out_of_order,
+    const std::unique_ptr<rpc::Address> &returned_object_owner_address,
+    const ActorID &returned_object_global_owner_id)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -109,7 +126,9 @@ ActorHandle::ActorHandle(
                                          name,
                                          ray_namespace,
                                          max_pending_calls,
-                                         execute_out_of_order)) {}
+                                         execute_out_of_order,
+                                         returned_object_owner_address,
+                                         returned_object_global_owner_id)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}

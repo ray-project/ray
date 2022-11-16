@@ -127,7 +127,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
-                                     const rpc::Address &caller_address,
+                                     const rpc::Address &owner_address,
                                      bool is_detached) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
@@ -137,7 +137,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // in AddActorHandle.
     reference_counter_->AddOwnedObject(actor_creation_return_id,
                                        /*inner_ids=*/{},
-                                       caller_address,
+                                       owner_address,
                                        call_site,
                                        /*spilled_url=*/"",
                                        /*spilled_node_id=*/NodeID::Nil(),
@@ -148,7 +148,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 
   return AddActorHandle(std::move(actor_handle),
                         call_site,
-                        caller_address,
+                        owner_address,
                         actor_id,
                         actor_creation_return_id);
 }

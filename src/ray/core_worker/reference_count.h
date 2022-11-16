@@ -533,6 +533,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                           const rpc::Address owner_address)
       LOCKS_EXCLUDED(mutex_);
 
+  bool IsHAObject(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
@@ -708,7 +710,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
 
-    ActorID global_owner_id;
+    ActorID global_owner_id = ActorID::Nil();
 
     std::string returned_object_caller_address = "";
     /// If this object is owned by us and stored in plasma, and reference

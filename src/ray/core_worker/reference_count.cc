@@ -241,18 +241,27 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
                  << " contained in generator object " << generator_id;
-  RAY_CHECK(outer_it->second.owned_by_us);
   RAY_CHECK(outer_it->second.owner_address.has_value());
   rpc::Address owner_address(outer_it->second.owner_address.value());
-  RAY_UNUSED(AddOwnedObjectInternal(object_id,
-                                    {},
-                                    owner_address,
-                                    outer_it->second.call_site,
-                                    /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable,
-                                    /*add_local_ref=*/false,
-                                    absl::optional<NodeID>()));
-  AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
+  if (outer_it->second.owned_by_us){
+    RAY_UNUSED(AddOwnedObjectInternal(object_id,
+                                      {},
+                                      owner_address,
+                                      outer_it->second.call_site,
+                                      /*object_size=*/-1,
+                                      outer_it->second.is_reconstructable,
+                                      /*add_local_ref=*/false,
+                                      absl::optional<NodeID>()));
+    AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
+  } else {
+    RAY_UNUSED(AddBorrowedObjectInternal(object_id,
+                                         generator_id,
+                                         owner_address,
+                                         "PLACEMENT_HOLD",
+                                         NodeID::Nil(),
+                                         false,
+                                         outer_it->second.global_owner_id));
+  }
 }
 
 bool ReferenceCounter::AddOwnedObjectInternal(
@@ -1663,6 +1672,20 @@ rpc::ObjectReference ReferenceCounter::GetObjectReference(
   ref.set_global_owner_id(it->second.global_owner_id.Binary());
 
   return ref;
+}
+
+bool ReferenceCounter::IsHAObject(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+  RAY_LOG(DEBUG) << "object(" << object_id << ") "
+                 << "spilled_url length: " << it->second.spilled_url.size()
+                 << ", spilled_node_id: " << it->second.spilled_node_id
+                 << ", global_owner_id: " << it->second.global_owner_id;
+  if (it->second.spilled_url.size() > 0 && it->second.spilled_node_id.IsNil() && !it->second.global_owner_id.IsNil()) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace core

@@ -293,8 +293,45 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                  const std::string &object_url,
                  std::function<void(const ray::Status &)> callback,
                  const std::string &serialized_ha_returned_object_info) {
+
+            std::string temp_url = "PLACEMENT_HOLD";
+            auto worker_id = WorkerID::Nil();
+            if (temp_url.compare(object_url) == 0) {
+              RAY_CHECK(serialized_ha_returned_object_info.size() > 0);
+
+              rpc::HAReturnedObjectInfo ha_returned_object_info;
+              ha_returned_object_info.ParseFromString(serialized_ha_returned_object_info);
+
+              rpc::Address caller_address;
+              caller_address.ParseFromString(ha_returned_object_info.serialized_caller_address());
+              auto conn = worker_rpc_pool_.GetOrConnect(caller_address);
+
+              worker_id = WorkerID::FromBinary(caller_address.worker_id());
+
+              auto it = worker_stats_.find(worker_id);
+              if (it == worker_stats_.end()) {
+                worker_stats_[worker_id] = "_ALIVE";
+                temp_url += "_ALIVE";
+                conn->CheckWorkerAlive(rpc::CheckWorkerAliveRequest(),
+                                [this, worker_id=std::move(worker_id)](const Status &status,
+                                   const rpc::CheckWorkerAliveReply &reply) {
+                                  // Only returns when Caller Worker dies,
+                                  // so `status.ok` will never be `true`
+                                  RAY_CHECK(!status.ok());
+                                  worker_stats_[worker_id] = "_DEAD";
+                                  RAY_LOG(INFO) << "worker(" << worker_id << ") is dead.";
+                                });
+              } else {
+                temp_url += it->second;
+              }
+            } else {
+              temp_url = object_url;
+            }
+            RAY_LOG(DEBUG) << "Try to load object(" << object_id << ") "
+                           << "from file " << temp_url << ", "
+                           << "caller worker: " << worker_id;
             GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_size, object_url, callback, serialized_ha_returned_object_info);
+                object_id, object_size, temp_url, callback, serialized_ha_returned_object_info);
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {

@@ -44,7 +44,9 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false);
+              bool execute_out_of_order = false,
+              const std::unique_ptr<rpc::Address> &returned_object_owner_address = nullptr,
+              const ActorID &returned_object_global_owner_id = ActorID::Nil());
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -99,6 +101,14 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
+  std::string ReturnedObjectOwnerAddress() const {
+    return inner_.returned_object_owner_address().SerializeAsString();
+  }
+
+  std::string ReturnedObjectGlobalOwnerID() const {
+    return inner_.returned_object_global_owner_id();
+  }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

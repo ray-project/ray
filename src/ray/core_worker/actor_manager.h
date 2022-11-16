@@ -106,7 +106,7 @@ class ActorManager {
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                          const std::string &call_site,
-                         const rpc::Address &caller_address,
+                         const rpc::Address &owner_address,
                          bool is_detached);
 
   /// Wait for actor out of scope.
