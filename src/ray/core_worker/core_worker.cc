@@ -2205,7 +2205,11 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     RAY_CHECK(task_event_buffer_) << "Task event buffer should not be nullptr.";
     return std::make_unique<worker::ProfileEvent>(
-        task_event_buffer_, event_type, worker_context_.GetCurrentTaskID());
+        task_event_buffer_,
+        event_type,
+        worker_context_.GetCurrentTaskID()
+            WorkerTypeString(worker_context_.GetWorkerType()),
+        worker_context_.GetWorkerID().Binary());
   }
   return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
 }

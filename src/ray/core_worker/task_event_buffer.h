@@ -65,10 +65,10 @@ class TaskEventBuffer {
                           std::unique_ptr<rpc::TaskStateEntry> task_state_update)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Add a task event.
-  ///
-  /// \param task_id Task ID of the task.
-  void AddTaskEvent(TaskID task_id, rpc::TaskEventEntry event) LOCKS_EXCLUDED(mutex_);
+  void AddProfileEvent(TaskID task_id,
+                       rpc::ProfileEvents::ProfileEventEntry event,
+                       const std::string &component_id,
+                       const std::string &component_type) LOCKS_EXCLUDED(mutex_);
 
   /// Flush all of the events that have been added since last flush to the GCS.
   /// If previous flush's gRPC hasn't been replied and `forced` is false, the flush will

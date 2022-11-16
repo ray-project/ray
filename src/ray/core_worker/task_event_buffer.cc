@@ -44,30 +44,31 @@ void TaskEventBuffer::AddTaskStatusEvent(
     return;
   }
   absl::MutexLock lock(&mutex_);
-  RAY_LOG_EVERY_MS(INFO, 30000)
-      << "Task event buffer currently has " << task_events_data_.events_by_task_size()
-      << " tasks' events (" << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
-      << "MiB).";
 
   // TODO(rickyx): What if too many in local buffer? Trigger force flush or drop?
   auto events_task = task_events_data_.add_events_by_task();
   events_task->set_task_id(task_id.Binary());
+
+  auto status_events = events_task->mutable_status_events();
+
   if (task_state_update) {
-    events_task->mutable_task_state()->Swap(task_state_update.get());
+    status_events->mutable_task_state()->Swap(task_state_update.get());
   }
 
   if (task_info) {
-    events_task->mutable_task_info()->Swap(task_info.get());
+    status_events->mutable_task_info()->Swap(task_info.get());
   }
 
   // Add the event.
-  auto event = events_task->add_task_events();
-  event->set_event_type(rpc::TaskEventType::STATUS_EVENT);
+  auto event = status_events->add_events();
   event->set_task_status(task_status);
   event->set_start_time(absl::GetCurrentTimeNanos());
 }
 
-void TaskEventBuffer::AddTaskEvent(TaskID task_id, rpc::TaskEventEntry event) {
+void TaskEventBuffer::AddProfileEvent(TaskID task_id,
+                                      rpc::ProfileEvents::ProfileEventEntry event,
+                                      const std::string &component_id,
+                                      const std::string &component_type) {
   if (!recording_on_) {
     return;
   }
@@ -76,7 +77,10 @@ void TaskEventBuffer::AddTaskEvent(TaskID task_id, rpc::TaskEventEntry event) {
   auto events_task = task_events_data_.add_events_by_task();
 
   events_task->set_task_id(task_id.Binary());
-  events_task->add_task_events()->Swap(&event);
+  auto profile_events = events_task->mutable_profile_events();
+  profile_events->set_component_type(component_type);
+  profile_events->set_component_id(component_id);
+  profile_events->add_events()->Swap(&event);
 }
 
 void TaskEventBuffer::FlushEvents(bool forced) {
@@ -84,11 +88,15 @@ void TaskEventBuffer::FlushEvents(bool forced) {
                               "RAY_task_events_report_interval_ms > 0 to turn on";
   std::unique_ptr<rpc::TaskEventData> cur_task_events_data =
       std::make_unique<rpc::TaskEventData>();
-  RAY_LOG_EVERY_MS(INFO, 30000) << "Pushed task state events to GCS. [total_bytes="
-                                << (1.0 * total_events_bytes_) / 1024 / 1024
-                                << "MiB][total_count=" << total_num_events_ << "]";
   {
     absl::MutexLock lock(&mutex_);
+    RAY_LOG_EVERY_MS(INFO, 30000)
+        << "Pushed task state events to GCS. [total_bytes="
+        << (1.0 * total_events_bytes_) / 1024 / 1024
+        << "MiB][total_count=" << total_num_events_ << "]."
+        << "Task event buffer currently has " << task_events_data_.events_by_task_size()
+        << " tasks' events (" << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
+        << "MiB).";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {

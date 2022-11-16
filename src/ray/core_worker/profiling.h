@@ -75,7 +75,8 @@ class ProfileEvent {
     if (use_task_event_) {
       event_.set_end_time(absl::GetCurrentTimeNanos());
       // Add task event to the task event buffer
-      task_event_buffer_->AddTaskEvent(task_id_, std::move(event_));
+      task_event_buffer_->AddProfileEvent(
+          task_id_, std::move(event_), component_type_, component_id_);
     } else {
       rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
       profiler_->AddEvent(rpc_event_);
@@ -110,6 +111,9 @@ class ProfileEvent {
 
   // Task ID
   TaskID task_id_;
+
+  const std::string component_type_;
+  const std::string component_id_;
 };
 
 }  // namespace worker
