@@ -2308,7 +2308,7 @@
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
-    script: python workloads/jobs_specify_num_gpus.py
+    script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 2
 
