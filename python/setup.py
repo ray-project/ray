@@ -182,8 +182,6 @@ ray_files += [
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
-    "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -263,9 +261,6 @@ if setup_spec.type == SetupType.RAY:
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
-
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
@@ -787,7 +782,6 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
-            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },
