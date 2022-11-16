@@ -104,4 +104,4 @@ in the ``ray.remote`` decorator.
 .. literalinclude:: ../doc_code/gpus.py
     :language: python
     :start-after: __leak_gpus_start__
-    :end-before: __leak_gpus_start__
+    :end-before: __leak_gpus_end__
