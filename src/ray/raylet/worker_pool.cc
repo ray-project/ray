@@ -960,6 +960,9 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
+    if (*worker_used) {
+      worker->BumpReuseCount();
+    }
     starting_workers_to_tasks.erase(it);
   }
 }
@@ -1210,6 +1213,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
     // Skip if the dynamic_options doesn't match.
     if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
+      continue;
+    }
+
+    // Actor worker can't be reused.
+    if (is_actor_creation && it->first->GetReuseCount() > 0) {
       continue;
     }
 
