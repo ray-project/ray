@@ -34,6 +34,9 @@ class DummyPredictor(Predictor):
     def predict(self, data, **kwargs):
         return data
 
+    def _predict_pandas(self, data):
+        return data
+
 
 def create_test_data():
     large = 1024 * 1024 * 1024  # 1GB

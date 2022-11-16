@@ -543,8 +543,6 @@ class EnvRunnerV2:
                     and not dones[env_id]["__all__"]
                 )
                 all_agents_done = True
-                # Add rollout metrics.
-                outputs.extend(self._get_rollout_metrics(episode))
             else:
                 hit_horizon = False
                 all_agents_done = False
@@ -662,9 +660,6 @@ class EnvRunnerV2:
                         item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
                         to_eval[policy_id].append(item)
 
-            # # Finished advancing episode by 1 step, mark it so.
-            # episode.step()
-
             # Exception: The very first env.poll() call causes the env to get reset
             # (no step taken yet, just a single starting observation logged).
             # We need to skip this callback in this case.
@@ -778,6 +773,8 @@ class EnvRunnerV2:
             # Output the collected episode.
             self._build_done_episode(env_id, is_done, hit_horizon, outputs)
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
+            # Add rollout metrics.
+            outputs.extend(self._get_rollout_metrics(episode_or_exception))
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
@@ -824,6 +821,9 @@ class EnvRunnerV2:
             new_episode.step()
             self._call_on_episode_start(new_episode, env_id)
 
+            # Step after adding initial obs. This will give us 0 env and agent step.
+            new_episode.step()
+
             per_policy_resetted_obs: Dict[PolicyID, List] = defaultdict(list)
             # types: AgentID, EnvObsType
             for agent_id, raw_obs in resetted_obs[env_id].items():
@@ -853,9 +853,6 @@ class EnvRunnerV2:
                         t=d.data.raw_dict[SampleBatch.T],
                     )
                     to_eval[policy_id].append(d)
-
-            # Step after adding initial obs. This will give us 0 env and agent step.
-            # new_episode.step()
 
     def create_episode(self, env_id: EnvID) -> EpisodeV2:
         """Creates a new EpisodeV2 instance and returns it.
