@@ -1245,7 +1245,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     // Start a new worker process.
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
-      RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
+      RAY_LOG(DEBUG) << "Creating runtime env for task/ " << task_spec.TaskId();
       GetOrCreateRuntimeEnv(
           task_spec.SerializedRuntimeEnv(),
           task_spec.RuntimeEnvConfig(),
