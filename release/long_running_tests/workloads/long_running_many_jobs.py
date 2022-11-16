@@ -19,7 +19,7 @@ import ray
 from ray.job_submission import JobSubmissionClient
 
 NUM_CLIENTS = 4
-NUM_JOBS_PER_BATCH = 8
+NUM_JOBS_PER_BATCH = 4
 
 SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
@@ -95,21 +95,36 @@ if __name__ == "__main__":
     start = time.time()
 
     ray.init()
+    address = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "jobs_basic")
 
-    @ray.remote(runtime_env={"env_vars": {"TEST_ENV_VAR": "TEST_ENV_VAL"}})
-    class Foo:
-        def __init__(self):
-            self.x = 1
-        def bar(self):
-            return self.x
-    
-    # Instantiate 4 actors every 4 seconds using runtime env
+    if address is None or not address.startswith("anyscale://"):
+        address = "http://127.0.0.1:8265"
+
+    clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
+
+    batch_counter = 0
     while time.time() - start < timeout:
-        print("Instantiating actors...")
-        actors = [Foo.remote() for i in range(4)]
-        print("Getting actor results...")
-        print(ray.get([actor.bar.remote() for actor in actors]))
-        time.sleep(4)
+        batch_counter += 1
+        print(f"Submitting batch {batch_counter}...")
+        # Submit a batch of jobs
+        if not submit_batch_jobs(clients, NUM_JOBS_PER_BATCH):
+            print("FAILED")
+            exit(1)
+
+        # Test list jobs
+        jobs: List[JobDetails] = clients[0].list_jobs()
+        print(f"Total jobs submitted so far: {len(jobs)}")
+
+        # Get job logs from random submission job
+        is_submission_job = False
+        while not is_submission_job:
+            job_details = random.choice(jobs)
+            is_submission_job = job_details.type == "SUBMISSION"
+        job_id = job_details.submission_id
+        print(f"Getting logs for randomly chosen job {job_id}...")
+        logs = clients[0].get_job_logs(job_id)
+        print(logs)
 
     time_taken = time.time() - start
     result = {
