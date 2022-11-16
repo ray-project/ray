@@ -307,6 +307,32 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     worker_group.execute(assert_env_var_set)
 
 
+def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
+    """Tests that TorchTrainer raises exception on NCCL timeouts."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Rank 0 worker will never reach the collective operation.
+        # NCCL should timeout.
+        if session.get_world_rank() == 0:
+            while True:
+                pass
+
+        torch.distributed.barrier()
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        torch_config=TorchConfig(timeout_s=5),
+    )
+
+    # Training should fail and not hang.
+    with pytest.raises(RuntimeError):
+        trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
