@@ -19,7 +19,6 @@ from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
@@ -28,7 +27,6 @@ from ray.autoscaler._private.util import (
     prepare_config,
     validate_config,
 )
-from ray.autoscaler._private._kubernetes.config import get_autodetected_resources
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
