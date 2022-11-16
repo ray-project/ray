@@ -63,7 +63,8 @@ class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
       const MemoryMonitor &memory_monitor) const;
 };
 
-/// Kills the worker with the greatest depth such that all depths have at least one worker.
+/// Kills the worker with the greatest depth such that all depths have at least one
+/// worker.
 class GroupByDepthWorkingKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByDepthWorkingKillingPolicy();

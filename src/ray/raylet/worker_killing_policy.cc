@@ -82,14 +82,14 @@ GroupByDepthWorkingKillingPolicy::SelectWorkerToKill(
             });
 
   std::map<int, std::vector<std::shared_ptr<WorkerInterface>>> group_by_depth;
-  for (const auto& worker : sorted) {
+  for (const auto &worker : sorted) {
     int depth = worker->GetAssignedTask().GetTaskSpecification().GetDepth();
     group_by_depth[depth].push_back(worker);
   }
 
   // Iterate in reverse order to get highest depths
   for (auto it = group_by_depth.rbegin(); it != group_by_depth.rend(); ++it) {
-    auto& curr_workers = it->second;
+    auto &curr_workers = it->second;
     if (curr_workers.size() > 1) {
       // Since workers were processed in descending order of time,
       // each vector is also sorted in descending order of time.
@@ -124,13 +124,13 @@ std::string WorkerKillingPolicy::WorkersDebugString(
 
 std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(
     std::string killing_policy_str) {
-    if (killing_policy_str == "group_by_depth") {
-      return std::make_shared<GroupByDepthWorkingKillingPolicy>();
-    } else if (killing_policy_str == "retriable_lifo") {
-      return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
-    } else {
-      throw std::invalid_argument(killing_policy_str + " is an invalid killing policy");
-    }
+  if (killing_policy_str == "group_by_depth") {
+    return std::make_shared<GroupByDepthWorkingKillingPolicy>();
+  } else if (killing_policy_str == "retriable_lifo") {
+    return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
+  } else {
+    throw std::invalid_argument(killing_policy_str + " is an invalid killing policy");
+  }
 }
 
 }  // namespace raylet
