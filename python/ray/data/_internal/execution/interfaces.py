@@ -40,6 +40,16 @@ class RefBundle:
             assert len(b) == 2, b
             assert isinstance(b[0], ray.ObjectRef), b
             assert isinstance(b[1], BlockMetadata), b
+            assert b[1].num_rows is not None, b
+            assert b[1].size_bytes is not None, b
+
+    def num_rows(self) -> int:
+        """Number of rows present in this bundle."""
+        return sum(b[1].num_rows for b in self.blocks)
+
+    def size_bytes(self) -> int:
+        """Size of the blocks of this bundle in bytes."""
+        return sum(b[1].size_bytes for b in self.blocks)
 
     def destroy(self) -> None:
         """Clears the object store memory for these blocks."""
