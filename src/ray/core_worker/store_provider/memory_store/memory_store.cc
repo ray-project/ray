@@ -329,18 +329,18 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // no known owners, then return a failed status, since we are having issues.
     if (objects_without_owner > 0 &&
         (abort_if_any_object_is_exception || objects_without_owner == num_objects)) {
-        // TODO: Should we include the ObjectIDs in the error?
-        std::ostringstream stream;
-        stream << "An application is trying to access a Ray object whose owner is "
-               << "unknown. "
-                  "Please make sure that all Ray objects you are trying to access are "
-                  "part of the current Ray session. Note that "
-                  "object IDs generated randomly (ObjectID.from_random()) or "
-                  "out-of-band (ObjectID.from_binary(...)) cannot be passed as a "
-                  "task argument because  Ray does not know which task created them. "
-                  "If this was not how your object ID was generated, please file an "
-                  "issue at https://github.com/ray-project/ray/issues/";
-        return Status::ObjectNotFound(stream.str());
+      // TODO: Should we include the ObjectIDs in the error?
+      std::ostringstream stream;
+      stream << "An application is trying to access a Ray object whose owner is "
+             << "unknown. "
+                "Please make sure that all Ray objects you are trying to access are "
+                "part of the current Ray session. Note that "
+                "object IDs generated randomly (ObjectID.from_random()) or "
+                "out-of-band (ObjectID.from_binary(...)) cannot be passed as a "
+                "task argument because  Ray does not know which task created them. "
+                "If this was not how your object ID was generated, please file an "
+                "issue at https://github.com/ray-project/ray/issues/";
+      return Status::ObjectNotFound(stream.str());
     }
 
     // Clean up the objects if ref counting is off.

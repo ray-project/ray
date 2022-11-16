@@ -128,6 +128,7 @@ py_test_module_list(
     "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",
