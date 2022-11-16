@@ -44,6 +44,10 @@ void TaskEventBuffer::AddTaskStatusEvent(
     return;
   }
   absl::MutexLock lock(&mutex_);
+  RAY_LOG_EVERY_MS(INFO, 30000)
+      << "Task event buffer currently has " << task_events_data_.events_by_task_size()
+      << " tasks' events (" << 1.0 * task_events_data_.ByteSizeLong() / 1024 / 1024
+      << "MiB).";
 
   // TODO(rickyx): What if too many in local buffer? Trigger force flush or drop?
   auto events_task = task_events_data_.add_events_by_task();

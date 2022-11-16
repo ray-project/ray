@@ -33,7 +33,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
   ///
-  GcsTaskManager() = default;
+  explicit GcsTaskManager(instrumented_io_context &io_service);
 
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
@@ -42,6 +42,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   void HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
                              rpc::GetAllTaskEventReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  // Stops the event loop and the thread of the task event handler.
+  void Stop();
 
  private:
   /// Add events for a single task to the underlying GCS storage.
@@ -68,6 +71,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Counter for tracking the size of task event.
   size_t num_bytes_task_events_ = 0;
+
+  /// Its own separate IO service and thread.
+  instrumented_io_context &io_service_;
+  std::unique_ptr<std::thread> io_service_thread_;
 };
 
 }  // namespace gcs

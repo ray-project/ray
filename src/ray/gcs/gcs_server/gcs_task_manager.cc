@@ -22,67 +22,95 @@
 namespace ray {
 namespace gcs {
 
+GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+    : io_service_(io_service) {
+  io_service_thread_ = std::make_unique<std::thread>([this] {
+    SetThreadName("task_events");
+    // Keep io_service_ alive.
+    boost::asio::io_service::work io_service_work_(io_service_);
+    io_service_.run();
+  });
+}
+
+void GcsTaskManager::Stop() {
+  io_service_.stop();
+  if (io_service_thread_->joinable()) {
+    io_service_thread_->join();
+  }
+}
+
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Adding task state event:" << request.data().ShortDebugString();
-  size_t num_to_process = request.data().events_by_task_size();
-  // Update each task.
-  reply->set_num_failure(0);
-  reply->set_num_success(0);
+  // Dispatch to the handler
+  io_service_.post(
+      [this, reply, send_reply_callback, request = std::move(request)]() {
+        size_t num_to_process = request.data().events_by_task_size();
+        // Update each task.
+        reply->set_num_failure(0);
+        reply->set_num_success(0);
 
-  auto data = request.data();
-  for (auto &events_by_task : *data.mutable_events_by_task()) {
-    auto task_id = TaskID::FromBinary(events_by_task.task_id());
-    auto status = AddTaskEventForTask(task_id, std::move(events_by_task));
+        auto data = request.data();
+        for (auto &events_by_task : *data.mutable_events_by_task()) {
+          auto task_id = TaskID::FromBinary(events_by_task.task_id());
+          auto status = AddTaskEventForTask(task_id, std::move(events_by_task));
 
-    if (!status.ok()) {
-      reply->set_num_failure(reply->num_failure() + 1);
-      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-          << "Failed to add task state events for task. [task_id=" << task_id.Hex()
-          << "][status=" << status.ToString() << "].";
-    } else {
-      reply->set_num_success(reply->num_success() + 1);
-    }
-    RAY_CHECK(reply->num_success() + reply->num_failure() <= num_to_process)
-        << "Processed more task events than available. Too many callbacks called.";
+          if (!status.ok()) {
+            reply->set_num_failure(reply->num_failure() + 1);
+            RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+                << "Failed to add task state events for task. [task_id=" << task_id.Hex()
+                << "][status=" << status.ToString() << "].";
+          } else {
+            reply->set_num_success(reply->num_success() + 1);
+          }
+          RAY_CHECK(reply->num_success() + reply->num_failure() <= num_to_process)
+              << "Processed more task events than available. Too many callbacks called.";
 
-    // Processed all the task events
-    if (reply->num_success() + reply->num_failure() == num_to_process) {
-      RAY_LOG(DEBUG) << "Processed all " << num_to_process
-                     << " task state events, failed=" << reply->num_failure()
-                     << ",success=" << reply->num_success();
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      return;
-    }
+          // Processed all the task events
+          if (reply->num_success() + reply->num_failure() == num_to_process) {
+            RAY_LOG(DEBUG) << "Processed all " << num_to_process
+                           << " task state events, failed=" << reply->num_failure()
+                           << ",success=" << reply->num_success();
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+            return;
+          }
 
-    RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
-  }
-  RAY_LOG(WARNING) << "Empty task events data, num_to_process=" << num_to_process;
-  GCS_RPC_SEND_REPLY(
-      send_reply_callback, reply, Status::UnknownError("Empty task event grpc data"));
+          RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
+        }
+        RAY_LOG(WARNING) << "Empty task events data, num_to_process=" << num_to_process;
+        GCS_RPC_SEND_REPLY(send_reply_callback,
+                           reply,
+                           Status::UnknownError("Empty task event grpc data"));
+      },
+      "GcsTaskManager::HandleAddTaskEventData");
 }
 
 void GcsTaskManager::HandleGetAllTaskEvent(rpc::GetAllTaskEventRequest request,
                                            rpc::GetAllTaskEventReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all task state events: " << request.ShortDebugString();
-  auto limit = request.has_limit() ? request.limit() : -1;
-  int count = 0;
-  {
-    absl::MutexLock lock(&mutex_);
-    for (const auto &[_task_id, data] : task_events_) {
-      if (limit >= 0 && count++ >= limit) {
-        break;
-      }
-      reply->add_events_by_task()->CopyFrom(data);
-    }
-    reply->set_total(tasks_reported_.size());
-  }
+  // Dispatch to the handler
+  io_service_.post(
+      [this, reply, send_reply_callback, request = std::move(request)]() {
+        auto limit = request.has_limit() ? request.limit() : -1;
+        int count = 0;
+        {
+          absl::MutexLock lock(&mutex_);
+          for (const auto &[_task_id, data] : task_events_) {
+            if (limit >= 0 && count++ >= limit) {
+              break;
+            }
+            reply->add_events_by_task()->CopyFrom(data);
+          }
+          reply->set_total(tasks_reported_.size());
+        }
 
-  RAY_LOG(DEBUG) << "Finished getting all task states info, with "
-                 << reply->ShortDebugString();
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        RAY_LOG(DEBUG) << "Finished getting all task states info, with "
+                       << reply->ShortDebugString();
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      },
+      "GcsTaskManager::HandleGetAllTaskEvent");
 }
 
 Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
@@ -90,7 +118,7 @@ Status GcsTaskManager::AddTaskEventForTask(const TaskID &task_id,
   absl::MutexLock lock(&mutex_);
 
   RAY_LOG_EVERY_MS(INFO, 30000)
-      << "GCS current stores " << task_events_.size()
+      << ":GCS current stores " << task_events_.size()
       << " task event entries, approx size=" << 1.0 * num_bytes_task_events_ / 1024 / 1024
       << "MiB";
 
