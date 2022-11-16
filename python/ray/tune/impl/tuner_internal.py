@@ -200,7 +200,7 @@ class TunerInternal:
 
     def _validate_overwrite_trainable(self, original_trainable, overwrite_trainable):
         """Determines whether the re-specified overwrite_trainable is compatible
-        the restored experiment with some basic sanity checks
+        with the restored experiment with some basic sanity checks
         (ensuring same type and name as the original trainable).
         """
 
@@ -252,9 +252,11 @@ class TunerInternal:
                 )
 
         logger.warning(
-            "Trainable has been overwritten - this should be done with caution: "
+            "The trainable has been overwritten - this should be done with caution: "
             "it's possible to supply an incompatible trainable, and there are "
             "no guarantees that the resumed experiment will continue successfully."
+            "If you encounter errors during training, ensure that you are passing "
+            "in a trainable that is compatible with the old Tune experiment."
         )
 
     def _restore_from_path_or_uri(

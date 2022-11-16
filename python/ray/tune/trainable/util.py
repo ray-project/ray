@@ -311,7 +311,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         wrapped with ``tune.with_parameters``.
         The reasoning behind this is as follows:
 
-        1. `tune.with_parameters` stores parameters in the object store and
+        1. ``tune.with_parameters`` stores parameters in the object store and
         attaches object references to the trainable, but the objects they point to
         may not exist anymore upon restore.
 
@@ -354,7 +354,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         parameter_registry.put(prefix + k, v)
 
     trainable_name = getattr(trainable, "__name__", "tune_with_parameters")
-    keys = list(kwargs.keys())
+    keys = set(kwargs.keys())
 
     if inspect.isclass(trainable):
         # Class trainable
