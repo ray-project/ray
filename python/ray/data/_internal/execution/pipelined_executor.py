@@ -176,6 +176,9 @@ class PipelinedExecutor(Executor):
         This does not dispatch any new tasks, but pushes RefBundles through the
         DAG topology (i.e., operator state inqueues/outqueues).
         """
+        for state in self._operator_state.values():
+            state.refresh_progress_bar()
+
         if self._active_tasks:
             [ref], _ = ray.wait(
                 list(self._active_tasks), num_returns=1, fetch_local=False
@@ -194,7 +197,6 @@ class PipelinedExecutor(Executor):
                 pass
             else:
                 assert False, "Unknown operator type: {}".format(op)
-            state.refresh_progress_bar()
 
     def _select_operator_to_run(self) -> Optional[PhysicalOperator]:
         """Select an operator to run, if possible.
