@@ -584,48 +584,6 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
         ts += 1
 
 
-def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
-    """Checks whether the given policy can infer actions from an env with connectors.
-
-    Args:
-        policy: The policy to check.
-        env_name: Name of the environment to check
-        max_steps: The maximum number of steps to run the environment for.
-
-    Raises:
-        ValueError: If the policy cannot infer actions from the environment.
-    """
-    # Avoids circular import
-    from ray.rllib.utils.policy import local_policy_inference
-
-    env = gym.make(env_name)
-
-    # Potentially wrap the env like we do in RolloutWorker
-    if is_atari(env):
-        env = wrap_deepmind(
-            env,
-            dim=policy.config["model"]["dim"],
-            framestack=policy.config["model"].get("framestack"),
-        )
-
-    obs = env.reset()
-    reward, done, info = 0.0, False, {}
-    ts = 0
-    while not done and ts < max_steps:
-        action_out = local_policy_inference(
-            policy,
-            env_id=0,
-            agent_id=0,
-            obs=obs,
-            reward=reward,
-            done=done,
-            info=info,
-        )
-        obs, reward, done, info = env.step(action_out[0][0])
-
-        ts += 1
-
-
 def check_learning_achieved(
     tune_results: "tune.ResultGrid", min_reward, evaluation=False
 ):
