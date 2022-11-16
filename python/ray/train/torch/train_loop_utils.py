@@ -397,7 +397,7 @@ class _TorchAccelerator(Accelerator):
                     worker_init_fn: Optional[Callable[[int], None]]
                 ):
                     def wrapper(worker_id: int):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
                         if worker_init_fn:
