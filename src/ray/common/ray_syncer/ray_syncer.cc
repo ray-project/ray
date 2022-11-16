@@ -153,9 +153,12 @@ void ClientSyncConnection::StartLongPolling() {
                 ReceiveUpdate(std::move(messages));
               },
               "LongPollingCallback");
-          // Start the next polling.
-          StartLongPolling();
+        } else {
+          RAY_LOG(ERROR) << "Polling for resource failed: " << status.error_message()
+                         << ", " << status.error_details();
         }
+        // Start the next polling.
+        StartLongPolling();
       });
 }
 
@@ -187,10 +190,21 @@ void ClientSyncConnection::DoSend() {
         client_context.get(),
         request,
         response,
-        [arena, client_context, holder = std::move(holder)](grpc::Status status) {
+        [this, arena, client_context, holder = std::move(holder)](grpc::Status status) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Sending request failed because of "
                            << status.error_message();
+            io_context_.dispatch(
+                [this, holder = std::move(holder)]() {
+                  for (const auto &message : holder) {
+                    auto &node_versions = GetNodeComponentVersions(message->node_id());
+                    if (node_versions[message->message_type()] == message->version()) {
+                      sending_buffer_[std::make_pair(message->node_id(),
+                                                     message->message_type())] = message;
+                    }
+                  }
+                },
+                "");
           }
         });
   }
