@@ -72,6 +72,8 @@ class GroupByDepthWorkingKillingPolicy : public WorkerKillingPolicy {
       const MemoryMonitor &memory_monitor) const;
 };
 
+std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(std::string killing_policy_str);
+
 }  // namespace raylet
 
 }  // namespace ray

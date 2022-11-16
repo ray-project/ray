@@ -31,6 +31,7 @@ const std::shared_ptr<WorkerInterface>
 RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemoryMonitor &memory_monitor) const {
+  RAY_LOG(INFO) << "Runnning RetriableLIFO policy.";
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return nullptr;
@@ -65,6 +66,7 @@ const std::shared_ptr<WorkerInterface>
 GroupByDepthWorkingKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemoryMonitor &memory_monitor) const {
+  RAY_LOG(INFO) << "Runnning GroupByDepth policy.";
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return nullptr;
@@ -118,6 +120,16 @@ std::string WorkerKillingPolicy::WorkersDebugString(
     }
   }
   return result.str();
+}
+
+std::shared_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory(std::string killing_policy_str) {
+    if (killing_policy_str == "group_by_depth") {
+      return std::make_shared<GroupByDepthWorkingKillingPolicy>();
+    } else if (killing_policy_str == "retriable_lifo") {
+      return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
+    } else {
+      throw std::invalid_argument(killing_policy_str + " is an invalid killing policy");
+    }
 }
 
 }  // namespace raylet
