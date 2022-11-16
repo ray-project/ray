@@ -1,7 +1,7 @@
 .. _ray-job-submission-api-ref:
 
-Ray Job Submission API Reference
-================================
+Ray Jobs API Reference
+======================
 
 For an overview with examples see :ref:`Ray Jobs <jobs-overview>`.
 

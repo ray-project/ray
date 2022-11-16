@@ -3,7 +3,7 @@
 Python SDK
 ^^^^^^^^^^
 
-The Job Submission Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference <ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
+The Ray Jobs Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference <ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
 
 Setup
 -----
