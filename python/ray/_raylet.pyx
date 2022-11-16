@@ -187,19 +187,6 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        # Pre-build this message in case an object was not found.
-        not_found_msg = (
-                "One or more objects could not be "
-                "found in this Ray session. "
-                "Please make sure that all Ray objects used by the "
-                "application are part of the current Ray session. "
-                "Note that object IDs generated randomly "
-                "(ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task "
-                "arguments because Ray does not know which task created them."
-                "If this was not how your object ID was generated, please "
-                "file an issue at "
-                "https://github.com/ray-project/ray/issues/")
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
@@ -210,7 +197,9 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
-        raise ValueError(not_found_msg)
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
     else:
         raise RaySystemError(message)
 

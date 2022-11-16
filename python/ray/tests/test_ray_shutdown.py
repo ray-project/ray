@@ -70,7 +70,7 @@ def test_ray_shutdown_then_call(short_gcs_publish_timeout, shutdown_only):
     ray.shutdown()
 
     ray.init(num_cpus=1, include_dashboard=False)
-    with pytest.raises(ValueError, match="could not be found in this Ray session"):
+    with pytest.raises(ValueError, match="a Ray object whose owner is unknown"):
         f.remote(my_ref)  # This would cause full CPython death.
 
     ray.shutdown()
@@ -92,7 +92,7 @@ def test_ray_shutdown_then_call_list(short_gcs_publish_timeout, shutdown_only):
     ray.shutdown()
 
     ray.init(num_cpus=1, include_dashboard=False)
-    with pytest.raises(ValueError, match="could not be found in this Ray session"):
+    with pytest.raises(ValueError, match="a Ray object whose owner is unknown"):
         f.remote([my_ref])  # This would cause full CPython death.
 
     ray.shutdown()
@@ -110,7 +110,7 @@ def test_ray_shutdown_then_get(short_gcs_publish_timeout, shutdown_only):
     ray.shutdown()
 
     ray.init(num_cpus=1, include_dashboard=False)
-    with pytest.raises(ValueError, match="could not be found in this Ray session"):
+    with pytest.raises(ValueError, match="a Ray object whose owner is unknown"):
         # This used to cause ray to hang indefinitely (without timeout) or
         # throw a timeout exception if a timeout was provided. Now it is expected to
         # throw an exception reporting the unknown object.
@@ -137,7 +137,7 @@ def test_ray_shutdown_then_wait(short_gcs_publish_timeout, shutdown_only):
     # function to wait for the valid references; however, if all the
     # references are unknown, we expect an error.
     ready, not_ready = ray.wait([my_new_ref, my_ref])
-    with pytest.raises(ValueError, match="were found in this Ray session"):
+    with pytest.raises(ValueError, match="a Ray object whose owner is unknown"):
         # This used to cause ray to hang indefinitely (without timeout) or
         # forever return all tasks as not-ready if a timeout was provided.
         # Now it is expected to throw an exception reporting if all objects are

@@ -902,8 +902,18 @@ Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
                                    rpc::Address &owner_address) const {
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   if (!has_owner) {
-    return Status::ObjectNotFound(
-        "Unable to get ownership information for requested object");
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << object_id
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectNotFound(stream.str());
   }
   return Status::OK();
 }
@@ -946,8 +956,18 @@ Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                     std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
-    return Status::ObjectNotFound(
-        "Unable to get ownership information for requested object");
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << object_id
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectNotFound(stream.str());
   }
 
   rpc::GetObjectStatusReply object_status;
