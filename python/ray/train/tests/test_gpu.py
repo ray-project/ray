@@ -10,6 +10,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.exceptions import RayActorError
 from ray.air import session
 from ray import tune
 
@@ -330,7 +331,7 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
     )
 
     # Training should fail and not hang.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RayActorError):
         trainer.fit()
 
 
