@@ -343,7 +343,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 AlgorithmConfig().rollouts(
                     rollout_fragment_length=5,
                     num_rollout_workers=0,
-                    enable_connectors=True,
                 )
                 # Force `state_in_0` to be repeated every ts in the collected batch
                 # (even though we don't even have a model that would care about this).
