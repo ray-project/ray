@@ -397,6 +397,8 @@ class TunerInternal:
             reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
+            trial_name_creator=self._tune_config.trial_name_creator,
+            trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
