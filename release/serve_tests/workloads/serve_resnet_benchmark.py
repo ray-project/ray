@@ -165,7 +165,6 @@ async def json_resolver(request: starlette.requests.Request):
 @click.option("--smoke-run", type=bool, is_flag=True, default=False)
 def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
 
-    loop = asyncio.get_event_loop()
     test_name = "resnet50_cpu"
     device = "cpu"
     if gpu_env:
@@ -192,7 +191,7 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
             res = handle.predict.remote([input_uris[0]])
         print("start load testing...")
         for batch_size in batch_sizes:
-            throughput_mean_tps, model_inference_latency_mean = loop.run_until_complete(
+            throughput_mean_tps, model_inference_latency_mean = asyncio.run(
                 trial(measure_http_throughput_tps, batch_size)
             )
             result[f"batch size {batch_size}"] = {
