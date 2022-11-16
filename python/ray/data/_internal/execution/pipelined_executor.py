@@ -82,7 +82,6 @@ class _OneToOneTask:
                     soft=True,
                 )
             )
-            print("AFFINITY")
         self._block_ref, self._meta_ref = transform_fn.remote(
             self._op, self._inputs.blocks[0][0]
         )
