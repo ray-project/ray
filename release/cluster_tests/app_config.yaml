@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
-env_vars: {"RAY_BACKEND_LOG_LEVEL": "debug"}
+env_vars: {}
 debian_packages:
   - curl
 
