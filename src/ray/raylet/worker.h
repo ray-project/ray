@@ -115,7 +115,7 @@ class WorkerInterface {
   virtual size_t GetReuseCount() const = 0;
 
   /// Bump the reuse count of the worker.
-  virtual void BumpReuseCount();
+  virtual void BumpReuseCount() = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
