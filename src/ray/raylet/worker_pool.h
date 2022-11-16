@@ -490,10 +490,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The pool of dedicated workers for actor creation tasks
-    /// with dynamic worker options (prefix or suffix worker command.)
-    absl::flat_hash_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
-    /// The pool of idle non-actor workers.
+    /// The pool of idle workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
     IOWorkerState util_io_worker_state;
@@ -515,11 +512,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     absl::flat_hash_map<StartupToken, WorkerProcessInfo> worker_processes;
     /// A map for looking up the task by the startup token of starting worker process.
     absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
-    /// A map for looking up the task with dynamic options by the startup token of
-    /// starting worker process. Note that this is used for the dedicated worker
-    /// processes.
-    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
-        starting_dedicated_workers_to_tasks;
     /// Pop worker requests that are pending due to maximum_startup_concurrency_.
     std::deque<PopWorkerRequest> pending_pop_worker_requests;
     /// We'll push a warning to the user every time a multiple of this many
