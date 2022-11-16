@@ -541,8 +541,6 @@ class EnvRunnerV2:
                     and not dones[env_id]["__all__"]
                 )
                 all_agents_done = True
-                # Add rollout metrics.
-                outputs.extend(self._get_rollout_metrics(episode))
             else:
                 hit_horizon = False
                 all_agents_done = False
@@ -776,6 +774,8 @@ class EnvRunnerV2:
             # Output the collected episode.
             self._build_done_episode(env_id, is_done, hit_horizon, outputs)
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
+            # Add rollout metrics.
+            outputs.extend(self._get_rollout_metrics(episode_or_exception))
 
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
@@ -798,7 +798,9 @@ class EnvRunnerV2:
                 resetted_obs: Dict[
                     EnvID, Dict[AgentID, EnvObsType]
                 ] = self._base_env.try_reset(env_id)
-                if resetted_obs is None or not isinstance(resetted_obs, Exception):
+                if resetted_obs is None or not isinstance(
+                    resetted_obs[env_id], Exception
+                ):
                     break
                 else:
                     # Report a faulty episode.
@@ -1108,8 +1110,12 @@ class EnvRunnerV2:
                     ac_data
                 ).output
 
+                # The action we want to buffer is the direct output of
+                # compute_actions_from_input_dict() here. This is because we want to
+                # send the unsqushed actions to the environment while learning and
+                # possibly basing subsequent actions on the squashed actions.
                 action_to_buffer = (
-                    action_to_send
+                    action
                     if env_id not in off_policy_actions
                     or agent_id not in off_policy_actions[env_id]
                     else off_policy_actions[env_id][agent_id]
