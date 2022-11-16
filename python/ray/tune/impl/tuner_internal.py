@@ -100,8 +100,7 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._is_restored = False
-        self._trainable = trainable
-        self._converted_trainable = None
+        self.trainable = trainable
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
@@ -126,7 +125,7 @@ class TunerInternal:
             pickle.dump(self, fp)
 
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-            pickle.dump(self._trainable, fp)
+            pickle.dump(self.trainable, fp)
         self._maybe_warn_resource_contention()
 
     def get_run_config(self) -> RunConfig:
@@ -159,7 +158,7 @@ class TunerInternal:
         if not ray.is_initialized():
             return
 
-        trainable = self._get_converted_trainable()
+        trainable = self.converted_trainable
 
         # This may not be precise, but we don't have a great way of
         # accessing the actual scaling config if it is being tuned.
@@ -221,7 +220,7 @@ class TunerInternal:
             self.__dict__.update(tuner.__dict__)
 
         self._is_restored = True
-        self._trainable = trainable
+        self.trainable = trainable
         self._resume_config = resume_config
 
         if not synced:
@@ -282,7 +281,7 @@ class TunerInternal:
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._get_converted_trainable(),
+            self.converted_trainable,
             run_config.local_dir,
             run_config.name,
         )
@@ -294,22 +293,32 @@ class TunerInternal:
     def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
-    def _get_converted_trainable(self) -> Union[str, Callable, Type[Trainable]]:
+    @property
+    def trainable(self):
+        return self._trainable
+
+    @property
+    def converted_trainable(self):
+        return self._converted_trainable
+
+    @trainable.setter
+    def trainable(self, trainable):
+        self._trainable = trainable
+        self._converted_trainable = self._convert_trainable(trainable)
+
+    def _convert_trainable(self, trainable) -> Union[str, Callable, Type[Trainable]]:
         """Converts an AIR Trainer to a Tune trainable and saves the converted
         trainable. If not using an AIR Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
-        if not self._converted_trainable:
-            self._converted_trainable = (
-                self._trainable.as_trainable()
-                if isinstance(self._trainable, BaseTrainer)
-                else self._trainable
-            )
-
-        return self._converted_trainable
+        return (
+            trainable.as_trainable()
+            if isinstance(trainable, BaseTrainer)
+            else trainable
+        )
 
     def fit(self) -> ResultGrid:
-        trainable = self._get_converted_trainable()
+        trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
         if not self._is_restored:
             param_space = copy.deepcopy(self._param_space)
