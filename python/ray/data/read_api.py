@@ -252,6 +252,21 @@ def read_datasource(
         Dataset holding the data read from the datasource.
     """
     ctx = DatasetContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+        read_args["local_uri"] = True
+
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     cur_pg = ray.util.get_current_placement_group()
@@ -308,24 +323,11 @@ def read_datasource(
             "dataset blocks."
         )
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
     if (
         "scheduling_strategy" not in ray_remote_args
         and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
-
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
 
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
