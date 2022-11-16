@@ -805,7 +805,7 @@ py_test(
 
 py_test(
     name = "test_worker_failures",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
