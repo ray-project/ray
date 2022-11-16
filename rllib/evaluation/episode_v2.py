@@ -184,6 +184,7 @@ class EpisodeV2:
                 "_disable_action_flattening", False
             ),
             is_policy_recurrent=policy.is_recurrent(),
+            intial_states=policy.get_initial_state(),
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,
