@@ -310,6 +310,7 @@ class BatchingNodeProviderTester:
         self.node_provider._assert_worker_counts(expected_worker_counts)
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_batching_node_provider_basic():
     tester = BatchingNodeProviderTester()
 
@@ -346,6 +347,7 @@ def test_batching_node_provider_basic():
     tester.assert_worker_counts({"type-1": 1, "type-2": 8})
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_batching_node_provider_many_requests():
     """Simulate 10 autoscaler updates with randomly generated create/terminate
     requests.
@@ -357,6 +359,7 @@ def test_batching_node_provider_many_requests():
     tester.validate_non_terminated_nodes()
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_terminate_safeguards():
     """Tests the following behaviors:
     - the node provider ignores requests to terminate a node twice.

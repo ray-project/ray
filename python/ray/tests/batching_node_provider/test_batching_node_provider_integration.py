@@ -2,7 +2,7 @@
 Adapts FakeMultiNodeProvider tests.
 """
 from copy import deepcopy
-import platform
+import sys
 
 import pytest
 
@@ -117,7 +117,7 @@ class BatchingAutoscalingCluster(AutoscalingCluster):
         return config
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant on Windows.")
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_fake_batching_autoscaler_e2e(shutdown_only):
     cluster = BatchingAutoscalingCluster(
         head_resources={"CPU": 2},
