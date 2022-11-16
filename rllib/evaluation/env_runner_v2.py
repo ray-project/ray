@@ -522,8 +522,6 @@ class EnvRunnerV2:
                     to_eval=to_eval,
                     outputs=outputs,
                 )
-                # Tell the sampler we have got a faulty episode.
-                outputs.append(RolloutMetrics(episode_faulty=True))
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
@@ -769,6 +767,8 @@ class EnvRunnerV2:
         if isinstance(env_obs_or_exception, Exception):
             is_error = True
             episode_or_exception: Exception = env_obs_or_exception
+            # Tell the sampler we have got a faulty episode.
+            outputs.append(RolloutMetrics(episode_faulty=True))
         else:
             is_error = False
             # Output the collected episode.
