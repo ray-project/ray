@@ -20,6 +20,7 @@ ray.init()
 # Assert that GPU resources are available in the driver script
 assert torch.cuda.is_available()
 
+
 # For good measure, let's also check that we can use the GPU
 # in a remote function.
 @ray.remote(num_gpus=0.1)
