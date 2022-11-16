@@ -65,7 +65,9 @@ class _OpState:
         else:
             self.compute_strategy = None
         if isinstance(self.compute_strategy, ActorPoolStrategy):
-            self.actor_pool = _ActorPool(self.compute_strategy.max_size)
+            self.actor_pool = _ActorPool(
+                self.compute_strategy.max_size, self.op.ray_remote_args()
+            )
         else:
             self.actor_pool = None
 
