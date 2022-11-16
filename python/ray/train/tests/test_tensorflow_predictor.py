@@ -18,7 +18,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 def build_raw_model() -> tf.keras.Model:
@@ -123,8 +123,11 @@ def test_predict_array(use_gpu):
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -139,12 +142,15 @@ def test_predict_array_with_preprocessor(use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
+    assert len(predictions) == 1
+    # [1 2 3] returns [[2],[4],[6]] with shape: (3,1) from Tensorflow model
+    np.testing.assert_array_equal(
+        predictions["predictions"], np.asarray([[2], [4], [6]])
+    )
     assert predictor.get_preprocessor().has_preprocessed
-    assert predictions.flatten().tolist() == [2, 4, 6]
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     predictor = TensorflowPredictor(model=build_model_multi_input())
 
@@ -157,8 +163,8 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
-def test_predict_batch(ray_start_4_cpus, batch_type):
+@pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
+def test_predict_dataset_block(ray_start_4_cpus, block_type):
     checkpoint = TensorflowCheckpoint.from_model(model=build_model_multi_input())
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model_multi_input
@@ -166,12 +172,9 @@ def test_predict_batch(ray_start_4_cpus, batch_type):
 
     dummy_data = pd.DataFrame([[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["A", "B"])
 
-    # Todo: Ray data does not support numpy dicts
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data.to_numpy())
-    elif batch_type == pd.DataFrame:
+    if block_type == pd.DataFrame:
         dataset = ray.data.from_pandas(dummy_data)
-    elif batch_type == pa.Table:
+    elif block_type == pa.Table:
         dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
     else:
         raise RuntimeError("Invalid batch_type")

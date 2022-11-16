@@ -1709,9 +1709,9 @@ def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
     with pytest.raises(NotImplementedError):
         with_nothing.transform(ds)
 
-    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas.transform(ds).dataset_format() == "pandas"
 
-    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas_and_numpy.transform(ds).dataset_format() == "pandas"
 
 
 def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
@@ -1728,12 +1728,12 @@ def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
     with pytest.raises(NotImplementedError):
         with_nothing.transform(ds)
 
-    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas.transform(ds).dataset_format() == "pandas"
 
-    assert with_numpy.transform(ds)._dataset_format() == "arrow"
+    assert with_numpy.transform(ds).dataset_format() == "arrow"
 
     # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
-    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "arrow"
+    assert with_pandas_and_numpy.transform(ds).dataset_format() == "arrow"
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):

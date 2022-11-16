@@ -12,6 +12,9 @@ class DummyPreprocessor(Preprocessor):
         self._batch_transformed = True
         return self.transform(batch)
 
+    def _transform_pandas(self, df):
+        return df
+
     @property
     def has_preprocessed(self):
         return hasattr(self, "_batch_transformed")
