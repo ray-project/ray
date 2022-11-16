@@ -1,4 +1,5 @@
 import pytest
+import warnings
 
 import pandas as pd
 import numpy as np
@@ -10,6 +11,8 @@ from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
     _convert_batch_type_to_numpy,
+    _cast_ndarray_columns_to_tensor_extension,
+    _cast_tensor_columns_to_ndarrays,
 )
 from ray.air.util.data_batch_conversion import DataType
 from ray.air.util.tensor_extensions.pandas import TensorArray
@@ -147,6 +150,19 @@ def test_pandas_multi_dim_pandas(cast_tensor_columns, use_tensor_extension_for_i
         actual_output, type=DataType.PANDAS, cast_tensor_columns=cast_tensor_columns
     )
     pd.testing.assert_frame_equal(actual_output, input_data)
+
+
+def test_no_pandas_future_warning():
+    """Tests that Pandas in-place FutureWarning is
+    suppressed during tensor extension casting."""
+
+    input_tensor = np.arange(12).reshape((3, 2, 2))
+    input_data = pd.DataFrame({"x": TensorArray(input_tensor)})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", category=FutureWarning)
+        data_no_tensor_array = _cast_tensor_columns_to_ndarrays(input_data)
+        _cast_ndarray_columns_to_tensor_extension(data_no_tensor_array)
 
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
