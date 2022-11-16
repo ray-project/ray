@@ -5281,6 +5281,19 @@ def test_default_batch_format(shutdown_only):
     assert ds.default_batch_format() == pd.DataFrame
 
 
+def test_dataset_schema_after_read_stats(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(cluster.address)
+    cluster.add_node(num_cpus=1, resources={"foo": 1})
+    ds = ray.data.read_csv(
+        "example://iris.csv", ray_remote_args={"resources": {"foo": 1}}
+    )
+    schema = ds.schema()
+    ds.stats()
+    assert schema == ds.schema()
+
+
 if __name__ == "__main__":
     import sys
 
