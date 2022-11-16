@@ -7,8 +7,8 @@ import ray
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     # There are 50 groups, each group has 1 master and 99 slaves.
-    num_masters = 50
-    num_slaves_per_master = 99
+    num_masters = 250
+    num_slaves_per_master = 19
 
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
