@@ -22,7 +22,7 @@ assert torch.cuda.is_available()
 
 # For good measure, let's also check that we can use the GPU
 # in a remote function.
-@ray.remote(num_gpus=1)
+@ray.remote(num_gpus=0.1)
 def f():
     return ray.get_gpu_ids()
 
