@@ -143,14 +143,6 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-    start = time.time()
-
-    # Setup log file.
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
-    )
-    configure_log_file(out_file, err_file)
-
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
     # as a step function. For more details, check out
@@ -210,8 +202,6 @@ if __name__ == "__main__":
         )
 
     ray._private.worker._global_node = node
-
-    print(f"time before connect {time.time() - start}")
     ray._private.worker.connect(
         node,
         node.session_name,
@@ -221,7 +211,6 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
     )
 
-    print(f"time after connect {time.time() - start}")
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray._private.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
@@ -234,7 +223,12 @@ if __name__ == "__main__":
             sys.path.insert(0, p)
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-    print(f"time after set logs {time.time() - start}")
+    # Setup log file.
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name(args.worker_type)
+    )
+    configure_log_file(out_file, err_file)
+
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
