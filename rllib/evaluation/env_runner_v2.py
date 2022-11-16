@@ -568,9 +568,7 @@ class EnvRunnerV2:
                     continue
 
                 values_dict = {
-                    SampleBatch.T: episode.length,  # Episodes start at -1 before we
-                    # add the initial obs. After that, we infer from initial obs at
-                    # t=0 since that will be our new episode.length.
+                    SampleBatch.T: episode.length - 1,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                     # Last action (SampleBatch.ACTIONS) column will be populated by
