@@ -68,16 +68,17 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
 def _load_trial_from_checkpoint(
     trial_cp: dict, stub: bool = False, new_local_dir: Optional[str] = None
 ) -> Trial:
-    """_summary_
+    """Create a Trial from the state stored in the experiment checkpoint.
 
     Args:
         trial_cp: Trial state from the experiment checkpoint, which is loaded
             from the trial's `Trial.get_json_state`.
         stub: Whether or not to validate the trainable name when creating the Trial.
             Used for testing purposes for creating mocks.
-        new_local_dir: If set, the Trial `local_dir` will be updated in the
-            `trial_cp` state. Used in the case that the trial directory has moved
-            from where it was saved initially.
+        new_local_dir: If set, this `local_dir` will overwrite what's saved in the
+            `trial_cp` state. Used in the case that the trial directory has moved.
+            The Trial `logdir` and the persistent trial checkpoints will have their
+            paths updated relative to this new directory.
 
     Returns:
         new_trial: New trial with state loaded from experiment checkpoint
@@ -101,7 +102,9 @@ def _load_trials_from_experiment_checkpoint(
     """Create trial objects from experiment checkpoint.
 
     Given an experiment checkpoint (TrialRunner state dict), return
-    list of trials."""
+    list of trials. See `_ExperimentCheckpointManager.checkpoint` for
+    what's saved in the TrialRunner state dict.
+    """
     checkpoints = [
         json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
         for cp in experiment_checkpoint["checkpoints"]
@@ -789,7 +792,6 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        # Load trials with respect to the `_local_checkpoint_dir`
         trials = _load_trials_from_experiment_checkpoint(
             runner_state, new_local_dir=self._local_checkpoint_dir
         )
